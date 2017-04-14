@@ -2,11 +2,15 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8">
-		<title>title</title>
+		<title>NfSen-NG</title>
 		<script src="js/dygraph.js"></script>
+		<script src="js/jquery-3.2.1.min.js"></script>
+		<script src="js/bootstrap.min.js"></script>
 		<link rel="stylesheet" type="text/css" href="css/dygraph.css" />
+		<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
 		<link rel="stylesheet" type="text/css" href="css/customized.css" />
 	</head>
+
 	<body>
 		<div id="flowDivContainer">
 
@@ -110,13 +114,15 @@
 				if(el.id=="stackedGraphBtn")
 				{
 					fg.updateOptions({
-		              stackedGraph : true
+		              stackedGraph : true,
+					  fillGraph: true
 		            });
 				}
 				else
 				{
 					fg.updateOptions({
-		              stackedGraph : false
+		              stackedGraph : false,
+					  fillGraph: false
 		            });
 				}
 

@@ -8,10 +8,7 @@ class Import {
 	function __construct() {
         $this->d = \Debug::getInstance();
         $this->d->dpr(Config::$cfg);
-        $this->import();
-	}
 
-	function import() {
         // find data source
         if(Config::$cfg['db']['akumuli']['host']) {
             $this->d->dpr("Using Akumuli");
@@ -20,8 +17,10 @@ class Import {
             $this->d->dpr("Using RRD");
             $this->src = new datasources\RRD();
         }
+	}
+
+	function start(DateTime $timestart) {
+        $this->src->import($timestart);
     }
-
-
 }
 

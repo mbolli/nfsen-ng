@@ -2,12 +2,10 @@
 namespace datasources;
 
 class RRD implements \Datasource {
-    private $cfg;
     private $d;
     private $client;
 
     function __construct() {
-        $this->cfg = \Config::getInstance();
         $this->d = \Debug::getInstance();
     }
 

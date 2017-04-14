@@ -25,15 +25,28 @@
 
         <div id="filterDiv" class="container-fluid">
 
-            <div id="graphsFilterDiv" class="row">
+            <div id="graphsFilterDiv" class="row well well-sm">
 
 
 
-                <div class="col-md-3">Date</div>
+                <div id="graphsFilterDateDiv" class="col-md-3">
 
+                    <h3 class="text-center">Date</h3>
 
-                <div id="graphsFilterProtocolDiv" class="col-md-3">Protocols
+                    <div class="form-group">
+                        <label for="startDate">From date :</label>
+                        <input type="text" class="form-control" id="startDate">
+                    </div>
+                    <div class="form-group">
+                        <label for="endDate">To date :</label>
+                        <input type="text" class="form-control" id="endDate">
+                    </div>
 
+                </div><!-- graphsFilterDateDiv  -->
+
+                <div id="graphsFilterProtocolDiv" class="col-md-3">
+
+                    <h3 class="text-center">Protocols</h3>
 
                     <div class="checkbox">
                         <label><input type="checkbox" value="">TCP</label>
@@ -50,7 +63,9 @@
 
                 </div><!-- graphsFilterProtocolDiv  -->
 
-                <div id="graphsFilterDataTypeDiv" class="col-md-3">Data type
+                <div id="graphsFilterDataTypeDiv" class="col-md-3">
+
+                    <h3 class="text-center">Data Type</h3>
 
                     <div class="checkbox">
                         <label><input type="checkbox" value="">Flows</label>
@@ -63,8 +78,19 @@
                     </div>
                 </div><!-- graphsFilterDataTypeDiv  -->
 
-                <div class="col-md-3">Sources</div>
+                <div id="graphsFilterSourcesDiv" class="col-md-3">
 
+                    <h3 class="text-center">Sources</h3>
+
+                    <div class="form-group">
+                        <select multiple class="form-control" id="sourceSelection">
+                            <option>swibi</option>
+                            <option>tiber</option>
+                            <option>blablabla</option>
+                            <option>shouldComeFromTheServer</option>
+                        </select>
+                    </div>
+                </div><!-- graphsFilterSourcesDiv  -->
 
 
             </div><!-- graphsFilterDiv  -->

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>title</title>
+		<script src="js/dygraph.js"></script>
+		<link rel="stylesheet" type="text/css" href="css/dygraph.css" />
+		<link rel="stylesheet" type="text/css" href="css/customized.css" />
+	</head>
+	<body>
+		<div id="flowDivContainer">
+
+			<div id="flowStatusDiv"></div>
+
+			<div id="graphOptions">			
+				<p>Scale :<br/>
+				  <input type=radio id="linearScaleBtn" checked name="scale" onchange=adaptScaleToSelection(this)>
+				  <label for="linearScaleBtn">Linear</label><br/>
+				  <input type=radio id="logarithmicScaleBtn" name="scale" onchange=adaptScaleToSelection(this)>
+				  <label for="logarithmicScaleBtn">Logarithmic</label><br/>
+				</p>
+
+				<p>Type :<br/>
+				  <input type=radio id="lineGraphBtn" checked name="type" onchange=adaptGraphTypeToSelection(this)>
+				  <label for="lineGraphBtn">Line</label><br/>
+				  <input type=radio id="stackedGraphBtn" name="type" onchange=adaptGraphTypeToSelection(this)>
+				  <label for="stackedGraphBtn">Stacked</label><br/>
+				</p>
+			</div>
+
+			<div id="flowDiv" style="width:800px; height:300px;"></div>
+
+			<div id="dataOptions">			
+				  <input type=checkbox id="0" checked onClick="updateVisibility(this)">
+				  <label for="0"> Flows (all)</label><br/>
+				  <input type=checkbox id="1" checked onClick="updateVisibility(this)">
+				  <label for="1"> Flows TCP</label><br/>
+				  <input type=checkbox id="2" checked onClick="updateVisibility(this)">
+				  <label for="2"> Flows UDP</label><br/>
+				  <input type=checkbox id="3" checked onClick="updateVisibility(this)">
+				  <label for="3"> Flows ICMP</label><br/>
+				  <input type=checkbox id="4" checked onClick="updateVisibility(this)">
+				  <label for="4"> Other Flows</label><br/>
+			</div>
+
+		<button type="button" onclick="loadDdata()">Load February !</button> 
+
+		</div>
+
+		<script type="text/javascript">
+
+			function loadDdata() {
+			  var xhttp = new XMLHttpRequest();
+			  xhttp.onreadystatechange = function() {
+				if (this.readyState == 4 && this.status == 200) {
+				  var newData = this.responseText;
+	
+
+			//fg.destroy();
+
+			fg = new Dygraph(
+			document.getElementById("flowDiv"),
+			newData,
+				{
+				title : 'Test Graph for time series : flows',
+					//axisLabelFontSize : 15,
+					ylabel : 'Flows',
+					xlabel : 'Date / Time',
+					visibility: [true, true, true, true, true],
+					labelsKMB : true,
+					labelsDiv : document.getElementById("flowStatusDiv"),
+					labelsSeparateLines : true,
+					legend : 'always',
+					//stackedGraph : true,
+					logscale : false,
+					showRangeSelector: true
+				}
+			);
+
+			fg.adjustRoll(30);
+
+
+				}
+			  };
+			  xhttp.open("GET", "http://localhost/thesis/csv/traffic_february.csv", true);
+			  xhttp.send();
+			}
+
+			function updateVisibility(el) {
+				fg.setVisibility(parseInt(el.id), el.checked);
+			}
+
+			function adaptScaleToSelection(el) {
+				if(el.id=="logarithmicScaleBtn")
+				{
+					fg.updateOptions({
+		              logscale : true
+		            });
+				}
+				else
+				{
+					fg.updateOptions({
+		              logscale : false
+		            });
+				}
+
+			}
+
+			function adaptGraphTypeToSelection(el) {
+				if(el.id=="stackedGraphBtn")
+				{
+					fg.updateOptions({
+		              stackedGraph : true
+		            });
+				}
+				else
+				{
+					fg.updateOptions({
+		              stackedGraph : false
+		            });
+				}
+
+			}
+
+			fg = new Dygraph(
+			document.getElementById("flowDiv"),
+			"csv/flows.csv",
+				{
+				title : 'Test Graph for time series : flows',
+					//axisLabelFontSize : 15,
+					ylabel : 'Flows',
+					xlabel : 'Date / Time',
+					visibility: [true, true, true, true, true],
+					labelsKMB : true,
+					labelsDiv : document.getElementById("flowStatusDiv"),
+					labelsSeparateLines : true,
+					legend : 'always',
+					//stackedGraph : true,
+					//logscale : true,
+					showRangeSelector: true
+				}
+			);
+
+			fg.adjustRoll(30);
+
+		</script>
+
+
+	</body>
+</html>

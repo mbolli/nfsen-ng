@@ -18,7 +18,6 @@ class Debug {
     }
 
     /**
-     * stopWatch function.
      * Returns the time passed from initialization.
      * @param bool $precise
      * @return float|mixed
@@ -30,7 +29,6 @@ class Debug {
     }
 
     /**
-     * dpr function.
      * Debug print. Prints the supplied string with the time passed from initialization.
      * @param $mixed
      * @param bool $with_stopwatch

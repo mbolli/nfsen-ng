@@ -23,6 +23,11 @@ class NfDump {
         return self::$_instance;
     }
 
+    /**
+     * Sets an option's value
+     * @param $option
+     * @param $value
+     */
     public function setOption($option, $value) {
         switch($option) {
             case '-M':
@@ -34,11 +39,20 @@ class NfDump {
         }
     }
 
+    /**
+     * Sets a filter's value
+     * @param $filter
+     * @param $value
+     */
     public function setFilter($filter, $value) {
         $this->cfg['filter'][$filter] = $value;
     }
 
-
+    /**
+     * Executes the nfdump command, tries to throw an exception based on the return code
+     * @return array
+     * @throws Exception
+     */
     public function execute() {
         $output = array();
         $return = "";
@@ -54,6 +68,11 @@ class NfDump {
         return $output;
     }
 
+    /**
+     * Concatenates key and value of supplied array
+     * @param $array
+     * @return bool|string
+     */
     private function flatten($array) {
         if(!is_array($array)) return false;
         $output = "";
@@ -64,6 +83,9 @@ class NfDump {
         return $output;
     }
 
+    /**
+     * Reset config
+     */
     public function reset() {
         $this->clean['env'] = array(
             'bin' => \Config::$cfg['nfdump']['binary'],

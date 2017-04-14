@@ -1,63 +1,119 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<meta charset="utf-8">
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge"> <!-- as per bootstrap documentation -->
+        <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- as per bootstrap documentation -->
 		<title>NfSen-NG</title>
 		<script src="js/dygraph.js"></script>
 		<script src="js/jquery-3.2.1.min.js"></script>
 		<script src="js/bootstrap.min.js"></script>
 		<link rel="stylesheet" type="text/css" href="css/dygraph.css" />
 		<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
+        <link rel="stylesheet" type="text/css" href="css/bootstrap-theme.min.css" />
 		<link rel="stylesheet" type="text/css" href="css/customized.css" />
 	</head>
 
 	<body>
+        <div id="viewDiv"class="clearfix">
+            <ul id="viewList" class="nav nav-tabs pull-left">
+                <li><a href="#">Graphs</a></li>
+                <li><a href="#">Flows</a></li>
+                <li><a href="#">Stats</a></li>
+            </ul>
+        </div><!-- viewDiv  -->
 
-    <div id="viewDiv">
-        <ul id="viewList" class="list-inline">
-            <li>Graphs</li>
-            <li>Flows</li>
-            <li>Stats</li>
-        </ul>
-    </div><!-- viewDiv  -->
+        <div id="filterDiv" class="container-fluid">
 
-    <div id="filterDiv">
-
-        <div id="graphsFilterDiv">
-
-
-        </div><!-- graphsFilterDiv  -->
-
-        <div id="flowsFilterDiv">
+            <div id="graphsFilterDiv" class="row">
 
 
-        </div><!-- flowsFilterDiv  -->
 
-        <div id="statsFilterDiv">
-
-
-        </div><!-- statsFilterDiv  -->
-
-    </div><!-- filterDiv  -->
-
-    <div id="contentDiv">
-
-        <div id="graphsContentDiv">
+                <div class="col-md-3">Date</div>
 
 
-        </div><!-- graphsContentDiv  -->
-
-        <div id="flowsContentDiv">
+                <div id="graphsFilterProtocolDiv" class="col-md-3">Protocols
 
 
-        </div><!-- flowsContentDiv  -->
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">TCP</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">UDP</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">ICMP</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Others</label>
+                    </div>
 
-        <div id="statsContentDiv">
+                </div><!-- graphsFilterProtocolDiv  -->
+
+                <div id="graphsFilterDataTypeDiv" class="col-md-3">Data type
+
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Flows</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Packets</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Traffic</label>
+                    </div>
+                </div><!-- graphsFilterDataTypeDiv  -->
+
+                <div class="col-md-3">Sources</div>
 
 
-        </div><!-- statsContentDiv  -->
 
-    </div><!-- contentDiv  -->
+            </div><!-- graphsFilterDiv  -->
+
+            <div id="flowsFilterDiv">
+
+
+            </div><!-- flowsFilterDiv  -->
+
+            <div id="statsFilterDiv">
+
+
+            </div><!-- statsFilterDiv  -->
+
+        </div><!-- filterDiv  -->
+
+        <div id="contentDiv">
+
+            <div id="graphsContentDiv" class="container-fluid">
+
+                <div class="col-md-2">
+
+
+                </div>
+
+                <div class="col-md-8">
+
+
+                </div>
+
+                <div class="col-md-2">
+
+
+                </div>
+
+
+            </div><!-- graphsContentDiv  -->
+
+            <div id="flowsContentDiv">
+
+
+            </div><!-- flowsContentDiv  -->
+
+            <div id="statsContentDiv">
+
+
+            </div><!-- statsContentDiv  -->
+
+        </div><!-- contentDiv  -->
 
 
 		<div id="flowDivContainer">
@@ -95,7 +151,7 @@
 				  <label for="4"> Other Flows</label><br/>
 			</div>
 
-		<button type="button" onclick="loadDdata()">Load February !</button> 
+		<button type="button" onclick="loadDdata()">Load February !</button>
 
 		</div>
 

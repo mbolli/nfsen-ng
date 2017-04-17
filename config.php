@@ -2,6 +2,7 @@
 abstract class Config {
 
     static $cfg;
+    static $path;
     private static $initialized = false;
 
     private function __construct() {}
@@ -11,6 +12,7 @@ abstract class Config {
 
         include("settings.php");
         self::$cfg = $nfsen_config;
+        self::$path = __DIR__;
         self::$initialized = true;
     }
 

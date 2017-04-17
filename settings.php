@@ -19,8 +19,8 @@ $nfsen_config = array(
     ),
     'db' => array(
         'akumuli' => array(
-            'host' => 'localhost',
-            'port' => 8282,
+            //'host' => 'localhost',
+            //'port' => 8282,
         ),
         'rrd' => array()
     )

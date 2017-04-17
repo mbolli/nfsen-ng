@@ -1,7 +1,6 @@
 <?php
 interface Datasource {
 
-    public function insert();
-    public function import(DateTime $timestart);
+    public function write(array $data);
 
 }

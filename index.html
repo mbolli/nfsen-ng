@@ -17,17 +17,15 @@
 	<body>
         <div id="viewDiv"class="clearfix">
             <ul id="viewList" class="nav nav-tabs pull-left">
-                <li><a href="#">Graphs</a></li>
-                <li><a href="#">Flows</a></li>
-                <li><a href="#">Stats</a></li>
+                <li><a id="viewGraphsLink" onclick="changeActiveView(this)">Graphs</a></li>
+                <li><a id="viewFlowsLink" onclick="changeActiveView(this)">Flows</a></li>
+                <li><a id="viewStatsLink" onclick="changeActiveView(this)">Stats</a></li>
             </ul>
         </div><!-- viewDiv  -->
 
         <div id="filterDiv" class="container-fluid">
 
             <div id="graphsFilterDiv" class="row well well-sm">
-
-
 
                 <div id="graphsFilterDateDiv" class="col-md-3">
 
@@ -41,6 +39,11 @@
                         <label for="endDate">To date :</label>
                         <input type="text" class="form-control" id="endDate">
                     </div>
+
+                    <button type="button" class="btn-primary">Last 24 hours</button>
+                    <button type="button" class="btn-primary">Last week</button>
+                    <button type="button" class="btn-primary">Last month</button>
+                    <button type="button" class="btn-primary">Last year</button>
 
                 </div><!-- graphsFilterDateDiv  -->
 
@@ -65,7 +68,7 @@
 
                 <div id="graphsFilterDataTypeDiv" class="col-md-3">
 
-                    <h3 class="text-center">Data Type</h3>
+                    <h3 class="text-center">Data Types</h3>
 
                     <div class="checkbox">
                         <label><input type="checkbox" value="">Flows</label>
@@ -84,24 +87,152 @@
 
                     <div class="form-group">
                         <select multiple class="form-control" id="sourceSelection">
-                            <option>swibi</option>
-                            <option>tiber</option>
-                            <option>blablabla</option>
-                            <option>shouldComeFromTheServer</option>
+                            <option value="swibi">swibi</option>
+                            <option value="tiber">tiber</option>
+                            <option value="blablabla">blablabla</option>
+                            <option value="shouldComeFromTheServer">shouldComeFromTheServer</option>
                         </select>
                     </div>
                 </div><!-- graphsFilterSourcesDiv  -->
-
-
             </div><!-- graphsFilterDiv  -->
 
-            <div id="flowsFilterDiv">
+            <div id="flowsFilterDiv" class="row well well-sm">
 
+                <div id="flowsFilterDateDiv" class="col-md-3">
+
+                    <h3 class="text-center">Date</h3>
+
+                    <div class="form-group">
+                        <label for="startDate">From date :</label>
+                        <input type="text" class="form-control" id="startDate">
+                    </div>
+                    <div class="form-group">
+                        <label for="endDate">To date :</label>
+                        <input type="text" class="form-control" id="endDate">
+                    </div>
+
+                    <button type="button" class="btn-primary">Last 24 hours</button>
+                    <button type="button" class="btn-primary">Last week</button>
+
+                </div><!-- flowsFilterDateDiv  -->
+
+                <div id="flowsFilterProtocolDiv" class="col-md-3">
+
+                    <h3 class="text-center">Protocols</h3>
+
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">TCP</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">UDP</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">ICMP</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Others</label>
+                    </div>
+
+                </div><!-- flowsFilterProtocolDiv  -->
+
+                <div id="flowsFilterDataTypeDiv" class="col-md-3">
+
+                    <h3 class="text-center">Data Types</h3>
+
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Flows</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Packets</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Traffic</label>
+                    </div>
+                </div><!-- flowsFilterDataTypeDiv  -->
+
+                <div id="flowFilterSourcesDiv" class="col-md-3">
+
+                    <h3 class="text-center">Sources</h3>
+
+                    <div class="form-group">
+                        <select multiple class="form-control" id="sourceSelection">
+                            <option value="swibi">swibi</option>
+                            <option value="tiber">tiber</option>
+                            <option value="blablabla">blablabla</option>
+                            <option value="shouldComeFromTheServer">shouldComeFromTheServer</option>
+                        </select>
+                    </div>
+                </div><!-- flowFilterSourcesDiv  -->
 
             </div><!-- flowsFilterDiv  -->
 
-            <div id="statsFilterDiv">
+            <div id="statsFilterDiv" class="row well well-sm">
 
+                <div id="statsFilterDateDiv" class="col-md-3">
+
+                    <h3 class="text-center">Date</h3>
+
+                    <div class="form-group">
+                        <label for="startDate">From date :</label>
+                        <input type="text" class="form-control" id="startDate">
+                    </div>
+                    <div class="form-group">
+                        <label for="endDate">To date :</label>
+                        <input type="text" class="form-control" id="endDate">
+                    </div>
+
+                    <button type="button" class="btn-primary">Last 24 hours</button>
+                    <button type="button" class="btn-primary">Last week</button>
+
+                </div><!-- statsFilterDateDiv  -->
+
+                <div id="statsFilterProtocolDiv" class="col-md-3">
+
+                    <h3 class="text-center">Protocols</h3>
+
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">TCP</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">UDP</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">ICMP</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Others</label>
+                    </div>
+
+                </div><!-- statsFilterProtocolDiv  -->
+
+                <div id="statsFilterDataTypeDiv" class="col-md-3">
+
+                    <h3 class="text-center">Data Types</h3>
+
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Flows</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Packets</label>
+                    </div>
+                    <div class="checkbox">
+                        <label><input type="checkbox" value="">Traffic</label>
+                    </div>
+                </div><!-- statsFilterDataTypeDiv  -->
+
+                <div id="statsFilterSourcesDiv" class="col-md-3">
+
+                    <h3 class="text-center">Sources</h3>
+
+                    <div class="form-group">
+                        <select multiple class="form-control" id="sourceSelection">
+                            <option value="swibi">swibi</option>
+                            <option value="tiber">tiber</option>
+                            <option value="blablabla">blablabla</option>
+                            <option value="shouldComeFromTheServer">shouldComeFromTheServer</option>
+                        </select>
+                    </div>
+                </div><!-- statsFilterSourcesDiv  -->
 
             </div><!-- statsFilterDiv  -->
 
@@ -113,19 +244,39 @@
 
                 <div class="col-md-2">
 
+                    <div id="graphOptions">
+                        <p><h4>Scale :</h4>
+                            <input type=radio id="linearScaleBtn" checked name="scale" onchange=adaptScaleToSelection(this)>
+                            <label for="linearScaleBtn">Linear</label><br/>
+                            <input type=radio id="logarithmicScaleBtn" name="scale" onchange=adaptScaleToSelection(this)>
+                            <label for="logarithmicScaleBtn">Logarithmic</label><br/>
+                        </p>
+
+                        <p><h4>Type :</h4>
+                            <input type=radio id="lineGraphBtn" checked name="type" onchange=adaptGraphTypeToSelection(this)>
+                            <label for="lineGraphBtn">Line</label><br/>
+                            <input type=radio id="stackedGraphBtn" name="type" onchange=adaptGraphTypeToSelection(this)>
+                            <label for="stackedGraphBtn">Stacked</label><br/>
+                        </p>
+
+                        <p><h4>Roll period :</h4>
+                        <input type=text id="rollPeriod" onchange=adaptGraphRollPeriodToSelection(this)>
+                        </p>
+                    </div>
 
                 </div>
 
                 <div class="col-md-8">
 
+                    <div id="flowDiv" style="width:1000px; height:400px;"></div>
 
                 </div>
 
                 <div class="col-md-2">
 
+                    <div id="flowStatusDiv"></div>
 
                 </div>
-
 
             </div><!-- graphsContentDiv  -->
 
@@ -144,25 +295,7 @@
 
 		<div id="flowDivContainer">
 
-			<div id="flowStatusDiv"></div>
 
-			<div id="graphOptions">			
-				<p>Scale :<br/>
-				  <input type=radio id="linearScaleBtn" checked name="scale" onchange=adaptScaleToSelection(this)>
-				  <label for="linearScaleBtn">Linear</label><br/>
-				  <input type=radio id="logarithmicScaleBtn" name="scale" onchange=adaptScaleToSelection(this)>
-				  <label for="logarithmicScaleBtn">Logarithmic</label><br/>
-				</p>
-
-				<p>Type :<br/>
-				  <input type=radio id="lineGraphBtn" checked name="type" onchange=adaptGraphTypeToSelection(this)>
-				  <label for="lineGraphBtn">Line</label><br/>
-				  <input type=radio id="stackedGraphBtn" name="type" onchange=adaptGraphTypeToSelection(this)>
-				  <label for="stackedGraphBtn">Stacked</label><br/>
-				</p>
-			</div>
-
-			<div id="flowDiv" style="width:800px; height:300px;"></div>
 
 			<div id="dataOptions">			
 				  <input type=checkbox id="0" checked onClick="updateVisibility(this)">
@@ -182,6 +315,16 @@
 		</div>
 
 		<script type="text/javascript">
+
+            function changeActiveView(el) {
+                $("#graphsFilterDiv").hide();
+                $("#flowsFilterDiv").hide();
+                $("#statsFilterDiv").hide();
+                
+                if(el.id == "viewGraphsLink") $("#graphsFilterDiv").show();
+                if(el.id == "viewFlowsLink") $("#flowsFilterDiv").show();
+                if(el.id == "viewStatsLink") $("#statsFilterDiv").show();
+            }
 
 			function loadDdata() {
 			  var xhttp = new XMLHttpRequest();
@@ -257,6 +400,17 @@
 				}
 
 			}
+
+            function adaptGraphRollPeriodToSelection(el) {
+                if(el.value > 0)
+                {
+                    fg.adjustRoll(el.value);
+                }
+                else
+                {
+                    fg.adjustRoll(0);
+                }
+            }
 
 			fg = new Dygraph(
 			document.getElementById("flowDiv"),

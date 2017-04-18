@@ -8,6 +8,8 @@ ini_set('error_reporting', E_ALL);
 Config::initialize();
 
 $start = new DateTime();
-$start->setDate(2017, 03, 26);
+$start->setDate(2017, 03, 25);
 $i = new Import();
 $i->start($start);
+
+$a = new API();

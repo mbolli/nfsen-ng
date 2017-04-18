@@ -15,11 +15,11 @@ class RRD implements \Datasource {
         'packets_udp',
         'packets_icmp',
         'packets_other',
-        'traffic',
-        'traffic_tcp',
-        'traffic_udp',
-        'traffic_icmp',
-        'traffic_other',
+        'bytes',
+        'bytes_tcp',
+        'bytes_udp',
+        'bytes_icmp',
+        'bytes_other',
     );
 
     private $layout = array(
@@ -61,7 +61,7 @@ class RRD implements \Datasource {
 
         $creator = new \RRDCreator($rrdFile, "now -3y", (60*5));
         foreach($this->fields as $field) {
-            $creator->addDataSource($field . ":ABSOLUTE:600:U:U");
+            $creator->addDataSource($field . ":ABSOLUTE:300:U:U");
         }
         foreach($this->layout as $rra) {
             $creator->addArchive("AVERAGE:" . $rra);
@@ -78,10 +78,18 @@ class RRD implements \Datasource {
      */
     public function write(array $data) {
         $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $data['source'] . ".rrd";
+        $ts_last = rrd_last($rrdFile);
+        $nearest = (int)ceil(($data['date_timestamp'])/300)*300;
+
+        // create new database if not existing
         if(!file_exists($rrdFile)) $this->create($data['source']);
 
+        // return false if the database's last entry is newer
+        if($data['date_timestamp'] <= $ts_last) return false;
+
+        // write data
         $updater = new \RRDUpdater($rrdFile);
-        return $updater->update($data['fields'], $data['timestamp']);
+        return $updater->update($data['fields'], $nearest);
     }
 
     /**
@@ -92,19 +100,33 @@ class RRD implements \Datasource {
      */
     public function stats(int $start, int $end, string $type, array $sources) {
 
-        // temporary. maybe use rrd_xport instead? has json export...
-        foreach($sources as $source) {
+        $options = array(
+            '--start', $start,
+            '--end', $end,
+            '--maxrows', 300,
+            // '--step', 1200,
+            '--json'
+        );
+
+        foreach ($sources as $source) {
             $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
-
-            $options = array("AVERAGE", "--resolution", "60", "--start", $start, "--end", $end, "--align-start", true);
-
-            // traffic = 8* (because bits)?
-            // value negations? (sign)
-
-            $data = rrd_fetch($rrdFile, $options);
-
+            $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . ':AVERAGE';
+            //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
+            $options[] = 'XPORT:data' . $source . ":" . $type . "_of_" . $source;
         }
 
+        $data = rrd_xport($options);
+
+        foreach($data['data'] as &$source) {
+            // remove invalid numbers
+            $source['data'] = array_filter($source['data'], function($x) {
+                return !is_nan($x);
+            });
+        }
+        echo json_encode($data);
+        echo json_last_error_msg();
+        $this->d->dpr($data);
+        $this->d->dpr(rrd_error());
     }
 
 }

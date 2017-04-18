@@ -3,21 +3,10 @@
 class Import {
 
     private $d;
-    private $src;
 
 	function __construct() {
         $this->d = \Debug::getInstance();
         $this->d->dpr(Config::$cfg);
-
-        // find data source
-        if(array_key_exists('host', Config::$cfg['db']['akumuli'])) {
-            $this->d->dpr("Using Akumuli");
-            $this->src = new datasources\Akumuli();
-        } else {
-            $this->d->dpr("Using RRD");
-            $this->src = new datasources\RRD();
-        }
-
         $this->d->dpr(Config::$path);
 	}
 
@@ -66,16 +55,16 @@ class Import {
                                         $data['fields'][strtolower($type)] = (int)$value;
                                     } elseif("Ident" == $type) {
                                         $data['source'] = $value;
-                                    } elseif("First" == $type) {
+                                    } elseif("Last" == $type) {
                                         $d = new \DateTime();
                                         $d->setTimestamp((int)$value);
-                                        $data['timestamp'] = $d->format("Ymd\THis");
+                                        $data['date_iso'] = $d->format("Ymd\THis");
+                                        $data['date_timestamp'] = $d->getTimestamp();
                                     }
                                 }
 
                                 // write to database
-                                $this->src->write($data);
-
+                                Config::$db->write($data);
                             }
                         }
                     } else {
@@ -87,6 +76,9 @@ class Import {
                 }
             }
         }
+
+        // test reading...
+        Config::$db->stats(strtotime('2017-03-26'), strtotime('2017-03-28'), 'flows', array('gate', 'swi6'));
     }
 }
 

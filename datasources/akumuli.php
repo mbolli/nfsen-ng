@@ -48,7 +48,7 @@ class Akumuli implements \Datasource  {
         // writes assume redis protocol. first byte identification:
         // "+" simple strings  "-" errors  ":" integers  "$" bulk strings  "*" array
         $query = "+" . implode("|", $fields) . " source=" . $data['source'] . "\r\n" .
-            "+" . $data['timestamp'] . "\r\n" . // timestamp
+            "+" . $data['date_iso'] . "\r\n" . // timestamp
             "*" . count($fields) . "\r\n"; // length of following array
 
         // add the $values corresponding to $fields

@@ -41,6 +41,12 @@ class RRD implements \Datasource {
     }
 
 
+    public function getDateBoundaries(string $source) {
+        $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+        return array(rrd_first($rrdFile), rrd_last($rrdFile));
+    }
+
+
     public function fetch() {
         //$result = rrd_fetch( "mydata.rrd", array( "AVERAGE", "--resolution", "60", "--start", "-1d", "--end", "start+1h" ) );
 
@@ -95,10 +101,12 @@ class RRD implements \Datasource {
     /**
      * @param int $start
      * @param int $end
-     * @param string $type flows/packets/traffic
      * @param array $sources
+     * @param array $protocols
+     * @param string $type flows/packets/traffic
+     * @return array|string
      */
-    public function stats(int $start, int $end, string $type, array $sources) {
+    public function stats(int $start, int $end, array $sources, array $protocols, string $type) {
 
         $options = array(
             '--start', $start,
@@ -108,25 +116,36 @@ class RRD implements \Datasource {
             '--json'
         );
 
-        foreach ($sources as $source) {
-            $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
-            $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . ':AVERAGE';
-            //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
-            $options[] = 'XPORT:data' . $source . ":" . $type . "_of_" . $source;
+        if (empty($protocols)) $protocols = array('tcp', 'udp', 'icmp', 'other');
+        if (empty($sources)) $sources = array('swi6', 'gate');
+
+        if (count($sources) === 1 && count($protocols) > 1) {
+            foreach ($protocols as $protocol) {
+                foreach ($sources as $source) {
+                    $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+                    $options[] = 'DEF:data' . $source . $protocol . '=' . $rrdFile . ':' . $type . '_' . $protocol . ':AVERAGE';
+                    //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
+                    $options[] = 'XPORT:data' . $source . $protocol . ":" . $type . '_' . $protocol . "_of_" . $source;
+                }
+            }
+        } elseif (count($sources) > 1 && count($protocols) === 1) {
+            foreach ($sources as $source) {
+                $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+                $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . ':AVERAGE';
+                //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
+                $options[] = 'XPORT:data' . $source . ":" . $type . "_of_" . $source;
+            }
         }
 
         $data = rrd_xport($options);
 
+        if (!is_array($data)) return rrd_error();
         foreach($data['data'] as &$source) {
             // remove invalid numbers
             $source['data'] = array_filter($source['data'], function($x) {
                 return !is_nan($x);
             });
         }
-        echo json_encode($data);
-        echo json_last_error_msg();
-        $this->d->dpr($data);
-        $this->d->dpr(rrd_error());
+        return $data;
     }
-
 }

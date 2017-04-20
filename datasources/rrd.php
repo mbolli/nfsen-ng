@@ -41,9 +41,14 @@ class RRD implements \Datasource {
     }
 
 
-    public function getDateBoundaries(string $source) {
+    public function date_boundaries(string $source) : array {
         $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
         return array(rrd_first($rrdFile), rrd_last($rrdFile));
+    }
+
+    public function last_update(string $source) : int {
+        $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+        return rrd_last($rrdFile);
     }
 
 

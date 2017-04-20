@@ -31,7 +31,7 @@ class NfDump {
     public function setOption($option, $value) {
         switch($option) {
             case '-M':
-                $this->cfg['option'][$option] = $this->cfg['env']['profiles-data'] . "/" . $this->cfg['env']['profile'] . "/" . $value;
+                $this->cfg['option'][$option] = $this->cfg['env']['profiles-data'] . DIRECTORY_SEPARATOR . $this->cfg['env']['profile'] . DIRECTORY_SEPARATOR . $value;
                 break;
             default:
                 $this->cfg['option'][$option] = $value;

@@ -108,7 +108,7 @@ class API {
         $definedSources = Config::$cfg['general']['sources'];
         $sources = array();
         foreach ($definedSources as $source) {
-            $sources[$source] = $rrd->getDateBoundaries($source);
+            $sources[$source] = $rrd->date_boundaries($source);
         }
 
         $stored_output_formats = array(); // todo implement

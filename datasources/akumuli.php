@@ -36,7 +36,7 @@ class Akumuli implements \Datasource  {
     }
 
     /**
-     * Gets statistics from nfdump and flattens them to a redis-compatible string
+     * Convert data to redis-compatible string and write to Akumuli
      * @param array $data
      * @return string
      */
@@ -58,7 +58,7 @@ class Akumuli implements \Datasource  {
 
         // write redis-compatible string to socket
         fwrite($this->client, $query);
-        $this->d->dpr(stream_get_contents($this->client));
+        return stream_get_contents($this->client);
 
         // to read:
         // curl localhost:8181/api/query -d "{'select':'flows'}"
@@ -70,4 +70,15 @@ class Akumuli implements \Datasource  {
         }
     }
 
+    public function stats(int $start, int $end, array $sources, array $protocols, string $type) {
+        // TODO: Implement stats() method.
+    }
+
+    public function date_boundaries(string $source): array {
+        // TODO: Implement date_boundaries() method.
+    }
+
+    public function last_update(string $source): int {
+        // TODO: Implement last_update() method.
+    }
 }

@@ -7,3 +7,7 @@
 #flowDiv .dygraph-ylabel { font-size: 18px; text-shadow: -2px 2px 2px gray; }
 
 .chart { border: 1px dashed black; margin: 5px 5px 5px 50px; padding: 2px; }
+
+#filterDiv > div {display : none;}
+
+#filterDiv #graphsFilterDiv {display : block;}

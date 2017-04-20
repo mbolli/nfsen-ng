@@ -4,14 +4,15 @@
         <meta charset="utf-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge"> <!-- as per bootstrap documentation -->
         <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- as per bootstrap documentation -->
-		<title>NfSen-NG</title>
+		<title>nfsen-ng</title>
 		<script src="js/dygraph.js"></script>
 		<script src="js/jquery-3.2.1.min.js"></script>
 		<script src="js/bootstrap.min.js"></script>
+        <script src="js/nfsen-ng.js"></script>
 		<link rel="stylesheet" type="text/css" href="css/dygraph.css" />
 		<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
         <link rel="stylesheet" type="text/css" href="css/bootstrap-theme.min.css" />
-		<link rel="stylesheet" type="text/css" href="css/customized.css" />
+		<link rel="stylesheet" type="text/css" href="css/nfsen-ng.css" />
 	</head>
 
 	<body>
@@ -19,7 +20,7 @@
             <ul id="viewList" class="nav nav-tabs pull-left">
                 <li><a id="viewGraphsLink" onclick="changeActiveView(this)">Graphs</a></li>
                 <li><a id="viewFlowsLink" onclick="changeActiveView(this)">Flows</a></li>
-                <li><a id="viewStatsLink" onclick="changeActiveView(this)">Stats</a></li>
+                <li><a id="viewStatsLink" onclick="changeActiveView(this)">Statistics</a></li>
             </ul>
         </div><!-- viewDiv  -->
 
@@ -31,13 +32,28 @@
 
                     <h3 class="text-center">Date</h3>
 
+                    <label>Date selection :</label>
+                    <div class="from-group">
+                        <label><input type="radio" name="graphDateType">Time window</label>
+                        <label><input type="radio" name="graphDateType">Time slot</label>
+                    </div>
+
+<!--
+                    <div class="btn-group" data-toggle="buttons">
+                        <button type="button" class="btn btn-primary">Time Window</button>
+                        <button type="button" class="btn btn-primary">Time Slot</button>
+                    </div>
+-->
+
                     <div class="form-group">
-                        <label for="startDate">From date :</label>
-                        <input type="text" class="form-control" id="startDate">
+                        <label for="graphStartDate">From date :</label>
+                        <input type="text" id="graphStartDate" class="form-control"
+                               placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
                     </div>
                     <div class="form-group">
-                        <label for="endDate">To date :</label>
-                        <input type="text" class="form-control" id="endDate">
+                        <label for="graphEndDate">To date :</label>
+                        <input type="text" id="graphEndDate" class="form-control"
+                               placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
                     </div>
 
                     <button type="button" class="btn-primary">Last 24 hours</button>
@@ -70,14 +86,10 @@
 
                     <h3 class="text-center">Data Types</h3>
 
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">Flows</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">Packets</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">Traffic</label>
+                    <div class="from-group">
+                        <label><input type="radio" name="graphDataType">Flows</label>
+                        <label><input type="radio" name="graphDataType">Packets</label>
+                        <label><input type="radio" name="graphDataType">Traffic</label>
                     </div>
                 </div><!-- graphsFilterDataTypeDiv  -->
 
@@ -103,12 +115,14 @@
                     <h3 class="text-center">Date</h3>
 
                     <div class="form-group">
-                        <label for="startDate">From date :</label>
-                        <input type="text" class="form-control" id="startDate">
+                        <label for="flowsStartDate">From date :</label>
+                        <input type="text" id="flowsStartDate" class="form-control"
+                               placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
                     </div>
                     <div class="form-group">
-                        <label for="endDate">To date :</label>
-                        <input type="text" class="form-control" id="endDate">
+                        <label for="flowsEndDate">To date :</label>
+                        <input type="text" id="flowsEndDate" class="form-control"
+                               placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
                     </div>
 
                     <button type="button" class="btn-primary">Last 24 hours</button>
@@ -116,39 +130,20 @@
 
                 </div><!-- flowsFilterDateDiv  -->
 
-                <div id="flowsFilterProtocolDiv" class="col-md-3">
+                <div id="flowsFilterAggregationDiv" class="col-md-3">
 
-                    <h3 class="text-center">Protocols</h3>
+                    <h3 class="text-center">Aggregation</h3>
 
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">TCP</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">UDP</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">ICMP</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">Others</label>
-                    </div>
 
-                </div><!-- flowsFilterProtocolDiv  -->
 
-                <div id="flowsFilterDataTypeDiv" class="col-md-3">
+                </div><!-- flowsFilterAggregationDiv  -->
 
-                    <h3 class="text-center">Data Types</h3>
+                <div id="flowsFilterOutputDiv" class="col-md-3">
 
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">Flows</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">Packets</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">Traffic</label>
-                    </div>
-                </div><!-- flowsFilterDataTypeDiv  -->
+                    <h3 class="text-center">Output</h3>
+
+
+                </div><!-- flowsFilterOutputDiv  -->
 
                 <div id="flowFilterSourcesDiv" class="col-md-3">
 
@@ -186,9 +181,9 @@
 
                 </div><!-- statsFilterDateDiv  -->
 
-                <div id="statsFilterProtocolDiv" class="col-md-3">
+                <div id="statsFilterOptionsDiv" class="col-md-6">
 
-                    <h3 class="text-center">Protocols</h3>
+                    <h3 class="text-center">Options</h3>
 
                     <div class="checkbox">
                         <label><input type="checkbox" value="">TCP</label>
@@ -202,23 +197,7 @@
                     <div class="checkbox">
                         <label><input type="checkbox" value="">Others</label>
                     </div>
-
-                </div><!-- statsFilterProtocolDiv  -->
-
-                <div id="statsFilterDataTypeDiv" class="col-md-3">
-
-                    <h3 class="text-center">Data Types</h3>
-
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">Flows</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">Packets</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">Traffic</label>
-                    </div>
-                </div><!-- statsFilterDataTypeDiv  -->
+                </div><!-- statsFilterOptionsDiv  -->
 
                 <div id="statsFilterSourcesDiv" class="col-md-3">
 
@@ -263,7 +242,6 @@
                         <input type=text id="rollPeriod" onchange=adaptGraphRollPeriodToSelection(this)>
                         </p>
                     </div>
-
                 </div>
 
                 <div class="col-md-8">
@@ -275,6 +253,21 @@
                 <div class="col-md-2">
 
                     <div id="flowStatusDiv"></div>
+
+                    <div id="dataOptions">
+                        <input type=checkbox id="0" checked onClick="updateVisibility(this)">
+                        <label for="0"> Flows (all)</label><br/>
+                        <input type=checkbox id="1" checked onClick="updateVisibility(this)">
+                        <label for="1"> Flows TCP</label><br/>
+                        <input type=checkbox id="2" checked onClick="updateVisibility(this)">
+                        <label for="2"> Flows UDP</label><br/>
+                        <input type=checkbox id="3" checked onClick="updateVisibility(this)">
+                        <label for="3"> Flows ICMP</label><br/>
+                        <input type=checkbox id="4" checked onClick="updateVisibility(this)">
+                        <label for="4"> Other Flows</label><br/>
+                    </div>
+
+                    <button type="button" onclick="loadDdata()">Load February !</button>
 
                 </div>
 
@@ -292,99 +285,33 @@
 
         </div><!-- contentDiv  -->
 
-
-		<div id="flowDivContainer">
-
-
-
-			<div id="dataOptions">			
-				  <input type=checkbox id="0" checked onClick="updateVisibility(this)">
-				  <label for="0"> Flows (all)</label><br/>
-				  <input type=checkbox id="1" checked onClick="updateVisibility(this)">
-				  <label for="1"> Flows TCP</label><br/>
-				  <input type=checkbox id="2" checked onClick="updateVisibility(this)">
-				  <label for="2"> Flows UDP</label><br/>
-				  <input type=checkbox id="3" checked onClick="updateVisibility(this)">
-				  <label for="3"> Flows ICMP</label><br/>
-				  <input type=checkbox id="4" checked onClick="updateVisibility(this)">
-				  <label for="4"> Other Flows</label><br/>
-			</div>
-
-		<button type="button" onclick="loadDdata()">Load February !</button>
-
-		</div>
-
 		<script type="text/javascript">
 
-            function changeActiveView(el) {
-
-                if(el.id == "viewGraphsLink")
-                {
-                    $("#flowsFilterDiv").hide();
-                    $("#statsFilterDiv").hide();
-                    $("#graphsFilterDiv").show();
-
-                    $("#flowsContectDiv").hide();
-                    $("#statsContentDiv").hide();
-                    $("#graphsContentDiv").show();
-                }
-                if(el.id == "viewFlowsLink")
-                {
-                    $("#graphsFilterDiv").hide();
-                    $("#statsFilterDiv").hide();
-                    $("#flowsFilterDiv").show();
-
-                    $("#graphsContentDiv").hide();
-                    $("#statsContentDiv").hide();
-                    $("#flowsContentDiv").show();
-                }
-                if(el.id == "viewStatsLink")
-                {
-                    $("#graphsFilterDiv").hide();
-                    $("#flowsFilterDiv").hide();
-                    $("#statsFilterDiv").show();
-
-                    $("#graphsContentDiv").hide();
-                    $("#flowsContentDiv").hide();
-                    $("#statsContentDiv").show();
-                }
-            }
-
 			function loadDdata() {
-			  var xhttp = new XMLHttpRequest();
-			  xhttp.onreadystatechange = function() {
-				if (this.readyState == 4 && this.status == 200) {
-				  var newData = this.responseText;
-	
+			    var xhttp = new XMLHttpRequest();
+			    xhttp.onreadystatechange = function()
+                {
+                    if (this.readyState == 4 && this.status == 200)
+                    {
+                        var newData = this.responseText;
 
-			//fg.destroy();
-
-			fg = new Dygraph(
-			document.getElementById("flowDiv"),
-			newData,
-				{
-				title : 'Test Graph for time series : flows',
-					//axisLabelFontSize : 15,
-					ylabel : 'Flows',
-					xlabel : 'Date / Time',
-					visibility: [true, true, true, true, true],
-					labelsKMB : true,
-					labelsDiv : document.getElementById("flowStatusDiv"),
-					labelsSeparateLines : true,
-					legend : 'always',
-					//stackedGraph : true,
-					logscale : false,
-					showRangeSelector: true
-				}
-			);
-
-			fg.adjustRoll(30);
-
-
-				}
-			  };
-			  xhttp.open("GET", "http://localhost/thesis/csv/traffic_february.csv", true);
-			  xhttp.send();
+                        fg.updateOptions({
+                            /*title : 'Test Graph for time series : flows',
+                            ylabel : 'Flows',
+                            xlabel : 'Date / Time',
+                            visibility: [true, true, true, true, true],
+                            labelsKMB : true,
+                            labelsDiv : document.getElementById("flowStatusDiv"),
+                            labelsSeparateLines : true,
+                            legend : 'always',
+                            //stackedGraph : true,
+                            logscale : false,
+                            showRangeSelector: true*/
+                            file : newData});
+                    }
+			    };
+			    xhttp.open("GET", "http://localhost/thesis/csv/traffic_february.csv", true);
+			    xhttp.send();
 			}
 
 			function updateVisibility(el) {
@@ -454,8 +381,6 @@
 					showRangeSelector: true
 				}
 			);
-
-			fg.adjustRoll(30);
 
 		</script>
 

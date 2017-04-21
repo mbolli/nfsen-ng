@@ -59,6 +59,7 @@ class NfDump {
         $output = array();
         $return = "";
         $command = $this->cfg['env']['bin'] . " " . $this->flatten($this->cfg['option']) . " " . $this->cfg['filter'];
+        $this->d->log('Trying to execute ' . $command, LOG_INFO);
         exec($command, $output, $return);
 
         switch($return) {
@@ -80,7 +81,7 @@ class NfDump {
         $output = "";
 
         foreach($array as $key => $value) {
-            $output .= escapeshellarg(is_int($key) ?: $key . " " . $value . " ");
+            $output .= escapeshellarg(is_int($key) ?: $key . " " . $value ) . ' ';
         }
         return $output;
     }
@@ -108,8 +109,8 @@ class NfDump {
         $start->setTimestamp($datestart);
         $end->setTimestamp($dateend);
 
-        $pathstart = $start->format('Y/m/d') . 'nfcapd.' . $start->format('YmdHi');
-        $pathend = $end->format('Y/m/d') . 'nfcapd.' . $start->format('YmdHi');
+        $pathstart = $start->format('Y/m/d') . DIRECTORY_SEPARATOR . 'nfcapd.' . $start->format('YmdHi');
+        $pathend = $end->format('Y/m/d') . DIRECTORY_SEPARATOR . 'nfcapd.' . $start->format('YmdHi');
 
         return $pathstart . ':' . $pathend;
     }

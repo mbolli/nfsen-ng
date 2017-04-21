@@ -92,7 +92,41 @@ class API {
         exit();
     }
 
-    public function stats(int $top, string $for, string $order, string $limit, array $output) {}
+    /**
+     * Execute the nfdump command to get statistics
+     * @param int $datestart
+     * @param int $dateend
+     * @param array $sources
+     * @param string $filter
+     * @param int $top
+     * @param string $for
+     * @param string $limit
+     * @param array $output
+     * @return array
+     */
+    public function stats(int $datestart, int $dateend, array $sources, string $filter, int $top, string $for, string $limit, array $output) {
+        $sources = implode(':', $sources);
+
+        $nfdump = new NfDump();
+        $nfdump->setOption('-M', $sources); // multiple sources
+        $nfdump->setOption('-T', null); // output = flows
+        $nfdump->setOption('-R', array($datestart, $dateend)); // date range
+        $nfdump->setOption('-n', $top);
+        $nfdump->setOption('-c', $limit);
+        $nfdump->setOption('-s', $for);
+        $nfdump->setOption('-o', $output['format']);
+        $nfdump->setOption('-l', $limit); // todo -L for traffic, -l for packets
+        if (isset($output['IPv6'])) $nfdump->setOption('-6', $output['IPv6']);
+        $nfdump->setFilter($filter);
+
+        try {
+            $return = $nfdump->execute();
+        } catch (Exception $e) {
+            $this->error(503, $e->getMessage());
+        }
+
+        return $return;
+    }
 
     /**
      * Execute the nfdump command to get flows
@@ -124,8 +158,8 @@ class API {
         $nfdump->setOption('-T', null); // output = flows
         $nfdump->setOption('-R', array($datestart, $dateend)); // date range
         $nfdump->setOption('-c', $limit); // limit
-        $nfdump->setOption('-O tstart', $sort); // todo other sorting mechanisms?
         $nfdump->setOption('-o', $output['format']);
+        if (!empty($sort)) $nfdump->setOption('-O tstart', $sort); // todo other sorting mechanisms?
         if (isset($output['IPv6'])) $nfdump->setOption('-6', $output['IPv6']);
         $nfdump->setOption('-a', $aggregate_command);
         $nfdump->setFilter($filter);

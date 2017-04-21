@@ -33,6 +33,9 @@ class NfDump {
             case '-M':
                 $this->cfg['option'][$option] = $this->cfg['env']['profiles-data'] . DIRECTORY_SEPARATOR . $this->cfg['env']['profile'] . DIRECTORY_SEPARATOR . $value;
                 break;
+            case '-R':
+                $this->cfg['option'][$option] = $this->convert_date_to_path($value[0], $value[1]);
+                break;
             default:
                 $this->cfg['option'][$option] = $value;
                 break;
@@ -42,10 +45,9 @@ class NfDump {
     /**
      * Sets a filter's value
      * @param $filter
-     * @param $value
      */
-    public function setFilter($filter, $value) {
-        $this->cfg['filter'][$filter] = $value;
+    public function setFilter($filter) {
+        $this->cfg['filter'] = $filter;
     }
 
     /**
@@ -56,7 +58,7 @@ class NfDump {
     public function execute() {
         $output = array();
         $return = "";
-        $command = $this->cfg['env']['bin'] . " " . $this->flatten($this->cfg['option']) . $this->flatten($this->cfg['filter']);
+        $command = $this->cfg['env']['bin'] . " " . $this->flatten($this->cfg['option']) . " " . $this->cfg['filter'];
         exec($command, $output, $return);
 
         switch($return) {
@@ -78,7 +80,7 @@ class NfDump {
         $output = "";
 
         foreach($array as $key => $value) {
-            $output .= $key . " " . $value . " ";
+            $output .= escapeshellarg(is_int($key) ?: $key . " " . $value . " ");
         }
         return $output;
     }
@@ -93,5 +95,22 @@ class NfDump {
             'profile' => \Config::$cfg['nfdump']['profile'],
         );
         $this->cfg = $this->clean;
+    }
+
+    /**
+     * Converts a time range to a nfcapd file range
+     * @param int $datestart
+     * @param int $dateend
+     * @return string
+     */
+    public function convert_date_to_path(int $datestart, int $dateend) {
+        $start = $end = new DateTime();
+        $start->setTimestamp($datestart);
+        $end->setTimestamp($dateend);
+
+        $pathstart = $start->format('Y/m/d') . 'nfcapd.' . $start->format('YmdHi');
+        $pathend = $end->format('Y/m/d') . 'nfcapd.' . $start->format('YmdHi');
+
+        return $pathstart . ':' . $pathend;
     }
 }

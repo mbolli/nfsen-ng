@@ -18,6 +18,17 @@ class Debug {
     }
 
     /**
+     * Logs the message if allowed in settings
+     * @param string $message
+     * @param int $priority
+     */
+    public function log(string $message, int $priority) {
+        if (Config::$cfg['log']['priority'] >= $priority) {
+            syslog($priority, 'nfsen-ng: ' . $message);
+        }
+    }
+
+    /**
      * Returns the time passed from initialization.
      * @param bool $precise
      * @return float|mixed
@@ -31,15 +42,16 @@ class Debug {
     /**
      * Debug print. Prints the supplied string with the time passed from initialization.
      * @param $mixed
-     * @param bool $with_stopwatch
      */
-    public function dpr($mixed, bool $with_stopwatch = true) {
+    public function dpr(...$mixed) {
         if($this->debug) {
-            if($with_stopwatch === true) echo "<br /><span style='color: green;'>" . $this->stopWatch() . "</span> ";
-            if(is_array($mixed)) {
-                echo "<pre>", var_dump($mixed), "</pre>";
-            } else {
-                echo $mixed;
+            foreach($mixed as $param) {
+                echo "<br /><span style='color: green;'>" . $this->stopWatch() . "</span> ";
+                if(is_array($param)) {
+                    echo "<pre>", var_dump($mixed), "</pre>";
+                } else {
+                    echo $param;
+                }
             }
         }
     }

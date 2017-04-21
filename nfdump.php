@@ -62,10 +62,10 @@ class NfDump {
         exec($command, $output, $return);
 
         switch($return) {
-            case 127: throw new Exception("Failed to start process. Is nfdump installed?"); break;
-            case 255: throw new Exception("Initialization failed."); break;
-            case 254: throw new Exception("Error in filter syntax."); break;
-            case 250: throw new Exception("Internal error."); break;
+            case 127: throw new Exception("NfDump: Failed to start process. Is nfdump installed? " . implode(' ', $output)); break;
+            case 255: throw new Exception("NfDump: Initialization failed. " . implode(' ', $output)); break;
+            case 254: throw new Exception("NfDump: Error in filter syntax." . implode(' ', $output)); break;
+            case 250: throw new Exception("NfDump: Internal error." . implode(' ', $output)); break;
         }
         return $output;
     }

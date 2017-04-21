@@ -63,14 +63,30 @@ class API {
      */
     public function error(int $code, $msg = '') {
         http_response_code($code);
+        $debug = Debug::getInstance();
 
         $response = array('code' => $code, 'error' => '');
         switch($code) {
-            case 400: $response['error'] = '400 - Bad Request. ' . (empty($msg) ? 'Probably wrong or not enough arguments.' : $msg); break;
-            case 401: $response['error'] = '401 - Unauthorized. ' . $msg; break;
-            case 403: $response['error'] = '403 - Forbidden. ' . $msg; break;
-            case 404: $response['error'] = '404 - Not found. ' . $msg; break;
-            case 503: $response['error'] = '503 - Service unavailable. ' . $msg; break;
+            case 400:
+                $response['error'] = '400 - Bad Request. ' . (empty($msg) ? 'Probably wrong or not enough arguments.' : $msg);
+                $debug->log($response['error'], LOG_INFO);
+                break;
+            case 401:
+                $response['error'] = '401 - Unauthorized. ' . $msg;
+                $debug->log($response['error'], LOG_WARNING);
+                break;
+            case 403:
+                $response['error'] = '403 - Forbidden. ' . $msg;
+                $debug->log($response['error'], LOG_WARNING);
+                break;
+            case 404:
+                $response['error'] = '404 - Not found. ' . $msg;
+                $debug->log($response['error'], LOG_WARNING);
+                break;
+            case 503:
+                $response['error'] = '503 - Service unavailable. ' . $msg;
+                $debug->log($response['error'], LOG_ERR);
+                break;
         }
         echo json_encode($response);
         exit();

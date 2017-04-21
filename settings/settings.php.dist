@@ -23,5 +23,8 @@ $nfsen_config = array(
             //'port' => 8282,
         ),
         'rrd' => array()
+    ),
+    'log' => array(
+        'priority' => LOG_DEBUG,
     )
 );

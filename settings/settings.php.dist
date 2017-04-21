@@ -9,7 +9,7 @@ $nfsen_config = array(
             80, 22, 53,
         ),
         'sources' => array(
-            'gate', 'swi6',
+            'source1', 'source2',
         )
     ),
     'nfdump' => array(

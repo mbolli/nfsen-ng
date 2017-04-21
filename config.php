@@ -11,7 +11,8 @@ abstract class Config {
     public static function initialize() {
         if (self::$initialized === true) return;
 
-        include("settings.php");
+        if (!file_exists('settings/settings.php')) throw new Exception('No settings.php found.');
+        include("settings/settings.php");
         self::$cfg = $nfsen_config;
         self::$path = __DIR__;
         self::$initialized = true;

@@ -36,6 +36,9 @@ class NfDump {
             case '-R':
                 $this->cfg['option'][$option] = $this->convert_date_to_path($value[0], $value[1]);
                 break;
+            case '-o':
+                if ($value !== 'auto') $this->cfg['option'][$option] = $value; // no need to specify output=auto
+                break;
             default:
                 $this->cfg['option'][$option] = $value;
                 break;
@@ -58,7 +61,8 @@ class NfDump {
     public function execute() {
         $output = array();
         $return = "";
-        $command = $this->cfg['env']['bin'] . " " . $this->flatten($this->cfg['option']) . " " . $this->cfg['filter'];
+        $filter = (empty($this->cfg['filter'])) ? "" : " " . escapeshellarg($this->cfg['filter']);
+        $command = $this->cfg['env']['bin'] . " " . $this->flatten($this->cfg['option']) . $filter;
         $this->d->log('Trying to execute ' . $command, LOG_INFO);
         exec($command, $output, $return);
 
@@ -81,7 +85,7 @@ class NfDump {
         $output = "";
 
         foreach($array as $key => $value) {
-            $output .= escapeshellarg(is_int($key) ?: $key . " " . $value ) . ' ';
+            $output .= is_int($key) ?: $key . ' ' . escapeshellarg($value) . ' ';
         }
         return $output;
     }

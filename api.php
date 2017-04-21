@@ -149,7 +149,7 @@ class API {
                 $aggregate_command = '-B';
                 break;
             } else {
-                $aggregate_command = '-A ' . $option;
+                $aggregate_command = '-A' . $option; // no space inbetween
             }
         }
 

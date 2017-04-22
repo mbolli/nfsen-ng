@@ -8,7 +8,7 @@
 		<script src="js/dygraph.js"></script>
 		<script src="js/jquery-3.2.1.min.js"></script>
 		<script src="js/bootstrap.min.js"></script>
-        <script src="js/nfsen-ng.js"></script>
+        <!--<script src="js/nfsen-ng.js"></script>-->
 		<link rel="stylesheet" type="text/css" href="css/dygraph.css" />
 		<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
         <link rel="stylesheet" type="text/css" href="css/bootstrap-theme.min.css" />
@@ -18,9 +18,9 @@
 	<body>
         <div id="viewDiv"class="clearfix">
             <ul id="viewList" class="nav nav-tabs pull-left">
-                <li><a id="viewGraphsLink" onclick="changeActiveView(this)">Graphs</a></li>
-                <li><a id="viewFlowsLink" onclick="changeActiveView(this)">Flows</a></li>
-                <li><a id="viewStatsLink" onclick="changeActiveView(this)">Statistics</a></li>
+                <li><h4><a id="viewGraphsLink" onclick="changeActiveView(this)">Graphs</a></h4></li>
+                <li><h4><a id="viewFlowsLink" onclick="changeActiveView(this)">Flows</a></h4></li>
+                <li><h4><a id="viewStatsLink" onclick="changeActiveView(this)">Statistics</a></h4></li>
             </ul>
         </div><!-- viewDiv  -->
 
@@ -28,42 +28,66 @@
 
             <div id="graphsFilterDiv" class="row well well-sm">
 
-                <div id="graphsFilterDateDiv" class="col-md-3">
+                <div id="graphsFilterDateDiv" class="col-sm-3">
 
-                    <h3 class="text-center">Date</h3>
+                    <h3 class="text-center">Date and Time</h3>
 
                     <label>Date selection :</label>
-                    <div class="from-group">
-                        <label><input type="radio" name="graphDateType">Time window</label>
-                        <label><input type="radio" name="graphDateType">Time slot</label>
-                    </div>
 
-<!--
                     <div class="btn-group" data-toggle="buttons">
-                        <button type="button" class="btn btn-primary">Time Window</button>
-                        <button type="button" class="btn btn-primary">Time Slot</button>
+                        <label class="btn active">
+                            <input type="radio" name="timeSelection" id="timeWindowSelection" autocomplete="off" checked>Time window
+                        </label>
+                        <label class="btn">
+                            <input type="radio" name="timeSelection" id="timeSlotSelection" autocomplete="off">Time slot
+                        </label>
                     </div>
--->
 
-                    <div class="form-group">
+                    <div class="form-group customDateMargin">
                         <label for="graphStartDate">From date :</label>
                         <input type="text" id="graphStartDate" class="form-control"
                                placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group customDateMargin">
                         <label for="graphEndDate">To date :</label>
                         <input type="text" id="graphEndDate" class="form-control"
                                placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
                     </div>
 
-                    <button type="button" class="btn-primary">Last 24 hours</button>
-                    <button type="button" class="btn-primary">Last week</button>
-                    <button type="button" class="btn-primary">Last month</button>
-                    <button type="button" class="btn-primary">Last year</button>
+                    <div>
+                        <button type="button" class="btn-primary">Last 24 hours</button>
+                        <button type="button" class="btn-primary">Last week</button>
+                        <button type="button" class="btn-primary">Last month</button>
+                        <button type="button" class="btn-primary">Last year</button>
+                    </div>
+
+                    <label>Time slot :</label>
+                    <div class="form-inline">
+                        <button type="button" class="btn-primary">Previous slot</button>
+                            <select class="form-control" id="slotSelection">
+                                <option>Hour</option>
+                                <option>Day</option>
+                                <option>Week</option>
+                                <option>Month</option>
+                                <option>Year</option>
+                            </select>
+                        <button type="button" class="btn-primary">Next slot</button>
+                    </div>
+
 
                 </div><!-- graphsFilterDateDiv  -->
 
-                <div id="graphsFilterProtocolDiv" class="col-md-3">
+                <div id="graphsFilterSourcesDiv" class="col-sm-3">
+
+                    <h3 class="text-center">Sources</h3>
+
+                    <div class="form-group">
+                        <select id="graphFilterSourceSelection" multiple class="form-control">
+                        </select>
+                    </div>
+                </div><!-- graphsFilterSourcesDiv  -->
+
+                <div id="graphsFilterProtocolDiv" class="col-sm-3">
 
                     <h3 class="text-center">Protocols</h3>
 
@@ -82,44 +106,37 @@
 
                 </div><!-- graphsFilterProtocolDiv  -->
 
-                <div id="graphsFilterDataTypeDiv" class="col-md-3">
+                <div id="graphsFilterDataTypeDiv" class="col-sm-3">
 
                     <h3 class="text-center">Data Types</h3>
 
-                    <div class="from-group">
-                        <label><input type="radio" name="graphDataType">Flows</label>
-                        <label><input type="radio" name="graphDataType">Packets</label>
-                        <label><input type="radio" name="graphDataType">Traffic</label>
+                    <div class="btn-group" data-toggle="buttons">
+                        <label class="btn active">
+                            <input type="radio" name="graphDataType" autocomplete="off">Flows
+                        </label>
+                        <label class="btn">
+                            <input type="radio" name="graphDataType" autocomplete="off">Packets
+                        </label>
+                        <label class="btn">
+                            <input type="radio" name="graphDataType" autocomplete="off">Traffic
+                        </label>
                     </div>
                 </div><!-- graphsFilterDataTypeDiv  -->
 
-                <div id="graphsFilterSourcesDiv" class="col-md-3">
-
-                    <h3 class="text-center">Sources</h3>
-
-                    <div class="form-group">
-                        <select multiple class="form-control" id="sourceSelection">
-                            <option value="swibi">swibi</option>
-                            <option value="tiber">tiber</option>
-                            <option value="blablabla">blablabla</option>
-                            <option value="shouldComeFromTheServer">shouldComeFromTheServer</option>
-                        </select>
-                    </div>
-                </div><!-- graphsFilterSourcesDiv  -->
             </div><!-- graphsFilterDiv  -->
 
             <div id="flowsFilterDiv" class="row well well-sm">
 
-                <div id="flowsFilterDateDiv" class="col-md-3">
+                <div id="flowsFilterDateDiv" class="col-sm-3">
 
                     <h3 class="text-center">Date</h3>
 
-                    <div class="form-group">
+                    <div class="form-inline">
                         <label for="flowsStartDate">From date :</label>
                         <input type="text" id="flowsStartDate" class="form-control"
                                placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
                     </div>
-                    <div class="form-group">
+                    <div class="form-inline">
                         <label for="flowsEndDate">To date :</label>
                         <input type="text" id="flowsEndDate" class="form-control"
                                placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
@@ -130,40 +147,44 @@
 
                 </div><!-- flowsFilterDateDiv  -->
 
-                <div id="flowsFilterAggregationDiv" class="col-md-3">
+                <div id="flowsFilterSourcesDiv" class="col-sm-3">
+
+                    <h3 class="text-center">Sources</h3>
+
+                    <div class="form-group">
+                        <select id="flowsFilterSourceSelection" multiple class="form-control">
+                        </select>
+                    </div>
+                </div><!-- flowFilterSourcesDiv  -->
+
+                <div id="flowsNFDUMPFilterDiv" class="col-sm-6">
+
+                    <h3 class="text-center">NFDUMP Filter :</h3>
+
+                    <div class="form-group">
+                        <textarea class="form-control" id="flowsFilterTextarea" rows="3"></textarea>
+                    </div>
+
+                </div><!-- flowsNFDUMPFilterDiv  -->
+
+                <div id="flowsFilterAggregationDiv" class="col-sm-3">
 
                     <h3 class="text-center">Aggregation</h3>
 
-
-
                 </div><!-- flowsFilterAggregationDiv  -->
 
-                <div id="flowsFilterOutputDiv" class="col-md-3">
+                <div id="flowsFilterOutputDiv" class="col-sm-3">
 
                     <h3 class="text-center">Output</h3>
 
 
                 </div><!-- flowsFilterOutputDiv  -->
 
-                <div id="flowFilterSourcesDiv" class="col-md-3">
-
-                    <h3 class="text-center">Sources</h3>
-
-                    <div class="form-group">
-                        <select multiple class="form-control" id="sourceSelection">
-                            <option value="swibi">swibi</option>
-                            <option value="tiber">tiber</option>
-                            <option value="blablabla">blablabla</option>
-                            <option value="shouldComeFromTheServer">shouldComeFromTheServer</option>
-                        </select>
-                    </div>
-                </div><!-- flowFilterSourcesDiv  -->
-
             </div><!-- flowsFilterDiv  -->
 
             <div id="statsFilterDiv" class="row well well-sm">
 
-                <div id="statsFilterDateDiv" class="col-md-3">
+                <div id="statsFilterDateDiv" class="col-sm-3">
 
                     <h3 class="text-center">Date</h3>
 
@@ -181,38 +202,31 @@
 
                 </div><!-- statsFilterDateDiv  -->
 
-                <div id="statsFilterOptionsDiv" class="col-md-6">
-
-                    <h3 class="text-center">Options</h3>
-
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">TCP</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">UDP</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">ICMP</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" value="">Others</label>
-                    </div>
-                </div><!-- statsFilterOptionsDiv  -->
-
-                <div id="statsFilterSourcesDiv" class="col-md-3">
+                <div id="statsFilterSourcesDiv" class="col-sm-3">
 
                     <h3 class="text-center">Sources</h3>
 
                     <div class="form-group">
-                        <select multiple class="form-control" id="sourceSelection">
-                            <option value="swibi">swibi</option>
-                            <option value="tiber">tiber</option>
-                            <option value="blablabla">blablabla</option>
-                            <option value="shouldComeFromTheServer">shouldComeFromTheServer</option>
+                        <select id="statsFilterSourceSelection" multiple class="form-control">
                         </select>
                     </div>
                 </div><!-- statsFilterSourcesDiv  -->
 
+                <div id="statsNFDUMPFilterDiv" class="col-sm-6">
+
+                    <h3 class="text-center">NFDUMP Filter :</h3>
+
+                    <div class="form-group">
+                        <textarea class="form-control" id="statsFilterTextarea" rows="3"></textarea>
+                    </div>
+
+                </div><!-- statsNFDUMPFilterDiv  -->
+
+                <div id="statsFilterOptionsDiv" class="col-sm-6">
+
+                    <h3 class="text-center">Options</h3>
+
+                    </div><!-- statsFilterOptionsDiv  -->
             </div><!-- statsFilterDiv  -->
 
         </div><!-- filterDiv  -->
@@ -221,7 +235,7 @@
 
             <div id="graphsContentDiv" class="container-fluid">
 
-                <div class="col-md-2">
+                <div class="col-sm-2">
 
                     <div id="graphOptions">
                         <p><h4>Scale :</h4>
@@ -244,13 +258,13 @@
                     </div>
                 </div>
 
-                <div class="col-md-8">
+                <div class="col-sm-8">
 
                     <div id="flowDiv" style="width:1000px; height:400px;"></div>
 
                 </div>
 
-                <div class="col-md-2">
+                <div class="col-sm-2">
 
                     <div id="flowStatusDiv"></div>
 
@@ -363,27 +377,8 @@
                 }
             }
 
-			fg = new Dygraph(
-			document.getElementById("flowDiv"),
-			"csv/flows.csv",
-				{
-				title : 'Test Graph for time series : flows',
-					//axisLabelFontSize : 15,
-					ylabel : 'Flows',
-					xlabel : 'Date / Time',
-					visibility: [true, true, true, true, true],
-					labelsKMB : true,
-					labelsDiv : document.getElementById("flowStatusDiv"),
-					labelsSeparateLines : true,
-					legend : 'always',
-					//stackedGraph : true,
-					//logscale : true,
-					showRangeSelector: true
-				}
-			);
-
 		</script>
 
-
+        <script src="js/nfsen-ng.js"></script>
 	</body>
 </html>

@@ -11,3 +11,11 @@
 #filterDiv > div {display : none;}
 
 #filterDiv #graphsFilterDiv {display : block;}
+
+.customDateMargin {margin-right: 50%;}
+
+h3 {text-decoration: underline;}
+
+textarea {resize: none;}
+
+#viewList li h4 {margin-left: 10px;}

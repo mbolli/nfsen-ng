@@ -7,7 +7,7 @@ class Akumuli implements \Datasource  {
     private $client;
 
     public function __construct() {
-        $this->d = \Debug::getInstance();
+        $this->d = \common\Debug::getInstance();
         $this->connect();
     }
 
@@ -16,7 +16,7 @@ class Akumuli implements \Datasource  {
      */
     function connect() {
         try {
-            $this->client = stream_socket_client("tcp://" . \Config::$cfg['db']['akumuli']['host'] . ":" . \Config::$cfg['db']['akumuli']['port'], $errno, $errmsg);
+            $this->client = stream_socket_client("tcp://" . \common\Config::$cfg['db']['akumuli']['host'] . ":" . \common\Config::$cfg['db']['akumuli']['port'], $errno, $errmsg);
 
             if ($this->client === false) throw new \Exception("Failed to connect to Akumuli: " . $errmsg);
 

@@ -1,4 +1,5 @@
 <?php
+namespace common;
 
 class NfDump {
     private $cfg = array(
@@ -11,7 +12,7 @@ class NfDump {
     public static $_instance;
 
     function __construct() {
-        $this->d = \Debug::getInstance();
+        $this->d = Debug::getInstance();
         $this->clean = $this->cfg;
         $this->reset();
     }
@@ -56,7 +57,7 @@ class NfDump {
     /**
      * Executes the nfdump command, tries to throw an exception based on the return code
      * @return array
-     * @throws Exception
+     * @throws \Exception
      */
     public function execute() {
         $output = array();
@@ -67,10 +68,10 @@ class NfDump {
         exec($command, $output, $return);
 
         switch($return) {
-            case 127: throw new Exception("NfDump: Failed to start process. Is nfdump installed? " . implode(' ', $output)); break;
-            case 255: throw new Exception("NfDump: Initialization failed. " . implode(' ', $output)); break;
-            case 254: throw new Exception("NfDump: Error in filter syntax." . implode(' ', $output)); break;
-            case 250: throw new Exception("NfDump: Internal error." . implode(' ', $output)); break;
+            case 127: throw new \Exception("NfDump: Failed to start process. Is nfdump installed? " . implode(' ', $output)); break;
+            case 255: throw new \Exception("NfDump: Initialization failed. " . implode(' ', $output)); break;
+            case 254: throw new \Exception("NfDump: Error in filter syntax." . implode(' ', $output)); break;
+            case 250: throw new \Exception("NfDump: Internal error." . implode(' ', $output)); break;
         }
         return $output;
     }
@@ -95,9 +96,9 @@ class NfDump {
      */
     public function reset() {
         $this->clean['env'] = array(
-            'bin' => \Config::$cfg['nfdump']['binary'],
-            'profiles-data' => \Config::$cfg['nfdump']['profiles-data'],
-            'profile' => \Config::$cfg['nfdump']['profile'],
+            'bin' => Config::$cfg['nfdump']['binary'],
+            'profiles-data' => Config::$cfg['nfdump']['profiles-data'],
+            'profile' => Config::$cfg['nfdump']['profile'],
         );
         $this->cfg = $this->clean;
     }
@@ -109,7 +110,7 @@ class NfDump {
      * @return string
      */
     public function convert_date_to_path(int $datestart, int $dateend) {
-        $start = $end = new DateTime();
+        $start = $end = new \DateTime();
         $start->setTimestamp($datestart);
         $end->setTimestamp($dateend);
 

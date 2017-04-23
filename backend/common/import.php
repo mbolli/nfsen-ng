@@ -1,23 +1,24 @@
 <?php
+namespace common;
 
 class Import {
 
     private $d;
 
 	function __construct() {
-        $this->d = \Debug::getInstance();
+        $this->d = Debug::getInstance();
         $this->d->dpr(Config::$cfg);
         $this->d->dpr(Config::$path);
 	}
 
-	function start(DateTime $datestart) {
-        $source_path = \Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . \Config::$cfg['nfdump']['profile'];
+	function start(\DateTime $datestart) {
+        $source_path = Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . Config::$cfg['nfdump']['profile'];
         $sources = @scandir($source_path);
         if(!is_array($sources)) throw new \Exception("Could not read nfdump profile directory " . $source_path);
 
         // process each source, e.g. gateway, mailserver, etc.
         foreach ($sources as $source) {
-            if(in_array($source, \Config::$cfg['general']['sources'])) {
+            if(in_array($source, Config::$cfg['general']['sources'])) {
                 $today = new \DateTime();
                 $date = clone $datestart;
 
@@ -37,7 +38,7 @@ class Import {
                                 $stats_path = implode(DIRECTORY_SEPARATOR, array_slice($scan, 2, 5)) . DIRECTORY_SEPARATOR . $file;
 
                                 // set options and get netflow summary statistics (-I)
-                                $nfdump = \NfDump::getInstance();
+                                $nfdump = NfDump::getInstance();
                                 $nfdump->setOption("-I", null);
                                 $nfdump->setOption("-r", $stats_path);
                                 $nfdump->setOption("-M", $source);

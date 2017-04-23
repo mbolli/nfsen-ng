@@ -31,7 +31,7 @@ class RRD implements \Datasource {
     );
 
     function __construct() {
-        $this->d = \Debug::getInstance();
+        $this->d = \common\Debug::getInstance();
 
         if (!function_exists('rrd_version')) {
             throw new \Exception("Please install the PECL rrd library.");
@@ -42,12 +42,12 @@ class RRD implements \Datasource {
 
 
     public function date_boundaries(string $source) : array {
-        $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+        $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
         return array(rrd_first($rrdFile), rrd_last($rrdFile));
     }
 
     public function last_update(string $source) : int {
-        $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+        $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
         return rrd_last($rrdFile);
     }
 
@@ -64,7 +64,7 @@ class RRD implements \Datasource {
      * @return bool
      */
     public function create(string $source, bool $force = false) {
-        $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+        $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
         if(file_exists($rrdFile)) {
             if($force === true) unlink($rrdFile);
             else return false;
@@ -88,7 +88,7 @@ class RRD implements \Datasource {
      * @return bool
      */
     public function write(array $data) {
-        $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $data['source'] . ".rrd";
+        $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $data['source'] . ".rrd";
         $ts_last = rrd_last($rrdFile);
         $nearest = (int)ceil(($data['date_timestamp'])/300)*300;
 
@@ -127,7 +127,7 @@ class RRD implements \Datasource {
         if (count($sources) === 1 && count($protocols) > 1) {
             foreach ($protocols as $protocol) {
                 foreach ($sources as $source) {
-                    $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+                    $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
                     $options[] = 'DEF:data' . $source . $protocol . '=' . $rrdFile . ':' . $type . '_' . $protocol . ':AVERAGE';
                     //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
                     $options[] = 'XPORT:data' . $source . $protocol . ":" . $type . '_' . $protocol . "_of_" . $source;
@@ -135,7 +135,7 @@ class RRD implements \Datasource {
             }
         } elseif (count($sources) > 1 && count($protocols) === 1) {
             foreach ($sources as $source) {
-                $rrdFile = \Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+                $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
                 $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . ':AVERAGE';
                 //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
                 $options[] = 'XPORT:data' . $source . ":" . $type . "_of_" . $source;

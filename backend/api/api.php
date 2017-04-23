@@ -1,4 +1,5 @@
 <?php
+namespace api;
 
 class API {
     private $method;
@@ -7,7 +8,7 @@ class API {
     private $d;
 
     public function __construct() {
-        $this->d = Debug::getInstance();
+        $this->d = \common\Debug::getInstance();
 
         // get the HTTP method, path and body of the request
         $this->method = $_SERVER['REQUEST_METHOD'];
@@ -22,7 +23,7 @@ class API {
         // remove method name from $_REQUEST
         $_REQUEST = array_filter($_REQUEST, function($x) { return $x !== $this->request[0]; });
 
-        $method = new ReflectionMethod($this, $this->request[0]);
+        $method = new \ReflectionMethod($this, $this->request[0]);
 
         // check number of parameters
         if ($method->getNumberOfRequiredParameters() > count($_REQUEST)) $this->error(400, 'Not enough parameters');
@@ -63,7 +64,7 @@ class API {
      */
     public function error(int $code, $msg = '') {
         http_response_code($code);
-        $debug = Debug::getInstance();
+        $debug = \common\Debug::getInstance();
 
         $response = array('code' => $code, 'error' => '');
         switch($code) {
@@ -107,21 +108,20 @@ class API {
     public function stats(int $datestart, int $dateend, array $sources, string $filter, int $top, string $for, string $limit, array $output) {
         $sources = implode(':', $sources);
 
-        $nfdump = new NfDump();
+        $nfdump = new \common\NfDump();
         $nfdump->setOption('-M', $sources); // multiple sources
         $nfdump->setOption('-T', null); // output = flows
         $nfdump->setOption('-R', array($datestart, $dateend)); // date range
         $nfdump->setOption('-n', $top);
         $nfdump->setOption('-c', $limit);
         $nfdump->setOption('-s', $for);
-        $nfdump->setOption('-o', $output['format']);
         $nfdump->setOption('-l', $limit); // todo -L for traffic, -l for packets
-        if (isset($output['IPv6'])) $nfdump->setOption('-6', $output['IPv6']);
+        if (isset($output['IPv6'])) $nfdump->setOption('-6', null);
         $nfdump->setFilter($filter);
 
         try {
             $return = $nfdump->execute();
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             $this->error(503, $e->getMessage());
         }
 
@@ -153,7 +153,7 @@ class API {
             }
         }
 
-        $nfdump = new NfDump();
+        $nfdump = new \common\NfDump();
         $nfdump->setOption('-M', $sources); // multiple sources
         $nfdump->setOption('-T', null); // output = flows
         $nfdump->setOption('-R', array($datestart, $dateend)); // date range
@@ -166,7 +166,7 @@ class API {
 
         try {
             $return = $nfdump->execute();
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             $this->error(503, $e->getMessage());
         }
 
@@ -183,7 +183,7 @@ class API {
      * @return array|string
      */
     public function graph(int $datestart, int $dateend, array $sources, array $protocols, string $type) {
-        $graph = Config::$db->stats($datestart, $dateend, $sources, $protocols, $type);
+        $graph = \common\Config::$db->stats($datestart, $dateend, $sources, $protocols, $type);
         if (!is_array($graph)) $this->error(400, $graph);
         return $graph;
     }
@@ -199,7 +199,7 @@ class API {
 
         $rrd = new \datasources\RRD();
 
-        $definedSources = Config::$cfg['general']['sources'];
+        $definedSources = \common\Config::$cfg['general']['sources'];
         $sources = array();
         foreach ($definedSources as $source) {
             $sources[$source] = $rrd->date_boundaries($source);

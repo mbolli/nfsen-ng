@@ -1,5 +1,7 @@
 <?php
 
+namespace common;
+
 class Debug {
     private $stopwatch;
     private $debug;

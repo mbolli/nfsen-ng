@@ -28,6 +28,8 @@
 
  */
 
+namespace common;
+
 spl_autoload_extensions(".php");
 spl_autoload_register();
 
@@ -69,8 +71,8 @@ while (1) {
         $date = array();
         if (!preg_match('/nfcapd\.([0-9]{12})$/', $capture, $date)) continue; // nothing to import
 
-        $file_datetime = new DateTime($date[1]);
-        $db_datetime = new DateTime();
+        $file_datetime = new \DateTime($date[1]);
+        $db_datetime = new \DateTime();
         $db_datetime->setTimestamp(Config::$db->last_update($source));
         $diff = $file_datetime->diff($db_datetime);
 

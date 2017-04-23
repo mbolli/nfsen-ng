@@ -183,7 +183,7 @@ class API {
      * @return array|string
      */
     public function graph(int $datestart, int $dateend, array $sources, array $protocols, string $type) {
-        $graph = \common\Config::$db->stats($datestart, $dateend, $sources, $protocols, $type);
+        $graph = \common\Config::$db->get_graph_data($datestart, $dateend, $sources, $protocols, $type);
         if (!is_array($graph)) $this->error(400, $graph);
         return $graph;
     }

@@ -1,7 +1,7 @@
 <?php
 namespace datasources;
 
-class Akumuli implements \Datasource  {
+class Akumuli implements Datasource  {
 
     private $d;
     private $client;
@@ -70,7 +70,7 @@ class Akumuli implements \Datasource  {
         }
     }
 
-    public function stats(int $start, int $end, array $sources, array $protocols, string $type) {
+    public function get_graph_data(int $start, int $end, array $sources, array $protocols, string $type) {
         // TODO: Implement stats() method.
     }
 

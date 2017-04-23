@@ -1,7 +1,7 @@
 <?php
 namespace datasources;
 
-class RRD implements \Datasource {
+class RRD implements Datasource {
     private $d;
     private $client;
     private $fields = array(
@@ -111,13 +111,13 @@ class RRD implements \Datasource {
      * @param string $type flows/packets/traffic
      * @return array|string
      */
-    public function stats(int $start, int $end, array $sources, array $protocols, string $type) {
+    public function get_graph_data(int $start, int $end, array $sources, array $protocols, string $type) {
 
         $options = array(
             '--start', $start,
             '--end', $end,
-            '--maxrows', 300,
-            // '--step', 1200,
+            '--maxrows', 300, // number of values. works like the width value (in pixels) in rrd_graph
+            // '--step', 1200, // by default, rrdtool tries to get data for each row. if you want rrdtool to get data at a one-hour resolution, set step to 3600.
             '--json'
         );
 
@@ -127,18 +127,18 @@ class RRD implements \Datasource {
         if (count($sources) === 1 && count($protocols) > 1) {
             foreach ($protocols as $protocol) {
                 foreach ($sources as $source) {
-                    $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+                    $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . '.rrd';
                     $options[] = 'DEF:data' . $source . $protocol . '=' . $rrdFile . ':' . $type . '_' . $protocol . ':AVERAGE';
                     //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
-                    $options[] = 'XPORT:data' . $source . $protocol . ":" . $type . '_' . $protocol . "_of_" . $source;
+                    $options[] = 'XPORT:data' . $source . $protocol . ':' . $source . '_' . $type . '_' . $protocol;
                 }
             }
         } elseif (count($sources) > 1 && count($protocols) === 1) {
             foreach ($sources as $source) {
-                $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+                $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . '.rrd';
                 $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . ':AVERAGE';
                 //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
-                $options[] = 'XPORT:data' . $source . ":" . $type . "_of_" . $source;
+                $options[] = 'XPORT:data' . $source . ':' . $source . '_' . $type . '_' . $protocols[0];
             }
         }
 

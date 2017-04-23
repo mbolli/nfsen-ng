@@ -26,16 +26,6 @@ class Akumuli implements Datasource  {
     }
 
     /**
-     * Reads nfcapd files since $datestart and imports them into Akumuli
-     * @param \DateTime $datestart
-     * @throws \Exception
-     */
-    function import(\DateTime $datestart) {
-
-
-    }
-
-    /**
      * Convert data to redis-compatible string and write to Akumuli
      * @param array $data
      * @return string

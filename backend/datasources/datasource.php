@@ -65,14 +65,14 @@ interface Datasource {
     public function get_graph_data(int $start, int $end, array $sources, array $protocols, string $type);
 
     /**
-     * Gets the timestamps of the first and last entry in the datasource
+     * Gets the timestamps of the first and last entry in the datasource (for this specific source)
      * @param string $source
      * @return array (timestampfirst, timestamplast)
      */
     public function date_boundaries(string $source) : array;
 
     /**
-     * Gets the timestamp of the last update of the datasource
+     * Gets the timestamp of the last update of the datasource (for this specific source)
      * @param string $source
      * @return int
      */

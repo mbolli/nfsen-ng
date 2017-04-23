@@ -37,28 +37,32 @@ class RRD implements Datasource {
             throw new \Exception("Please install the PECL rrd library.");
         }
 
-
     }
 
-
+    /**
+     * Gets the timestamps of the first and last entry of this specific source
+     * @param string $source
+     * @return array
+     */
     public function date_boundaries(string $source) : array {
         $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
         return array(rrd_first($rrdFile), rrd_last($rrdFile));
     }
 
+    /**
+     * Gets the timestamp of the last update of this specific source
+     * @param string $source
+     * @return int timestamp
+     */
     public function last_update(string $source) : int {
         $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
         return rrd_last($rrdFile);
     }
 
 
-    public function fetch() {
-        //$result = rrd_fetch( "mydata.rrd", array( "AVERAGE", "--resolution", "60", "--start", "-1d", "--end", "start+1h" ) );
-
-    }
-
     /**
      * Create a new RRD file for a source
+     * TODO: extend for ports?
      * @param string $source e.g. gateway or server_xyz
      * @param bool $force overwrites existing RRD file if true
      * @return bool

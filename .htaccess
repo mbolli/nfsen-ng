@@ -7,7 +7,7 @@ ServerSignature Off
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^api/(.*)$ backend/index.php?request=$1 [QSA,NC,L]
-  RewriteRule ^$ frontend/index.html [QSA,NC,L]
+  RewriteRule ^$ frontend [L]
 </IfModule>
 
 <IfModule mod_deflate.c>

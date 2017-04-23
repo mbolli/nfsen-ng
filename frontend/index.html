@@ -8,7 +8,6 @@
 		<script src="js/dygraph.js"></script>
 		<script src="js/jquery-3.2.1.min.js"></script>
 		<script src="js/bootstrap.min.js"></script>
-        <!--<script src="js/nfsen-ng.js"></script>-->
 		<link rel="stylesheet" type="text/css" href="css/dygraph.css" />
 		<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
         <link rel="stylesheet" type="text/css" href="css/bootstrap-theme.min.css" />
@@ -16,17 +15,17 @@
 	</head>
 
 	<body>
-        <div id="viewDiv" class="clearfix">
+        <header class="clearfix">
             <ul id="viewList" class="nav nav-tabs pull-left">
-                <li><h4><a id="viewGraphsLink" onclick="changeActiveView(this)">Graphs</a></h4></li>
-                <li><h4><a id="viewFlowsLink" onclick="changeActiveView(this)">Flows</a></h4></li>
-                <li><h4><a id="viewStatsLink" onclick="changeActiveView(this)">Statistics</a></h4></li>
+                <li><a data-view="graphs" class="active">Graphs</a></li>
+                <li><a data-view="flows">Flows</a></li>
+                <li><a data-view="stats">Statistics</a></li>
             </ul>
-        </div><!-- viewDiv  -->
+        </header>
 
         <div id="filterDiv" class="container-fluid">
 
-            <div id="graphsFilterDiv" class="row well well-sm">
+            <div id="graphsFilterDiv" data-view="graphs" class="filter row well well-sm">
 
                 <div id="graphsFilterDateDiv" class="col-sm-3">
 
@@ -125,7 +124,7 @@
 
             </div><!-- graphsFilterDiv  -->
 
-            <div id="flowsFilterDiv" class="row well well-sm">
+            <div id="flowsFilterDiv" data-view="flows" class="filter row well well-sm">
 
                 <div id="flowsFilterDateDiv" class="col-sm-3">
 
@@ -182,7 +181,7 @@
 
             </div><!-- flowsFilterDiv  -->
 
-            <div id="statsFilterDiv" class="row well well-sm">
+            <div id="statsFilterDiv" data-view="stats" class="filter row well well-sm">
 
                 <div id="statsFilterDateDiv" class="col-sm-3">
 
@@ -233,7 +232,7 @@
 
         <div id="contentDiv">
 
-            <div id="graphsContentDiv" class="container-fluid">
+            <div id="graphsContentDiv" data-view="graphs" class="content container-fluid">
 
                 <div class="col-sm-2">
 
@@ -287,12 +286,12 @@
 
             </div><!-- graphsContentDiv  -->
 
-            <div id="flowsContentDiv">
+            <div id="flowsContentDiv" data-view="flows" class="content">
 
 
             </div><!-- flowsContentDiv  -->
 
-            <div id="statsContentDiv">
+            <div id="statsContentDiv" data-view="stats" class="content">
 
 
             </div><!-- statsContentDiv  -->

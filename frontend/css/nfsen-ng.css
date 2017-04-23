@@ -1,21 +1,53 @@
-.infotext {  }
+/* general */
+textarea {
+    resize: none;
+}
 
-#flowDiv .dygraph-label { font-family: Georgia,Verdana,serif; }
+code, pre, .code {
+    font-family: Menlo, Monaco, Consolas, "Courier New", monospace
+}
 
-#flowDiv .dygraph-title { font-size: 36px; text-shadow: 2px 2px 2px gray; }
 
-#flowDiv .dygraph-ylabel { font-size: 18px; text-shadow: -2px 2px 2px gray; }
+/* header */
+header li a.active {
+    background-color: #eee;
+}
 
-.chart { border: 1px dashed black; margin: 5px 5px 5px 50px; padding: 2px; }
 
-#filterDiv > div {display : none;}
+/* filter */
+#filterDiv > div {
+    display: none;
+}
 
-#filterDiv #graphsFilterDiv {display : block;}
+#filterDiv #graphsFilterDiv { /* show first filter */
+    display: block;
+}
 
-.customDateMargin {margin-right: 50%;}
+.customDateMargin {
+    margin-right: 50%;
+}
 
-h3 {text-decoration: underline;}
 
-textarea {resize: none;}
+/* graph */
+.infotext {
+}
 
-#viewList li h4 {margin-left: 10px;}
+#flowDiv .dygraph-title {
+    font-size: 36px;
+    text-shadow: 2px 2px 2px gray;
+}
+
+#flowDiv .dygraph-ylabel {
+    font-size: 18px;
+    text-shadow: -2px 2px 2px gray;
+}
+
+.chart {
+    border: 1px dashed black;
+    margin: 5px 5px 5px 50px;
+    padding: 2px;
+}
+
+#viewList li h4 {
+    margin-left: 10px;
+}

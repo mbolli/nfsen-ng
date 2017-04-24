@@ -78,4 +78,10 @@ interface Datasource {
      */
     public function last_update(string $source) : int;
 
+    /**
+     * Gets the path where the datasource's data is stored
+     * @return string
+     */
+    public function get_data_path();
+
 }

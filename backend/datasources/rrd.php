@@ -45,7 +45,7 @@ class RRD implements Datasource {
      * @return array
      */
     public function date_boundaries(string $source) : array {
-        $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+        $rrdFile = $this->get_data_path($source);
         return array(rrd_first($rrdFile), rrd_last($rrdFile));
     }
 
@@ -55,7 +55,7 @@ class RRD implements Datasource {
      * @return int timestamp
      */
     public function last_update(string $source) : int {
-        $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+        $rrdFile = $this->get_data_path($source);
         return rrd_last($rrdFile);
     }
 
@@ -68,10 +68,13 @@ class RRD implements Datasource {
      * @return bool
      */
     public function create(string $source, bool $force = false) {
-        $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . ".rrd";
+        $rrdFile = $this->get_data_path($source);
         if(file_exists($rrdFile)) {
             if($force === true) unlink($rrdFile);
-            else return false;
+            else {
+                $this->d->log('Error creating ' . $rrdFile, LOG_ERR);
+                return false;
+            }
         }
 
         $creator = new \RRDCreator($rrdFile, "now -3y", (60*5));
@@ -92,7 +95,7 @@ class RRD implements Datasource {
      * @return bool
      */
     public function write(array $data) {
-        $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $data['source'] . ".rrd";
+        $rrdFile = $this->get_data_path($data['source']);
         $ts_last = rrd_last($rrdFile);
         $nearest = (int)ceil(($data['date_timestamp'])/300)*300;
 
@@ -131,7 +134,7 @@ class RRD implements Datasource {
         if (count($sources) === 1 && count($protocols) > 1) {
             foreach ($protocols as $protocol) {
                 foreach ($sources as $source) {
-                    $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . '.rrd';
+                    $rrdFile = $this->get_data_path($source);
                     $options[] = 'DEF:data' . $source . $protocol . '=' . $rrdFile . ':' . $type . '_' . $protocol . ':AVERAGE';
                     //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
                     $options[] = 'XPORT:data' . $source . $protocol . ':' . $source . '_' . $type . '_' . $protocol;
@@ -139,7 +142,7 @@ class RRD implements Datasource {
             }
         } elseif (count($sources) > 1 && count($protocols) === 1) {
             foreach ($sources as $source) {
-                $rrdFile = \common\Config::$path . DIRECTORY_SEPARATOR . $source . '.rrd';
+                $rrdFile = $this->get_data_path($source);
                 $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . ':AVERAGE';
                 //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
                 $options[] = 'XPORT:data' . $source . ':' . $source . '_' . $type . '_' . $protocols[0];
@@ -156,5 +159,20 @@ class RRD implements Datasource {
             });
         }
         return $data;
+    }
+
+    /**
+     * Concatenates the path to the source's rrd file
+     * If source is empty, returns the path to the data folder.
+     * @param $source
+     * @return string
+     */
+    public function get_data_path($source = '') {
+        if (!empty($source)) $source = DIRECTORY_SEPARATOR . $source . '.rrd';
+        $path = \common\Config::$path . DIRECTORY_SEPARATOR . 'datasources' . DIRECTORY_SEPARATOR . 'data' . $source;
+
+        if (!file_exists($path)) $this->d->log('Was not able to find ' . $path, LOG_INFO);
+
+        return $path;
     }
 }

@@ -67,6 +67,9 @@ class NfDump {
         $this->d->log('Trying to execute ' . $command, LOG_INFO);
         exec($command, $output, $return);
 
+        // prevent logging the command usage description
+        if (preg_match('/^usage/i', $output[0])) $output = array();
+
         switch($return) {
             case 127: throw new \Exception("NfDump: Failed to start process. Is nfdump installed? " . implode(' ', $output)); break;
             case 255: throw new \Exception("NfDump: Initialization failed. " . implode(' ', $output)); break;

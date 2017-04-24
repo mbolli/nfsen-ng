@@ -9,7 +9,8 @@
  }
  */
 var config;
-
+var date_range;
+var graph;
 $(document).ready(function() {
 
     // get config from backend
@@ -29,8 +30,8 @@ $(document).ready(function() {
         var $filter = $('#filterDiv').find('div.filter');
         var $content = $('#contentDiv').find('div.content');
 
-        $('header a').removeClass('active');
-        $(this).addClass('active');
+        $('header li').removeClass('active');
+        $(this).parent().addClass('active');
 
         var showRightDiv = function(id, el) {
             if ($(el).attr('data-view') === view) $(el).show();
@@ -41,13 +42,60 @@ $(document).ready(function() {
         $content.each(showRightDiv);
     });
 
+    // update date range slider
+    // set time window or time slot
+    $(document).on('change', 'input[name=singledouble]', function() {
+        date_range.update({
+            type: $(this).val()
+        });
+    });
+
+    // set predefined time range
+    $(document).on('change', 'input[name=range]', function() {
+        date_range.update({
+            from: date_range.options.to-$(this).val(),
+            to: date_range.options.to,
+        });
+    });
+
+    // update time range after source change
+    $(document).on('change', '#graphFilterSourceSelection', function() {
+        date_range.update({
+            min: config['sources'][$(this).val()][0],
+            max: config['sources'][$(this).val()][1]
+        });
+    });
+
     // initialize application
     function init() {
+
+        $('#date_range').ionRangeSlider({
+            type: 'double',
+            grid: true,
+            min: 1482828600000,
+            max: 1490604300000,
+            force_edges: true,
+            drag_interval: true,
+            prettify: function(ut) {
+                var date = new Date(ut);
+                return date.toDateString();
+            },
+            onFinish: function(data) {
+                console.log(data);
+            }
+        });
+        date_range = $('#date_range').data('ionRangeSlider');
+
+        // check if we have a config
+        // todo probably a red half-transparent overlay over the whole page?
+        if (typeof config !== 'object') console.log('Could not read config!');
+
         var sources = Object.keys(config["sources"]);
         updateSources(sources);
 
+
         // todo modify for json coming from ../api/graph
-        var fg = new Dygraph(
+        graph = new Dygraph(
             document.getElementById("flowDiv"),
             "csv/flows.csv",
             {

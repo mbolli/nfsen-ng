@@ -1,4 +1,8 @@
 /* general */
+
+header {
+    margin-top: 10px;
+}
 textarea {
     resize: none;
 }
@@ -6,13 +10,6 @@ textarea {
 code, pre, .code {
     font-family: Menlo, Monaco, Consolas, "Courier New", monospace
 }
-
-
-/* header */
-header li a.active {
-    background-color: #eee;
-}
-
 
 /* filter */
 #filterDiv > div {
@@ -23,23 +20,16 @@ header li a.active {
     display: block;
 }
 
-.customDateMargin {
-    margin-right: 50%;
-}
-
-
 /* graph */
 .infotext {
 }
 
 #flowDiv .dygraph-title {
     font-size: 36px;
-    text-shadow: 2px 2px 2px gray;
 }
 
 #flowDiv .dygraph-ylabel {
     font-size: 18px;
-    text-shadow: -2px 2px 2px gray;
 }
 
 .chart {

@@ -5,59 +5,47 @@
         <meta http-equiv="X-UA-Compatible" content="IE=edge"> <!-- as per bootstrap documentation -->
         <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- as per bootstrap documentation -->
 		<title>nfsen-ng</title>
-		<script src="js/dygraph.min.js"></script>
-		<script src="js/jquery-3.2.1.min.js"></script>
-		<script src="js/bootstrap.min.js"></script>
+        <script src="js/jquery-3.2.1.min.js"></script>
+        <script src="js/bootstrap.min.js"></script>
+        <script src="js/ion.rangeSlider.min.js"></script>
+        <script src="js/dygraph.min.js"></script>
 		<link rel="stylesheet" type="text/css" href="css/dygraph.css" />
 		<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
         <link rel="stylesheet" type="text/css" href="css/bootstrap-theme.min.css" />
+        <link rel="stylesheet" type="text/css" href="css/ion.rangeSlider.css" />
 		<link rel="stylesheet" type="text/css" href="css/nfsen-ng.css" />
 	</head>
 
 	<body>
         <header class="clearfix">
-            <ul id="viewList" class="nav nav-tabs pull-left">
-                <li><a data-view="graphs" class="active">Graphs</a></li>
-                <li><a data-view="flows">Flows</a></li>
-                <li><a data-view="stats">Statistics</a></li>
+            <ul id="viewList" class="nav nav-tabs pull-right" role="tablist">
+                <li role="presentation" class="active"><a data-view="graphs">Graphs <span class="glyphicon glyphicon-search" aria-hidden="true"></span></a></li>
+                <li role="presentation"><a data-view="flows">Flows</a></li>
+                <li role="presentation"><a data-view="stats">Statistics</a></li>
             </ul>
         </header>
 
-        <div id="filterDiv" class="container-fluid">
-
+        <div id="filterDiv" class="container-fluid tab-content">
+            <label for="date_range">Date</label>
+            <input type="text" id="date_range"/>
             <div id="graphsFilterDiv" data-view="graphs" class="filter row well well-sm">
 
                 <div id="graphsFilterDateDiv" class="col-sm-3">
 
-                    <h3 class="text-center">Date and Time</h3>
-
-                    <label>Date selection :</label>
+                    <div class="btn-group" data-toggle="buttons">
+                        <label class="btn btn-default btn-xs active">
+                            <input type="radio" name="singledouble" autocomplete="off" value="double" checked>Time window
+                        </label>
+                        <label class="btn btn-default btn-xs">
+                            <input type="radio" name="singledouble" autocomplete="off" value="single">Time slot
+                        </label>
+                    </div>
 
                     <div class="btn-group" data-toggle="buttons">
-                        <label class="btn active">
-                            <input type="radio" name="timeSelection" id="timeWindowSelection" autocomplete="off" checked>Time window
-                        </label>
-                        <label class="btn">
-                            <input type="radio" name="timeSelection" id="timeSlotSelection" autocomplete="off">Time slot
-                        </label>
-                    </div>
-
-                    <div class="form-group customDateMargin">
-                        <label for="graphStartDate">From date :</label>
-                        <input type="text" id="graphStartDate" class="form-control"
-                               placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
-                    </div>
-                    <div class="form-group customDateMargin">
-                        <label for="graphEndDate">To date :</label>
-                        <input type="text" id="graphEndDate" class="form-control"
-                               placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
-                    </div>
-
-                    <div>
-                        <button type="button" class="btn-primary">Last 24 hours</button>
-                        <button type="button" class="btn-primary">Last week</button>
-                        <button type="button" class="btn-primary">Last month</button>
-                        <button type="button" class="btn-primary">Last year</button>
+                        <label class="btn btn-default btn-xs"><input type="radio" name="range" autocomplete="off" value="86400000">24 hours</label>
+                        <label class="btn btn-default btn-xs"><input type="radio" name="range" autocomplete="off" value="604800000">week</label>
+                        <label class="btn btn-default btn-xs"><input type="radio" name="range" autocomplete="off" value="2419200000">month</label>
+                        <label class="btn btn-default btn-xs"><input type="radio" name="range" autocomplete="off" value="29030400000">year</label>
                     </div>
 
                     <label>Time slot :</label>
@@ -237,23 +225,21 @@
                 <div class="col-sm-2">
 
                     <div id="graphOptions">
-                        <p><h4>Scale :</h4>
-                            <input type=radio id="linearScaleBtn" checked name="scale" onchange=adaptScaleToSelection(this)>
-                            <label for="linearScaleBtn">Linear</label><br/>
-                            <input type=radio id="logarithmicScaleBtn" name="scale" onchange=adaptScaleToSelection(this)>
-                            <label for="logarithmicScaleBtn">Logarithmic</label><br/>
-                        </p>
+                        <h4>Scale</h4>
+                        <input type=radio id="linearScaleBtn" checked name="scale" onchange=adaptScaleToSelection(this)>
+                        <label for="linearScaleBtn">Linear</label><br/>
+                        <input type=radio id="logarithmicScaleBtn" name="scale" onchange=adaptScaleToSelection(this)>
+                        <label for="logarithmicScaleBtn">Logarithmic</label><br/>
 
-                        <p><h4>Type :</h4>
-                            <input type=radio id="lineGraphBtn" checked name="type" onchange=adaptGraphTypeToSelection(this)>
-                            <label for="lineGraphBtn">Line</label><br/>
-                            <input type=radio id="stackedGraphBtn" name="type" onchange=adaptGraphTypeToSelection(this)>
-                            <label for="stackedGraphBtn">Stacked</label><br/>
-                        </p>
 
-                        <p><h4>Roll period :</h4>
+                        <h4>Type</h4>
+                        <input type=radio id="lineGraphBtn" checked name="type" onchange=adaptGraphTypeToSelection(this)>
+                        <label for="lineGraphBtn">Line</label><br/>
+                        <input type=radio id="stackedGraphBtn" name="type" onchange=adaptGraphTypeToSelection(this)>
+                        <label for="stackedGraphBtn">Stacked</label><br/>
+
+                        <h4>Roll period</h4>
                         <input type=text id="rollPeriod" onchange=adaptGraphRollPeriodToSelection(this)>
-                        </p>
                     </div>
                 </div>
 
@@ -328,19 +314,19 @@
 			}
 
 			function updateVisibility(el) {
-				fg.setVisibility(parseInt(el.id), el.checked);
+				graph.setVisibility(parseInt(el.id), el.checked);
 			}
 
 			function adaptScaleToSelection(el) {
 				if(el.id=="logarithmicScaleBtn")
 				{
-					fg.updateOptions({
+					graph.updateOptions({
 		              logscale : true
 		            });
 				}
 				else
 				{
-					fg.updateOptions({
+					graph.updateOptions({
 		              logscale : false
 		            });
 				}
@@ -350,14 +336,14 @@
 			function adaptGraphTypeToSelection(el) {
 				if(el.id=="stackedGraphBtn")
 				{
-					fg.updateOptions({
+					graph.updateOptions({
 		              stackedGraph : true,
 					  fillGraph: true
 		            });
 				}
 				else
 				{
-					fg.updateOptions({
+					graph.updateOptions({
 		              stackedGraph : false,
 					  fillGraph: false
 		            });
@@ -368,11 +354,11 @@
             function adaptGraphRollPeriodToSelection(el) {
                 if(el.value > 0)
                 {
-                    fg.adjustRoll(el.value);
+                    graph.adjustRoll(el.value);
                 }
                 else
                 {
-                    fg.adjustRoll(0);
+                    graph.adjustRoll(0);
                 }
             }
 

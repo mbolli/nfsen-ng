@@ -1,6 +1,10 @@
 <?php
 /**
  * config file for nfsen-ng
+ *
+ * remarks:
+ * * database name = datasource class name (case-sensitive)
+ * * log priority should be one of the predefined core constants prefixed with LOG_
  */
 
 $nfsen_config = array(
@@ -10,7 +14,8 @@ $nfsen_config = array(
         ),
         'sources' => array(
             'source1', 'source2',
-        )
+        ),
+        'db' => 'RRD',
     ),
     'nfdump' => array(
         'binary' => '/usr/bin/nfdump',
@@ -18,11 +23,11 @@ $nfsen_config = array(
         'profile' => 'live',
     ),
     'db' => array(
-        'akumuli' => array(
+        'Akumuli' => array(
             //'host' => 'localhost',
             //'port' => 8282,
         ),
-        'rrd' => array()
+        'RRD' => array()
     ),
     'log' => array(
         'priority' => LOG_DEBUG,

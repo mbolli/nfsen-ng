@@ -31,7 +31,7 @@ class API {
         $args = array();
         // iterate over each parameter
         foreach($method->getParameters() as $arg) {
-            if(!isset($_REQUEST[$arg->name])) $this->error(400, 'Unknown parameter ' . $arg->name);
+            if(!isset($_REQUEST[$arg->name])) $this->error(400, 'Expected parameter ' . $arg->name);
 
             // make sure the data types are correct
             switch($arg->getType()) {
@@ -113,7 +113,6 @@ class API {
         $nfdump->setOption('-T', null); // output = flows
         $nfdump->setOption('-R', array($datestart, $dateend)); // date range
         $nfdump->setOption('-n', $top);
-        $nfdump->setOption('-c', $limit);
         $nfdump->setOption('-s', $for);
         $nfdump->setOption('-l', $limit); // todo -L for traffic, -l for packets
         if (isset($output['IPv6'])) $nfdump->setOption('-6', null);
@@ -145,7 +144,8 @@ class API {
         $sources = implode(':', $sources);
         $aggregate_command = '';
         foreach($aggregate as $aggregation => $option) {
-            if ($aggregation === 'bidirectional') {
+            if (empty($option)) continue;
+            if ($option === 'bidirectional') {
                 $aggregate_command = '-B';
                 break;
             } else {
@@ -161,7 +161,7 @@ class API {
         $nfdump->setOption('-o', $output['format']);
         if (!empty($sort)) $nfdump->setOption('-O tstart', $sort); // todo other sorting mechanisms?
         if (isset($output['IPv6'])) $nfdump->setOption('-6', $output['IPv6']);
-        $nfdump->setOption('-a', $aggregate_command);
+        if (!empty($aggregate_command)) $nfdump->setOption('-a', $aggregate_command);
         $nfdump->setFilter($filter);
 
         try {

@@ -4,7 +4,8 @@ namespace common;
 class NfDump {
     private $cfg = array(
         'env' => array(),
-        'options' => array(),
+        'option' => array(),
+        'format' => 'auto',
         'filter' => array()
     );
     private $clean = array();
@@ -38,10 +39,16 @@ class NfDump {
                 $this->cfg['option'][$option] = $this->convert_date_to_path($value[0], $value[1]);
                 break;
             case '-o':
-                if ($value !== 'auto') $this->cfg['option'][$option] = $value; // no need to specify output=auto
+                $this->cfg['format'] = $value; // store the output format for later usage
+                break;
+            case '-s':
+            case '-S':
+                $this->cfg['option'][$option] = $value;
+                $this->cfg['format'] = 'stats';
                 break;
             default:
                 $this->cfg['option'][$option] = $value;
+                $this->cfg['option']['-o'] = 'csv'; // always get parsable data todo user-selectable? calculations bps/bpp/pps not in csv
                 break;
         }
     }
@@ -76,6 +83,32 @@ class NfDump {
             case 254: throw new \Exception("NfDump: Error in filter syntax. " . implode(' ', $output)); break;
             case 250: throw new \Exception("NfDump: Internal error. " . implode(' ', $output)); break;
         }
+        
+        // slice csv (only return the fields actually wanted)
+        $fields_active = array();
+        $parsed_header = false;
+        $format = $this->get_output_format($this->cfg['format']);
+
+        foreach ($output as &$line) {
+
+            $line = str_getcsv($line, ',');
+
+            if (!is_array($format)) continue;
+            if (preg_match('/limit/', $line[0])) continue;
+            foreach ($line as $field_id => $field) {
+                // heading has the field identifiers. fill $fields_active with all active fields
+                if($parsed_header === false) {
+                    if (in_array($field, $format)) $fields_active[] = $field_id;
+                }
+
+                // remove field if not in $fields_active
+                if (!in_array($field_id, $fields_active)) unset($line[$field_id]);
+            }
+            $parsed_header = true;
+            $line = array_values($line);
+
+        }
+        
         return $output;
     }
 
@@ -123,5 +156,25 @@ class NfDump {
         if (!file_exists($pathstart) || !file_exists($pathend)) { } // todo something?
 
         return $pathstart . ':' . $pathend;
+    }
+
+    /**
+     * @param $format
+     * @return array|string
+     */
+    public function get_output_format($format) {
+        // todo calculations like bps/pps? flows? concatenate sa/sp to sap?
+        switch($format) {
+            // nfdump format: %ts %td %pr %sap %dap %pkt %byt %fl
+            case 'auto':
+            case 'line': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'opkt', 'ibyt', 'obyt');
+            // nfdump format: %ts %td %pr %sap %dap %flg %tos %pkt %byt %fl
+            case 'long': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'flg', 'stos', 'dtos', 'ipkt', 'opkt', 'ibyt', 'obyt');
+            // nfdump format: %ts %td %pr %sap %dap %pkt %byt %pps %bps %bpp %fl
+            case 'extended': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'opkt', 'ibyt', 'obyt');
+            // stats have another format
+            case 'stats': return array('ts', 'te', 'td', 'pr', 'val', 'fl', 'flP', 'ipkt', 'ipktP', 'ibyt', 'ibytP', 'ipps', 'ipbs', 'ibpp');
+            default: return $format;
+        }
     }
 }

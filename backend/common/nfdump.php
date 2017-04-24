@@ -63,18 +63,18 @@ class NfDump {
         $output = array();
         $return = "";
         $filter = (empty($this->cfg['filter'])) ? "" : " " . escapeshellarg($this->cfg['filter']);
-        $command = $this->cfg['env']['bin'] . " " . $this->flatten($this->cfg['option']) . $filter;
+        $command = $this->cfg['env']['bin'] . " " . $this->flatten($this->cfg['option']) . $filter . ' 2>&1';
         $this->d->log('Trying to execute ' . $command, LOG_INFO);
         exec($command, $output, $return);
 
         // prevent logging the command usage description
-        if (preg_match('/^usage/i', $output[0])) $output = array();
+        if (isset($output[0]) && preg_match('/^usage/i', $output[0])) $output = array();
 
         switch($return) {
             case 127: throw new \Exception("NfDump: Failed to start process. Is nfdump installed? " . implode(' ', $output)); break;
             case 255: throw new \Exception("NfDump: Initialization failed. " . implode(' ', $output)); break;
-            case 254: throw new \Exception("NfDump: Error in filter syntax." . implode(' ', $output)); break;
-            case 250: throw new \Exception("NfDump: Internal error." . implode(' ', $output)); break;
+            case 254: throw new \Exception("NfDump: Error in filter syntax. " . implode(' ', $output)); break;
+            case 250: throw new \Exception("NfDump: Internal error. " . implode(' ', $output)); break;
         }
         return $output;
     }
@@ -119,6 +119,8 @@ class NfDump {
 
         $pathstart = $start->format('Y/m/d') . DIRECTORY_SEPARATOR . 'nfcapd.' . $start->format('YmdHi');
         $pathend = $end->format('Y/m/d') . DIRECTORY_SEPARATOR . 'nfcapd.' . $start->format('YmdHi');
+
+        if (!file_exists($pathstart) || !file_exists($pathend)) { } // todo something?
 
         return $pathstart . ':' . $pathend;
     }

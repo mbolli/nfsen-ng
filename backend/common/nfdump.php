@@ -85,6 +85,7 @@ class NfDump {
         }
         
         // slice csv (only return the fields actually wanted)
+        if (!preg_match('/,/', $output[0])) return $output;
         $fields_active = array();
         $parsed_header = false;
         $format = $this->get_output_format($this->cfg['format']);

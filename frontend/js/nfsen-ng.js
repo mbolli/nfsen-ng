@@ -15,13 +15,16 @@ var graph_data;
 
 $(document).ready(function() {
 
-    // get config from backend
+    /*Get config from backend by sending a HTTP GET request to the API.
+    * The data that is returned contains the config needed by the frontend.
+    * The config contains ??? need to discuss with bollm6, don't get the woodoo magic :-)
+    * */
     $.get('../api/config', function(data, status) {
         if (status === 'success') {
             config = data;
             init();
         } else {
-            console.log('There probably was a problem with getting the config.');
+            console.log('There was probably a problem with getting the config.');
             // todo consequences?
         }
     });
@@ -106,8 +109,8 @@ $(document).ready(function() {
         updateSources(sources);
 
         graph_data = {
-            datestart: config.sources['gate'][0],
-            dateend: config.sources['gate'][1],
+            datestart: config.sources['swibi'][0], // hardcoding bad, michael!
+            dateend: config.sources['swibi'][1], // hardcoding bad, michael!
             type: 'flows',
             protocols: $('#graphsFilterProtocolDiv').find('input:checked').map(function() { return $(this).val(); }).get(),
             sources: $('#graphFilterSourceSelection').val(),
@@ -154,7 +157,7 @@ $(document).ready(function() {
                         }
                     );
                 } else {
-                    console.log('There probably was a problem with getting graph data.');
+                    console.log('There was probably a problem with getting graph data.');
                     // todo consequences?
                 }
             });
@@ -163,17 +166,27 @@ $(document).ready(function() {
 });
 
 
-// todo make it work without IDs
 function updateSources(sources) {
-    var filterViewsIds =["#graphFilterSourceSelection","#flowsFilterSourceSelection","#statsFilterSourceSelection"];
 
-    filterViewsIds.forEach(function(element){
-        $.each(sources, function(key, value) {
-            $(element)
-                .append($("<option></option>")
-                    .attr("value",value)
-                    .attr("selected", "selected")
-                    .text(value));
-        });
-    });
+    var filterViewsChildren = document.getElementById("filterDiv").children;
+
+    for (var i = 0; i < filterViewsChildren.length; i++)
+    {
+        var temp = filterViewsChildren[i].getElementsByTagName("select");
+
+        for (var j = 0; j < temp.length; j++)
+        {
+            if (temp[j].hasAttribute("data-filter-type"))
+            {
+                $.each(sources, function(key, value) {
+                    $(temp[j])
+                        .append($("<option></option>")
+                            .attr("value",value)
+                            .attr("selected", "selected")
+                            .text(value));
+                })
+            }
+        }
+
+    }
 }

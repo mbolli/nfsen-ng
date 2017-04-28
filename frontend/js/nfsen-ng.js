@@ -65,16 +65,8 @@ $(document).ready(function() {
 
     // update time range after source change
     $(document).on('change', '#graphFilterSourceSelection', function() {
-        var sources = $(this).val(), max = 0, min = 0;
+        var sources = $(this).val(), max = getLastDate(sources), min = getFirstDate(sources);
 
-        // calculate minimum and maximum for multiple sources
-        $.each(sources, function(id, source) {
-          var currentStart = config['sources'][source][0]*1000;
-          var currentEnd = config['sources'][source][1]*1000;
-          if (min === 0 || min > currentStart) min = currentStart;
-          if (max === 0 || max < currentEnd) max = currentEnd;
-        });
-        console.log('updated date range');
         date_range.update({
             min: min,
             max: max
@@ -112,15 +104,6 @@ $(document).ready(function() {
         if (typeof config !== 'object') console.log('Could not read config!');
 
         updateSources(Object.keys(config["sources"]));
-
-        // initial showing of graph
-        api_graph_options = {
-            datestart: config.sources['swi6'][0], // hardcoding bad, michael!
-            dateend: config.sources['swi6'][1], // hardcoding bad, michael!
-            type: 'flows',
-            protocols: $('#graphsFilterProtocolDiv').find('input:checked').map(function() { return $(this).val(); }).get(),
-            sources: $('#graphFilterSourceSelection').val(),
-        };
         updateGraph();
 
 
@@ -129,6 +112,16 @@ $(document).ready(function() {
          * and tries to display the received data in the graph.
          */
         function updateGraph() {
+            // initial showing of graph
+            var sources = $('#graphFilterSourceSelection').val();
+            api_graph_options = {
+                datestart: getFirstDate(sources)/1000,
+                dateend: getLastDate(sources)/1000,
+                type: 'flows',
+                protocols: $('#graphsFilterProtocolDiv').find('input:checked').map(function() { return $(this).val(); }).get(),
+                sources: sources,
+            };
+
             $.get('../api/graph', api_graph_options, function (data, status) {
                 if (status === 'success') {
 
@@ -179,6 +172,24 @@ $(document).ready(function() {
                 }
             });
         }
+    }
+
+    function getLastDate(sources) {
+        var max = 0;
+        $.each(sources, function(id, source) {
+            var currentEnd = config['sources'][source][1]*1000;
+            if (max === 0 || max < currentEnd) max = currentEnd;
+        });
+        return max;
+    }
+
+    function getFirstDate(sources) {
+        var min = 0;
+        $.each(sources, function(id, source) {
+            var currentStart = config['sources'][source][0]*1000;
+            if (min === 0 || min > currentStart) min = currentStart;
+        });
+        return min;
     }
 });
 

@@ -11,7 +11,7 @@
 var config;
 var date_range;
 var graph;
-var graph_data;
+var api_graph_options;
 
 $(document).ready(function() {
 
@@ -84,6 +84,7 @@ $(document).ready(function() {
     // initialize application
     function init() {
 
+        // initialize date range slider
         $('#date_range').ionRangeSlider({
             type: 'double',
             grid: true,
@@ -105,12 +106,12 @@ $(document).ready(function() {
         // todo probably a red half-transparent overlay over the whole page?
         if (typeof config !== 'object') console.log('Could not read config!');
 
-        var sources = Object.keys(config["sources"]);
-        updateSources(sources);
+        updateSources(Object.keys(config["sources"]));
 
-        graph_data = {
-            datestart: config.sources['swibi'][0], // hardcoding bad, michael!
-            dateend: config.sources['swibi'][1], // hardcoding bad, michael!
+        // initial showing of graph
+        api_graph_options = {
+            datestart: config.sources['swi6'][0], // hardcoding bad, michael!
+            dateend: config.sources['swi6'][1], // hardcoding bad, michael!
             type: 'flows',
             protocols: $('#graphsFilterProtocolDiv').find('input:checked').map(function() { return $(this).val(); }).get(),
             sources: $('#graphFilterSourceSelection').val(),
@@ -118,26 +119,34 @@ $(document).ready(function() {
         updateGraph();
 
 
+        /**
+         * reads options from api_graph_options, performs a request on the API
+         * and tries to display the received data in the graph.
+         */
         function updateGraph() {
-            $.get('../api/graph', graph_data, function (data, status) {
+            $.get('../api/graph', api_graph_options, function (data, status) {
                 if (status === 'success') {
 
                     // transform data to something Dygraph understands
                     var dygraph_data = [];
                     var labels = ['Date'];
-                    labels.push('test');
 
-                    console.log(data.data);
-
-                    // iterate over sources/protocols
-                    $.each(data.data, function() {
-                        // iterate over values
-                        $.each(this.data, function(datetime) {
-                            dygraph_data.push([ new Date(datetime*1000), parseFloat(this) ]);
-                        });
-                        //labels.push(this.legend);
+                    // iterate over labels
+                    $.each(data.legend, function(id, legend) {
+                        labels.push(legend);
                     });
-                    console.log(dygraph_data);
+
+                    // iterate over values
+                    $.each(data.data, function(datetime) {
+                        var pushable = [ new Date(datetime*1000) ];
+
+                        $.each(this, function(y, val) {
+                            pushable.push(val);
+                        });
+
+                        dygraph_data.push(pushable);
+                    });
+
                     graph = new Dygraph(
                         document.getElementById("flowDiv"),
                         dygraph_data, {

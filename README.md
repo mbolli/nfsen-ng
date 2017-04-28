@@ -67,10 +67,10 @@ The API is used by the frontend to retrieve data.
   * **Code:** 200
     **Content:** 
     ```json 
-    {"start":1490484600,"end":1490652000,"step":600,"data":[
-        {"legend":"flows_tcp_of_gate","data":{
-            "1490484600":33.998333333333,
-            "1490485200":37.005...
+    {"data": {
+      "1490562300":[2.1666666667,94.396666667],
+      "1490562600":[1.0466666667,72.976666667],...
+    },"start":1490562300,"end":1490590800,"step":300,"legend":["swi6_flows_tcp","gate_flows_tcp"]}
     ```
  
 * **Error Response:**

@@ -152,13 +152,31 @@ class RRD implements Datasource {
         $data = rrd_xport($options);
 
         if (!is_array($data)) return rrd_error();
-        foreach($data['data'] as &$source) {
-            // remove invalid numbers
-            $source['data'] = array_filter($source['data'], function($x) {
-                return !is_nan($x);
-            });
+
+        // remove invalid numbers and create processable array
+        $output = array(
+            'data' => array(),
+            'start' => $data['start'],
+            'end' => $data['end'],
+            'step' => $data['step'],
+            'legend' => array(),
+        );
+        foreach ($data['data'] as $source) {
+            $output['legend'][] = $source['legend'];
+            foreach ($source['data'] as $date => $measure) {
+                // ignore non-valid measures
+                if (is_nan($measure)) $measure = null;
+
+                // add measure to output array
+                if (array_key_exists($date, $output['data'])) {
+                    $output['data'][$date][] = $measure;
+                } else {
+                    $output['data'][$date] = array($measure);
+                }
+            }
         }
-        return $data;
+
+        return $output;
     }
 
     /**

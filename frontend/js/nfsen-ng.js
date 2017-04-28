@@ -199,3 +199,79 @@ function updateSources(sources) {
 
     }
 }
+
+function loadDdata() {
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function()
+    {
+        if (this.readyState == 4 && this.status == 200)
+        {
+            var newData = this.responseText;
+
+            fg.updateOptions({
+                /*title : 'Test Graph for time series : flows',
+                 ylabel : 'Flows',
+                 xlabel : 'Date / Time',
+                 visibility: [true, true, true, true, true],
+                 labelsKMB : true,
+                 labelsDiv : document.getElementById("flowStatusDiv"),
+                 labelsSeparateLines : true,
+                 legend : 'always',
+                 //stackedGraph : true,
+                 logscale : false,
+                 showRangeSelector: true*/
+                file : newData});
+        }
+    };
+    xhttp.open("GET", "http://localhost/thesis/csv/traffic_february.csv", true);
+    xhttp.send();
+}
+
+function updateVisibility(el) {
+    graph.setVisibility(parseInt(el.id), el.checked);
+}
+
+function adaptScaleToSelection(el) {
+    if(el.id=="logarithmicScaleBtn")
+    {
+        graph.updateOptions({
+            logscale : true
+        });
+    }
+    else
+    {
+        graph.updateOptions({
+            logscale : false
+        });
+    }
+
+}
+
+function adaptGraphTypeToSelection(el) {
+    if(el.id=="stackedGraphBtn")
+    {
+        graph.updateOptions({
+            stackedGraph : true,
+            fillGraph: true
+        });
+    }
+    else
+    {
+        graph.updateOptions({
+            stackedGraph : false,
+            fillGraph: false
+        });
+    }
+
+}
+
+function adaptGraphRollPeriodToSelection(el) {
+    if(el.value > 0)
+    {
+        graph.adjustRoll(el.value);
+    }
+    else
+    {
+        graph.adjustRoll(0);
+    }
+}

@@ -245,7 +245,7 @@
 
                 <div class="col-sm-8">
 
-                    <div id="flowDiv" style="width:1000px; height:400px;"></div>
+                    <div id="flowDiv" style="width: 100%;"></div>
 
                 </div>
 
@@ -253,20 +253,7 @@
 
                     <div id="flowStatusDiv"></div>
 
-                    <div id="dataOptions">
-                        <input type=checkbox id="0" checked onClick="updateVisibility(this)">
-                        <label for="0"> Flows (all)</label><br/>
-                        <input type=checkbox id="1" checked onClick="updateVisibility(this)">
-                        <label for="1"> Flows TCP</label><br/>
-                        <input type=checkbox id="2" checked onClick="updateVisibility(this)">
-                        <label for="2"> Flows UDP</label><br/>
-                        <input type=checkbox id="3" checked onClick="updateVisibility(this)">
-                        <label for="3"> Flows ICMP</label><br/>
-                        <input type=checkbox id="4" checked onClick="updateVisibility(this)">
-                        <label for="4"> Other Flows</label><br/>
-                    </div>
-
-                    <button type="button" onclick="loadDdata()">Load February !</button>
+                    <div id="dataOptions"></div>
 
                 </div>
 
@@ -283,86 +270,6 @@
             </div><!-- statsContentDiv  -->
 
         </div><!-- contentDiv  -->
-
-		<script type="text/javascript">
-
-			function loadDdata() {
-			    var xhttp = new XMLHttpRequest();
-			    xhttp.onreadystatechange = function()
-                {
-                    if (this.readyState == 4 && this.status == 200)
-                    {
-                        var newData = this.responseText;
-
-                        fg.updateOptions({
-                            /*title : 'Test Graph for time series : flows',
-                            ylabel : 'Flows',
-                            xlabel : 'Date / Time',
-                            visibility: [true, true, true, true, true],
-                            labelsKMB : true,
-                            labelsDiv : document.getElementById("flowStatusDiv"),
-                            labelsSeparateLines : true,
-                            legend : 'always',
-                            //stackedGraph : true,
-                            logscale : false,
-                            showRangeSelector: true*/
-                            file : newData});
-                    }
-			    };
-			    xhttp.open("GET", "http://localhost/thesis/csv/traffic_february.csv", true);
-			    xhttp.send();
-			}
-
-			function updateVisibility(el) {
-				graph.setVisibility(parseInt(el.id), el.checked);
-			}
-
-			function adaptScaleToSelection(el) {
-				if(el.id=="logarithmicScaleBtn")
-				{
-					graph.updateOptions({
-		              logscale : true
-		            });
-				}
-				else
-				{
-					graph.updateOptions({
-		              logscale : false
-		            });
-				}
-
-			}
-
-			function adaptGraphTypeToSelection(el) {
-				if(el.id=="stackedGraphBtn")
-				{
-					graph.updateOptions({
-		              stackedGraph : true,
-					  fillGraph: true
-		            });
-				}
-				else
-				{
-					graph.updateOptions({
-		              stackedGraph : false,
-					  fillGraph: false
-		            });
-				}
-
-			}
-
-            function adaptGraphRollPeriodToSelection(el) {
-                if(el.value > 0)
-                {
-                    graph.adjustRoll(el.value);
-                }
-                else
-                {
-                    graph.adjustRoll(0);
-                }
-            }
-
-		</script>
 
         <script src="js/nfsen-ng.js"></script>
 	</body>

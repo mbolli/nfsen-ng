@@ -1,7 +1,7 @@
 /* general */
 
 header {
-    margin-top: 10px;
+    margin-top: 1vw;
 }
 textarea {
     resize: none;
@@ -25,11 +25,12 @@ code, pre, .code {
 }
 
 #flowDiv .dygraph-title {
-    font-size: 36px;
+    font-size: 1.5rem;
+    text-transform: uppercase;
 }
 
 #flowDiv .dygraph-ylabel {
-    font-size: 18px;
+    font-size: 1.5rem;
 }
 
 .chart {

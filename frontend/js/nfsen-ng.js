@@ -55,7 +55,7 @@ $(document).ready(function() {
         });
     });
 
-    // set predefined time range
+    // set predefined time range like day/week/month/year
     $(document).on('change', 'input[name=range]', function() {
         date_range.update({
             from: date_range.options.to-$(this).val(),
@@ -79,6 +79,11 @@ $(document).ready(function() {
             min: min,
             max: max
         });
+    });
+
+    $(document).on('change', '#curves input', function(e) {
+        var $checkbox = $(e.target);
+        graph.setVisibility($checkbox.parent().index(), $($checkbox).is(':checked'));
     });
 
     // initialize application
@@ -132,8 +137,11 @@ $(document).ready(function() {
                     var labels = ['Date'];
 
                     // iterate over labels
+                    $('#curves').empty();
                     $.each(data.legend, function(id, legend) {
                         labels.push(legend);
+
+                        $('#curves').append('<label><input type="checkbox" checked> ' + legend + '</label>');
                     });
 
                     // iterate over values
@@ -148,7 +156,7 @@ $(document).ready(function() {
                     });
 
                     graph = new Dygraph(
-                        document.getElementById("flowDiv"),
+                        $('#flowDiv')[0],
                         dygraph_data, {
                             title : 'Test Graph for time series : flows',
                             //axisLabelFontSize : 15,
@@ -157,7 +165,7 @@ $(document).ready(function() {
                             xlabel : 'Date / Time',
                             visibility: [true, true, true, true, true],
                             labelsKMB : true,
-                            labelsDiv : document.getElementById("flowStatusDiv"),
+                            labelsDiv : $('#legend')[0],
                             labelsSeparateLines : true,
                             legend : 'always',
                             //stackedGraph : true,
@@ -198,37 +206,6 @@ function updateSources(sources) {
         }
 
     }
-}
-
-function loadDdata() {
-    var xhttp = new XMLHttpRequest();
-    xhttp.onreadystatechange = function()
-    {
-        if (this.readyState == 4 && this.status == 200)
-        {
-            var newData = this.responseText;
-
-            fg.updateOptions({
-                /*title : 'Test Graph for time series : flows',
-                 ylabel : 'Flows',
-                 xlabel : 'Date / Time',
-                 visibility: [true, true, true, true, true],
-                 labelsKMB : true,
-                 labelsDiv : document.getElementById("flowStatusDiv"),
-                 labelsSeparateLines : true,
-                 legend : 'always',
-                 //stackedGraph : true,
-                 logscale : false,
-                 showRangeSelector: true*/
-                file : newData});
-        }
-    };
-    xhttp.open("GET", "http://localhost/thesis/csv/traffic_february.csv", true);
-    xhttp.send();
-}
-
-function updateVisibility(el) {
-    graph.setVisibility(parseInt(el.id), el.checked);
 }
 
 function adaptScaleToSelection(el) {

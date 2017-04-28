@@ -33,6 +33,10 @@ code, pre, .code {
     font-size: 1.5rem;
 }
 
+#curves label {
+    display: block;
+}
+
 .chart {
     border: 1px dashed black;
     margin: 5px 5px 5px 50px;

@@ -28,6 +28,7 @@
         <div id="filterDiv" class="container-fluid tab-content">
             <label for="date_range">Date</label>
             <input type="text" id="date_range"/>
+
             <div id="graphsFilterDiv" data-view="graphs" class="filter row well well-sm">
 
                 <div id="graphsFilterDateDiv" class="col-sm-3">
@@ -78,18 +79,13 @@
 
                     <h3 class="text-center">Protocols</h3>
 
-                    <div class="checkbox">
-                        <label><input type="checkbox" name="protocol[]" value="tcp" checked>TCP</label>
+                    <div class="btn-group" data-toggle="buttons">
+                        <label class="btn"><input type="checkbox" name="protocol[]" value="tcp" checked>TCP</label>
+                        <label class="btn"><input type="checkbox" name="protocol[]" value="udp">UDP</label>
+                        <label class="btn"><input type="checkbox" name="protocol[]" value="icmp">ICMP</label>
+                        <label class="btn"><input type="checkbox" name="protocol[]" value="other">Others</label>
                     </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" name="protocol[]" value="udp">UDP</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" name="protocol[]" value="icmp">ICMP</label>
-                    </div>
-                    <div class="checkbox">
-                        <label><input type="checkbox" name="protocol[]" value="other">Others</label>
-                    </div>
+
 
                 </div><!-- graphsFilterProtocolDiv  -->
 
@@ -118,17 +114,6 @@
 
                     <h3 class="text-center">Date</h3>
 
-                    <div class="form-inline">
-                        <label for="flowsStartDate">From date :</label>
-                        <input type="text" id="flowsStartDate" class="form-control"
-                               placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
-                    </div>
-                    <div class="form-inline">
-                        <label for="flowsEndDate">To date :</label>
-                        <input type="text" id="flowsEndDate" class="form-control"
-                               placeholder="YYYY/MM/DD HH:MM:SS" maxlength="19" size="19">
-                    </div>
-
                     <button type="button" class="btn-primary">Last 24 hours</button>
                     <button type="button" class="btn-primary">Last week</button>
 
@@ -152,11 +137,89 @@
                         <textarea class="form-control" id="flowsFilterTextarea" rows="3"></textarea>
                     </div>
 
+                    <div class="btn-group">
+                        <div class="btn-group">
+
+                            <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+                                Filters
+                                <span class="caret"></span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a>Dynamically load</a></li>
+                                <li><a>Filters</a></li>
+                                <li><a>From Backend</a></li>
+                            </ul>
+                        </div>
+
+                        <button type="button" class="btn btn-default">Delete filter (server)</button>
+                        <button type="button" class="btn btn-default">Save filter (server)</button>
+                    </div>
+
                 </div><!-- flowsNFDUMPFilterDiv  -->
+
+                <div id="flowsFilterLimitDiv" class="col-sm-3">
+
+                    <h3 class="text-center">Limit</h3>
+
+                    <div class="form-group">
+                        <label for="flowsFilterLimitSelection">Flows :</label>
+                        <select id="flowsFilterLimitSelection" class="form-control">
+                            <option value='20'>20</option>
+                            <option value='50' >50</option>
+                            <option value='100' >100</option>
+                            <option value='500' >500</option>
+                            <option value='1000' >1000</option>
+                            <option value='10000' >10000</option>
+                        </select>
+                    </div>
+
+                </div><!-- flowsFilterLimitDiv  -->
 
                 <div id="flowsFilterAggregationDiv" class="col-sm-3">
 
                     <h3 class="text-center">Aggregation</h3>
+
+                    <div class="checkbox">
+                        <label><input type="checkbox" name="aggregation[]" value="biDirectional">Bi-directional</label>
+                    </div>
+
+                    <div class="checkbox">
+                        <label><input type="checkbox" name="aggregation[]" value="protocol">Protocol</label>
+                    </div>
+
+                    Source :
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-default">Source port</button>
+
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+                                Source IP
+                                <span class="caret"></span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a>Source IP</a></li>
+                                <li><a>Source subnets (IPv4)</a></li>
+                                <li><a>Source subnets (IPv6)</a></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    Destination :
+                    <div class="btn-group">
+                        <button type="checkbox" class="btn btn-default">Destination port</button>
+
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+                                Destination IP
+                                <span class="caret"></span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a>Destination IP</a></li>
+                                <li><a>Destination subnets (IPv4)</a></li>
+                                <li><a>Destination subnets (IPv6)</a></li>
+                            </ul>
+                        </div>
+                    </div>
 
                 </div><!-- flowsFilterAggregationDiv  -->
 
@@ -164,8 +227,25 @@
 
                     <h3 class="text-center">Output</h3>
 
+                    Sort by flows' start time
 
+                    Type :
+
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+                            Auto
+                            <span class="caret"></span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a>Auto</a></li>
+                            <li><a>Line</a></li>
+                            <li><a>Long</a></li>
+                            <li><a>Extended</a></li>
+                            <li><a>Custom</a></li>
+                        </ul>
+                    </div>
                 </div><!-- flowsFilterOutputDiv  -->
+
 
             </div><!-- flowsFilterDiv  -->
 
@@ -174,15 +254,6 @@
                 <div id="statsFilterDateDiv" class="col-sm-3">
 
                     <h3 class="text-center">Date</h3>
-
-                    <div class="form-group">
-                        <label for="startDate">From date :</label>
-                        <input type="text" class="form-control" id="startDate">
-                    </div>
-                    <div class="form-group">
-                        <label for="endDate">To date :</label>
-                        <input type="text" class="form-control" id="endDate">
-                    </div>
 
                     <button type="button" class="btn-primary">Last 24 hours</button>
                     <button type="button" class="btn-primary">Last week</button>
@@ -209,11 +280,148 @@
 
                 </div><!-- statsNFDUMPFilterDiv  -->
 
-                <div id="statsFilterOptionsDiv" class="col-sm-6">
+                <div id="statsFilterPropertiesDiv" class="col-sm-3">
+
+                    <h3 class="text-center">Statistic properties</h3>
+
+                    <div class="form-group">
+                        <label for="statsFilterTopSelection">Top records :</label>
+                        <select id="statsFilterTopSelection" class="form-control">
+                            <option value='10' selected>10</option>
+                            <option value='20'>20</option>
+                            <option value='50'>50</option>
+                            <option value='100'>100</option>
+                            <option value='200'>200</option>
+                            <option value='500'>500</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="statsFilterForSelection">Statistic for :</label>
+                        <select id="statsFilterForSelection" class="form-control">
+                            <!-- todo rename the values -->
+                            <option value='0' selected>Flow Records</option>
+                            <option value='1'>Any IP address</option>
+                            <option value='2'>Src IP address</option>
+                            <option value='3'>Dst IP address</option>
+                            <option value='4'>Any port</option>
+                            <option value='5'>Src port</option>
+                            <option value='6'>Dst port</option>
+                            <option value='7'>Any interface</option>
+                            <option value='8'>IN interface</option>
+                            <option value='9'>OUT interface</option>
+                            <option value='10'>Any AS</option>
+                            <option value='11'>Src AS</option>
+                            <option value='12'>Dst AS</option>
+                            <option value='13'>Next Hop IP</option>
+                            <option value='14'>Next Hop BGP IP</option>
+                            <option value='15'>Router IP</option>
+                            <option value='16'>Proto</option>
+                            <option value='17'>Direction</option>
+                            <option value='18'>Src TOS</option>
+                            <option value='19'>Dst TOS</option>
+                            <option value='20'>Tos</option>
+                            <option value='21'>Any Mask Bits</option>
+                            <option value='22'>Src Mask Bits</option>
+                            <option value='23'>Dst Mask Bits</option>
+                            <option value='24'>Any VLAN ID</option>
+                            <option value='25'>Src VLAN ID</option>
+                            <option value='26'>Dst VLAN ID</option>
+                            <option value='27'>Src MAC</option>
+                            <option value='28'>Dst MAC</option>
+                            <option value='29'>IN MAC</option>
+                            <option value='30'>OUT MAC</option>
+                            <option value='31'>IN src MAC</option>
+                            <option value='32'>OUT dst MAC</option>
+                            <option value='33'>IN dst MAC</option>
+                            <option value='34'>OUT src MAC</option>
+                            <option value='35'>MPLS Label 1</option>
+                            <option value='36'>MPLS Label 2</option>
+                            <option value='37'>MPLS Label 3</option>
+                            <option value='38'>MPLS Label 4</option>
+                            <option value='39'>MPLS Label 5</option>
+                            <option value='40'>MPLS Label 6</option>
+                            <option value='41'>MPLS Label 7</option>
+                            <option value='42'>MPLS Label 8</option>
+                            <option value='43'>MPLS Label 9</option>
+                            <option value='44'>MPLS Label 10</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="statsFilterOrderBySelection">Order by :</label>
+                        <select id="statsFilterOrderBySelection" class="form-control">
+                            <option value='flows' selected>Flows</option>
+                            <option value='packets' >Packets</option>
+                            <option value='bytes' >Bytes</option>
+                            <option value='packetsPerSecond' >Packets per second</option>
+                            <option value='bitsPerSecond' >Bits per second</option>
+                            <option value='bytesPerPacket' >Bytes per packet</option>
+                        </select>
+                    </div>
+
+                </div><!-- statsFilterPropertiesDiv  -->
+
+                <div id="statsFilterAggregationDiv" class="col-sm-3">
+
+                    <h3 class="text-center">Aggregation</h3>
+
+                    <div class="checkbox">
+                        <label><input type="checkbox" name="aggregation[]" value="biDirectional">Bi-directional</label>
+                    </div>
+
+                    <div class="checkbox">
+                        <label><input type="checkbox" name="aggregation[]" value="protocol">Protocol</label>
+                    </div>
+
+                    Source :
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-default">Source port</button>
+
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+                                Source IP
+                                <span class="caret"></span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a>Source IP</a></li>
+                                <li><a>Source subnets (IPv4)</a></li>
+                                <li><a>Source subnets (IPv6)</a></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    Destination :
+                    <div class="btn-group">
+                        <button type="checkbox" class="btn btn-default">Destination port</button>
+
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+                                Destination IP
+                                <span class="caret"></span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a>Destination IP</a></li>
+                                <li><a>Destination subnets (IPv4)</a></li>
+                                <li><a>Destination subnets (IPv6)</a></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                </div><!-- statsFilterAggregationDiv  -->
+
+                <div id="statsFilterOptionsDiv" class="col-sm-3">
 
                     <h3 class="text-center">Options</h3>
 
-                    </div><!-- statsFilterOptionsDiv  -->
+                    Limit :
+
+                    Full Ipv6 address
+
+
+                </div><!-- statsFilterOptionsDiv  -->
+
+
             </div><!-- statsFilterDiv  -->
 
         </div><!-- filterDiv  -->

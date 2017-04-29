@@ -16,7 +16,8 @@ code, pre, .code {
     display: none;
 }
 
-#filterDiv #graphsFilterDiv { /* show first filter */
+/* show first filter */
+#filterDiv #graphsFilterDiv {
     display: block;
 }
 
@@ -45,4 +46,13 @@ code, pre, .code {
 
 #viewList li h4 {
     margin-left: 10px;
+}
+
+label.btn {
+    outline: 1px solid black;
+}
+
+label.active, label.focus {
+    background: #5cb85c;
+    outline: 1px solid black;
 }

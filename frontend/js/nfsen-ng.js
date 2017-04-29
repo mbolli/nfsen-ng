@@ -151,18 +151,15 @@ $(document).ready(function() {
                     graph = new Dygraph(
                         $('#flowDiv')[0],
                         dygraph_data, {
-                            title : 'Test Graph for time series : flows',
-                            //axisLabelFontSize : 15,
+                            title : 'Test Graph for time series : flows',// todo this should be dynamic
                             labels: labels,
-                            ylabel : 'Flows',
-                            xlabel : 'Date / Time',
-                            visibility: [true, true, true, true, true],
+                            ylabel : 'Flows',// todo this should be dynamic
+                            xlabel : 'Date / Time',// todo this should be dynamic
+                            visibility: [true, true, true, true, true],// todo this should be dynamic
                             labelsKMB : true,
                             labelsDiv : $('#legend')[0],
                             labelsSeparateLines : true,
                             legend : 'always',
-                            //stackedGraph : true,
-                            //logscale : true,
                             showRangeSelector: true
                         }
                     );
@@ -193,28 +190,22 @@ $(document).ready(function() {
     }
 });
 
-
 function updateSources(sources) {
 
-    var filterViewsChildren = document.getElementById("filterDiv").children;
+    var filterViewsDivSelects = document.querySelectorAll("#filterDiv div select");
 
-    for (var i = 0; i < filterViewsChildren.length; i++)
+    for (var i = 0; i < filterViewsDivSelects.length; i++)
     {
-        var temp = filterViewsChildren[i].getElementsByTagName("select");
-
-        for (var j = 0; j < temp.length; j++)
-        {
-            if (temp[j].hasAttribute("data-filter-type"))
+        if (filterViewsDivSelects[i].hasAttribute("data-filter-type"))
             {
                 $.each(sources, function(key, value) {
-                    $(temp[j])
+                    $(filterViewsDivSelects[i])
                         .append($("<option></option>")
                             .attr("value",value)
                             .attr("selected", "selected")
                             .text(value));
                 })
             }
-        }
 
     }
 }

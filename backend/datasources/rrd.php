@@ -131,7 +131,7 @@ class RRD implements Datasource {
         if (empty($protocols)) $protocols = array('tcp', 'udp', 'icmp', 'other');
         if (empty($sources)) $sources = array('swi6', 'gate');
 
-        if (count($sources) === 1 && count($protocols) > 1) {
+        if (count($sources) === 1 && count($protocols) >= 1) {
             foreach ($protocols as $protocol) {
                 foreach ($sources as $source) {
                     $rrdFile = $this->get_data_path($source);
@@ -140,7 +140,7 @@ class RRD implements Datasource {
                     $options[] = 'XPORT:data' . $source . $protocol . ':' . $source . '_' . $type . '_' . $protocol;
                 }
             }
-        } elseif (count($sources) > 1 && count($protocols) === 1) {
+        } elseif (count($sources) >= 1 && count($protocols) === 1) {
             foreach ($sources as $source) {
                 $rrdFile = $this->get_data_path($source);
                 $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . ':AVERAGE';

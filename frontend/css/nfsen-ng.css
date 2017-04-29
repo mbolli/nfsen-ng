@@ -34,6 +34,11 @@ code, pre, .code {
     font-size: 1.5rem;
 }
 
+#flowDiv .dygraph-legend {
+    background-color: rgba(255, 255, 255, .8);
+    padding: 1vw;
+}
+
 #curves label {
     display: block;
 }
@@ -46,13 +51,4 @@ code, pre, .code {
 
 #viewList li h4 {
     margin-left: 10px;
-}
-
-label.btn {
-    outline: 1px solid black;
-}
-
-label.active, label.focus {
-    background: #5cb85c;
-    outline: 1px solid black;
 }

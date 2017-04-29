@@ -49,17 +49,9 @@
                         <label class="btn btn-default btn-xs"><input type="radio" name="range" autocomplete="off" value="29030400000">year</label>
                     </div>
 
-                    <label>Time slot :</label>
-                    <div class="form-inline">
-                        <button type="button" class="btn-primary">Previous slot</button>
-                            <select class="form-control" id="slotSelection">
-                                <option>Hour</option>
-                                <option>Day</option>
-                                <option>Week</option>
-                                <option>Month</option>
-                                <option>Year</option>
-                            </select>
-                        <button type="button" class="btn-primary">Next slot</button>
+                    <div class="btn-group" data-toggle="buttons">
+                        <button type="button" class="btn btn-default btn-xs prev">prev</button>
+                        <button type="button" class="btn btn-default btn-xs next">next</button>
                     </div>
 
 
@@ -67,7 +59,7 @@
 
                 <div id="graphsFilterSourcesDiv" class="col-sm-3">
 
-                    <h3 class="text-center">Sources</h3>
+                    <h3>Sources</h3>
 
                     <div class="form-group">
                         <select id="graphFilterSourceSelection" multiple class="form-control" data-filter-type="sources">
@@ -77,32 +69,24 @@
 
                 <div id="graphsFilterProtocolDiv" class="col-sm-3">
 
-                    <h3 class="text-center">Protocols</h3>
+                    <h3>Protocols</h3>
 
-                    <div class="btn-group" data-toggle="buttons">
-                        <label class="btn"><input type="checkbox" name="protocol[]" value="tcp" checked>TCP</label>
-                        <label class="btn"><input type="checkbox" name="protocol[]" value="udp">UDP</label>
-                        <label class="btn"><input type="checkbox" name="protocol[]" value="icmp">ICMP</label>
-                        <label class="btn"><input type="checkbox" name="protocol[]" value="other">Others</label>
+                    <div class="btn-group btn-group-lg" data-toggle="buttons">
+                        <label class="btn btn-default active"><input type="checkbox" name="protocol[]" value="tcp" checked>TCP</label>
+                        <label class="btn btn-default"><input type="checkbox" name="protocol[]" value="udp">UDP</label>
+                        <label class="btn btn-default"><input type="checkbox" name="protocol[]" value="icmp">ICMP</label>
+                        <label class="btn btn-default"><input type="checkbox" name="protocol[]" value="other">Others</label>
                     </div>
-
-
                 </div><!-- graphsFilterProtocolDiv  -->
 
                 <div id="graphsFilterDataTypeDiv" class="col-sm-3">
 
-                    <h3 class="text-center">Data Types</h3>
+                    <h3>Data Types</h3>
 
-                    <div class="btn-group" data-toggle="buttons">
-                        <label class="btn active">
-                            <input type="radio" name="graphDataType" autocomplete="off">Flows
-                        </label>
-                        <label class="btn">
-                            <input type="radio" name="graphDataType" autocomplete="off">Packets
-                        </label>
-                        <label class="btn">
-                            <input type="radio" name="graphDataType" autocomplete="off">Traffic
-                        </label>
+                    <div class="btn-group btn-group-lg" data-toggle="buttons">
+                        <label class="btn btn-default active"><input type="radio" name="datatype" autocomplete="off" value="flows" checked>Flows</label>
+                        <label class="btn btn-default"><input type="radio" name="datatype" autocomplete="off" value="packets">Packets</label>
+                        <label class="btn btn-default"><input type="radio" name="datatype" autocomplete="off" value="bytes">Traffic</label>
                     </div>
                 </div><!-- graphsFilterDataTypeDiv  -->
 
@@ -458,11 +442,7 @@
                 </div>
 
                 <div class="col-sm-2">
-
-                    <div id="legend"></div>
-
                     <div id="curves"></div>
-
                 </div>
 
             </div><!-- graphsContentDiv  -->

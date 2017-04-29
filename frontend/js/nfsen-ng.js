@@ -44,10 +44,10 @@ $(document).ready(function() {
         };
 
         $filter.each(showRightDiv);
-        $content.each(showRightDiv);
+        $content.each(showRightDiv); // todo put filter and content in same div?
     });
 
-    // update date range slider
+    // DATE RANGE SLIDER
     // set time window or time slot
     $(document).on('change', 'input[name=singledouble]', function() {
         date_range.update({
@@ -63,16 +63,27 @@ $(document).ready(function() {
         });
     });
 
-    // update time range after source change
+    // SOURCES
     $(document).on('change', '#graphFilterSourceSelection', function() {
         var sources = $(this).val(), max = getLastDate(sources), min = getFirstDate(sources);
 
+        // update time range
         date_range.update({
             min: min,
             max: max
         });
+
+        // update graph
+        updateGraph();
     });
 
+    // PROTOCOLS
+    $(document).on('change', '#graphsFilterProtocolDiv input', updateGraph);
+
+    // DATA TYPES
+    $(document).on('change', '#graphsFilterDataTypeDiv input', updateGraph);
+
+    // GRAPH VIEW
     $(document).on('change', '#curves input', function(e) {
         var $checkbox = $(e.target);
         graph.setVisibility($checkbox.parent().index(), $($checkbox).is(':checked'));
@@ -105,70 +116,82 @@ $(document).ready(function() {
 
         updateSources(Object.keys(config["sources"]));
         updateGraph();
+    }
 
+    /**
+     * reads options from api_graph_options, performs a request on the API
+     * and tries to display the received data in the graph.
+     */
+    function updateGraph() {
+        var sources = $('#graphFilterSourceSelection').val(),
+            type = $('#graphsFilterDataTypeDiv input:checked').val(),
+            protos = $('#graphsFilterProtocolDiv').find('input:checked').map(function() { return $(this).val(); }).get(),
+            title = type + ' for ';
 
-        /**
-         * reads options from api_graph_options, performs a request on the API
-         * and tries to display the received data in the graph.
-         */
-        function updateGraph() {
-            // initial showing of graph
-            var sources = $('#graphFilterSourceSelection').val();
-            api_graph_options = {
-                datestart: getFirstDate(sources)/1000,
-                dateend: getLastDate(sources)/1000,
-                type: 'flows',
-                protocols: $('#graphsFilterProtocolDiv').find('input:checked').map(function() { return $(this).val(); }).get(),
-                sources: sources,
-            };
+        // check if options valid to request new graph
+        if (protos.length === 0 || sources.length === 0) return;
+        if (protos.length > 1 && sources.length > 1) return; // todo annotate wrong input?
 
-            $.get('../api/graph', api_graph_options, function (data, status) {
-                if (status === 'success') {
+        // set options
+        api_graph_options = {
+            datestart: getFirstDate(sources)/1000,
+            dateend: getLastDate(sources)/1000,
+            type: type,
+            protocols: protos,
+            sources: sources,
+        };
 
-                    // transform data to something Dygraph understands
-                    var dygraph_data = [];
-                    var labels = ['Date'];
+        // set title
+        if (protos.length >= sources.length) title += 'protocols ' + protos.join(', ') + ' (' + sources[0] + ')';
+        else title += 'sources ' + sources.join(', ') + ' (' + protos[0] + ')';
 
-                    // iterate over labels
-                    $('#curves').empty();
-                    $.each(data.legend, function(id, legend) {
-                        labels.push(legend);
+        $.get('../api/graph', api_graph_options, function (data, status) {
+            if (status === 'success') {
 
-                        $('#curves').append('<label><input type="checkbox" checked> ' + legend + '</label>');
+                // transform data to something Dygraph understands
+                var dygraph_data = [];
+                var labels = ['Date'];
+
+                // iterate over labels
+                $('#curves').empty();
+                $.each(data.legend, function(id, legend) {
+                    labels.push(legend);
+
+                    $('#curves').append('<label><input type="checkbox" checked> ' + legend + '</label>');
+                });
+
+                // iterate over values
+                $.each(data.data, function(datetime) {
+                    var pushable = [ new Date(datetime*1000) ];
+
+                    $.each(this, function(y, val) {
+                        pushable.push(val);
                     });
 
-                    // iterate over values
-                    $.each(data.data, function(datetime) {
-                        var pushable = [ new Date(datetime*1000) ];
+                    dygraph_data.push(pushable);
+                });
 
-                        $.each(this, function(y, val) {
-                            pushable.push(val);
-                        });
-
-                        dygraph_data.push(pushable);
-                    });
-
-                    graph = new Dygraph(
-                        $('#flowDiv')[0],
-                        dygraph_data, {
-                            title : 'Test Graph for time series : flows',// todo this should be dynamic
-                            labels: labels,
-                            ylabel : 'Flows',// todo this should be dynamic
-                            xlabel : 'Date / Time',// todo this should be dynamic
-                            visibility: [true, true, true, true, true],// todo this should be dynamic
-                            labelsKMB : true,
-                            labelsDiv : $('#legend')[0],
-                            labelsSeparateLines : true,
-                            legend : 'always',
-                            showRangeSelector: true
-                        }
-                    );
-                } else {
-                    console.log('There was probably a problem with getting graph data.');
-                    // todo consequences?
-                }
-            });
-        }
+                graph = new Dygraph(
+                    $('#flowDiv')[0],
+                    dygraph_data, {
+                        title : title,
+                        labels: labels,
+                        ylabel : type.toUpperCase(),
+                        xlabel : 'TIME',
+                        visibility: [true, true, true, true, true],// todo this should be dynamic
+                        labelsKMB : true,
+                        labelsDiv : $('#legend')[0],
+                        labelsSeparateLines : true,
+                        legend : 'always',
+                        showRangeSelector: true
+                        // todo add current values of logscale, stackedGraph and fillGraph
+                    }
+                );
+            } else {
+                console.log('There was probably a problem with getting graph data.');
+                // todo consequences?
+            }
+        });
     }
 
     function getLastDate(sources) {

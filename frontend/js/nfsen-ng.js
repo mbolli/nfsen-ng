@@ -178,7 +178,7 @@ $(document).ready(function() {
                         labels: labels,
                         ylabel : type.toUpperCase(),
                         xlabel : 'TIME',
-                        visibility: [true, true, true, true, true],// todo this should be dynamic
+                        visibility: [true, true, true, true, true],// todo this should be dynamic based on what is received from the server
                         labelsKMB : true,
                         labelsDiv : $('#legend')[0],
                         labelsSeparateLines : true,

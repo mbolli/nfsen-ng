@@ -184,7 +184,7 @@ $(document).ready(function() {
                         labelsSeparateLines : true,
                         legend : 'always',
                         showRangeSelector: true
-                        // todo add current values of logscale, stackedGraph and fillGraph
+                        // todo add current values of logscale, stackedGraph and fillGraph // galld2 comment, not needed, all false by default on load
                     }
                 );
             } else {

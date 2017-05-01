@@ -8,11 +8,17 @@ ini_set('error_reporting', E_ALL);
 \common\Config::initialize();
 
 if (isset($_GET['request'])) {
+
+    // initialize api
     $api = new \api\API();
-} else {
-    ini_set('max_execution_time', 600);
+}
+
+if (isset($_GET['import'])) {
+
+    // perform import of last 3 years
+    ini_set('max_execution_time', 3600);
     $start = new DateTime();
-    $start->setDate(2017, 03, 25);
+    $start->setDate(date('Y')-3, date('m'), date('d'));
     $i = new \common\Import();
     $i->start($start);
 }

@@ -71,7 +71,7 @@ class NfDump {
         $return = "";
         $filter = (empty($this->cfg['filter'])) ? "" : " " . escapeshellarg($this->cfg['filter']);
         $command = $this->cfg['env']['bin'] . " " . $this->flatten($this->cfg['option']) . $filter . ' 2>&1';
-        $this->d->log('Trying to execute ' . $command, LOG_INFO);
+        $this->d->log('Trying to execute ' . $command, LOG_DEBUG);
         exec($command, $output, $return);
 
         // prevent logging the command usage description

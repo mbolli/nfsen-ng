@@ -69,19 +69,20 @@ class RRD implements Datasource {
      */
     public function create(string $source, bool $force = false) {
         $rrdFile = $this->get_data_path($source);
-        if(file_exists($rrdFile)) {
-            if($force === true) unlink($rrdFile);
+        if (file_exists($rrdFile)) {
+            if ($force === true) unlink($rrdFile);
             else {
                 $this->d->log('Error creating ' . $rrdFile, LOG_ERR);
                 return false;
             }
         }
 
-        $creator = new \RRDCreator($rrdFile, "now -3y", (60*5));
-        foreach($this->fields as $field) {
+        $starttime = (int)ceil((strtotime("3 years ago")/300)*300);
+        $creator = new \RRDCreator($rrdFile, $starttime, (60*5));
+        foreach ($this->fields as $field) {
             $creator->addDataSource($field . ":ABSOLUTE:300:U:U");
         }
-        foreach($this->layout as $rra) {
+        foreach ($this->layout as $rra) {
             $creator->addArchive("AVERAGE:" . $rra);
             $creator->addArchive("MAX:" . $rra);
         }
@@ -95,15 +96,17 @@ class RRD implements Datasource {
      * @return bool
      */
     public function write(array $data) {
+        if ($data['date_timestamp'] >= time()) return false;
         $rrdFile = $this->get_data_path($data['source']);
         $ts_last = rrd_last($rrdFile);
+
+        // return false if the database's last entry is newer
+        if ($data['date_timestamp'] <= $ts_last) return false;
+
         $nearest = (int)ceil(($data['date_timestamp'])/300)*300;
 
         // create new database if not existing
-        if(!file_exists($rrdFile)) $this->create($data['source']);
-
-        // return false if the database's last entry is newer
-        if($data['date_timestamp'] <= $ts_last) return false;
+        if (!file_exists($rrdFile)) $this->create($data['source']);
 
         // write data
         $updater = new \RRDUpdater($rrdFile);

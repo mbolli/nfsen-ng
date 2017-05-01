@@ -183,7 +183,8 @@ $(document).ready(function() {
                         labelsDiv : $('#legend')[0],
                         labelsSeparateLines : true,
                         legend : 'always',
-                        showRangeSelector: true
+                        showRangeSelector: true,
+                        dateWindow: [dygraph_data[0][0], dygraph_data[dygraph_data.length-1][0]],
                         // todo add current values of logscale, stackedGraph and fillGraph // galld2 comment, not needed, all false by default on load
                     }
                 );

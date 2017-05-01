@@ -115,7 +115,7 @@
 
                 <div id="flowsNFDUMPFilterDiv" class="col-sm-6">
 
-                    <h3>NFDUMP Filter :</h3>
+                    <h3>NFDUMP Filter</h3>
 
                     <div class="form-group">
                         <textarea class="form-control" id="flowsFilterTextarea" rows="3"></textarea>
@@ -141,7 +141,7 @@
 
                 </div><!-- flowsNFDUMPFilterDiv  -->
 
-                <div id="flowsFilterLimitDiv" class="col-sm-3">
+                <div id="flowsFilterLimitDiv" class="col-sm-2">
 
                     <h3>Limit</h3>
 
@@ -159,60 +159,41 @@
 
                 </div><!-- flowsFilterLimitDiv  -->
 
-                <div id="flowsFilterAggregationDiv" class="col-sm-6">
+                <div id="flowsFilterAggregationDiv" class="col-sm-8">
 
-                    <h3>Aggregation</h3>
-
-                    <div class="btn-group btn-group-md" data-toggle="buttons">
-
-                        <label class="btn btn-default"><input type="checkbox" name="aggregation[]" value="biDirectional">Bi-directional</label>
-                        <label class="btn btn-default"><input type="checkbox" name="aggregation[]" value="protocol">Protocol</label>
-                        <label class="btn btn-default"><input type="checkbox" name="aggregation[]" value="sourcePort">Source port</label>
-                        <label class="btn btn-default"><input type="checkbox" name="aggregation[]" value="destinationPort">Destination port</label>
-                        <label class="btn btn-default"><input type="checkbox" name="aggregation[]" value="sourceIPAddresses">Source IP address(es)</label>
-                        <label class="btn btn-default"><input type="checkbox" name="aggregation[]" value="destinationIPAddresses">Destination IP address(es)</label>
-                    </div>
-
+                    <h3>Aggregation</h3><!-- todo : check everywhere this "name" convention in divs and other elements-->
                     <div class="row">
-                        <div class="col-sm-6">
-                            <div class="btn-group">
-                                <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
-                                    Source IP
-                                    <span class="caret"></span>
-                                </button>
-                                <ul class="dropdown-menu">
-                                    <li><a>Source IP</a></li>
-                                    <li><a>Source subnets (IPv4)</a></li>
-                                    <li><a>Source subnets (IPv6)</a></li>
-                                </ul>
-                            </div>
+                        <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons">
+                            <label>Global :</label>
+                            <br>
+                            <label class="btn btn-default"><input type="checkbox" name="" value="biDirectional">Bi-directional</label>
+                            <label class="btn btn-default"><input type="checkbox" name="" value="protocol">Protocol</label>
+                            <label class="btn btn-default"><input type="checkbox" name="" value="sourcePort">Source port</label>
+                            <label class="btn btn-default"><input type="checkbox" name="" value="destinationPort">Destination port</label>
                         </div>
 
-                        <div class="col-sm-6">
-                            <div class="btn-group">
-                                <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
-                                    Destination IP
-                                    <span class="caret"></span>
-                                </button>
-                                <ul class="dropdown-menu">
-                                    <li><a>Destination IP</a></li>
-                                    <li><a>Destination subnets (IPv4)</a></li>
-                                    <li><a>Destination subnets (IPv6)</a></li>
-                                </ul>
-                            </div>
+                        <div class="btn-group-vertical btn-group-md col-sm-5" data-toggle="buttons">
+                            <label>Source :</label>
+                            <br>
+                            <label class="btn btn-default"><input type="radio" name="" value="srcip">Source IP</label>
+                            <label class="btn btn-default"><input type="radio" name="" value="srcip4sub">Source subnets (IPv4)</label>
+                            <label class="btn btn-default"><input type="radio" name="" value="srcip6sub">Source subnets (IPv6)</label>
                         </div>
 
-                    </div>
+                        <div class="btn-group-vertical btn-group-md col-sm-5" data-toggle="buttons">
+                            <label>Destination :</label>
+                            <br>
+                            <label class="btn btn-default"><input type="radio" name="" value="dstip">Destination IP</label>
+                            <label class="btn btn-default"><input type="radio" name="" value="dstip4sub">Destination subnets (IPv4)</label>
+                            <label class="btn btn-default"><input type="radio" name="" value="dstip6sub">Destination subnets (IPv6)</label>
+                        </div>
+                    </div> <!-- end row -->
 
                 </div><!-- flowsFilterAggregationDiv  -->
 
-                <div id="flowsFilterOutputDiv" class="col-sm-3">
+                <div id="flowsFilterOutputDiv" class="col-sm-2">
 
                     <h3>Output</h3>
-
-                    <div class="btn-group-vertical btn-group-md" data-toggle="buttons">
-                        <label class="btn btn-default"><input type="checkbox" value="sortByFlowStartTime">Sort by flows' start time</label>
-                    </div>
 
                     <div class="form-group">
                         <label for="flowsFilterOutputSelection">Output type :</label>
@@ -223,6 +204,11 @@
                             <option value='Extended'>Extended</option>
                             <option value='Custom'>Custom</option>
                         </select>
+                    </div>
+                    <br>
+
+                    <div class="btn-group-vertical btn-group-md" data-toggle="buttons">
+                        <label class="btn btn-default"><input type="checkbox" value="sortByFlowStartTime">Sort by flows' start time</label>
                     </div>
                 </div><!-- flowsFilterOutputDiv  -->
 
@@ -252,7 +238,7 @@
 
                 <div id="statsNFDUMPFilterDiv" class="col-sm-6">
 
-                    <h3>NFDUMP Filter :</h3>
+                    <h3>NFDUMP Filter</h3>
 
                     <div class="form-group">
                         <textarea class="form-control" id="statsFilterTextarea" rows="3"></textarea>

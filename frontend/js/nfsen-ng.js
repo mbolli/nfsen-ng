@@ -44,7 +44,8 @@ $(document).ready(function() {
         };
 
         $filter.each(showRightDiv);
-        $content.each(showRightDiv); // todo put filter and content in same div?
+        $content.each(showRightDiv); /* todo put filter and content in same div? // galld2 2017_05_01 :
+                                        good idea but if we need to be very careful because of some fix id's*/
     });
 
     // DATE RANGE SLIDER

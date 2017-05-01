@@ -35,6 +35,7 @@ class Import {
 
                 // if data for current date exists (e.g. .../2017/03/03)
                 if(file_exists($scan_path)) {
+                    $this->d->log('Scanning path ' . $scan_path, LOG_INFO);
                     $scan_files = scandir($scan_path);
 
                     foreach($scan_files as $file) {
@@ -48,7 +49,12 @@ class Import {
                             $nfdump->setOption("-I", null);
                             $nfdump->setOption("-r", $stats_path);
                             $nfdump->setOption("-M", $source);
-                            $input = $nfdump->execute();
+                            try {
+                                $input = $nfdump->execute();
+                            } catch (\Exception $e) {
+                                $this->d->log('Exception: ' . $e->getMessage(), LOG_WARNING);
+                                continue;
+                            }
 
                             $data = array();
 

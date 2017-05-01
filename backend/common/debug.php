@@ -5,11 +5,13 @@ namespace common;
 class Debug {
     private $stopwatch;
     private $debug;
+    private $cli;
     public static $_instance;
 
     function __construct() {
         $this->stopwatch = microtime(true);
         $this->debug = true;
+        $this->cli = (php_sapi_name() === 'cli');
     }
 
     public static function getInstance() {
@@ -27,6 +29,8 @@ class Debug {
     public function log(string $message, int $priority) {
         if (Config::$cfg['log']['priority'] >= $priority) {
             syslog($priority, 'nfsen-ng: ' . $message);
+
+            if ($this->cli === true && $this->debug === true) echo $message . "\n";
         }
     }
 
@@ -48,14 +52,21 @@ class Debug {
     public function dpr(...$mixed) {
         if($this->debug) {
             foreach($mixed as $param) {
-                echo "<br /><span style='color: green;'>" . $this->stopWatch() . "</span> ";
+                echo ($this->cli) ? "\n" . $this->stopWatch() : "<br /><span style='color: green;'>" . $this->stopWatch() . "</span> ";
                 if(is_array($param)) {
-                    echo "<pre>", var_dump($mixed), "</pre>";
+                    echo ($this->cli) ? print_r($mixed, true) : "<pre>", var_dump($mixed), "</pre>";
                 } else {
                     echo $param;
                 }
             }
         }
+    }
+
+    /**
+     * @param bool $debug
+     */
+    public function setDebug(bool $debug) {
+        $this->debug = $debug;
     }
 
 }

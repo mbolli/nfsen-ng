@@ -4,27 +4,36 @@ namespace common;
 class Import {
 
     private $d;
+    private $cli;
+    private $verbose;
+
+    private $days_total = 0;
 
 	function __construct() {
         $this->d = Debug::getInstance();
-        $this->d->dpr(Config::$cfg);
-        $this->d->dpr(Config::$path);
+        $this->cli = (php_sapi_name() === 'cli');
+        $this->verbose = false;
+        $this->d->setDebug($this->verbose);
 	}
 
 	function start(\DateTime $datestart) {
         $source_path = Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . Config::$cfg['nfdump']['profile'];
         $sources = @scandir($source_path);
         if(!is_array($sources)) throw new \Exception("Could not read nfdump profile directory " . $source_path);
+        $sources = array_diff($sources, array('..', '.'));
         $processed_sources = 0;
+
+        $this->days_total = $datestart->diff(new \DateTime())->format('%a')*count($sources);
+        if ($this->cli === true) echo "\n" . \vendor\ProgressBar::start($this->days_total, 'Processing ' . count($sources) . ' sources...');
 
         // process each source, e.g. gateway, mailserver, etc.
         foreach ($sources as $source) {
-
-            if(in_array($source, array('..', '.'))) continue;
             if(!in_array($source, Config::$cfg['general']['sources'])) {
                 $this->d->log('Found source ' . $source . ' which is not in the settings file.', LOG_INFO);
                 continue;
             }
+            if ($this->cli === true) echo "\nProcessing source " . $source . "...\n";
+
             $today = new \DateTime();
             $date = clone $datestart;
 
@@ -38,6 +47,8 @@ class Import {
                     $this->d->log('Scanning path ' . $scan_path, LOG_INFO);
                     $scan_files = scandir($scan_path);
 
+                    if ($this->cli === true) echo \vendor\ProgressBar::next(1, 'Scanning ' . $scan_path . "...");
+                    
                     foreach($scan_files as $file) {
                         if(!in_array($file, array(".", ".."))) {
 
@@ -83,6 +94,7 @@ class Import {
                     }
                 } else {
                     $this->d->dpr($scan_path . " does not exist!");
+                    if ($this->cli === true) echo \vendor\ProgressBar::next(1);
                 }
 
                 // set date to tomorrow
@@ -91,7 +103,16 @@ class Import {
             $processed_sources++;
         }
         if ($processed_sources === 0) $this->d->log('Import did not process any sources.', LOG_WARNING);
+        if ($this->cli === true) echo \vendor\ProgressBar::finish();
 
+    }
+
+    /**
+     * @param bool $verbose
+     */
+    public function setVerbose(bool $verbose) {
+        if ($verbose === true) $this->d->setDebug(true);
+        $this->verbose = $verbose;
     }
 }
 

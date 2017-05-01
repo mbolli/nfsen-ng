@@ -13,6 +13,7 @@ if (isset($_GET['request'])) {
     $api = new \api\API();
 }
 
+// todo if import is accessible from the outside, somehow make it more accessible?
 if (isset($_GET['import'])) {
 
     // perform import of last 3 years

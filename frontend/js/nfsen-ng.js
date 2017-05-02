@@ -163,13 +163,13 @@ $(document).ready(function() {
 
                 // iterate over values
                 $.each(data.data, function(datetime) {
-                    var pushable = [ new Date(datetime*1000) ];
+                    var position = [ new Date(datetime*1000) ];
 
                     $.each(this, function(y, val) {
-                        pushable.push(val);
+                        position.push(val);
                     });
 
-                    dygraph_data.push(pushable);
+                    dygraph_data.push(position);
                 });
 
                 graph = new Dygraph(
@@ -179,7 +179,6 @@ $(document).ready(function() {
                         labels: labels,
                         ylabel : type.toUpperCase(),
                         xlabel : 'TIME',
-                        visibility: [true, true, true, true, true],// todo this should be dynamic based on what is received from the server
                         labelsKMB : true,
                         labelsDiv : $('#legend')[0],
                         labelsSeparateLines : true,

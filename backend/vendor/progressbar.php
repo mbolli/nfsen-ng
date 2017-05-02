@@ -109,7 +109,7 @@ class progressbar
             $barContents .= '=';
         }
 
-        $percent = number_format($fractionComplete * 100, 0);
+        $percent = number_format($fractionComplete * 100, 1);
 
         $elapsed = $now - self::$start;
         if (self::$done) {

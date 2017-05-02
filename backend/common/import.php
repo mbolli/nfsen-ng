@@ -82,7 +82,8 @@ class Import {
                                     $data['source'] = $value;
                                 } elseif("Last" == $type) {
                                     $d = new \DateTime();
-                                    $d->setTimestamp((int)$value);
+                                    $d->setTimestamp((int)$value - ($value % 300));
+
                                     $data['date_iso'] = $d->format("Ymd\THis");
                                     $data['date_timestamp'] = $d->getTimestamp();
                                 }

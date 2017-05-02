@@ -77,10 +77,12 @@ class RRD implements Datasource {
             }
         }
 
-        $starttime = (int)ceil((strtotime("3 years ago")/300)*300);
+        $start = strtotime("3 years ago");
+        $starttime = (int)$start - ($start % 300);
+
         $creator = new \RRDCreator($rrdFile, $starttime, (60*5));
         foreach ($this->fields as $field) {
-            $creator->addDataSource($field . ":ABSOLUTE:300:U:U");
+            $creator->addDataSource($field . ":ABSOLUTE:600:U:U");
         }
         foreach ($this->layout as $rra) {
             $creator->addArchive("AVERAGE:" . $rra);
@@ -103,7 +105,7 @@ class RRD implements Datasource {
         // return false if the database's last entry is newer
         if ($data['date_timestamp'] <= $ts_last) return false;
 
-        $nearest = (int)ceil(($data['date_timestamp'])/300)*300;
+        $nearest = (int)$data['date_timestamp'] - ($data['date_timestamp'] % 300);
 
         // create new database if not existing
         if (!file_exists($rrdFile)) $this->create($data['source']);
@@ -124,8 +126,8 @@ class RRD implements Datasource {
     public function get_graph_data(int $start, int $end, array $sources, array $protocols, string $type) {
 
         $options = array(
-            '--start', $start,
-            '--end', $end,
+            '--start', $start-($start%300),
+            '--end', $end-($end%300),
             '--maxrows', 300, // number of values. works like the width value (in pixels) in rrd_graph
             // '--step', 1200, // by default, rrdtool tries to get data for each row. if you want rrdtool to get data at a one-hour resolution, set step to 3600.
             '--json'

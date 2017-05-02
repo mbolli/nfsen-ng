@@ -1,24 +1,26 @@
-/*
- config object {
-    "sources": {
-        "gate": [false,false], // timestamp start, timestamp end
-        "swi6": [false,false]
-    },
-    "stored_output_formats":[],
-    "stored_filters":[]
- }
- */
 var config;
+var dygraph_config;
+var dygraph_rangeselector_active;
+var dygraph_daterange;
+var dygraph;
 var date_range;
-var graph;
 var api_graph_options;
 
 $(document).ready(function() {
 
-    /*Get config from backend by sending a HTTP GET request to the API.
-    * The data that is returned contains the config needed by the frontend.
-    * The config contains ??? need to discuss with bollm6, don't get the woodoo magic :-)
-    * */
+    /**
+     * get config from backend
+     * example data:
+     *
+     *  config object {
+     *    "sources": {
+     *      "gate": [false,false], // timestamp start, timestamp end
+     *      "swi6": [false,false]
+     *    },
+     *    "stored_output_formats":[],
+     *    "stored_filters":[]
+     *  }
+     */
     $.get('../api/config', function(data, status) {
         if (status === 'success') {
             config = data;
@@ -29,7 +31,10 @@ $(document).ready(function() {
         }
     });
 
-    // navigation
+    /**
+     * navigation functionality
+     * show/hides the correct containers, which are identified by the data-view attribute
+     */
     $(document).on('click', 'header a', function() {
         var view = $(this).attr('data-view');
         var $filter = $('#filterDiv').find('div.filter');
@@ -48,15 +53,20 @@ $(document).ready(function() {
                                         good idea but if we need to be very careful because of some fix id's*/
     });
 
-    // DATE RANGE SLIDER
-    // set time window or time slot
+    /**
+     * date range slider
+     * set time window or time slot
+     */
     $(document).on('change', 'input[name=singledouble]', function() {
         date_range.update({
             type: $(this).val()
         });
     });
 
-    // set predefined time range like day/week/month/year
+    /**
+     * date range slider
+     * set predefined time range like day/week/month/year
+     */
     $(document).on('change', 'input[name=range]', function() {
         date_range.update({
             from: date_range.options.to-$(this).val(),
@@ -64,7 +74,10 @@ $(document).ready(function() {
         });
     });
 
-    // SOURCES
+    /**
+     * source filter
+     * reload the graph when the source selection changes
+     */
     $(document).on('change', '#graphFilterSourceSelection', function() {
         var sources = $(this).val(), max = getLastDate(sources), min = getFirstDate(sources);
 
@@ -74,23 +87,37 @@ $(document).ready(function() {
             max: max
         });
 
-        // update graph
+        // update dygraph
         updateGraph();
     });
 
-    // PROTOCOLS
+    /**
+     * protocols filter
+     * reload the graph when the protocol selection changes
+     */
     $(document).on('change', '#graphsFilterProtocolDiv input', updateGraph);
 
-    // DATA TYPES
+    /**
+     * datatype filter (flows/packets/bytes)
+     * reload the graph... you get it by now
+     */
     $(document).on('change', '#graphsFilterDataTypeDiv input', updateGraph);
 
-    // GRAPH VIEW
+    /**
+     * show/hide series in the dygraph
+     * todo: check if this is needed at all, as it's the same like in the filter
+     */
     $(document).on('change', '#curves input', function(e) {
         var $checkbox = $(e.target);
         dygraph.setVisibility($checkbox.parent().index(), $($checkbox).is(':checked'));
     });
 
-    // initialize application
+    /**
+     * initialize the frontend
+     * - set the select-list of sources
+     * - initialize the range slider
+     * - load the graph
+     */
     function init() {
 
         // check if we have a config
@@ -201,7 +228,7 @@ $(document).ready(function() {
 
     /**
      * reads options from api_graph_options, performs a request on the API
-     * and tries to display the received data in the graph.
+     * and tries to display the received data in the dygraph.
      */
     function updateGraph() {
         var sources = $('#graphFilterSourceSelection').val(),
@@ -290,6 +317,11 @@ $(document).ready(function() {
         });
     }
 
+    /**
+     * gets the latest last date of all sources from the config
+     * @param sources
+     * @returns {number}
+     */
     function getLastDate(sources) {
         var max = 0;
         $.each(sources, function(id, source) {
@@ -299,6 +331,11 @@ $(document).ready(function() {
         return max;
     }
 
+    /**
+     * gets the firstmost first date of all sources from the config
+     * @param sources
+     * @returns {number}
+     */
     function getFirstDate(sources) {
         var min = 0;
         $.each(sources, function(id, source) {
@@ -311,17 +348,17 @@ $(document).ready(function() {
 
 function updateSources(sources) {
 
-    var filterViewsDivSelects = document.querySelectorAll("#filterDiv div select");
+    var filterViewsDivSelects = document.querySelectorAll('#filterDiv div select');
 
     for (var i = 0; i < filterViewsDivSelects.length; i++)
     {
-        if (filterViewsDivSelects[i].hasAttribute("data-filter-type"))
+        if (filterViewsDivSelects[i].hasAttribute('data-filter-type'))
             {
                 $.each(sources, function(key, value) {
                     $(filterViewsDivSelects[i])
-                        .append($("<option></option>")
-                            .attr("value",value)
-                            .attr("selected", "selected")
+                        .append($('<option></option>')
+                            .attr('value',value)
+                            .attr('selected', 'selected')
                             .text(value));
                 })
             }
@@ -330,15 +367,15 @@ function updateSources(sources) {
 }
 
 function adaptScaleToSelection(el) {
-    if(el.id=="logarithmicScaleBtn")
+    if(el.id=='logarithmicScaleBtn')
     {
-        graph.updateOptions({
+        dygraph.updateOptions({
             logscale : true
         });
     }
     else
     {
-        graph.updateOptions({
+        dygraph.updateOptions({
             logscale : false
         });
     }
@@ -346,16 +383,16 @@ function adaptScaleToSelection(el) {
 }
 
 function adaptGraphTypeToSelection(el) {
-    if(el.id=="stackedGraphBtn")
+    if(el.id=='stackedGraphBtn')
     {
-        graph.updateOptions({
+        dygraph.updateOptions({
             stackedGraph : true,
             fillGraph: true
         });
     }
     else
     {
-        graph.updateOptions({
+        dygraph.updateOptions({
             stackedGraph : false,
             fillGraph: false
         });
@@ -366,10 +403,10 @@ function adaptGraphTypeToSelection(el) {
 function adaptGraphRollPeriodToSelection(el) {
     if(el.value > 0)
     {
-        graph.adjustRoll(el.value);
+        dygraph.adjustRoll(el.value);
     }
     else
     {
-        graph.adjustRoll(0);
+        dygraph.adjustRoll(0);
     }
 }

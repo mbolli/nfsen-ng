@@ -1,8 +1,10 @@
 var config;
+var dygraph;
 var dygraph_config;
+var dygraph_data;
 var dygraph_rangeselector_active;
 var dygraph_daterange;
-var dygraph;
+var dygraph_did_zoom;
 var date_range;
 var api_graph_options;
 
@@ -181,6 +183,7 @@ $(document).ready(function() {
 
                 // get the new detail window extents
                 dygraph_daterange = dygraph.xAxisRange();
+                dygraph_did_zoom = true;
                 updateGraph();
             });
         });
@@ -196,6 +199,7 @@ $(document).ready(function() {
 
             // extract new start/end from the x-axis
             dygraph_daterange = g.xAxisRange();
+            dygraph_did_zoom = true;
             updateGraph();
         };
         Dygraph.endPan = Dygraph.defaultInteractionModel.endPan; // see dygraph-interaction-model.js
@@ -213,6 +217,7 @@ $(document).ready(function() {
         //When zoom reset via double-click, there is no mouse-up event in chrome (maybe a bug?),
         //so we initiate data load directly
         if (dygraph.isZoomed('x') === false) {
+            dygraph_did_zoom = true;
             $(window).off('mouseup touchend'); //Cancel current event handler if any
             updateGraph();
             return;
@@ -221,8 +226,10 @@ $(document).ready(function() {
         //The zoom callback is called when zooming via mouse drag on graph area, as well as when
         //dragging the range selector bars. We only want to initiate dataload when mouse-drag zooming. The mouse
         //up handler takes care of loading data when dragging range selector bars.
-        if (!dygraph_rangeselector_active)
+        if (!dygraph_rangeselector_active) {
+            dygraph_did_zoom = true;
             updateGraph();
+        }
 
     }
 
@@ -256,9 +263,7 @@ $(document).ready(function() {
         $.get('../api/graph', api_graph_options, function (data, status) {
             if (status === 'success') {
 
-                // transform data to something Dygraph understands
-                var dygraph_data = [];
-                var labels = ['Date'];
+                var labels = ['Date'], index_to_insert = 0;
 
                 // iterate over labels
                 $('#series').empty();
@@ -268,6 +273,25 @@ $(document).ready(function() {
                     $('#series').append('<label><input type="checkbox" checked> ' + legend + '</label>');
                 });
 
+                // transform data to something Dygraph understands
+                console.log(dygraph_did_zoom);
+                if (dygraph_did_zoom !== true) {
+                    dygraph_data = [];
+                } else {
+                    console.log(dygraph_data.length);
+
+                    // delete data to replace
+                    $.each(dygraph_data, function(id) {
+                        if (typeof this[0] === 'undefined') return true;
+                        if (this[0].getTime() >= dygraph_daterange[0] && this[0].getTime() <= dygraph_daterange[1]) {
+                            if (index_to_insert === 0) index_to_insert = id-1;
+                            dygraph_data.splice(id, 1);
+                        }
+                    });
+                    console.log(dygraph_data.length);
+                    console.log(index_to_insert);
+                }
+
                 // iterate over values
                 $.each(data.data, function (datetime) {
                     var position = [new Date(datetime * 1000)];
@@ -276,8 +300,14 @@ $(document).ready(function() {
                         position.push(val);
                     });
 
-                    dygraph_data.push(position);
+                    if (dygraph_did_zoom !== true) {
+                        dygraph_data.push(position);
+                    } else {
+                        dygraph_data.splice(index_to_insert, 0, position);
+                        index_to_insert++;
+                    }
                 });
+                console.log(dygraph_data.length);
 
                 if (typeof dygraph === 'undefined') {
                     // initial dygraph config:
@@ -303,7 +333,7 @@ $(document).ready(function() {
                         // axes: axes,
                         labels: labels,
                         file: dygraph_data,
-                        dateWindow: [dygraph_data[0][0], dygraph_data[dygraph_data.length - 1][0]],
+                        dateWindow: [dygraph_daterange[0], dygraph_daterange[1]],
                     };
                     dygraph.updateOptions(dygraph_config);
 

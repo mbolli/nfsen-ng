@@ -31,16 +31,9 @@
 
             <div id="graphsFilterDiv" data-view="graphs" class="filter row well well-sm">
 
-                <div id="graphsFilterDateDiv" class="col-sm-3">
 
-                    <div class="btn-group" data-toggle="buttons">
-                        <label class="btn btn-default btn-xs active">
-                            <input type="radio" name="singledouble" autocomplete="off" value="double" checked>Time window
-                        </label>
-                        <label class="btn btn-default btn-xs">
-                            <input type="radio" name="singledouble" autocomplete="off" value="single">Time slot
-                        </label>
-                    </div>
+                <!-- try to put this div in the "static" place where the date slider is" -->
+                <div id="graphsFilterDateDiv" class="col-sm-3">
 
                     <div class="btn-group" data-toggle="buttons">
                         <label class="btn btn-default btn-xs"><input type="radio" name="range" autocomplete="off" value="86400000">24 hours</label>
@@ -168,24 +161,35 @@
                             <br>
                             <label class="btn btn-default"><input type="checkbox" name="" value="biDirectional">Bi-directional</label>
                             <label class="btn btn-default"><input type="checkbox" name="" value="protocol">Protocol</label>
+                        </div>
+
+                        <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons">
+                            <label>Port :</label>
+                            <br>
                             <label class="btn btn-default"><input type="checkbox" name="" value="sourcePort">Source port</label>
                             <label class="btn btn-default"><input type="checkbox" name="" value="destinationPort">Destination port</label>
                         </div>
 
-                        <div class="btn-group-vertical btn-group-md col-sm-5" data-toggle="buttons">
-                            <label>Source :</label>
+                        <div class="btn-group-vertical btn-group-md col-sm-3" data-toggle="buttons">
+                            <label>Source address(es) :</label>
                             <br>
                             <label class="btn btn-default"><input type="radio" name="" value="srcip">Source IP</label>
                             <label class="btn btn-default"><input type="radio" name="" value="srcip4sub">Source subnets (IPv4)</label>
                             <label class="btn btn-default"><input type="radio" name="" value="srcip6sub">Source subnets (IPv6)</label>
                         </div>
 
-                        <div class="btn-group-vertical btn-group-md col-sm-5" data-toggle="buttons">
-                            <label>Destination :</label>
+                        <div class="col-sm-1">
+                        </div>
+
+                        <div class="btn-group-vertical btn-group-md col-sm-3" data-toggle="buttons">
+                            <label>Destination address(es) :</label>
                             <br>
                             <label class="btn btn-default"><input type="radio" name="" value="dstip">Destination IP</label>
                             <label class="btn btn-default"><input type="radio" name="" value="dstip4sub">Destination subnets (IPv4)</label>
                             <label class="btn btn-default"><input type="radio" name="" value="dstip6sub">Destination subnets (IPv6)</label>
+                        </div>
+
+                        <div class="col-sm-1">
                         </div>
                     </div> <!-- end row -->
 
@@ -417,19 +421,27 @@
 
                     <div id="graphOptions">
                         <h4>Scale</h4>
-                        <input type=radio id="linearScaleBtn" checked name="scale" onchange=adaptScaleToSelection(this)>
-                        <label for="linearScaleBtn">Linear</label><br/>
-                        <input type=radio id="logarithmicScaleBtn" name="scale" onchange=adaptScaleToSelection(this)>
-                        <label for="logarithmicScaleBtn">Logarithmic</label><br/>
 
+                        <div class="btn-group" data-toggle="buttons">
+                        <label class="btn btn-default active">
+                            <input id="linearScaleBtn" type="radio" name="scale" autocomplete="off" checked onchange=adaptScaleToSelection(this)>Linear</label>
+                        <label class="btn btn-default">
+                            <input id="logarithmicScaleBtn" type="radio" name="scale" autocomplete="off" onchange=adaptScaleToSelection(this)>Logarithmic</label>
+                        </div>
+                        <br>
 
                         <h4>Type</h4>
-                        <input type=radio id="lineGraphBtn" checked name="type" onchange=adaptGraphTypeToSelection(this)>
-                        <label for="lineGraphBtn">Line</label><br/>
-                        <input type=radio id="stackedGraphBtn" name="type" onchange=adaptGraphTypeToSelection(this)>
-                        <label for="stackedGraphBtn">Stacked</label><br/>
+
+                        <div class="btn-group" data-toggle="buttons">
+                            <label class="btn btn-default active">
+                                <input id="lineGraphBtn" type="radio" name="type" autocomplete="off" checked onchange=adaptGraphTypeToSelection(this)>Line</label>
+                            <label class="btn btn-default">
+                                <input id="stackedGraphBtn" type="radio" name="type" autocomplete="off" onchange=adaptGraphTypeToSelection(this)>Stacked</label>
+                        </div>
+                        <br>
 
                         <h4>Roll period</h4>
+
                         <input type=text id="rollPeriod" onchange=adaptGraphRollPeriodToSelection(this)>
                     </div>
                 </div>

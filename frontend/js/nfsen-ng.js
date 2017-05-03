@@ -284,7 +284,7 @@ $(document).ready(function() {
                     dygraph_config = {
                         title: title,
                         labels: labels,
-                        ylabel: type.toUpperCase(),
+                        ylabel: type.toUpperCase() + '/s',
                         xlabel: 'TIME',
                         labelsKMB: true,
                         labelsDiv: $('#legend')[0],

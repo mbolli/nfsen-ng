@@ -107,7 +107,7 @@ $(document).ready(function() {
      * show/hide series in the dygraph
      * todo: check if this is needed at all, as it's the same like in the filter
      */
-    $(document).on('change', '#curves input', function(e) {
+    $(document).on('change', '#series input', function(e) {
         var $checkbox = $(e.target);
         dygraph.setVisibility($checkbox.parent().index(), $($checkbox).is(':checked'));
     });
@@ -261,11 +261,11 @@ $(document).ready(function() {
                 var labels = ['Date'];
 
                 // iterate over labels
-                $('#curves').empty();
+                $('#series').empty();
                 $.each(data.legend, function (id, legend) {
                     labels.push(legend);
 
-                    $('#curves').append('<label><input type="checkbox" checked> ' + legend + '</label>');
+                    $('#series').append('<label><input type="checkbox" checked> ' + legend + '</label>');
                 });
 
                 // iterate over values

@@ -25,27 +25,30 @@
             </ul>
         </header>
 
+        <h3>Date</h3>
+        <input type="text" id="date_range"/>
+
+        <div>
+            <br>
+            <div class="btn-group" data-toggle="buttons">
+                <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="86400000">24 hours</label>
+                <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="604800000">Week</label>
+                <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="2419200000">Month</label>
+                <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="29030400000">Year</label>
+            </div>
+
+            <div class="btn-group">
+                <button type="button" class="btn btn-default prev">Previous</button>
+                <button type="button" class="btn btn-default next">Next</button>
+            </div>
+        </div>
+        <br>
+
         <div id="filterDiv" class="container-fluid tab-content">
-            <label for="date_range">Date</label>
-            <input type="text" id="date_range"/>
 
             <div id="graphsFilterDiv" data-view="graphs" class="filter row well well-sm">
 
-
-                <!-- try to put this div in the "static" place where the date slider is" -->
-                <div id="graphsFilterDateDiv" class="col-sm-3">
-                    <div class="btn-group" data-toggle="buttons">
-                        <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="86400000">24 hours</label>
-                        <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="604800000">Week</label>
-                        <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="2419200000">Month</label>
-                        <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="29030400000">Year</label>
-                    </div>
-
-                    <div class="btn-group" data-toggle="buttons">
-                        <button type="button" class="btn btn-default prev">Previous</button>
-                        <button type="button" class="btn btn-default next">Next</button>
-                    </div>
-
+                <div id="graphsFilterGraphViewDiv" class="col-sm-3">
                     <h3>Graph view</h3>
 
                     <div class="form-group">
@@ -55,9 +58,7 @@
                             <option value='portGraph' disabled>Ports</option>
                         </select>
                     </div>
-
-
-                </div><!-- graphsFilterDateDiv  -->
+                </div><!-- graphsFilterGraphViewDiv  -->
 
                 <div id="graphsFilterSourcesDiv" class="col-sm-3">
 
@@ -95,15 +96,6 @@
             </div><!-- graphsFilterDiv  -->
 
             <div id="flowsFilterDiv" data-view="flows" class="filter row well well-sm">
-
-                <div id="flowsFilterDateDiv" class="col-sm-3">
-
-                    <h3>Date</h3>
-
-                    <button type="button" class="btn-primary">Last 24 hours</button>
-                    <button type="button" class="btn-primary">Last week</button>
-
-                </div><!-- flowsFilterDateDiv  -->
 
                 <div id="flowsFilterSourcesDiv" class="col-sm-3">
 
@@ -229,15 +221,6 @@
             </div><!-- flowsFilterDiv  -->
 
             <div id="statsFilterDiv" data-view="stats" class="filter row well well-sm">
-
-                <div id="statsFilterDateDiv" class="col-sm-3">
-
-                    <h3>Date</h3>
-
-                    <button type="button" class="btn-primary">Last 24 hours</button>
-                    <button type="button" class="btn-primary">Last week</button>
-
-                </div><!-- statsFilterDateDiv  -->
 
                 <div id="statsFilterSourcesDiv" class="col-sm-3">
 

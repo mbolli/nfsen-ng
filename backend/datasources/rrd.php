@@ -134,7 +134,7 @@ class RRD implements Datasource {
         );
 
         if (empty($protocols)) $protocols = array('tcp', 'udp', 'icmp', 'other');
-        if (empty($sources)) $sources = array('swi6', 'gate');
+        if (empty($sources)) $sources = \common\Config::$cfg['general']['sources'];
 
         if (count($sources) === 1 && count($protocols) >= 1) {
             foreach ($protocols as $protocol) {
@@ -148,7 +148,7 @@ class RRD implements Datasource {
         } elseif (count($sources) >= 1 && count($protocols) === 1) {
             foreach ($sources as $source) {
                 $rrdFile = $this->get_data_path($source);
-                $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . ':AVERAGE';
+                $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . '_' . $protocols[0] . ':AVERAGE';
                 //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
                 $options[] = 'XPORT:data' . $source . ':' . $source . '_' . $type . '_' . $protocols[0];
             }

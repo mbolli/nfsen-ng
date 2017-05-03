@@ -34,17 +34,26 @@
 
                 <!-- try to put this div in the "static" place where the date slider is" -->
                 <div id="graphsFilterDateDiv" class="col-sm-3">
-
                     <div class="btn-group" data-toggle="buttons">
-                        <label class="btn btn-default btn-xs"><input type="radio" name="range" autocomplete="off" value="86400000">24 hours</label>
-                        <label class="btn btn-default btn-xs"><input type="radio" name="range" autocomplete="off" value="604800000">week</label>
-                        <label class="btn btn-default btn-xs"><input type="radio" name="range" autocomplete="off" value="2419200000">month</label>
-                        <label class="btn btn-default btn-xs"><input type="radio" name="range" autocomplete="off" value="29030400000">year</label>
+                        <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="86400000">24 hours</label>
+                        <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="604800000">Week</label>
+                        <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="2419200000">Month</label>
+                        <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="29030400000">Year</label>
                     </div>
 
                     <div class="btn-group" data-toggle="buttons">
-                        <button type="button" class="btn btn-default btn-xs prev">prev</button>
-                        <button type="button" class="btn btn-default btn-xs next">next</button>
+                        <button type="button" class="btn btn-default prev">Previous</button>
+                        <button type="button" class="btn btn-default next">Next</button>
+                    </div>
+
+                    <h3>Graph view</h3>
+
+                    <div class="form-group">
+                        <select id="graphFilterViewSelection" class="form-control">
+                            <option value='multiProtocolsGraph'>One source, many protocols</option>
+                            <option value='multiSourcesGraph'>One protocol, many sources</option>
+                            <option value='portGraph' disabled>Ports</option>
+                        </select>
                     </div>
 
 

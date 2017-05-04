@@ -253,7 +253,7 @@ $(document).ready(function() {
             title = type + ' for ';
 
         // check if options valid to request new dygraph
-        if (protos.length === 0 || sources.length === 0) return;
+        if (sources.length === 0) return;
         if (protos.length > 1 && sources.length > 1) return; // todo annotate wrong input?
 
         // set options
@@ -261,7 +261,7 @@ $(document).ready(function() {
             datestart: dygraph_daterange ? parseInt(dygraph_daterange[0]/1000) : getFirstDate(sources)/1000,
             dateend: dygraph_daterange ? parseInt(dygraph_daterange[1]/1000) : getLastDate(sources)/1000,
             type: type,
-            protocols: protos,
+            protocols: protos.length > 0 ? protos : ['any'],
             sources: sources,
         };
 

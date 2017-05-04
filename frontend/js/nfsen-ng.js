@@ -274,26 +274,23 @@ $(document).ready(function() {
                 });
 
                 // transform data to something Dygraph understands
-                console.log('did zoom', dygraph_did_zoom);
                 if (dygraph_did_zoom !== true) {
+                    // reset dygraph data to get a fresh load
                     dygraph_data = [];
                 } else {
-                    console.log('data length', dygraph_data.length);
-                    var temp_data = dygraph_data.slice(0); // make array copy
                     // delete values to replace
-                    temp_data.forEach(function(val,id) {
-                        // console.log(val[0].toUTCString(), '>=', new Date(dygraph_daterange[0]).toUTCString(), val[0].getTime() >= dygraph_daterange[0], val[0].toUTCString(), '<=', new Date(dygraph_daterange[1]).toUTCString(),val[0].getTime() <= dygraph_daterange[1]);
-                        if (val[0].getTime() >= dygraph_daterange[0] && val[0].getTime() <= dygraph_daterange[1]) {
-                            if (index_to_insert === false) index_to_insert = id;
-                            console.log('deleted',id,val[0].toISOString());
-                            dygraph_data.splice(id, 1);
-                        } else { console.log(val[0].toISOString());}
-                    });
-                    console.log('data length', dygraph_data.length);
-                    console.log('index_to_insert', index_to_insert);
-                    dygraph_data.forEach(function(x,y) {console.log(y,x[0].toUTCString())});
-                    console.log('data length', dygraph_data.length);
+                    for (var i = 0; i < dygraph_data.length; i++) {
+                        if (dygraph_data[i][0].getTime() >= dygraph_daterange[0] && dygraph_data[i][0].getTime() <= dygraph_daterange[1]) {
+                            // set start index for the new values
+                            if (index_to_insert === false) index_to_insert = i;
 
+                            // delete current element from array
+                            dygraph_data.splice(i, 1);
+
+                            // decrease current index, as all array elements moved left on deletion
+                            i--;
+                        }
+                    }
                 }
 
                 // iterate over API result
@@ -305,14 +302,15 @@ $(document).ready(function() {
                         position.push(val);
                     });
 
+                    // push position array to dygraph data
                     if (dygraph_did_zoom !== true) {
                         dygraph_data.push(position);
                     } else {
+                        // when zoomed in, insert position array at the start index of replacement data
                         dygraph_data.splice(index_to_insert, 0, position);
-                        index_to_insert++;
+                        index_to_insert++; // increase index, or data will get inserted backwards
                     }
                 });
-                console.log('data length', dygraph_data.length);
 
                 if (typeof dygraph === 'undefined') {
                     // initial dygraph config:

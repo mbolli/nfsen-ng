@@ -263,7 +263,7 @@ $(document).ready(function() {
         $.get('../api/graph', api_graph_options, function (data, status) {
             if (status === 'success') {
 
-                var labels = ['Date'], index_to_insert = 0;
+                var labels = ['Date'], index_to_insert = false;
 
                 // iterate over labels
                 $('#series').empty();
@@ -274,29 +274,34 @@ $(document).ready(function() {
                 });
 
                 // transform data to something Dygraph understands
-                console.log(dygraph_did_zoom);
+                console.log('did zoom', dygraph_did_zoom);
                 if (dygraph_did_zoom !== true) {
                     dygraph_data = [];
                 } else {
-                    console.log(dygraph_data.length);
-
-                    // delete data to replace
-                    $.each(dygraph_data, function(id) {
-                        if (typeof this[0] === 'undefined') return true;
-                        if (this[0].getTime() >= dygraph_daterange[0] && this[0].getTime() <= dygraph_daterange[1]) {
-                            if (index_to_insert === 0) index_to_insert = id-1;
+                    console.log('data length', dygraph_data.length);
+                    var temp_data = dygraph_data.slice(0); // make array copy
+                    // delete values to replace
+                    temp_data.forEach(function(val,id) {
+                        // console.log(val[0].toUTCString(), '>=', new Date(dygraph_daterange[0]).toUTCString(), val[0].getTime() >= dygraph_daterange[0], val[0].toUTCString(), '<=', new Date(dygraph_daterange[1]).toUTCString(),val[0].getTime() <= dygraph_daterange[1]);
+                        if (val[0].getTime() >= dygraph_daterange[0] && val[0].getTime() <= dygraph_daterange[1]) {
+                            if (index_to_insert === false) index_to_insert = id;
+                            console.log('deleted',id,val[0].toISOString());
                             dygraph_data.splice(id, 1);
-                        }
+                        } else { console.log(val[0].toISOString());}
                     });
-                    console.log(dygraph_data.length);
-                    console.log(index_to_insert);
+                    console.log('data length', dygraph_data.length);
+                    console.log('index_to_insert', index_to_insert);
+                    dygraph_data.forEach(function(x,y) {console.log(y,x[0].toUTCString())});
+                    console.log('data length', dygraph_data.length);
+
                 }
 
-                // iterate over values
-                $.each(data.data, function (datetime) {
+                // iterate over API result
+                $.each(data.data, function (datetime, series) {
                     var position = [new Date(datetime * 1000)];
 
-                    $.each(this, function (y, val) {
+                    // add all serie values to position array
+                    $.each(series, function (y, val) {
                         position.push(val);
                     });
 
@@ -307,7 +312,7 @@ $(document).ready(function() {
                         index_to_insert++;
                     }
                 });
-                console.log(dygraph_data.length);
+                console.log('data length', dygraph_data.length);
 
                 if (typeof dygraph === 'undefined') {
                     // initial dygraph config:

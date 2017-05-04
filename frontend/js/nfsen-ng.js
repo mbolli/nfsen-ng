@@ -275,7 +275,7 @@ $(document).ready(function() {
             if (sources.length > 5) title += sources.length + ' sources';
             else title += 'source' + s + ' ' + sources.join(', ');
 
-            title += ' (' + protos[0] + ')';
+            title += ' (' + (protos.length === 0 ? 'any' : protos[0]) + ')';
         }
 
         // make actual request

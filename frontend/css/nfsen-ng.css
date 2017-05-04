@@ -34,9 +34,12 @@ code, pre, .code {
     font-size: 1.5rem;
 }
 
-#flowDiv .dygraph-legend {
-    background-color: rgba(255, 255, 255, .8);
-    padding: 1vw;
+#legend span {
+    padding: .2rem;
+}
+
+#legend span.highlight {
+    background-color: #eee;
 }
 
 #series label {

@@ -140,8 +140,8 @@ $(document).ready(function() {
         $('#date_range').ionRangeSlider({
             type: 'double',
             grid: true,
-            min: 1482828600000, // todo set dates with some logic
-            max: 1490604300000,
+            min: 1482828600000, // todo set date with some logic
+            max: new Date(),
             force_edges: true,
             drag_interval: true,
             prettify: function(ut) {
@@ -149,7 +149,8 @@ $(document).ready(function() {
                 return date.toDateString();
             },
             onFinish: function(data) {
-                console.log(data);
+                dygraph_daterange = [new Date(data.from), new Date(data.to)];
+                updateGraph();
             }
         });
         date_range = $('#date_range').data('ionRangeSlider');
@@ -165,18 +166,18 @@ $(document).ready(function() {
         var $rangeEl = $('#flowDiv').find('.dygraph-rangesel-fgcanvas, .dygraph-rangesel-zoomhandle');
 
         // uninstall existing handler if already installed
-        $rangeEl.off('mousedown touchstart');
+        $rangeEl.off('mousedown.dygraph touchstart.dygraph');
 
         // install new mouse down handler
-        $rangeEl.on('mousedown touchstart', function () {
+        $rangeEl.on('mousedown.dygraph touchstart.dygraph', function () {
 
             // track that mouse is down on range selector
             dygraph_rangeselector_active = true;
 
             // setup mouse up handler to initiate new data load
-            $(window).off('mouseup touchend'); //cancel any existing
-            $(window).on('mouseup touchend', function () {
-                $(window).off('mouseup touchend');
+            $(window).off('mouseup.dygraph touchend.dygraph'); //cancel any existing
+            $(window).on('mouseup.dygraph touchend.dygraph', function () {
+                $(window).off('mouseup.dygraph touchend.dygraph');
 
                 // mouse no longer down on range selector
                 dygraph_rangeselector_active = false;
@@ -257,9 +258,19 @@ $(document).ready(function() {
         };
 
         // set title
-        if (protos.length >= sources.length) title += 'protocols ' + protos.join(', ') + ' (' + sources[0] + ')';
-        else title += 'sources ' + sources.join(', ') + ' (' + protos[0] + ')';
+        if (protos.length > sources.length) {
+            title += 'protocols ' + protos.join(', ') + ' (' + sources[0] + ')';
+        } else {
+            var s = sources.length > 1 ? 's' : ''; // plural
 
+            // if more than 5, only show number of sources instead of names
+            if (sources.length > 5) title += sources.length + ' sources';
+            else title += 'source' + s + ' ' + sources.join(', ');
+
+            title += ' (' + protos[0] + ')';
+        }
+
+        // make actual request
         $.get('../api/graph', api_graph_options, function (data, status) {
             if (status === 'success') {
 
@@ -336,19 +347,28 @@ $(document).ready(function() {
                         // todo add current values of logscale, stackedGraph and fillGraph // galld2 comment, not needed, all false by default on load
                     };
                     dygraph = new Dygraph($('#flowDiv')[0], dygraph_data, dygraph_config);
+                    init_dygraph_mods();
+
                 } else {
                     // update dygraph config
                     dygraph_config = {
                         // series: series,
                         // axes: axes,
+                        title: title,
                         labels: labels,
                         file: dygraph_data,
-                        dateWindow: [dygraph_daterange[0], dygraph_daterange[1]],
                     };
-                    dygraph.updateOptions(dygraph_config);
 
+                    if (dygraph_did_zoom === true) {
+                        dygraph_config.dateWindow = [dygraph_daterange[0], dygraph_daterange[1]];
+                    } else {
+                        // reset date window if we want to show entirely new data
+                        dygraph_config.dateWindow = null;
+                    }
+
+                    dygraph.updateOptions(dygraph_config);
                 }
-                init_dygraph_mods();
+                dygraph_did_zoom = false;
 
             } else {
                 console.log('There was probably a problem with getting dygraph data.');

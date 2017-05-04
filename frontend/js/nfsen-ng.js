@@ -57,11 +57,15 @@ $(document).ready(function() {
 
     /**
      * date range slider
-     * set time window or time slot
+     * set next/previous time slot
      */
-    $(document).on('change', 'input[name=singledouble]', function() {
+    $(document).on('click', '#date_slot_nav button', function() {
+        var slot = parseInt($('#date_slot').find('input[name=range]:checked').val()),
+            prev = $(this).hasClass('prev');
+        // todo check for edge cases
         date_range.update({
-            type: $(this).val()
+            from: prev === true ? date_range.options.from-slot : date_range.options.from+slot,
+            to: prev === true ? date_range.options.to-slot : date_range.options.to+slot
         });
     });
 
@@ -149,6 +153,10 @@ $(document).ready(function() {
                 return date.toDateString();
             },
             onFinish: function(data) {
+                dygraph_daterange = [new Date(data.from), new Date(data.to)];
+                updateGraph();
+            },
+            onUpdate: function(data) {
                 dygraph_daterange = [new Date(data.from), new Date(data.to)];
                 updateGraph();
             }

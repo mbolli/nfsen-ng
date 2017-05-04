@@ -325,7 +325,14 @@ $(document).ready(function() {
                         legend: 'always',
                         showRangeSelector: true,
                         dateWindow: [dygraph_data[0][0], dygraph_data[dygraph_data.length - 1][0]],
-                        zoomCallback: dygraph_zoom
+                        zoomCallback: dygraph_zoom,
+                        highlightSeriesOpts: {
+                            strokeWidth: 2,
+                            strokeBorderWidth: 1,
+                            highlightCircleSize: 5
+                        },
+                        rangeSelectorPlotStrokeColor: '#337ab7',
+                        rangeSelectorPlotFillColor: '#337ab7'
                         // todo add current values of logscale, stackedGraph and fillGraph // galld2 comment, not needed, all false by default on load
                     };
                     dygraph = new Dygraph($('#flowDiv')[0], dygraph_data, dygraph_config);

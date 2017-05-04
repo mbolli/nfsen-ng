@@ -138,11 +138,12 @@ class RRD implements Datasource {
 
         if (count($sources) === 1 && count($protocols) >= 1) {
             foreach ($protocols as $protocol) {
+                $proto = ($protocol === 'any') ? '' : '_' . $protocol;
                 foreach ($sources as $source) {
                     $rrdFile = $this->get_data_path($source);
-                    $options[] = 'DEF:data' . $source . $protocol . '=' . $rrdFile . ':' . $type . '_' . $protocol . ':AVERAGE';
+                    $options[] = 'DEF:data' . $source . $protocol . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
                     //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
-                    $options[] = 'XPORT:data' . $source . $protocol . ':' . $source . '_' . $type . '_' . $protocol;
+                    $options[] = 'XPORT:data' . $source . $protocol . ':' . $source . '_' . $type . $proto;
                 }
             }
         } elseif (count($sources) >= 1 && count($protocols) === 1) {

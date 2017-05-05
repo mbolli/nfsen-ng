@@ -277,8 +277,8 @@ $(document).ready(function() {
         } else {
             var s = sources.length > 1 ? 's' : ''; // plural
 
-            // if more than 5, only show number of sources instead of names
-            if (sources.length > 5) title += sources.length + ' sources';
+            // if more than 3, only show number of sources instead of names
+            if (sources.length > 3) title += sources.length + ' sources';
             else title += 'source' + s + ' ' + sources.join(', ');
 
             title += ' (' + (protos.length === 0 ? 'any' : protos[0]) + ')';

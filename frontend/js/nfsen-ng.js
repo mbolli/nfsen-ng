@@ -62,7 +62,9 @@ $(document).ready(function() {
     $(document).on('click', '#date_slot_nav button', function() {
         var slot = parseInt($('#date_slot').find('input[name=range]:checked').val()),
             prev = $(this).hasClass('prev');
-        // todo check for edge cases
+        if (isNaN(slot)) slot = date_range.options.to-date_range.options.from;
+        if (slot > (date_range.options.max-date_range.options.min)/2) return;
+
         date_range.update({
             from: prev === true ? date_range.options.from-slot : date_range.options.from+slot,
             to: prev === true ? date_range.options.to-slot : date_range.options.to+slot
@@ -76,7 +78,7 @@ $(document).ready(function() {
     $(document).on('change', 'input[name=range]', function() {
         date_range.update({
             from: date_range.options.to-$(this).val(),
-            to: date_range.options.to,
+            to: date_range.options.to
         });
     });
 
@@ -151,6 +153,10 @@ $(document).ready(function() {
             prettify: function(ut) {
                 var date = new Date(ut);
                 return date.toDateString();
+            },
+            onChange: function(data) {
+                $('#date_slot').find('label.active').removeClass('active').find('input').attr('checked', false);
+                // somehow still has old from/to
             },
             onFinish: function(data) {
                 dygraph_daterange = [new Date(data.from), new Date(data.to)];

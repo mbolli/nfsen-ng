@@ -99,7 +99,7 @@ class RRD implements Datasource {
      */
     public function write(array $data) {
         if ($data['date_timestamp'] >= time()) return false;
-        $rrdFile = $this->get_data_path($data['source']);
+        $rrdFile = $this->get_data_path($data['source'], $data['port']);
         $ts_last = rrd_last($rrdFile);
 
         // return false if the database's last entry is newer
@@ -108,7 +108,8 @@ class RRD implements Datasource {
         $nearest = (int)$data['date_timestamp'] - ($data['date_timestamp'] % 300);
 
         // create new database if not existing
-        if (!file_exists($rrdFile)) $this->create($data['source']);
+        $name = ($data['port'] === 0) ? $data['source'] : $data['source'] . $data['port'];
+        if (!file_exists($rrdFile)) $this->create($name);
 
         // write data
         $updater = new \RRDUpdater($rrdFile);
@@ -120,10 +121,12 @@ class RRD implements Datasource {
      * @param int $end
      * @param array $sources
      * @param array $protocols
+     * @param array $ports
      * @param string $type flows/packets/traffic
+     * @param string $display protocols/sources/ports
      * @return array|string
      */
-    public function get_graph_data(int $start, int $end, array $sources, array $protocols, string $type) {
+    public function get_graph_data(int $start, int $end, array $sources, array $protocols, array $ports, string $type = 'flows', string $display = 'sources') {
 
         $options = array(
             '--start', $start-($start%300),
@@ -135,25 +138,32 @@ class RRD implements Datasource {
 
         if (empty($protocols)) $protocols = array('tcp', 'udp', 'icmp', 'other');
         if (empty($sources)) $sources = \common\Config::$cfg['general']['sources'];
+        if (empty($ports)) $ports = \common\Config::$cfg['general']['ports'];
 
-        if (count($sources) === 1 && count($protocols) >= 1) {
-            foreach ($protocols as $protocol) {
-                $proto = ($protocol === 'any') ? '' : '_' . $protocol;
+        switch ($display) {
+            case 'protocols':
+                foreach ($protocols as $protocol) {
+                    $rrdFile = $this->get_data_path($sources[0]);
+                    $proto = ($protocol === 'any') ? '' : '_' . $protocol;
+                    $options[] = 'DEF:data' . $sources[0] . $protocol . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
+                    $options[] = 'XPORT:data' . $sources[0] . $protocol . ':' . $sources[0] . '_' . $type . $proto;
+                }
+                break;
+            case 'sources':
                 foreach ($sources as $source) {
                     $rrdFile = $this->get_data_path($source);
-                    $options[] = 'DEF:data' . $source . $protocol . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
-                    //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
-                    $options[] = 'XPORT:data' . $source . $protocol . ':' . $source . '_' . $type . $proto;
+                    $proto = ($protocols[0] === 'any') ? '' : '_' . $protocols[0];
+                    $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
+                    $options[] = 'XPORT:data' . $source . ':' . $source . '_' . $type . $proto;
                 }
-            }
-        } elseif (count($sources) >= 1 && count($protocols) === 1) {
-            foreach ($sources as $source) {
-                $rrdFile = $this->get_data_path($source);
-                $proto = ($protocols[0] === 'any') ? '' : '_' . $protocols[0];
-                $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
-                //$options[] = 'CDEF:' . $source . '=data' . $source . ',1,*';
-                $options[] = 'XPORT:data' . $source . ':' . $source . '_' . $type . $proto;
-            }
+                break;
+            case 'ports':
+                foreach ($ports as $port) {
+                    $rrdFile = $this->get_data_path($sources[0], $port);
+                    $proto = ($protocols[0] === 'any') ? '' : '_' . $protocols[0];
+                    $options[] = 'DEF:data' . $sources[0] . $port . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
+                    $options[] = 'XPORT:data' . $sources[0] . $port . ':' . $sources[0] . '_' . $type . $proto . '_' . $port;
+                }
         }
 
         $data = rrd_xport($options);
@@ -189,12 +199,14 @@ class RRD implements Datasource {
     /**
      * Concatenates the path to the source's rrd file
      * If source is empty, returns the path to the data folder.
-     * @param $source
+     * @param string $source
+     * @param int $port
      * @return string
      */
-    public function get_data_path($source = '') {
-        if (!empty($source)) $source = DIRECTORY_SEPARATOR . $source . '.rrd';
-        $path = \common\Config::$path . DIRECTORY_SEPARATOR . 'datasources' . DIRECTORY_SEPARATOR . 'data' . $source;
+    public function get_data_path($source = '', $port = 0) {
+        $port = ($port !== 0) ? '_' . $port : '';
+        $file = (!empty($source)) ? $source = DIRECTORY_SEPARATOR . $source . $port . '.rrd' : '';
+        $path = \common\Config::$path . DIRECTORY_SEPARATOR . 'datasources' . DIRECTORY_SEPARATOR . 'data' . $file;
 
         if (!file_exists($path)) $this->d->log('Was not able to find ' . $path, LOG_INFO);
 

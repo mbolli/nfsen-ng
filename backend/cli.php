@@ -15,6 +15,7 @@ if ($argc < 2 || in_array($argv[1], array('--help', '-help', '-h', '-?'))) {
 
     Options:
         -v  Show verbose output
+        -p  Also import ports
 
     Commands:
         import  - Import existing nfdump data to nfsen-ng.
@@ -28,7 +29,8 @@ else {
         $start = new DateTime();
         $start->setDate(date('Y') - 3, date('m'), date('d'));
         $i = new \common\Import();
-        if ($argv[1] === '-v') $i->setVerbose(true);
+        if (in_array('-v', $argv)) $i->setVerbose(true);
+        if (in_array('-v', $argv)) $i->setProcessPorts(true);
         $i->start($start);
     }
 }

@@ -179,11 +179,13 @@ class API {
      * @param int $dateend
      * @param array $sources
      * @param array $protocols
+     * @param array $ports
      * @param string $type
+     * @param string $display
      * @return array|string
      */
-    public function graph(int $datestart, int $dateend, array $sources, array $protocols, string $type) {
-        $graph = \common\Config::$db->get_graph_data($datestart, $dateend, $sources, $protocols, $type);
+    public function graph(int $datestart, int $dateend, array $sources, array $protocols, array $ports, string $type, string $display) {
+        $graph = \common\Config::$db->get_graph_data($datestart, $dateend, $sources, $protocols, $ports, $type, $display);
         if (!is_array($graph)) $this->error(400, $graph);
         return $graph;
     }

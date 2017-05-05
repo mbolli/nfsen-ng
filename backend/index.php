@@ -21,5 +21,7 @@ if (isset($_GET['import'])) {
     $start = new DateTime();
     $start->setDate(date('Y')-3, date('m'), date('d'));
     $i = new \common\Import();
+    $i->setVerbose(true);
+    $i->setProcessPorts(true);
     $i->start($start);
 }

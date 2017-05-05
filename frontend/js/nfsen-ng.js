@@ -256,6 +256,7 @@ $(document).ready(function() {
         var sources = $('#graphFilterSourceSelection').val(),
             type = $('#graphsFilterDataTypeDiv input:checked').val(),
             protos = $('#graphsFilterProtocolDiv').find('input:checked').map(function() { return $(this).val(); }).get(),
+            display = $('#graphFilterViewSelection').val(),
             title = type + ' for ';
 
         // check if options valid to request new dygraph
@@ -269,6 +270,8 @@ $(document).ready(function() {
             type: type,
             protocols: protos.length > 0 ? protos : ['any'],
             sources: sources,
+            ports: [0],
+            display: display
         };
 
         // set title

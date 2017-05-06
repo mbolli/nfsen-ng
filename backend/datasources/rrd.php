@@ -203,7 +203,7 @@ class RRD implements Datasource {
      * @return string
      */
     public function get_data_path($source = '', $port = 0) {
-        $port = ($port !== 0) ? '_' . $port : '';
+        $port = ((int)$port !== 0) ? '_' . $port : '';
         $file = (!empty($source)) ? $source = DIRECTORY_SEPARATOR . $source . $port . '.rrd' : '';
         $path = \common\Config::$path . DIRECTORY_SEPARATOR . 'datasources' . DIRECTORY_SEPARATOR . 'data' . $file;
 

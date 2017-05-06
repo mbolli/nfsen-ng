@@ -44,34 +44,31 @@
         </div>
         <br>
 
-        <div id="filterDiv" class="container-fluid tab-content">
+        <div id="filterContainer" class="container-fluid tab-content">
 
-            <div id="graphsFilterDiv" data-view="graphs" class="filter row well well-sm">
+            <div id="filter" data-view="graphs" class="filter row well well-sm">
 
-                <div id="graphsFilterGraphViewDiv" class="col-sm-3">
-                    <h3>Graph view</h3>
+                <div id="filterDisplay" class="col-sm-3">
+                    <h3>Display</h3>
 
                     <div class="form-group">
-                        <select id="graphFilterViewSelection" class="form-control">
+                        <select id="filterDisplaySelect" class="form-control">
                             <option value="sources">Sources</option>
                             <option value="protocols">Protocols</option>
-                            <option value="ports" disabled>Ports</option>
+                            <option value="ports">Ports</option>
                         </select>
                     </div>
-                </div><!-- graphsFilterGraphViewDiv  -->
+                </div>
 
-                <div id="graphsFilterSourcesDiv" class="col-sm-3">
-
+                <div id="filterSources" class="col-sm-3" data-display="sources">
                     <h3>Sources</h3>
 
                     <div class="form-group">
-                        <select id="graphFilterSourceSelection" multiple class="form-control" data-filter-type="sources">
-                        </select>
+                        <select id="filterSourcesSelect" multiple class="form-control"></select>
                     </div>
-                </div><!-- graphsFilterSourcesDiv  -->
+                </div>
 
-                <div id="graphsFilterProtocolDiv" class="col-sm-3">
-
+                <div id="filterProtocols" class="col-sm-3" data-display="protocols">
                     <h3>Protocols</h3>
 
                     <div class="btn-group btn-group-md" data-toggle="buttons">
@@ -80,10 +77,17 @@
                         <label class="btn btn-default"><input type="checkbox" name="protocol[]" value="icmp">ICMP</label>
                         <label class="btn btn-default"><input type="checkbox" name="protocol[]" value="other">Others</label>
                     </div>
-                </div><!-- graphsFilterProtocolDiv  -->
+                </div>
 
-                <div id="graphsFilterDataTypeDiv" class="col-sm-3">
+                <div id="filterPorts" class="col-sm-3 hidden" data-display="ports">
+                    <h3>Ports</h3>
 
+                    <div class="form-group">
+                        <select id="filterPortsSelect" multiple class="form-control"></select>
+                    </div>
+                </div>
+
+                <div id="filterTypes" class="col-sm-3">
                     <h3>Data Types</h3>
 
                     <div class="btn-group btn-group-md" data-toggle="buttons">
@@ -91,9 +95,9 @@
                         <label class="btn btn-default"><input type="radio" name="datatype" autocomplete="off" value="packets">Packets</label>
                         <label class="btn btn-default"><input type="radio" name="datatype" autocomplete="off" value="bytes">Traffic</label>
                     </div>
-                </div><!-- graphsFilterDataTypeDiv  -->
+                </div>
 
-            </div><!-- graphsFilterDiv  -->
+            </div><!-- TODO include following filters (flows/statistics) in upper div -->
 
             <div id="flowsFilterDiv" data-view="flows" class="filter row well well-sm">
 

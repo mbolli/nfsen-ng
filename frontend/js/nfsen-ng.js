@@ -39,7 +39,7 @@ $(document).ready(function() {
      */
     $(document).on('click', 'header a', function() {
         var view = $(this).attr('data-view');
-        var $filter = $('#filterDiv').find('div.filter');
+        var $filter = $('#filter').find('div.filter');
         var $content = $('#contentDiv').find('div.content');
 
         $('header li').removeClass('active');
@@ -100,16 +100,41 @@ $(document).ready(function() {
     });
 
     /**
+     * displays the right filter
+     */
+    $(document).on('change', '#filterDisplaySelect', function() {
+        var display = $(this).val();
+        var $filters = $('#filter').find('[data-display]').removeClass('hidden');
+        var $filter = $filters.filter('[data-display=' + display + ']');
+
+        // move wanted filter to first position
+        $filter.detach().insertBefore($filters.eq(0));
+
+        // custom
+        switch (display) {
+            case 'protocols':
+                $filters.filter('[data-display=ports]').addClass('hidden');
+                break;
+            case 'sources':
+                $filters.filter('[data-display=ports]').addClass('hidden');
+                break;
+            case 'ports':
+                break;
+        }
+    });
+    /**
      * protocols filter
      * reload the graph when the protocol selection changes
      */
-    $(document).on('change', '#graphsFilterProtocolDiv input', updateGraph);
+    $(document).on('change', '#filterProtocols input', updateGraph);
 
     /**
      * datatype filter (flows/packets/bytes)
      * reload the graph... you get it by now
      */
-    $(document).on('change', '#graphsFilterDataTypeDiv input', updateGraph);
+    $(document).on('change', '#filterType input', updateGraph);
+
+    $(document).on('change', '#filterPortsSelect', updateGraph);
 
     /**
      * show/hide series in the dygraph
@@ -131,7 +156,8 @@ $(document).ready(function() {
         // check if we have a config
         // todo probably a red half-transparent overlay over the whole page?
         if (typeof config !== 'object') console.log('Could not read config!');
-        updateSources(Object.keys(config['sources']));
+        updateDropdown('sources', Object.keys(config['sources']));
+        updateDropdown('ports', config['ports']);
 
         init_rangeslider();
 
@@ -253,15 +279,17 @@ $(document).ready(function() {
      * and tries to display the received data in the dygraph.
      */
     function updateGraph() {
-        var sources = $('#graphFilterSourceSelection').val(),
-            type = $('#graphsFilterDataTypeDiv input:checked').val(),
-            protos = $('#graphsFilterProtocolDiv').find('input:checked').map(function() { return $(this).val(); }).get(),
-            display = $('#graphFilterViewSelection').val(),
+        var sources = $('#filterSourcesSelect').val(),
+            type = $('#filterTypes input:checked').val(),
+            ports = $('#filterPortsSelect').val(),
+            protos = $('#filterProtocols').find('input:checked').map(function() { return $(this).val(); }).get(),
+            display = $('#filterDisplaySelect').val(),
             title = type + ' for ';
 
         // check if options valid to request new dygraph
         if (sources.length === 0) return;
         if (protos.length > 1 && sources.length > 1) return; // todo annotate wrong input?
+        if (ports.length === 0) ports = [0];
 
         // set options
         api_graph_options = {
@@ -270,11 +298,11 @@ $(document).ready(function() {
             type: type,
             protocols: protos.length > 0 ? protos : ['any'],
             sources: sources,
-            ports: [0],
+            ports: ports,
             display: display
         };
 
-        // set title
+        // set title todo: make it depend on what is displayed (protocols/sources/ports)
         if (protos.length > sources.length) {
             title += 'protocols ' + protos.join(', ') + ' (' + sources[0] + ')';
         } else {
@@ -421,27 +449,22 @@ $(document).ready(function() {
         });
         return min;
     }
-});
 
-function updateSources(sources) {
+    /**
+     * updates the filter dropdowns with data
+     * @param displaytype string: sources/ports/protocols
+     * @param array array: the values to add
+     */
+    function updateDropdown(displaytype, array) {
+        var $select = $('#filter').find('div[data-display=' + displaytype + '] select');
 
-    var filterViewsDivSelects = document.querySelectorAll('#filterDiv div select');
-
-    for (var i = 0; i < filterViewsDivSelects.length; i++)
-    {
-        if (filterViewsDivSelects[i].hasAttribute('data-filter-type'))
-            {
-                $.each(sources, function(key, value) {
-                    $(filterViewsDivSelects[i])
-                        .append($('<option></option>')
-                            .attr('value',value)
-                            .attr('selected', 'selected')
-                            .text(value));
-                })
-            }
-
+        $.each(array, function(key, value) {
+            $select
+                .append($('<option></option>')
+                .attr('value',value).text(value));
+        });
     }
-}
+});
 
 function adaptScaleToSelection(el) {
     if(el.id=='logarithmicScaleBtn')

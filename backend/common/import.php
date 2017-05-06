@@ -90,6 +90,7 @@ class Import {
     private function write_sources_data($source, $stats_path) {
         // set options and get netflow summary statistics (-I)
         $nfdump = NfDump::getInstance();
+        $nfdump->reset();
         $nfdump->setOption("-I", null);
         $nfdump->setOption("-r", $stats_path);
         $nfdump->setOption("-M", $source);

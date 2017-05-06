@@ -207,9 +207,16 @@ class API {
             $sources[$source] = $rrd->date_boundaries($source);
         }
 
+        $ports = \common\Config::$cfg['general']['ports'];
+
         $stored_output_formats = array(); // todo implement
 
         $stored_filters = array(); // todo implement
-        return array('sources' => $sources, 'stored_output_formats' => $stored_output_formats, 'stored_filters' => $stored_filters);
+        return array(
+            'sources' => $sources,
+            'ports' => $ports,
+            'stored_output_formats' => $stored_output_formats,
+            'stored_filters' => $stored_filters
+        );
     }
 }

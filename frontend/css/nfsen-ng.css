@@ -12,12 +12,12 @@ code, pre, .code {
 }
 
 /* filter */
-#filterDiv > div {
+#filterContainer > div {
     display: none;
 }
 
 /* show first filter */
-#filterDiv #graphsFilterDiv {
+#filterContainer #filter {
     display: block;
 }
 

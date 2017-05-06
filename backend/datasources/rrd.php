@@ -62,13 +62,13 @@ class RRD implements Datasource {
 
     /**
      * Create a new RRD file for a source
-     * TODO: extend for ports?
      * @param string $source e.g. gateway or server_xyz
+     * @param int $port
      * @param bool $force overwrites existing RRD file if true
      * @return bool
      */
-    public function create(string $source, bool $force = false) {
-        $rrdFile = $this->get_data_path($source);
+    public function create(string $source, int $port = 0, bool $force = false) {
+        $rrdFile = $this->get_data_path($source, $port);
         if (file_exists($rrdFile)) {
             if ($force === true) unlink($rrdFile);
             else {
@@ -108,8 +108,7 @@ class RRD implements Datasource {
         $nearest = (int)$data['date_timestamp'] - ($data['date_timestamp'] % 300);
 
         // create new database if not existing
-        $name = ($data['port'] === 0) ? $data['source'] : $data['source'] . $data['port'];
-        if (!file_exists($rrdFile)) $this->create($name);
+        if (!file_exists($rrdFile)) $this->create($data['source'], $data['port']);
 
         // write data
         $updater = new \RRDUpdater($rrdFile);

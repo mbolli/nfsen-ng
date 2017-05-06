@@ -138,6 +138,7 @@ class Import {
 	    foreach ($ports as $port) {
             // set options and get netflow statistics
             $nfdump = NfDump::getInstance();
+            $nfdump->reset();
             $nfdump->setFilter("dst port=" . $port);
             $nfdump->setOption("-s", "dstport:p");
             $nfdump->setOption("-r", $stats_path);
@@ -160,7 +161,6 @@ class Import {
                 'date_iso' => $date->format("Ymd\THis"),
                 'date_timestamp' => $date->getTimestamp()
             );
-            $input = explode("\n", $input);
             $rows = count($input);
 
             // process protocols
@@ -168,7 +168,6 @@ class Import {
             foreach ($input as $i => $line) {
                 if ($i === 0) continue;
                 if ($i === $rows-4) break;
-                $line = str_getcsv($line);
 
                 $proto = strtolower($line[3]);
                 $data['fields']['flows_' . $proto] = $line[5];
@@ -178,7 +177,7 @@ class Import {
 
             // process summary
             // headers: flows,bytes,packets,avg_bps,avg_pps,avg_bpp
-            $lastline = str_getcsv($input[$rows-1]);
+            $lastline = $input[$rows-1];
             $data['fields']['flows'] = $lastline[0];
             $data['fields']['packets'] = $lastline[2];
             $data['fields']['bytes'] = $lastline[1];

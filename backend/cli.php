@@ -30,7 +30,7 @@ else {
         $start->setDate(date('Y') - 3, date('m'), date('d'));
         $i = new \common\Import();
         if (in_array('-v', $argv)) $i->setVerbose(true);
-        if (in_array('-v', $argv)) $i->setProcessPorts(true);
+        if (in_array('-p', $argv)) $i->setProcessPorts(true);
         $i->start($start);
     }
 }

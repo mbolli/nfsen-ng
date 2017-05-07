@@ -29,7 +29,7 @@ class Import {
         // process each source, e.g. gateway, mailserver, etc.
         foreach ($sources as $source) {
             $source_path = Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . Config::$cfg['nfdump']['profile'];
-            if(!file_exists($source_path)) throw new \Exception("Could not read nfdump profile directory " . $source_path);
+            if (!file_exists($source_path)) throw new \Exception("Could not read nfdump profile directory " . $source_path);
             if ($this->cli === true) echo "\nProcessing source " . $source . "...\n";
 
             $today = new \DateTime();
@@ -40,9 +40,9 @@ class Import {
             if ($last_update_db !== false && $last_update_db < time()-300) {
                 $last_update = new \DateTime();
                 $last_update->setTimestamp($last_update_db);
-                $days_saved = $date->diff($last_update)->format('%a');
-                if ($days_saved === 0) $days_saved = 3*365;
-                if ($this->cli === true) \vendor\ProgressBar::setTotal($this->days_total-$days_saved);
+                $days_saved = (int)$date->diff($last_update)->format('%a');
+                $this->days_total = $this->days_total-$days_saved;
+                if ($this->cli === true) \vendor\ProgressBar::setTotal($this->days_total);
 
                 // set progress to the date when the import was stopped
                 $date->setTimestamp($last_update_db);
@@ -197,8 +197,6 @@ class Import {
             $data['fields']['flows'] = (int)$lastline[0];
             $data['fields']['packets'] = (int)$lastline[2];
             $data['fields']['bytes'] = (int)$lastline[1];
-
-            $this->d->dpr($data);
 
             // write to database
             Config::$db->write($data);

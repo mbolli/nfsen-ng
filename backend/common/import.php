@@ -41,6 +41,7 @@ class Import {
                 $last_update = new \DateTime();
                 $last_update->setTimestamp($last_update_db);
                 $days_saved = $date->diff($last_update)->format('%a');
+                if ($days_saved === 0) $days_saved = 3*365;
                 if ($this->cli === true) \vendor\ProgressBar::setTotal($this->days_total-$days_saved);
 
                 // set progress to the date when the import was stopped

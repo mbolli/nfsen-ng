@@ -19,10 +19,8 @@ class Import {
 	}
 
 	function start(\DateTime $datestart) {
-        $source_path = Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . Config::$cfg['nfdump']['profile'];
-        $sources = @scandir($source_path);
-        if(!is_array($sources)) throw new \Exception("Could not read nfdump profile directory " . $source_path);
-        $sources = array_diff($sources, array('..', '.'));
+
+        $sources = Config::$cfg['general']['sources'];
         $processed_sources = 0;
 
         $this->days_total = $datestart->diff(new \DateTime())->format('%a')*count($sources);
@@ -30,10 +28,8 @@ class Import {
 
         // process each source, e.g. gateway, mailserver, etc.
         foreach ($sources as $source) {
-            if(!in_array($source, Config::$cfg['general']['sources'])) {
-                $this->d->log('Found source ' . $source . ' which is not in the settings file.', LOG_INFO);
-                continue;
-            }
+            $source_path = Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . Config::$cfg['nfdump']['profile'];
+            if(!file_exists($source_path)) throw new \Exception("Could not read nfdump profile directory " . $source_path);
             if ($this->cli === true) echo "\nProcessing source " . $source . "...\n";
 
             $today = new \DateTime();
@@ -44,36 +40,36 @@ class Import {
                 $scan = array($source_path, $source, $date->format("Y"), $date->format("m"), $date->format("d"));
                 $scan_path = implode(DIRECTORY_SEPARATOR, $scan);
 
-                // if data for current date exists (e.g. .../2017/03/03)
-                if(file_exists($scan_path)) {
-                    $this->d->log('Scanning path ' . $scan_path, LOG_INFO);
-                    $scan_files = scandir($scan_path);
-
-                    if ($this->cli === true) echo \vendor\ProgressBar::next(1, 'Scanning ' . $scan_path . "...");
-                    
-                    foreach($scan_files as $file) {
-                        if(!in_array($file, array(".", ".."))) {
-
-                            // let nfdump parse each nfcapd file
-                            $stats_path = implode(DIRECTORY_SEPARATOR, array_slice($scan, 2, 5)) . DIRECTORY_SEPARATOR . $file;
-
-                            $this->write_sources_data($source, $stats_path);
-
-
-                            // if enabled, process ports as well
-                            if ($this->processPorts === true) {
-                                $this->write_ports_data($source, $stats_path);
-                            }
-
-                        }
-                    }
-                } else {
-                    $this->d->dpr($scan_path . " does not exist!");
-                    if ($this->cli === true) echo \vendor\ProgressBar::next(1);
-                }
-
                 // set date to tomorrow
                 $date->modify("+1 day");
+
+                // if no data exists for current date  (e.g. .../2017/03/03)
+                if (!file_exists($scan_path)) {
+                    $this->d->dpr($scan_path . " does not exist!");
+                    if ($this->cli === true) echo \vendor\ProgressBar::next(1);
+                    continue;
+                }
+
+                // scan path
+                $this->d->log('Scanning path ' . $scan_path, LOG_INFO);
+                $scan_files = scandir($scan_path);
+
+                if ($this->cli === true) echo \vendor\ProgressBar::next(1, 'Scanning ' . $scan_path . "...");
+
+                foreach($scan_files as $file) {
+                    if (in_array($file, array(".", ".."))) continue;
+
+                    // let nfdump parse each nfcapd file
+                    $stats_path = implode(DIRECTORY_SEPARATOR, array_slice($scan, 2, 5)) . DIRECTORY_SEPARATOR . $file;
+
+                    // write data to source.rrd
+                    $this->write_sources_data($source, $stats_path);
+
+                    // if enabled, process ports as well (source_80.rrd)
+                    if ($this->processPorts === true) {
+                        $this->write_ports_data($source, $stats_path);
+                    }
+                }
             }
             $processed_sources++;
         }

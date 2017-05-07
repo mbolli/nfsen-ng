@@ -19,17 +19,16 @@
 	<body>
         <header class="clearfix">
             <ul id="viewList" class="nav nav-tabs pull-right" role="tablist">
-                <li role="presentation" class="active"><a data-view="graphs">Graphs <span class="glyphicon glyphicon-search" aria-hidden="true"></span></a></li>
-                <li role="presentation"><a data-view="flows">Flows</a></li>
-                <li role="presentation"><a data-view="stats">Statistics</a></li>
+                <li role="presentation" class="active"><a data-view="graphs" href="#">Graphs <span class="glyphicon glyphicon-search" aria-hidden="true"></span></a></li>
+                <li role="presentation"><a data-view="flows" href="#">Flows</a></li>
+                <li role="presentation"><a data-view="statistics" href="#">Statistics</a></li>
             </ul>
         </header>
 
-        <h3>Date</h3>
-        <input type="text" id="date_range"/>
+        <div class="date_selection">
+            <h3>Date</h3>
+            <input type="text" id="date_range"/>
 
-        <div>
-            <br>
             <div class="btn-group" id="date_slot" data-toggle="buttons">
                 <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="86400000">24 hours</label>
                 <label class="btn btn-default"><input type="radio" name="range" autocomplete="off" value="604800000">Week</label>
@@ -42,13 +41,11 @@
                 <button type="button" class="btn btn-default next">Next</button>
             </div>
         </div>
-        <br>
 
         <div id="filterContainer" class="container-fluid tab-content">
+            <div id="filter" class="filter row well well-sm">
 
-            <div id="filter" data-view="graphs" class="filter row well well-sm">
-
-                <div id="filterDisplay" class="col-sm-3">
+                <div id="filterDisplay" class="hidden col-sm-3" data-view="graphs">
                     <h3>Display</h3>
 
                     <div class="form-group">
@@ -60,7 +57,15 @@
                     </div>
                 </div>
 
-                <div id="filterSources" class="col-sm-3" data-display="sources">
+                <div id="filterPorts" class="hidden col-sm-3" data-view="graphs" data-display="ports">
+                    <h3>Ports</h3>
+
+                    <div class="form-group">
+                        <select id="filterPortsSelect" multiple class="form-control"></select>
+                    </div>
+                </div>
+
+                <div id="filterSources" class="hidden col-sm-3" data-view="graphs flows statistics" data-display="sources protocols ports">
                     <h3>Sources</h3>
 
                     <div class="form-group">
@@ -68,7 +73,7 @@
                     </div>
                 </div>
 
-                <div id="filterProtocols" class="col-sm-3" data-display="protocols">
+                <div id="filterProtocols" class="hidden col-sm-3" data-view="graphs" data-display="sources protocols ports">
                     <h3>Protocols</h3>
 
                     <div class="btn-group btn-group-md" data-toggle="buttons">
@@ -79,15 +84,7 @@
                     </div>
                 </div>
 
-                <div id="filterPorts" class="col-sm-3 hidden" data-display="ports">
-                    <h3>Ports</h3>
-
-                    <div class="form-group">
-                        <select id="filterPortsSelect" multiple class="form-control"></select>
-                    </div>
-                </div>
-
-                <div id="filterTypes" class="col-sm-3">
+                <div id="filterTypes" class="hidden col-sm-3" data-view="graphs" data-display="sources protocols ports">
                     <h3>Data Types</h3>
 
                     <div class="btn-group btn-group-md" data-toggle="buttons">
@@ -97,23 +94,9 @@
                     </div>
                 </div>
 
-            </div><!-- TODO include following filters (flows/statistics) in upper div -->
+                <div id="filterNfdump" class="hidden col-sm-6" data-view="flows statistics">
 
-            <div id="flowsFilterDiv" data-view="flows" class="filter row well well-sm">
-
-                <div id="flowsFilterSourcesDiv" class="col-sm-3">
-
-                    <h3>Sources</h3>
-
-                    <div class="form-group">
-                        <select id="flowsFilterSourceSelection" multiple class="form-control" data-filter-type="sources">
-                        </select>
-                    </div>
-                </div><!-- flowFilterSourcesDiv  -->
-
-                <div id="flowsNFDUMPFilterDiv" class="col-sm-6">
-
-                    <h3>NFDUMP Filter</h3>
+                    <h3>nfdump filter (tcpdump syntax)</h3>
 
                     <div class="form-group">
                         <textarea class="form-control" id="flowsFilterTextarea" rows="3"></textarea>
@@ -137,9 +120,9 @@
                         <button type="button" class="btn btn-default">Save filter (server)</button>
                     </div>
 
-                </div><!-- flowsNFDUMPFilterDiv  -->
+                </div>
 
-                <div id="flowsFilterLimitDiv" class="col-sm-2">
+                <div id="filterFlowsLimit" class="hidden col-sm-2" data-view="flows">
 
                     <h3>Limit</h3>
 
@@ -155,9 +138,9 @@
                         </select>
                     </div>
 
-                </div><!-- flowsFilterLimitDiv  -->
+                </div>
 
-                <div id="flowsFilterAggregationDiv" class="col-sm-8">
+                <div id="filterFlowsAggregation" class="hidden col-sm-8" data-view="flows">
 
                     <h3>Aggregation</h3><!-- todo : check everywhere this "name" convention in divs and other elements-->
                     <div class="row">
@@ -200,7 +183,7 @@
 
                 </div><!-- flowsFilterAggregationDiv  -->
 
-                <div id="flowsFilterOutputDiv" class="col-sm-2">
+                <div id="filterOutput" class="hidden col-sm-2" data-view="flows statistics">
 
                     <h3>Output</h3>
 
@@ -219,52 +202,9 @@
                     <div class="btn-group-vertical btn-group-md" data-toggle="buttons">
                         <label class="btn btn-default"><input type="checkbox" value="sortByFlowStartTime">Sort by flows' start time</label>
                     </div>
-                </div><!-- flowsFilterOutputDiv  -->
+                </div>
 
-
-            </div><!-- flowsFilterDiv  -->
-
-            <div id="statsFilterDiv" data-view="stats" class="filter row well well-sm">
-
-                <div id="statsFilterSourcesDiv" class="col-sm-3">
-
-                    <h3>Sources</h3>
-
-                    <div class="form-group">
-                        <select id="statsFilterSourceSelection" multiple class="form-control" data-filter-type="sources">
-                        </select>
-                    </div>
-                </div><!-- statsFilterSourcesDiv  -->
-
-                <div id="statsNFDUMPFilterDiv" class="col-sm-6">
-
-                    <h3>NFDUMP Filter</h3>
-
-                    <div class="form-group">
-                        <textarea class="form-control" id="statsFilterTextarea" rows="3"></textarea>
-                    </div>
-
-                    <div class="btn-group">
-                        <div class="btn-group">
-
-                            <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
-                                Filters
-                                <span class="caret"></span>
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><a>Dynamically load</a></li>
-                                <li><a>Filters</a></li>
-                                <li><a>From Backend</a></li>
-                            </ul>
-                        </div>
-
-                        <button type="button" class="btn btn-default">Delete filter (server)</button>
-                        <button type="button" class="btn btn-default">Save filter (server)</button>
-                    </div>
-
-                </div><!-- statsNFDUMPFilterDiv  -->
-
-                <div id="statsFilterPropertiesDiv" class="col-sm-3">
+                <div id="filterStatsProperties" class="hidden col-sm-3" data-view="statistics">
 
                     <h3>Statistic properties</h3>
 
@@ -345,7 +285,7 @@
 
                 </div><!-- statsFilterPropertiesDiv  -->
 
-                <div id="statsFilterAggregationDiv" class="col-sm-6">
+                <div id="filterStatsAggregation" class="hidden col-sm-6" data-view="statistics">
 
                     <h3>Aggregation</h3>
 
@@ -393,7 +333,7 @@
 
                 </div><!-- statsFilterAggregationDiv  -->
 
-                <div id="statsFilterOptionsDiv" class="col-sm-3">
+                <div id="filterStatsOptions" class="hidden col-sm-3" data-view="statistics">
 
                     <h3>Options</h3>
 
@@ -417,28 +357,20 @@
 
                     <div id="graphOptions">
                         <h4>Scale</h4>
-
-                        <div class="btn-group" data-toggle="buttons">
-                        <label class="btn btn-default active">
-                            <input id="linearScaleBtn" type="radio" name="scale" autocomplete="off" checked onchange=adaptScaleToSelection(this)>Linear</label>
-                        <label class="btn btn-default">
-                            <input id="logarithmicScaleBtn" type="radio" name="scale" autocomplete="off" onchange=adaptScaleToSelection(this)>Logarithmic</label>
-                        </div>
-                        <br>
-
-                        <h4>Type</h4>
-
-                        <div class="btn-group" data-toggle="buttons">
+                        <div class="btn-group" data-toggle="buttons" id="graph_linlog">
                             <label class="btn btn-default active">
-                                <input id="lineGraphBtn" type="radio" name="type" autocomplete="off" checked onchange=adaptGraphTypeToSelection(this)>Line</label>
+                                <input type="radio" name="scale" autocomplete="off" value="linear" checked>Linear</label>
                             <label class="btn btn-default">
-                                <input id="stackedGraphBtn" type="radio" name="type" autocomplete="off" onchange=adaptGraphTypeToSelection(this)>Stacked</label>
+                                <input id="logarithmicScaleBtn" type="radio" name="scale" autocomplete="off" value="logarithmic">Logarithmic</label>
                         </div>
-                        <br>
 
-                        <h4>Roll period</h4>
-
-                        <input type=text id="rollPeriod" onchange=adaptGraphRollPeriodToSelection(this)>
+                        <h4>Line/Stacked</h4>
+                        <div class="btn-group" data-toggle="buttons" id="graph_linestacked">
+                            <label class="btn btn-default active">
+                                <input type="radio" name="type" autocomplete="off" value="stacked" checked>Stacked</label>
+                            <label class="btn btn-default">
+                                <input type="radio" name="type" autocomplete="off" value="line">Line</label>
+                        </div>
                     </div>
                 </div>
 
@@ -450,14 +382,10 @@
 
                 <div class="col-sm-2">
                     <h4>Series</h4>
-                    <div>
-                        <div id="series"></div>
-                    </div>
+                    <div id="series"></div>
 
                     <h4>Values</h4>
-                    <div>
-                        <div id="legend"></div>
-                    </div>
+                    <div id="legend"></div>
                 </div>
 
             </div><!-- graphsContentDiv  -->

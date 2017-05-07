@@ -11,15 +11,6 @@ code, pre, .code {
     font-family: Menlo, Monaco, Consolas, "Courier New", monospace
 }
 
-/* filter */
-#filterContainer > div {
-    display: none;
-}
-
-/* show first filter */
-#filterContainer #filter {
-    display: block;
-}
 
 /* graph */
 .infotext {

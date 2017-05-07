@@ -19,6 +19,7 @@ $(document).ready(function() {
      *      "gate": [false,false], // timestamp start, timestamp end
      *      "swi6": [false,false]
      *    },
+     *    "ports": [ 80, 23, 22 ],
      *    "stored_output_formats":[],
      *    "stored_filters":[]
      *  }
@@ -28,8 +29,8 @@ $(document).ready(function() {
             config = data;
             init();
         } else {
-            console.log('There was probably a problem with getting the config.');
-            // todo consequences?
+            // todo probably a red half-transparent overlay over the whole page?
+            console.log('There was a problem with getting the config.');
         }
     });
 
@@ -37,22 +38,22 @@ $(document).ready(function() {
      * navigation functionality
      * show/hides the correct containers, which are identified by the data-view attribute
      */
-    $(document).on('click', 'header a', function() {
+    $(document).on('click', 'header a', function(e) {
+        e.preventDefault();
         var view = $(this).attr('data-view');
-        var $filter = $('#filter').find('div.filter');
+        var $filter = $('#filter').find('[data-view]');
         var $content = $('#contentDiv').find('div.content');
 
         $('header li').removeClass('active');
         $(this).parent().addClass('active');
 
-        var showRightDiv = function(id, el) {
-            if ($(el).attr('data-view') === view) $(el).show();
-            else $(el).hide();
+        var showDivs = function(id, el) {
+            if ($(el).attr('data-view').indexOf(view) !== -1) $(el).removeClass('hidden');
+            else $(el).addClass('hidden');
         };
 
-        $filter.each(showRightDiv);
-        $content.each(showRightDiv); /* todo put filter and content in same div? // galld2 2017_05_01 :
-                                        good idea but if we need to be very careful because of some fix id's*/
+        $filter.each(showDivs);
+        $content.each(showDivs);
     });
 
     /**
@@ -86,7 +87,7 @@ $(document).ready(function() {
      * source filter
      * reload the graph when the source selection changes
      */
-    $(document).on('change', '#graphFilterSourceSelection', function() {
+    $(document).on('change', '#filterSourcesSelect', function() {
         var sources = $(this).val(), max = getLastDate(sources), min = getFirstDate(sources);
 
         // update time range
@@ -103,24 +104,24 @@ $(document).ready(function() {
      * displays the right filter
      */
     $(document).on('change', '#filterDisplaySelect', function() {
-        var display = $(this).val();
-        var $filters = $('#filter').find('[data-display]').removeClass('hidden');
-        var $filter = $filters.filter('[data-display=' + display + ']');
+        var display = $(this).val(), displayId;
+        var $filters = $('#filter').find('[data-display]').addClass('hidden');
+        var $filterElements = $filters.filter('[data-display*=' + display + ']').removeClass('hidden');
+
+        switch (display) {
+            case 'sources':
+                displayId = '#filterSources';
+                $('#filterProtocols').find('input').attr('checked', false); // todo generalize...
+                break;
+            case 'protocols': displayId = '#filterProtocols'; break;
+            case 'ports': displayId = '#filterPorts'; break;
+        }
 
         // move wanted filter to first position
-        $filter.detach().insertBefore($filters.eq(0));
+        $(displayId).detach().insertBefore($filters.eq(0));
 
-        // custom
-        switch (display) {
-            case 'protocols':
-                $filters.filter('[data-display=ports]').addClass('hidden');
-                break;
-            case 'sources':
-                $filters.filter('[data-display=ports]').addClass('hidden');
-                break;
-            case 'ports':
-                break;
-        }
+        // try to update graph
+        updateGraph();
     });
     /**
      * protocols filter
@@ -132,7 +133,7 @@ $(document).ready(function() {
      * datatype filter (flows/packets/bytes)
      * reload the graph... you get it by now
      */
-    $(document).on('change', '#filterType input', updateGraph);
+    $(document).on('change', '#filterTypes input', updateGraph);
 
     $(document).on('change', '#filterPortsSelect', updateGraph);
 
@@ -146,16 +147,42 @@ $(document).ready(function() {
     });
 
     /**
+     * set graph display to lines or stacked
+     */
+    $(document).on('change', '#graph_linestacked input', function() {
+        var stacked = ($(this).val() === 'stacked');
+
+        dygraph.updateOptions({
+            stackedGraph : stacked,
+            fillGraph: stacked
+        });
+    });
+
+    /**
+     * scale graph display linear or logarithmic
+     */
+    $(document).on('change', '#graph_linlog input', function() {
+        var linear = ($(this).val() === 'linear');
+
+        dygraph.updateOptions({
+            logscale : linear
+        });
+    });
+
+    /**
      * initialize the frontend
      * - set the select-list of sources
      * - initialize the range slider
      * - load the graph
      */
     function init() {
+        // load default filter
+        $('header li a').eq(0).trigger('click');
 
-        // check if we have a config
-        // todo probably a red half-transparent overlay over the whole page?
-        if (typeof config !== 'object') console.log('Could not read config!');
+        // show correct form elements
+        $('#filterDisplaySelect').trigger('change');
+
+        // load values for form
         updateDropdown('sources', Object.keys(config['sources']));
         updateDropdown('ports', config['ports']);
 
@@ -388,8 +415,9 @@ $(document).ready(function() {
                             highlightCircleSize: 5
                         },
                         rangeSelectorPlotStrokeColor: '#337ab7',
-                        rangeSelectorPlotFillColor: '#337ab7'
-                        // todo add current values of logscale, stackedGraph and fillGraph // galld2 comment, not needed, all false by default on load
+                        rangeSelectorPlotFillColor: '#337ab7',
+                        stackedGraph: true,
+                        fillGraph: true,
                     };
                     dygraph = new Dygraph($('#flowDiv')[0], dygraph_data, dygraph_config);
                     init_dygraph_mods();
@@ -399,6 +427,7 @@ $(document).ready(function() {
                     dygraph_config = {
                         // series: series,
                         // axes: axes,
+                        ylabel: type.toUpperCase() + '/s',
                         title: title,
                         labels: labels,
                         file: dygraph_data,
@@ -456,7 +485,8 @@ $(document).ready(function() {
      * @param array array: the values to add
      */
     function updateDropdown(displaytype, array) {
-        var $select = $('#filter').find('div[data-display=' + displaytype + '] select');
+        var id = '#filter' + displaytype.charAt(0).toUpperCase() + displaytype.slice(1);
+        var $select = $(id).find('select');
 
         $.each(array, function(key, value) {
             $select
@@ -465,48 +495,3 @@ $(document).ready(function() {
         });
     }
 });
-
-function adaptScaleToSelection(el) {
-    if(el.id=='logarithmicScaleBtn')
-    {
-        dygraph.updateOptions({
-            logscale : true
-        });
-    }
-    else
-    {
-        dygraph.updateOptions({
-            logscale : false
-        });
-    }
-
-}
-
-function adaptGraphTypeToSelection(el) {
-    if(el.id=='stackedGraphBtn')
-    {
-        dygraph.updateOptions({
-            stackedGraph : true,
-            fillGraph: true
-        });
-    }
-    else
-    {
-        dygraph.updateOptions({
-            stackedGraph : false,
-            fillGraph: false
-        });
-    }
-
-}
-
-function adaptGraphRollPeriodToSelection(el) {
-    if(el.value > 0)
-    {
-        dygraph.adjustRoll(el.value);
-    }
-    else
-    {
-        dygraph.adjustRoll(0);
-    }
-}

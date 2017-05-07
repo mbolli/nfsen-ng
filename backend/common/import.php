@@ -35,6 +35,18 @@ class Import {
             $today = new \DateTime();
             $date = clone $datestart;
 
+            // check if we want to continue a stopped import
+            $last_update_db = Config::$db->last_update($source);
+            if ($last_update_db !== false && $last_update_db < time()-300) {
+                $last_update = new \DateTime();
+                $last_update->setTimestamp($last_update_db);
+                $days_saved = $date->diff($last_update)->format('%a');
+                if ($this->cli === true) \vendor\ProgressBar::setTotal($this->days_total-$days_saved);
+
+                // set progress to the date when the import was stopped
+                $date->setTimestamp($last_update_db);
+            }
+
             // iterate from $datestart until today
             while ($date->format("Ymd") != $today->format("Ymd")) {
                 $scan = array($source_path, $source, $date->format("Y"), $date->format("m"), $date->format("d"));
@@ -62,12 +74,18 @@ class Import {
                     // let nfdump parse each nfcapd file
                     $stats_path = implode(DIRECTORY_SEPARATOR, array_slice($scan, 2, 5)) . DIRECTORY_SEPARATOR . $file;
 
-                    // write data to source.rrd
-                    $this->write_sources_data($source, $stats_path);
+                    try {
 
-                    // if enabled, process ports as well (source_80.rrd)
-                    if ($this->processPorts === true) {
-                        $this->write_ports_data($source, $stats_path);
+                        // write data to source.rrd
+                        $this->write_sources_data($source, $stats_path);
+
+                        // if enabled, process ports as well (source_80.rrd)
+                        if ($this->processPorts === true) {
+                            $this->write_ports_data($source, $stats_path);
+                        }
+
+                    } catch (\Exception $e) {
+                        $this->d->log('Catched exception: ' . $e->getMessage(), LOG_WARNING);
                     }
                 }
             }
@@ -107,7 +125,7 @@ class Import {
             list($type, $value) = explode(": ", $line);
 
             // we only need flows/packets/bytes values, the source and the timestamp
-            if(preg_match("/^(flows|packets|bytes)/i", $type)) {
+            if (preg_match("/^(flows|packets|bytes)/i", $type)) {
                 $data['fields'][strtolower($type)] = (int)$value;
             } elseif("Ident" == $type) {
                 $data['source'] = $value;
@@ -167,17 +185,17 @@ class Import {
                 if ($i === $rows-4) break;
 
                 $proto = strtolower($line[3]);
-                $data['fields']['flows_' . $proto] = $line[5];
-                $data['fields']['packets_' . $proto] = $line[7];
-                $data['fields']['bytes_' . $proto] = $line[9];
+                $data['fields']['flows_' . $proto] = (int)$line[5];
+                $data['fields']['packets_' . $proto] = (int)$line[7];
+                $data['fields']['bytes_' . $proto] = (int)$line[9];
             }
 
             // process summary
             // headers: flows,bytes,packets,avg_bps,avg_pps,avg_bpp
             $lastline = $input[$rows-1];
-            $data['fields']['flows'] = $lastline[0];
-            $data['fields']['packets'] = $lastline[2];
-            $data['fields']['bytes'] = $lastline[1];
+            $data['fields']['flows'] = (int)$lastline[0];
+            $data['fields']['packets'] = (int)$lastline[2];
+            $data['fields']['bytes'] = (int)$lastline[1];
 
             $this->d->dpr($data);
 

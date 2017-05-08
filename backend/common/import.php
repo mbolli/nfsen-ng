@@ -23,7 +23,7 @@ class Import {
         $sources = Config::$cfg['general']['sources'];
         $processed_sources = 0;
 
-        $this->days_total = $datestart->diff(new \DateTime())->format('%a')*count($sources);
+        $this->days_total = ((int)$datestart->diff(new \DateTime())->format('%a')+1)*count($sources);
         if ($this->cli === true) echo "\n" . \vendor\ProgressBar::start($this->days_total, 'Processing ' . count($sources) . ' sources...');
 
         // process each source, e.g. gateway, mailserver, etc.
@@ -49,7 +49,7 @@ class Import {
             }
 
             // iterate from $datestart until today
-            while ($date->format("Ymd") != $today->format("Ymd")) {
+            while ((int)$date->format("Ymd") <= (int)$today->format("Ymd")) {
                 $scan = array($source_path, $source, $date->format("Y"), $date->format("m"), $date->format("d"));
                 $scan_path = implode(DIRECTORY_SEPARATOR, $scan);
 

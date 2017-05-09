@@ -165,7 +165,7 @@ $(document).ready(function() {
         var linear = ($(this).val() === 'linear');
 
         dygraph.updateOptions({
-            logscale : linear
+            logscale : !linear
         });
     });
 

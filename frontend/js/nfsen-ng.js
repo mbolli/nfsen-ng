@@ -87,18 +87,7 @@ $(document).ready(function() {
      * source filter
      * reload the graph when the source selection changes
      */
-    $(document).on('change', '#filterSourcesSelect', function() {
-        var sources = $(this).val(), max = getLastDate(sources), min = getFirstDate(sources);
-
-        // update time range
-        date_range.update({
-            min: min,
-            max: max
-        });
-
-        // update dygraph
-        updateGraph();
-    });
+    $(document).on('change', '#filterSourcesSelect', updateGraph);
 
     /**
      * displays the right filter
@@ -186,6 +175,9 @@ $(document).ready(function() {
         updateDropdown('sources', Object.keys(config['sources']));
         updateDropdown('ports', config['ports']);
 
+        var now = new Date();
+        dygraph_daterange = [new Date().setFullYear(now.getFullYear()-3), now];
+
         init_rangeslider();
 
         updateGraph();
@@ -199,8 +191,8 @@ $(document).ready(function() {
         $('#date_range').ionRangeSlider({
             type: 'double',
             grid: true,
-            min: 1482828600000, // todo set date with some logic
-            max: new Date(),
+            min: dygraph_daterange[0],
+            max: dygraph_daterange[1],
             force_edges: true,
             drag_interval: true,
             prettify: function(ut) {
@@ -314,14 +306,18 @@ $(document).ready(function() {
             title = type + ' for ';
 
         // check if options valid to request new dygraph
-        if (sources.length === 0) return;
+        if (sources.length === 0) {
+            if (display === "ports")
+                sources.push('any');
+            else return;
+        }
         if (protos.length > 1 && sources.length > 1) return; // todo annotate wrong input?
         if (ports.length === 0) ports = [0];
 
         // set options
         api_graph_options = {
-            datestart: dygraph_daterange ? parseInt(dygraph_daterange[0]/1000) : getFirstDate(sources)/1000,
-            dateend: dygraph_daterange ? parseInt(dygraph_daterange[1]/1000) : getLastDate(sources)/1000,
+            datestart: parseInt(dygraph_daterange[0]/1000),
+            dateend: parseInt(dygraph_daterange[1]/1000),
             type: type,
             protocols: protos.length > 0 ? protos : ['any'],
             sources: sources,
@@ -434,7 +430,7 @@ $(document).ready(function() {
                     };
 
                     if (dygraph_did_zoom === true) {
-                        dygraph_config.dateWindow = [dygraph_daterange[0], dygraph_daterange[1]];
+                        dygraph_config.dateWindow = dygraph_daterange;
                     } else {
                         // reset date window if we want to show entirely new data
                         dygraph_config.dateWindow = null;

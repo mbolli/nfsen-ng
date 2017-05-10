@@ -97,17 +97,9 @@ class RRD implements Datasource {
      * @return bool
      */
     public function write(array $data) {
-        if ($data['date_timestamp'] >= time()) return false;
         $rrdFile = $this->get_data_path($data['source'], $data['port']);
-        $ts_last = rrd_last($rrdFile);
-
-        // return false if the database's last entry is newer
-        if ($data['date_timestamp'] <= $ts_last) return false;
 
         $nearest = (int)$data['date_timestamp'] - ($data['date_timestamp'] % 300);
-
-        // create new database if not existing
-        if (!file_exists($rrdFile)) $this->create($data['source'], $data['port']);
 
         // write data
         $updater = new \RRDUpdater($rrdFile);

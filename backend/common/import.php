@@ -24,12 +24,15 @@ class Import {
         $sources = Config::$cfg['general']['sources'];
         $processed_sources = 0;
 
+        // if in force mode, reset existing data
+        if ($this->force === true) {
+            if ($this->cli === true) echo "Resetting existing data...\n";
+            Config::$db->reset(array());
+        }
+
         // start progress bar (CLI only)
         $this->days_total = ((int)$datestart->diff(new \DateTime())->format('%a')+1)*count($sources);
         if ($this->cli === true) echo "\n" . \vendor\ProgressBar::start($this->days_total, 'Processing ' . count($sources) . ' sources...');
-
-        // if in force mode, reset existing data
-        if ($this->force === true) Config::$db->reset(array());
 
         // process each source, e.g. gateway, mailserver, etc.
         foreach ($sources as $source) {
@@ -42,7 +45,7 @@ class Import {
 
             // check if we want to continue a stopped import
             $last_update_db = Config::$db->last_update($source);
-            if ($last_update_db !== false && $last_update_db !== 0 && $last_update_db < time()-300) {
+            if ($this->force === false && $last_update_db !== false && $last_update_db !== 0 && $last_update_db < time()-300) {
                 $last_update = new \DateTime();
                 $last_update->setTimestamp($last_update_db);
                 $days_saved = (int)$date->diff($last_update)->format('%a');
@@ -122,8 +125,14 @@ class Import {
             return false;
         }
 
-        $data = array('port' => 0);
-
+        $date = new \DateTime(substr($stats_path, -12));
+        $data = array(
+            'fields' => array(),
+            'source' => $source,
+            'port' => 0,
+            'date_iso' => $date->format("Ymd\THis"),
+            'date_timestamp' => $date->getTimestamp()
+        );
         // $input data is an array of lines looking like this:
         // flows_tcp: 323829
         foreach($input as $line) {
@@ -133,14 +142,6 @@ class Import {
             // we only need flows/packets/bytes values, the source and the timestamp
             if (preg_match("/^(flows|packets|bytes)/i", $type)) {
                 $data['fields'][strtolower($type)] = (int)$value;
-            } elseif("Ident" == $type) {
-                $data['source'] = $value;
-            } elseif("Last" == $type) {
-                $d = new \DateTime();
-                $d->setTimestamp((int)$value - ($value % 300));
-
-                $data['date_iso'] = $d->format("Ymd\THis");
-                $data['date_timestamp'] = $d->getTimestamp();
             }
         }
 

@@ -6,6 +6,7 @@ class Import {
     private $d;
     private $cli;
     private $verbose;
+    private $force;
     private $processPorts;
 
     private $days_total = 0;
@@ -23,8 +24,12 @@ class Import {
         $sources = Config::$cfg['general']['sources'];
         $processed_sources = 0;
 
+        // start progress bar (CLI only)
         $this->days_total = ((int)$datestart->diff(new \DateTime())->format('%a')+1)*count($sources);
         if ($this->cli === true) echo "\n" . \vendor\ProgressBar::start($this->days_total, 'Processing ' . count($sources) . ' sources...');
+
+        // if in force mode, reset existing data
+        if ($this->force === true) Config::$db->reset(array());
 
         // process each source, e.g. gateway, mailserver, etc.
         foreach ($sources as $source) {
@@ -37,7 +42,7 @@ class Import {
 
             // check if we want to continue a stopped import
             $last_update_db = Config::$db->last_update($source);
-            if ($last_update_db !== false && $last_update_db < time()-300) {
+            if ($last_update_db !== false && $last_update_db !== 0 && $last_update_db < time()-300) {
                 $last_update = new \DateTime();
                 $last_update->setTimestamp($last_update_db);
                 $days_saved = (int)$date->diff($last_update)->format('%a');
@@ -218,6 +223,13 @@ class Import {
      */
     public function setProcessPorts(bool $processPorts)     {
         $this->processPorts = $processPorts;
+    }
+
+    /**
+     * @param bool $force
+     */
+    public function setForce(bool $force) {
+        $this->force = $force;
     }
 }
 

@@ -3,7 +3,6 @@ namespace datasources;
 
 class RRD implements Datasource {
     private $d;
-    private $client;
     private $fields = array(
         'flows',
         'flows_tcp',
@@ -64,15 +63,15 @@ class RRD implements Datasource {
      * Create a new RRD file for a source
      * @param string $source e.g. gateway or server_xyz
      * @param int $port
-     * @param bool $force overwrites existing RRD file if true
+     * @param bool $reset overwrites existing RRD file if true
      * @return bool
      */
-    public function create(string $source, int $port = 0, bool $force = false) {
+    public function create(string $source, int $port = 0, bool $reset = false) {
         $rrdFile = $this->get_data_path($source, $port);
         if (file_exists($rrdFile)) {
-            if ($force === true) unlink($rrdFile);
+            if ($reset === true) unlink($rrdFile);
             else {
-                $this->d->log('Error creating ' . $rrdFile, LOG_ERR);
+                $this->d->log('Error creating ' . $rrdFile . ': File already exists', LOG_ERR);
                 return false;
             }
         }
@@ -165,9 +164,11 @@ class RRD implements Datasource {
                 }
         }
 
+        ob_start();
         $data = rrd_xport($options);
+        $error = ob_get_clean(); // rrd_xport weirdly prints stuff on error
 
-        if (!is_array($data)) return rrd_error();
+        if (!is_array($data)) return $error . ". " . rrd_error();
 
         // remove invalid numbers and create processable array
         $output = array(
@@ -193,6 +194,24 @@ class RRD implements Datasource {
         }
 
         return $output;
+    }
+
+    /**
+     * Creates a new database for every source/port combination
+     * @param array $sources
+     * @return bool
+     */
+    public function reset(array $sources) {
+        if (empty($sources)) $sources = \Common\Config::$cfg['general']['sources'];
+        $ports = \Common\Config::$cfg['general']['ports'];
+        $ports[] = 0;
+        foreach ($sources as $source) {
+            foreach ($ports as $port) {
+                $return = $this->create($source, $port, true);
+                if ($return === false) return false;
+            }
+        }
+        return true;
     }
 
     /**

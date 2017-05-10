@@ -64,6 +64,14 @@ interface Datasource {
     public function get_graph_data(int $start, int $end, array $sources, array $protocols, array $ports, string $type = 'flows', string $display = 'sources');
 
     /**
+     * Removes all existing data for every source in $sources.
+     * If $sources is empty, remove all existing data.
+     * @param array $sources
+     * @return bool
+     */
+    public function reset(array $sources);
+
+    /**
      * Gets the timestamps of the first and last entry in the datasource (for this specific source)
      * @param string $source
      * @return array (timestampfirst, timestamplast)

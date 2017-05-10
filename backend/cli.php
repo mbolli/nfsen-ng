@@ -16,6 +16,7 @@ if ($argc < 2 || in_array($argv[1], array('--help', '-help', '-h', '-?'))) {
     Options:
         -v  Show verbose output
         -p  Also import ports
+        -f  Force overwriting database and start at the beginning
 
     Commands:
         import  - Import existing nfdump data to nfsen-ng.
@@ -31,6 +32,7 @@ else {
         $i = new \common\Import();
         if (in_array('-v', $argv)) $i->setVerbose(true);
         if (in_array('-p', $argv)) $i->setProcessPorts(true);
+        if (in_array('-f', $argv)) $i->setForce(true);
         $i->start($start);
     }
 }

@@ -50,14 +50,14 @@ class Debug {
      * @param $mixed
      */
     public function dpr(...$mixed) {
-        if($this->debug) {
-            foreach($mixed as $param) {
-                echo ($this->cli) ? "\n" . $this->stopWatch() . "s " : "<br /><span style='color: green;'>" . $this->stopWatch() . "</span> ";
-                if(is_array($param)) {
-                    echo ($this->cli) ? print_r($mixed, true) : "<pre>", var_dump($mixed), "</pre>";
-                } else {
-                    echo $param;
-                }
+        if($this->debug === false) return;
+
+        foreach($mixed as $param) {
+            echo ($this->cli) ? "\n" . $this->stopWatch() . "s " : "<br /><span style='color: green;'>" . $this->stopWatch() . "</span> ";
+            if(is_array($param)) {
+                echo ($this->cli) ? print_r($mixed, true) : "<pre>", var_dump($mixed), "</pre>";
+            } else {
+                echo $param;
             }
         }
     }

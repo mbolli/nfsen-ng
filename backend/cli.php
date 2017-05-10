@@ -15,7 +15,7 @@ if ($argc < 2 || in_array($argv[1], array('--help', '-help', '-h', '-?'))) {
 
     Options:
         -v  Show verbose output
-        -p  Also import ports
+        -p  Import ports per source
         -f  Force overwriting database and start at the beginning
 
     Commands:

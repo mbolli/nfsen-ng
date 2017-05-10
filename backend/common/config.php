@@ -27,11 +27,6 @@ abstract class Config {
         } else {
             throw new \Exception('Failed loading class ' . self::$cfg['general']['db'] . '. The class doesn\'t exist.');
         }
-
-        // check if folders have correct access rights
-        if (!is_writable(self::$db->get_data_path())) {
-            throw new \Exception('Cannot write to ' . self::$db->get_data_path() . '!', LOG_CRIT);
-        }
     }
 
 }

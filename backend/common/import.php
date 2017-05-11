@@ -85,12 +85,15 @@ class Import {
 
                     try {
 
-                        // write data to source.rrd
+                        // fill source.rrd
                         $this->write_sources_data($source, $stats_path);
 
-                        // if enabled, process ports as well (source_80.rrd)
+                        // write general port data (not depending on source, so only executed per port)
+                        $this->write_ports_data($stats_path);
+
+                        // if enabled, process ports per source as well (source_80.rrd)
                         if ($this->processPorts === true) {
-                            $this->write_ports_data($source, $stats_path);
+                            $this->write_ports_data($stats_path, $source);
                         }
 
                     } catch (\Exception $e) {
@@ -150,14 +153,16 @@ class Import {
     }
 
     /**
-     * @param $source
      * @param $stats_path
+     * @param $source
      * @return bool
      */
-    private function write_ports_data($source, $stats_path) {
+    private function write_ports_data($stats_path, $source = "") {
 	    $ports = \common\Config::$cfg['general']['ports'];
+	    $sources = \common\Config::$cfg['general']['sources'];
 
 	    foreach ($ports as $port) {
+
             // set options and get netflow statistics
             $nfdump = NfDump::getInstance();
             $nfdump->reset();
@@ -165,6 +170,9 @@ class Import {
             $nfdump->setOption("-s", "dstport:p");
             $nfdump->setOption("-r", $stats_path);
             $nfdump->setOption("-M", $source);
+
+            // if no source is specified, get data for all sources
+            if (empty($source)) $nfdump->setOption("-M", implode(":", $sources));
 
             try {
                 $input = $nfdump->execute();

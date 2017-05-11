@@ -11,10 +11,11 @@ ServerSignature Off
 </IfModule>
 
 <IfModule mod_deflate.c>
-  AddOutputFilterByType DEFLATE text/plain
-  AddOutputFilterByType DEFLATE text/html
-  AddOutputFilterByType DEFLATE text/json
-  AddOutputFilterByType DEFLATE application/json
+  AddOutputFilterByType DEFLATE text/plain text/html
+  AddOutputFilterByType DEFLATE image/svg+xml
+  AddOutputFilterByType DEFLATE text/css
+  AddOutputFilterByType DEFLATE text/json application/json
+  AddOutputFilterByType DEFLATE application/javascript application/x-javascript text/x-component
 
   # Drop problematic browsers
   BrowserMatch ^Mozilla/4 gzip-only-text/html
@@ -47,5 +48,26 @@ ServerSignature Off
 
 <IfModule mod_headers.c>
     Header set Connection keep-alive
+</IfModule>
+
+<IfModule mod_expires.c>
+  # enable the directives - assuming they're not enabled globally
+  ExpiresActive on
+
+  ExpiresByType text/html "access plus 1 year"
+
+  # send an Expires: header for each of these mimetypes (as defined by server)
+  ExpiresByType image/png "access plus 1 year"
+
+  # css may change a bit sometimes, so define shorter expiration
+  ExpiresByType text/css "access plus 3 months"
+
+  # libraries won't change much
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType application/x-javascript "access plus 1 year"
+</IfModule>
+
+<IfModule mod_pagespeed.c>
+  # ModPagespeed on
 </IfModule>
 

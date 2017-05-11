@@ -68,6 +68,13 @@ class RRD implements Datasource {
      */
     public function create(string $source, int $port = 0, bool $reset = false) {
         $rrdFile = $this->get_data_path($source, $port);
+
+        // check if folder has correct access rights
+        if (!is_writable(dirname($rrdFile))) {
+            $this->d->log('Error creating ' . $rrdFile . ': Not writable', LOG_CRIT);
+            return false;
+        }
+        // check if file already exists
         if (file_exists($rrdFile)) {
             if ($reset === true) unlink($rrdFile);
             else {
@@ -135,24 +142,28 @@ class RRD implements Datasource {
                 foreach ($protocols as $protocol) {
                     $rrdFile = $this->get_data_path($sources[0]);
                     $proto = ($protocol === 'any') ? '' : '_' . $protocol;
+                    $legend = array_filter(array($protocol, $type, $sources[0]));
                     $options[] = 'DEF:data' . $sources[0] . $protocol . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
-                    $options[] = 'XPORT:data' . $sources[0] . $protocol . ':' . $sources[0] . '_' . $type . $proto;
+                    $options[] = 'XPORT:data' . $sources[0] . $protocol . ':' . implode('_', $legend);
                 }
                 break;
             case 'sources':
                 foreach ($sources as $source) {
                     $rrdFile = $this->get_data_path($source);
                     $proto = ($protocols[0] === 'any') ? '' : '_' . $protocols[0];
+                    $legend = array_filter(array($source, $type, $protocols[0]));
                     $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
-                    $options[] = 'XPORT:data' . $source . ':' . $source . '_' . $type . $proto;
+                    $options[] = 'XPORT:data' . $source . ':' . implode('_', $legend);
                 }
                 break;
             case 'ports':
                 foreach ($ports as $port) {
-                    $rrdFile = $this->get_data_path($sources[0], $port);
+                    $source = ($sources[0] === 'any') ? '' : $sources[0];
                     $proto = ($protocols[0] === 'any') ? '' : '_' . $protocols[0];
-                    $options[] = 'DEF:data' . $sources[0] . $port . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
-                    $options[] = 'XPORT:data' . $sources[0] . $port . ':' . $sources[0] . '_' . $type . $proto . '_' . $port;
+                    $legend = array_filter(array($port, $type, $source, $protocols[0]));
+                    $rrdFile = $this->get_data_path($source, $port);
+                    $options[] = 'DEF:data' . $source . $port . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
+                    $options[] = 'XPORT:data' . $source . $port . ':' . implode('_', $legend);
                 }
         }
 
@@ -197,8 +208,11 @@ class RRD implements Datasource {
         if (empty($sources)) $sources = \Common\Config::$cfg['general']['sources'];
         $ports = \Common\Config::$cfg['general']['ports'];
         $ports[] = 0;
-        foreach ($sources as $source) {
-            foreach ($ports as $port) {
+        foreach ($ports as $port) {
+            if ($port !== 0) $return = $this->create('', $port, true);
+            if ($return === false) return false;
+
+            foreach ($sources as $source) {
                 $return = $this->create($source, $port, true);
                 if ($return === false) return false;
             }
@@ -208,15 +222,16 @@ class RRD implements Datasource {
 
     /**
      * Concatenates the path to the source's rrd file
-     * If source is empty, returns the path to the data folder.
      * @param string $source
      * @param int $port
      * @return string
      */
     public function get_data_path($source = '', $port = 0) {
-        $port = ((int)$port !== 0) ? '_' . $port : '';
-        $file = (!empty($source)) ? $source = DIRECTORY_SEPARATOR . $source . $port . '.rrd' : '';
-        $path = \common\Config::$path . DIRECTORY_SEPARATOR . 'datasources' . DIRECTORY_SEPARATOR . 'data' . $file;
+        if ((int)$port === 0) $port = '';
+        else {
+            $port = (empty($source)) ? $port : '_' . $port;
+        }
+        $path = \common\Config::$path . DIRECTORY_SEPARATOR . 'datasources' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . $source . $port . '.rrd';
 
         if (!file_exists($path)) $this->d->log('Was not able to find ' . $path, LOG_INFO);
 

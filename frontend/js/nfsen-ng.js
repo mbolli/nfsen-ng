@@ -112,9 +112,16 @@ $(document).ready(function() {
             case 'sources':
                 displayId = '#filterSources';
                 $('#filterProtocols').find('input').attr('checked', false); // todo generalize...
+                displaySourcesHelper();
                 break;
-            case 'protocols': displayId = '#filterProtocols'; break;
-            case 'ports': displayId = '#filterPorts'; break;
+            case 'protocols':
+                displayId = '#filterProtocols';
+                displayProtocolsHelper();
+                break;
+            case 'ports':
+                displayId = '#filterPorts';
+                displayPortsHelper();
+                break;
         }
 
         // move wanted filter to first position
@@ -450,6 +457,79 @@ $(document).ready(function() {
             }
         });
     }
+
+    /**
+     * modify some GUI elements if the user selected "sources" to display
+     */
+    function displaySourcesHelper() {//todo fix needed (see e-mail for details)
+        //add "multiple" to source selection and select all sources
+        var $sourceSelect = $("#filterSourcesSelect");
+        $sourceSelect.attr("multiple",true);
+
+        //select all sources
+        var $sourceSelectOptions = $("#filterSourcesSelect option");
+        $sourceSelectOptions.attr("selected",true);
+
+        //uncheck protocol buttons and transform to radio buttons
+        var $protocolButtonsLabel = $("#filterProtocolButtons label");
+        $protocolButtonsLabel.removeClass("active");
+        var $protocolButtonsInput = $("#filterProtocolButtons label input");
+        $protocolButtonsInput.attr("checked",false);
+        $protocolButtonsInput.attr("type","radio");
+
+        //select TCP proto as default
+        var $protocolButtonTCPLabel = $("#filterProtocolButtons label:first");
+        $protocolButtonTCPLabel.addClass("active");
+        var $protocolButtonTCPInput = $("#filterProtocolButtons label:first input");
+        $protocolButtonTCPInput.attr("checked","");
+    }
+
+    /**
+     * modify some GUI elements if the user selected "protocols" to display
+     */
+    function displayProtocolsHelper() {//todo fix needed (see e-mail for details)
+        //remove "multiple" to source select and select first only
+        var $sourceSelect = $("#filterSourcesSelect");
+        $sourceSelect.attr("multiple",false);
+        var $sourceSelectFirst = $("#filterSourcesSelect option:first");
+        $sourceSelectFirst.attr("selected",true);// needed for the graph to be diplayed correctly
+
+        //protocol buttons become checkboxes and set all checked by default
+        var $protocolButtonsInput = $("#filterProtocolButtons label input");
+        $protocolButtonsInput.attr("type","checkbox");
+        $protocolButtonsInput.attr("checked","");
+        var $protocolButtonsLabel = $("#filterProtocolButtons label");
+        $protocolButtonsLabel.addClass("active");
+    }
+
+    /**
+     * modify some GUI elements if the user selected "ports" to display
+     */
+    function displayPortsHelper() {//todo fix needed (see e-mail for details)
+        //remove "multiple" to source select
+        var $sourceSelect = $("#filterSourcesSelect");
+        $sourceSelect.attr("multiple",false);
+
+        //uncheck protocol buttons and transform to radio buttons
+        var $protocolButtonsLabel = $("#filterProtocolButtons label");
+        $protocolButtonsLabel.removeClass("active");
+        var $protocolButtonsInput = $("#filterProtocolButtons label input");
+        $protocolButtonsInput.attr("checked",false);
+        $protocolButtonsInput.attr("type","radio");
+
+        //select TCP proto as default
+        var $protocolButtonTCPLabel = $("#filterProtocolButtons label:first");
+        $protocolButtonTCPLabel.addClass("active");
+        var $protocolButtonTCPInput = $("#filterProtocolButtons label:first input");
+        $protocolButtonTCPInput.attr("checked","");
+
+        //select all ports
+        var $portsSelectOptions = $("#filterPortsSelect option");
+        $portsSelectOptions.attr("selected",true);
+    }
+
+
+
 
     /**
      * gets the latest last date of all sources from the config

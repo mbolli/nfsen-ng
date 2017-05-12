@@ -100,7 +100,6 @@ $(document).ready(function() {
         switch (display) {
             case 'sources':
                 displayId = '#filterSources';
-                $('#filterProtocols').find('input').attr('checked', false); // todo generalize...
                 displaySourcesHelper();
                 break;
             case 'protocols':
@@ -123,7 +122,19 @@ $(document).ready(function() {
      * protocols filter
      * reload the graph when the protocol selection changes
      */
-    $(document).on('change', '#filterProtocols input', updateGraph);
+    $(document).on('change', '#filterProtocols input', function() {
+        if ($(this).val() === 'any') {
+            // uncheck all other input elements
+            $(this).parent().addClass('active');
+            $('#filterProtocols').find('input[value!="any"]').each(function () {
+                $(this).prop('checked', false).parent().removeClass('active');
+            });
+        } else {
+            // uncheck 'any' input element
+            $('#filterProtocols').find('input[value="any"]').prop('checked', false).parent().removeClass('active');
+        }
+        updateGraph();
+    });
 
     /**
      * datatype filter (flows/packets/bytes)
@@ -172,11 +183,8 @@ $(document).ready(function() {
      * - load the graph
      */
     function init() {
-        // load default filter
+        // load default view
         $('header li a').eq(0).trigger('click');
-
-        // show correct form elements
-        $('#filterDisplaySelect').trigger('change');
 
         // load values for form
         updateDropdown('sources', Object.keys(config['sources']));
@@ -187,7 +195,8 @@ $(document).ready(function() {
 
         init_rangeslider();
 
-        updateGraph();
+        // show correct form elements
+        $('#filterDisplaySelect').trigger('change');
     }
 
     /**
@@ -207,7 +216,7 @@ $(document).ready(function() {
                 return date.toDateString();
             },
             onChange: function(data) {
-                $('#date_slot').find('label.active').removeClass('active').find('input').attr('checked', false);
+                $('#date_slot').find('label.active').removeClass('active').find('input').prop('checked', false);
                 // somehow still has old from/to
             },
             onFinish: function(data) {
@@ -308,7 +317,7 @@ $(document).ready(function() {
         var sources = $('#filterSourcesSelect').val(),
             type = $('#filterTypes input:checked').val(),
             ports = $('#filterPortsSelect').val(),
-            protos = $('#filterProtocols').find('input:checked').map(function() { return $(this).val(); }).get(),
+            protocols = $('#filterProtocols').find('input:checked').map(function() { return $(this).val(); }).get(),
             display = $('#filterDisplaySelect').val(),
             title = type + ' for ';
 
@@ -319,7 +328,7 @@ $(document).ready(function() {
                 sources = ['any'];
             else return;
         }
-        if (protos.length > 1 && sources.length > 1) return; // todo annotate wrong input?
+        if (protocols.length > 1 && sources.length > 1) return; // todo annotate wrong input?
         if (ports.length === 0) ports = [0];
 
         // set options
@@ -327,24 +336,19 @@ $(document).ready(function() {
             datestart: parseInt(dygraph_daterange[0]/1000),
             dateend: parseInt(dygraph_daterange[1]/1000),
             type: type,
-            protocols: protos.length > 0 ? protos : ['any'],
+            protocols: protocols.length > 0 ? protocols : ['any'],
             sources: sources,
             ports: ports,
             display: display
         };
 
-        // set title todo: make it depend on what is displayed (protocols/sources/ports)
-        if (protos.length > sources.length) {
-            title += 'protocols ' + protos.join(', ') + ' (' + sources[0] + ')';
-        } else {
-            var s = sources.length > 1 ? 's' : ''; // plural
+        // set title
+        var elements = eval(display);
+        var cat = elements.length > 1 ? display : display.substr(0, display.length-1); // plural
+        // if more than 4, only show number of sources instead of names
+        if (elements.length > 4) title += cat + ' ' + elements.length;
+        else title += cat + ' ' + elements.join(', ');
 
-            // if more than 3, only show number of sources instead of names
-            if (sources.length > 3) title += sources.length + ' sources';
-            else title += 'source' + s + ' ' + sources.join(', ');
-
-            title += ' (' + (protos.length === 0 ? 'any' : protos[0]) + ')';
-        }
 
         // make actual request
         $.get('../api/graph', api_graph_options, function (data, status) {
@@ -459,20 +463,23 @@ $(document).ready(function() {
      * modify some GUI elements if the user selected "sources" to display
      */
     function displaySourcesHelper() {
-        // add "multiple" to source selection and select all sources
+        // add "multiple" to source selection
         var $sourceSelect = $('#filterSourcesSelect'),
             $protocolButtons = $('#filterProtocolButtons');
-        $sourceSelect.attr('multiple', true);
+        $sourceSelect.prop('multiple', true);
+
+        // disable 'any' in sources
+        $sourceSelect.find('option[value="any"]').prop('disabled', true);
 
         // select all sources
-        $sourceSelect.find('option').attr('selected', true);
+        $sourceSelect.find('option:not([disabled])').prop('selected', true);
 
         // uncheck protocol buttons and transform to radio buttons
         $protocolButtons.find('label').removeClass('active');
-        $protocolButtons.find('label input').attr('checked', false).attr('type', 'radio');
+        $protocolButtons.find('label input').prop('checked', false).attr('type', 'radio');
 
         // select TCP proto as default
-        $protocolButtons.find('label:first').addClass('active').find('input').attr('checked',true);
+        $protocolButtons.find('label:first').addClass('active').find('input').prop('checked',true);
     }
 
     /**
@@ -482,12 +489,17 @@ $(document).ready(function() {
         // remove "multiple" from source select and select first source
         var $sourceSelect = $('#filterSourcesSelect'),
             $protocolButtons = $('#filterProtocolButtons');
-        $sourceSelect.attr('multiple', false);
-        $sourceSelect.find('option:first').attr('selected', true); // needed for the graph to be diplayed correctly
+        $sourceSelect.prop('multiple', false);
+
+        // disable 'any' in sources
+        $sourceSelect.find('option[value="any"]').prop('disabled', true).prop('selected', false);
+
+        // select the first element
+        $sourceSelect.find('option:not([disabled]):first').prop('selected', true);
 
         // protocol buttons become checkboxes and get checked by default
-        $protocolButtons.find('label input').attr('type', 'checkbox').attr('checked', true);
-        $protocolButtons.find('label').addClass('active');
+        $protocolButtons.find('label').removeClass('active').filter(function() { return $(this).find('input').val() !== 'any'}).addClass('active');
+        $protocolButtons.find('label input').attr('type', 'checkbox').prop('checked', false).filter('[value!="any"]').prop('checked', true);
     }
 
     /**
@@ -500,15 +512,18 @@ $(document).ready(function() {
             $protocolButtons = $('#filterProtocolButtons');
         $sourceSelect.attr('multiple', false);
 
+        // enable 'any' in sources
+        $sourceSelect.find('option[value="any"]').prop('disabled', false);
+
         // uncheck protocol buttons and transform to radio buttons
         $protocolButtons.find('label').removeClass('active');
-        $protocolButtons.find('label input').attr('checked', false).attr('type','radio');
+        $protocolButtons.find('label input').prop('checked', false).attr('type','radio');
 
         // select TCP proto as default
-        $protocolButtons.find('label:first').addClass('active').find('input').attr('checked', true);
+        $protocolButtons.find('label:first').addClass('active').find('input').prop('checked', true);
 
         // select all ports
-        $portsSelect.find('option').attr('selected', true);
+        $portsSelect.find('option').prop('selected', true);
     }
 
 

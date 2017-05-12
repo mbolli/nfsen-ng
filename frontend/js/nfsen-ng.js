@@ -313,9 +313,10 @@ $(document).ready(function() {
             title = type + ' for ';
 
         // check if options valid to request new dygraph
+        if (typeof sources === 'string') sources = [sources];
         if (sources.length === 0) {
-            if (display === "ports")
-                sources.push('any');
+            if (display === 'ports')
+                sources = ['any'];
             else return;
         }
         if (protos.length > 1 && sources.length > 1) return; // todo annotate wrong input?
@@ -417,8 +418,8 @@ $(document).ready(function() {
                             strokeBorderWidth: 1,
                             highlightCircleSize: 5
                         },
-                        rangeSelectorPlotStrokeColor: '#337ab7',
-                        rangeSelectorPlotFillColor: '#337ab7',
+                        rangeSelectorPlotStrokeColor: '#888888',
+                        rangeSelectorPlotFillColor: '#cccccc',
                         stackedGraph: true,
                         fillGraph: true,
                     };
@@ -457,71 +458,57 @@ $(document).ready(function() {
     /**
      * modify some GUI elements if the user selected "sources" to display
      */
-    function displaySourcesHelper() {//todo fix needed (see e-mail for details)
-        //add "multiple" to source selection and select all sources
-        var $sourceSelect = $("#filterSourcesSelect");
-        $sourceSelect.attr("multiple",true);
+    function displaySourcesHelper() {
+        // add "multiple" to source selection and select all sources
+        var $sourceSelect = $('#filterSourcesSelect'),
+            $protocolButtons = $('#filterProtocolButtons');
+        $sourceSelect.attr('multiple', true);
 
-        //select all sources
-        var $sourceSelectOptions = $("#filterSourcesSelect option");
-        $sourceSelectOptions.attr("selected",true);
+        // select all sources
+        $sourceSelect.find('option').attr('selected', true);
 
-        //uncheck protocol buttons and transform to radio buttons
-        var $protocolButtonsLabel = $("#filterProtocolButtons label");
-        $protocolButtonsLabel.removeClass("active");
-        var $protocolButtonsInput = $("#filterProtocolButtons label input");
-        $protocolButtonsInput.attr("checked",false);
-        $protocolButtonsInput.attr("type","radio");
+        // uncheck protocol buttons and transform to radio buttons
+        $protocolButtons.find('label').removeClass('active');
+        $protocolButtons.find('label input').attr('checked', false).attr('type', 'radio');
 
-        //select TCP proto as default
-        var $protocolButtonTCPLabel = $("#filterProtocolButtons label:first");
-        $protocolButtonTCPLabel.addClass("active");
-        var $protocolButtonTCPInput = $("#filterProtocolButtons label:first input");
-        $protocolButtonTCPInput.attr("checked","");
+        // select TCP proto as default
+        $protocolButtons.find('label:first').addClass('active').find('input').attr('checked',true);
     }
 
     /**
      * modify some GUI elements if the user selected "protocols" to display
      */
-    function displayProtocolsHelper() {//todo fix needed (see e-mail for details)
-        //remove "multiple" to source select and select first only
-        var $sourceSelect = $("#filterSourcesSelect");
-        $sourceSelect.attr("multiple",false);
-        var $sourceSelectFirst = $("#filterSourcesSelect option:first");
-        $sourceSelectFirst.attr("selected",true);// needed for the graph to be diplayed correctly
+    function displayProtocolsHelper() {
+        // remove "multiple" from source select and select first source
+        var $sourceSelect = $('#filterSourcesSelect'),
+            $protocolButtons = $('#filterProtocolButtons');
+        $sourceSelect.attr('multiple', false);
+        $sourceSelect.find('option:first').attr('selected', true); // needed for the graph to be diplayed correctly
 
-        //protocol buttons become checkboxes and set all checked by default
-        var $protocolButtonsInput = $("#filterProtocolButtons label input");
-        $protocolButtonsInput.attr("type","checkbox");
-        $protocolButtonsInput.attr("checked","");
-        var $protocolButtonsLabel = $("#filterProtocolButtons label");
-        $protocolButtonsLabel.addClass("active");
+        // protocol buttons become checkboxes and get checked by default
+        $protocolButtons.find('label input').attr('type', 'checkbox').attr('checked', true);
+        $protocolButtons.find('label').addClass('active');
     }
 
     /**
      * modify some GUI elements if the user selected "ports" to display
      */
-    function displayPortsHelper() {//todo fix needed (see e-mail for details)
-        //remove "multiple" to source select
-        var $sourceSelect = $("#filterSourcesSelect");
-        $sourceSelect.attr("multiple",false);
+    function displayPortsHelper() {
+        // remove "multiple" from source select
+        var $sourceSelect = $('#filterSourcesSelect'),
+            $portsSelect = $('#filterPortsSelect'),
+            $protocolButtons = $('#filterProtocolButtons');
+        $sourceSelect.attr('multiple', false);
 
-        //uncheck protocol buttons and transform to radio buttons
-        var $protocolButtonsLabel = $("#filterProtocolButtons label");
-        $protocolButtonsLabel.removeClass("active");
-        var $protocolButtonsInput = $("#filterProtocolButtons label input");
-        $protocolButtonsInput.attr("checked",false);
-        $protocolButtonsInput.attr("type","radio");
+        // uncheck protocol buttons and transform to radio buttons
+        $protocolButtons.find('label').removeClass('active');
+        $protocolButtons.find('label input').attr('checked', false).attr('type','radio');
 
-        //select TCP proto as default
-        var $protocolButtonTCPLabel = $("#filterProtocolButtons label:first");
-        $protocolButtonTCPLabel.addClass("active");
-        var $protocolButtonTCPInput = $("#filterProtocolButtons label:first input");
-        $protocolButtonTCPInput.attr("checked","");
+        // select TCP proto as default
+        $protocolButtons.find('label:first').addClass('active').find('input').attr('checked', true);
 
-        //select all ports
-        var $portsSelectOptions = $("#filterPortsSelect option");
-        $portsSelectOptions.attr("selected",true);
+        // select all ports
+        $portsSelect.find('option').attr('selected', true);
     }
 
 

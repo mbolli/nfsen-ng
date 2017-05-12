@@ -16,9 +16,15 @@ class API {
         $this->input = json_decode(file_get_contents('php://input'),true);
 
         header('Content-type: application/json');
+        header('X-Content-Type-Options: nosniff');
+        header('X-Frame-Options: deny');
+
+        // only allow GET requests
+        // if at some time POST requests are enabled, check the request's content type (or return 406)
+        if ($this->method !== "GET") $this->error(403);
 
         // call correct method
-        if(!method_exists($this, $this->request[0])) $this->error(404);
+        if (!method_exists($this, $this->request[0])) $this->error(404);
 
         // remove method name from $_REQUEST
         $_REQUEST = array_filter($_REQUEST, function($x) { return $x !== $this->request[0]; });

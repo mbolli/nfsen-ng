@@ -24,26 +24,26 @@
                 <li role="presentation"><a data-view="statistics" href="#">Statistics</a></li>
             </ul>
         </header>
-
-        <div class="date_selection">
-            <h3>Date</h3>
-            <input type="text" id="date_range"/>
-
-            <div class="btn-group" id="date_slot" data-toggle="buttons">
-                <label class="btn btn-default"><input type="radio" name="range"  value="86400000">24 hours</label>
-                <label class="btn btn-default"><input type="radio" name="range"  value="604800000">Week</label>
-                <label class="btn btn-default"><input type="radio" name="range"  value="2419200000">Month</label>
-                <label class="btn btn-default"><input type="radio" name="range"  value="29030400000">Year</label>
-            </div>
-
-            <div class="btn-group" id="date_slot_nav">
-                <button type="button" class="btn btn-default prev">Previous</button>
-                <button type="button" class="btn btn-default next">Next</button>
-            </div>
-        </div>
         <form autocomplete="off">
             <div id="filterContainer" class="container-fluid tab-content">
                 <div id="filter" class="filter row well well-sm">
+                    <div class="date_selection">
+                        <h3>Date</h3>
+                        <input type="text" id="date_range"/>
+
+                        <div class="btn-group" id="date_slot" data-toggle="buttons">
+                            <label class="btn btn-default"><input type="radio" name="range"  value="86400000">24 hours</label>
+                            <label class="btn btn-default"><input type="radio" name="range"  value="604800000">Week</label>
+                            <label class="btn btn-default"><input type="radio" name="range"  value="2419200000">Month</label>
+                            <label class="btn btn-default"><input type="radio" name="range"  value="29030400000">Year</label>
+                        </div>
+
+                        <div class="btn-group" id="date_slot_nav">
+                            <button type="button" class="btn btn-default prev">Previous</button>
+                            <button type="button" class="btn btn-default next">Next</button>
+                        </div>
+                    </div>
+
 
                     <div id="filterDisplay" class="hidden col-sm-2" data-view="graphs">
                         <h3>Display</h3>
@@ -354,43 +354,42 @@
 
             <div id="graphsContentDiv" data-view="graphs" class="content container-fluid">
 
-                <div class="col-sm-2">
+                <div class="col-sm-12">
+                    <div id="flowDiv" style="width: 100%;"></div>
+                </div>
 
-                    <div id="graphOptions">
+                <div id="graphOptions">
+                    <div class="col-sm-3">
                         <h4>Scale</h4>
                         <div class="btn-group" data-toggle="buttons" id="graph_linlog">
                             <label class="btn btn-default active">
-                                <input type="radio" name="scale"  value="linear" checked>Linear</label>
+                                <input type="radio" name="scale" autocomplete="off" value="linear" checked>Linear</label>
                             <label class="btn btn-default">
-                                <input id="logarithmicScaleBtn" type="radio" name="scale"  value="logarithmic">Logarithmic</label>
+                                <input id="logarithmicScaleBtn" type="radio" name="scale" autocomplete="off" value="logarithmic">Logarithmic</label>
                         </div>
+                    </div>
 
+                    <div class="col-sm-3">
                         <h4>Line/Stacked</h4>
                         <div class="btn-group" data-toggle="buttons" id="graph_linestacked">
                             <label class="btn btn-default active">
-                                <input type="radio" name="type"  value="stacked" checked>Stacked</label>
+                                <input type="radio" name="type" autocomplete="off" value="stacked" checked>Stacked</label>
                             <label class="btn btn-default">
-                                <input type="radio" name="type"  value="line">Line</label>
+                                <input type="radio" name="type" autocomplete="off" value="line">Line</label>
                         </div>
                     </div>
+
+                    <div class="col-sm-3">
+                        <h4>Series</h4>
+                        <div id="series"></div>
+                    </div>
+
+                    <div class="col-sm-3">
+                        <h4>Values</h4>
+                        <div id="legend"></div>
+                    </div>
                 </div>
-
-                <div class="col-sm-8">
-
-                    <div id="flowDiv" style="width: 100%;"></div>
-
-                </div>
-
-                <div class="col-sm-2">
-                    <h4>Series</h4>
-                    <div id="series"></div>
-
-                    <h4>Values</h4>
-                    <div id="legend"></div>
-                </div>
-
-            </div><!-- graphsContentDiv  -->
-
+            </div>
             <div id="flowsContentDiv" data-view="flows" class="content">
 
 

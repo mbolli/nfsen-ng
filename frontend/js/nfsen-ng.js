@@ -62,14 +62,21 @@ $(document).ready(function() {
      */
     $(document).on('click', '#date_slot_nav button', function() {
         var slot = parseInt($('#date_slot').find('input[name=range]:checked').val()),
-            prev = $(this).hasClass('prev');
+            prev = $(this).hasClass('prev'),
+            $buttons = $('#date_slot_nav').find('button');
+
+        // if the date_range was modified manually, get the difference
         if (isNaN(slot)) slot = date_range.options.to-date_range.options.from;
-        if (slot > (date_range.options.max-date_range.options.min)/2) return;
 
         date_range.update({
             from: prev === true ? date_range.options.from-slot : date_range.options.from+slot,
             to: prev === true ? date_range.options.to-slot : date_range.options.to+slot
         });
+
+        // disable buttons if slot is too big or end is near
+        $buttons.each(function() { $(this).prop('disabled', false) }); // reset
+        if (date_range.options.from-slot < date_range.options.min) $buttons.filter('.prev').prop('disabled', true);
+        if (date_range.options.to+slot > date_range.options.max) $buttons.filter('.next').prop('disabled', true);
     });
 
     /**
@@ -77,10 +84,17 @@ $(document).ready(function() {
      * set predefined time range like day/week/month/year
      */
     $(document).on('change', 'input[name=range]', function() {
+        var $buttons = $('#date_slot_nav').find('button'),
+            range = parseInt($(this).val());
+
         date_range.update({
-            from: date_range.options.to-$(this).val(),
-            to: date_range.options.to
+            from: date_range.options.to - range,
+            to: date_range.options.to // the current "to" value should stay
         });
+
+        // reset next/prev buttons (depending on selected range)
+        $buttons.filter('.next').prop('disabled', (date_range.options.to + range >= date_range.options.max));
+        $buttons.filter('.prev').prop('disabled', (date_range.options.from - range <= date_range.options.min));
     });
 
     /**
@@ -191,7 +205,9 @@ $(document).ready(function() {
         updateDropdown('ports', config['ports']);
 
         var now = new Date();
-        dygraph_daterange = [new Date().setFullYear(now.getFullYear()-3), now];
+        var from = new Date();
+        from.setFullYear(now.getFullYear()-3);
+        dygraph_daterange = [from, now];
 
         init_rangeslider();
 
@@ -207,8 +223,8 @@ $(document).ready(function() {
         $('#date_range').ionRangeSlider({
             type: 'double',
             grid: true,
-            min: dygraph_daterange[0],
-            max: dygraph_daterange[1],
+            min: dygraph_daterange[0].getTime(),
+            max: dygraph_daterange[1].getTime(),
             force_edges: true,
             drag_interval: true,
             prettify: function(ut) {
@@ -258,7 +274,8 @@ $(document).ready(function() {
                 dygraph_rangeselector_active = false;
 
                 // get the new detail window extents
-                dygraph_daterange = dygraph.xAxisRange();
+                var range = dygraph.xAxisRange();
+                dygraph_daterange = [new Date(range[0]), new Date(range[1])];
                 dygraph_did_zoom = true;
                 updateGraph();
             });
@@ -274,7 +291,8 @@ $(document).ready(function() {
             origEndPan(event, g, context);
 
             // extract new start/end from the x-axis
-            dygraph_daterange = g.xAxisRange();
+            var range = g.xAxisRange();
+            dygraph_daterange = [new Date(range[0]), new Date(range[1])];
             dygraph_did_zoom = true;
             updateGraph();
         };
@@ -333,8 +351,8 @@ $(document).ready(function() {
 
         // set options
         api_graph_options = {
-            datestart: parseInt(dygraph_daterange[0]/1000),
-            dateend: parseInt(dygraph_daterange[1]/1000),
+            datestart: parseInt(dygraph_daterange[0].getTime()/1000),
+            dateend: parseInt(dygraph_daterange[1].getTime()/1000),
             type: type,
             protocols: protocols.length > 0 ? protocols : ['any'],
             sources: sources,
@@ -371,7 +389,7 @@ $(document).ready(function() {
                 } else {
                     // delete values to replace
                     for (var i = 0; i < dygraph_data.length; i++) {
-                        if (dygraph_data[i][0].getTime() >= dygraph_daterange[0] && dygraph_data[i][0].getTime() <= dygraph_daterange[1]) {
+                        if (dygraph_data[i][0].getTime() >= dygraph_daterange[0].getTime() && dygraph_data[i][0].getTime() <= dygraph_daterange[1].getTime()) {
                             // set start index for the new values
                             if (index_to_insert === false) index_to_insert = i;
 

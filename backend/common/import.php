@@ -14,6 +14,7 @@ class Import {
 	function __construct() {
         $this->d = Debug::getInstance();
         $this->cli = (php_sapi_name() === 'cli');
+        $this->force = false;
         $this->verbose = false;
         $this->processPorts = false;
         $this->d->setDebug($this->verbose);
@@ -45,7 +46,7 @@ class Import {
 
             // check if we want to continue a stopped import
             $last_update_db = Config::$db->last_update($source);
-            if ($this->force === false && $last_update_db !== false && $last_update_db !== 0 && $last_update_db < time()-300) {
+            if ($this->force === false && $last_update_db !== false && $last_update_db !== 0) {
                 $last_update = new \DateTime();
                 $last_update->setTimestamp($last_update_db);
                 $days_saved = (int)$date->diff($last_update)->format('%a');

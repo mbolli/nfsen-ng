@@ -96,7 +96,7 @@
                         </div>
                     </div>
 
-                    <div id="filterNfdump" class="hidden col-sm-6" data-view="flows statistics">
+                    <div id="filterNfdump" class="hidden col-sm-5" data-view="flows statistics">
 
                         <h3>NFDUMP filter (tcpdump syntax)</h3>
 
@@ -124,22 +124,33 @@
 
                     </div>
 
-                    <div id="filterFlowsLimit" class="hidden col-sm-2" data-view="flows">
+                    <div id="filterOutput" class="hidden col-sm-4" data-view="flows statistics">
 
-                        <h3>Limit</h3>
+                        <h3>Output</h3>
+                        <div class="row">
+                            <div class="form-group col-sm-6">
+                                <label for="flowsFilterOutputSelection">Output type :</label>
+                                <select id="flowsFilterOutputSelection" class="form-control">
+                                    <option value='Auto'>Auto</option>
+                                    <option value='Line'>Line</option>
+                                    <option value='Long'>Long</option>
+                                    <option value='Extended'>Extended</option>
+                                    <option value='Custom'>Custom</option>
+                                </select>
+                            </div>
 
-                        <div class="form-group">
-                            <label for="flowsFilterLimitSelection">Flows :</label>
-                            <select id="flowsFilterLimitSelection" class="form-control">
-                                <option value='20'>20</option>
-                                <option value='50' >50</option>
-                                <option value='100' >100</option>
-                                <option value='500' >500</option>
-                                <option value='1000' >1000</option>
-                                <option value='10000' >10000</option>
-                            </select>
+                            <div class="form-group col-sm-6">
+                                <br>
+                                <div class="btn-group btn-group-md" data-toggle="buttons">
+                                    <label class="btn btn-default"><input type="checkbox" value="sortByFlowStartTime">Sort by flows' start time</label>
+                                </div>
+                            </div>
                         </div>
 
+                        <div class="form-group">
+                            <label for="customFlowListOutput">Custom output format :</label>
+                            <input id="customFlowListOutput" type="text" class="form-control">
+                        </div>
                     </div>
 
                     <div id="filterFlowsAggregation" class="hidden col-sm-8" data-view="flows">
@@ -201,35 +212,31 @@
 
                     </div><!-- flowsFilterAggregationDiv  -->
 
-                    <div id="filterOutput" class="hidden col-sm-4" data-view="flows statistics">
+                    <div id="filterFlowsLimit" class="hidden col-sm-2" data-view="flows">
 
-                        <h3>Output</h3>
-                        <div class="row">
-                            <div class="form-group col-sm-6">
-                                <label for="flowsFilterOutputSelection">Output type :</label>
-                                <select id="flowsFilterOutputSelection" class="form-control">
-                                    <option value='Auto'>Auto</option>
-                                    <option value='Line'>Line</option>
-                                    <option value='Long'>Long</option>
-                                    <option value='Extended'>Extended</option>
-                                    <option value='Custom'>Custom</option>
-                                </select>
-                            </div>
+                        <h3>Limit</h3>
 
-                            <div class="form-group col-sm-6">
-                                <br>
-                                <div class="btn-group btn-group-md" data-toggle="buttons">
-                                    <label class="btn btn-default"><input type="checkbox" value="sortByFlowStartTime">Sort by flows' start time</label>
-                                </div>
-                            </div>
-                        </div>
-                        
                         <div class="form-group">
-                            <label for="customFlowListOutput">Custom output format :</label>
-                            <input id="customFlowListOutput" type="text" class="form-control">
+                            <label for="flowsFilterLimitSelection">Flows :</label>
+                            <select id="flowsFilterLimitSelection" class="form-control">
+                                <option value='20'>20</option>
+                                <option value='50' >50</option>
+                                <option value='100' >100</option>
+                                <option value='500' >500</option>
+                                <option value='1000' >1000</option>
+                                <option value='10000' >10000</option>
+                            </select>
                         </div>
 
+                    </div>
 
+                    <div id="filterFlowsCommands" class="hidden col-sm-2" data-view="flows">
+
+                        <h3>Commands</h3>
+                            <div class="btn-group btn-group-md" data-toggle="buttons">
+                                <button type="button" class="btn btn-default">Process data</button>
+                                <button type="button" class="btn btn-default">Reset filters</button>
+                            </div>
                     </div>
 
                     <div id="filterStatsProperties" class="hidden col-sm-3" data-view="statistics">

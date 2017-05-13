@@ -56,14 +56,21 @@ $(document).ready(function() {
         $content.each(showDivs);
     });
 
+    function check_daterange_boundaries(range) {
+        var $buttons = $('#date_slot_nav').find('button');
+
+        // reset next/prev buttons (depending on selected range)
+        $buttons.filter('.next').prop('disabled', (date_range.options.to + range > date_range.options.max));
+        $buttons.filter('.prev').prop('disabled', (date_range.options.from - range < date_range.options.min));
+    }
+
     /**
      * date range slider
      * set next/previous time slot
      */
     $(document).on('click', '#date_slot_nav button', function() {
         var slot = parseInt($('#date_slot').find('input[name=range]:checked').val()),
-            prev = $(this).hasClass('prev'),
-            $buttons = $('#date_slot_nav').find('button');
+            prev = $(this).hasClass('prev');
 
         // if the date_range was modified manually, get the difference
         if (isNaN(slot)) slot = date_range.options.to-date_range.options.from;
@@ -74,9 +81,7 @@ $(document).ready(function() {
         });
 
         // disable buttons if slot is too big or end is near
-        $buttons.each(function() { $(this).prop('disabled', false) }); // reset
-        if (date_range.options.from-slot < date_range.options.min) $buttons.filter('.prev').prop('disabled', true);
-        if (date_range.options.to+slot > date_range.options.max) $buttons.filter('.next').prop('disabled', true);
+        check_daterange_boundaries(slot);
     });
 
     /**
@@ -84,17 +89,14 @@ $(document).ready(function() {
      * set predefined time range like day/week/month/year
      */
     $(document).on('change', 'input[name=range]', function() {
-        var $buttons = $('#date_slot_nav').find('button'),
-            range = parseInt($(this).val());
+        var range = parseInt($(this).val());
 
         date_range.update({
             from: date_range.options.to - range,
             to: date_range.options.to // the current "to" value should stay
         });
 
-        // reset next/prev buttons (depending on selected range)
-        $buttons.filter('.next').prop('disabled', (date_range.options.to + range >= date_range.options.max));
-        $buttons.filter('.prev').prop('disabled', (date_range.options.from - range <= date_range.options.min));
+        check_daterange_boundaries(range);
     });
 
     /**
@@ -109,7 +111,9 @@ $(document).ready(function() {
     $(document).on('change', '#filterDisplaySelect', function() {
         var display = $(this).val(), displayId;
         var $filters = $('#filter').find('[data-display]').addClass('hidden');
-        var $filterElements = $filters.filter('[data-display*=' + display + ']').removeClass('hidden');
+
+        // show only wanted filters
+        $filters.filter('[data-display*=' + display + ']').removeClass('hidden');
 
         switch (display) {
             case 'sources':
@@ -204,12 +208,10 @@ $(document).ready(function() {
         updateDropdown('sources', Object.keys(config['sources']));
         updateDropdown('ports', config['ports']);
 
-        var now = new Date();
-        var from = new Date();
-        from.setFullYear(now.getFullYear()-3);
-        dygraph_daterange = [from, now];
-
         init_rangeslider();
+
+        // show graph for one year by default
+        $('#date_slot').find('[data-unit="y"]').trigger('change').parent().addClass('active');
 
         // show correct form elements
         $('#filterDisplaySelect').trigger('change');
@@ -219,6 +221,12 @@ $(document).ready(function() {
      * initialize the range slider
      */
     function init_rangeslider() {
+        // set default date range
+        var to = new Date();
+        var from = new Date();
+        from.setFullYear(to.getFullYear()-3);
+        dygraph_daterange = [from, to];
+
         // initialize date range slider
         $('#date_range').ionRangeSlider({
             type: 'double',
@@ -232,11 +240,13 @@ $(document).ready(function() {
                 return date.toDateString();
             },
             onChange: function(data) {
+                // remove active state of date slot button
                 $('#date_slot').find('label.active').removeClass('active').find('input').prop('checked', false);
-                // somehow still has old from/to
             },
             onFinish: function(data) {
                 dygraph_daterange = [new Date(data.from), new Date(data.to)];
+                date_range.update({ from: data.from, to: data.to });
+                check_daterange_boundaries(data.to-data.from);
                 updateGraph();
             },
             onUpdate: function(data) {
@@ -371,6 +381,7 @@ $(document).ready(function() {
         // make actual request
         $.get('../api/graph', api_graph_options, function (data, status) {
             if (status === 'success') {
+                if (data.data.length === 0) return false;
 
                 var labels = ['Date'], index_to_insert = false;
 

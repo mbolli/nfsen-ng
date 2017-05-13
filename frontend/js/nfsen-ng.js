@@ -489,6 +489,106 @@ $(document).ready(function() {
     }
 
     /**
+     * hide or show the custom output filter
+     */
+    $(document).on('change', '#flowsFilterOutputSelection', function() {
+
+        // if "custom" is selected, show "customFlowListOutputFormat" otherwise hide it
+        if ($(this).val() === 'custom') {$("#customFlowListOutputFormat").removeClass("hidden");}
+        else {$("#customFlowListOutputFormat").addClass("hidden");}
+    });
+
+    /**
+     * block not available options on "bi-direction" checked
+     */
+
+    $(document).on('change', '#biDirectionalFlowBtn', function() {
+
+        // if "bi-directional" is checked, block (disable) all other aggregation options
+        if ($(this).hasClass("active")) {
+            var $filterFlowsAggregation = $("#filterFlowsAggregation");
+
+            // for labels, remove active and add disabled property (data-aggr-block="label")
+            $filterFlowsAggregation.find('[data-aggr-block="label"]').removeClass('active');
+            $filterFlowsAggregation.find('[data-aggr-block="label"]').attr('disabled', true);//do not replace with prop, won't work
+
+            // for select, set to "no aggregation" and add disabled property (data-aggr-block="select")
+            $filterFlowsAggregation.find('[data-aggr-block="select"]').val("none");
+            $filterFlowsAggregation.find('[data-aggr-block="select"]').prop('disabled', true);
+
+            // for input text, empty the content and and add disabled property (data-aggr-block="txtinput")
+            $filterFlowsAggregation.find('[data-aggr-block="txtinput"]').val('');
+            $filterFlowsAggregation.find('[data-aggr-block="txtinput"]').prop('disabled', true);
+        }
+        else {
+            var $filterFlowsAggregation = $("#filterFlowsAggregation");
+
+            // for labels, remove disabled property (data-aggr-block="label")
+            $filterFlowsAggregation.find('[data-aggr-block="label"]').attr('disabled', false);//do not replace with prop, won't work
+
+            // for select, remove disabled property (data-aggr-block="select")
+            $filterFlowsAggregation.find('[data-aggr-block="select"]').prop('disabled', false);
+
+            // for input text, remove disabled property (data-aggr-block="txtinput")
+            $filterFlowsAggregation.find('[data-aggr-block="txtinput"]').prop('disabled', false);
+
+        }
+    });
+
+
+    /**
+     * handle "onchange" for source address(es) in aggregation filter
+     */
+
+    $(document).on('change', '#filterFlowAggregationSourceAddressSelect', function() {
+
+        // if "none" or "srcip", hide prefix options
+
+        var $sourceAddressSelect = $("#filterFlowAggregationSourceAddressSelect");
+
+        if($sourceAddressSelect.val() === 'none' || $sourceAddressSelect.val() === 'srcip' ){
+            $("#sourceCIDRPrefixDiv").addClass("hidden");
+        }
+        else if ($sourceAddressSelect.val() === 'srcip4sub'){
+            $("#sourceCIDRPrefixDiv").removeClass("hidden");
+            $("#sourceCIDRPrefix").attr("maxlength",2);
+            $("#sourceCIDRPrefix").val("");
+        }
+
+        else if($sourceAddressSelect.val() === 'srcip6sub'){
+            $("#sourceCIDRPrefixDiv").removeClass("hidden");
+            $("#sourceCIDRPrefix").attr("maxlength",3);
+            $("#sourceCIDRPrefix").val("");
+        }
+    });
+
+    /**
+     * handle "onchange" for destination address(es) in aggregation filter
+     */
+
+    $(document).on('change', '#filterFlowAggregationDestinationAddressSelect', function() {
+
+        // if "none" or "dstip", hide prefix options
+
+        var $destinationAddressSelect = $("#filterFlowAggregationDestinationAddressSelect");
+
+        if($destinationAddressSelect.val() === 'none' || $destinationAddressSelect.val() === 'dstip' ){
+            $("#destinationCIDRPrefixDiv").addClass("hidden");
+        }
+        else if ($destinationAddressSelect.val() === 'dstip4sub'){
+            $("#destinationCIDRPrefixDiv").removeClass("hidden");
+            $("#destinationCIDRPrefix").attr("maxlength",2);
+            $("#destinationCIDRPrefix").val("");
+        }
+
+        else if($destinationAddressSelect.val() === 'dstip6sub'){
+            $("#destinationCIDRPrefixDiv").removeClass("hidden");
+            $("#destinationCIDRPrefix").attr("maxlength",3);
+            $("#destinationCIDRPrefix").val("");
+        }
+    });
+
+    /**
      * modify some GUI elements if the user selected "sources" to display
      */
     function displaySourcesHelper() {

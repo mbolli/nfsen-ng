@@ -128,96 +128,98 @@
 
                         <h3>Output</h3>
                         <div class="row">
-                            <div class="form-group col-sm-6">
-                                <label for="flowsFilterOutputSelection">Output type :</label>
-                                <select id="flowsFilterOutputSelection" class="form-control">
-                                    <option value='Auto'>Auto</option>
-                                    <option value='Line'>Line</option>
-                                    <option value='Long'>Long</option>
-                                    <option value='Extended'>Extended</option>
-                                    <option value='Custom'>Custom</option>
+                            <div class="form-group col-sm-4">
+                                <label for="flowsFilterOutputSelection">Output type:</label>
+                                <select id="flowsFilterOutputSelection" name ="flowsFilterOutputSelection" class="form-control">
+                                    <option value='auto'>Auto</option>
+                                    <option value='line'>Line</option>
+                                    <option value='long'>Long</option>
+                                    <option value='extended'>Extended</option>
+                                    <option value='custom'>Custom</option>
                                 </select>
                             </div>
 
-                            <div class="form-group col-sm-6">
+                            <div class="form-group col-sm-8">
+                                <label>Other options:</label>
                                 <br>
                                 <div class="btn-group btn-group-md" data-toggle="buttons">
                                     <label class="btn btn-default"><input type="checkbox" value="sortByFlowStartTime">Sort by flows' start time</label>
+                                    <label class="btn btn-default"><input type="checkbox" value="sortByFlowStartTime">Full IPv6 address</label>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="form-group">
-                            <label for="customFlowListOutput">Custom output format :</label>
-                            <input id="customFlowListOutput" type="text" class="form-control">
+                        <div id="customFlowListOutputFormat" class="form-group hidden">
+                            <label for="customFlowListOutputFormatValue">Custom output format:</label>
+                            <input id="customFlowListOutputFormatValue" type="text" class="form-control">
                         </div>
                     </div>
 
                     <div id="filterFlowsAggregation" class="hidden col-sm-8" data-view="flows">
 
-                        <h3>Aggregation</h3><!-- todo : check everywhere this "name" convention in divs and other elements-->
+                        <h3>Aggregation</h3><!-- todo: check everywhere this "name" convention in divs and other elements-->
                         <div class="row">
                             <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons">
-                                <label>Global :</label>
+                                <label>Global:</label>
                                 <br>
-                                <label class="btn btn-default"><input type="checkbox" name="" value="biDirectional">Bi-directional</label>
-                                <label class="btn btn-default"><input type="checkbox" name="" value="protocol">Protocol</label>
+                                <label id="biDirectionalFlowBtn" class="btn btn-default"><input type="checkbox" name="" value="biDirectional">Bi-directional</label>
+                                <label class="btn btn-default" data-aggr-block="label"><input type="checkbox" name="" value="protocol">Protocol</label>
                             </div>
 
                             <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons">
-                                <label>Port :</label>
+                                <label>Port:</label>
                                 <br>
-                                <label class="btn btn-default"><input type="checkbox" name="" value="sourcePort">Source port</label>
-                                <label class="btn btn-default"><input type="checkbox" name="" value="destinationPort">Destination port</label>
+                                <label class="btn btn-default" data-aggr-block="label"><input type="checkbox" name="" value="sourcePort">Source port</label>
+                                <label class="btn btn-default" data-aggr-block="label"><input type="checkbox" name="" value="destinationPort">Destination port</label>
                             </div>
 
                             <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons">
-                                <label>Source address(es) :</label>
+                                <label>Source address(es):</label>
                                 <div class="form-group">
-                                    <select  id="filterFlowAggregationSourceAddressSelect" class="form-control">
+                                    <select data-aggr-block="select" id="filterFlowAggregationSourceAddressSelect" class="form-control">
                                         <option value="none">No aggregation</option>
                                         <option value="srcip">Source IP</option>
-                                        <option value="srcip4sub">Source subnets (IPv4)</option>
-                                        <option value="srcip6sub">Source subnets (IPv6)</option>
+                                        <option value="srcip4sub">Source IPv4 subnets</option>
+                                        <option value="srcip6sub">Source IPv6 subnets</option>
                                     </select>
                                 </div>
                             </div>
 
-                            <div class="col-sm-2">
+                            <div id="sourceCIDRPrefixDiv" class="col-sm-2 hidden">
                                 <div class="form-group">
-                                    <label for="sourceCIDRPrefix">Source CIDR Prefix :</label>
-                                    <input id="sourceCIDRPrefix" type="text" class="form-control">
+                                    <label for="sourceCIDRPrefix">Source CIDR Prefix:</label>
+                                    <input data-aggr-block="txtinput" id="sourceCIDRPrefix" type="text" class="form-control">
                                 </div>
                             </div>
 
                             <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons">
-                                <label>Destination address(es) :</label>
+                                <label>Destination address(es):</label>
                                 <div class="form-group">
-                                    <select  id="filterFlowAggregationDestinationAddressSelect" class="form-control">
+                                    <select data-aggr-block="select"  id="filterFlowAggregationDestinationAddressSelect" class="form-control">
                                         <option value="none">No aggregation</option>
                                         <option value="dstip">Destination IP</option>
-                                        <option value="dstip4sub">Destination subnets (IPv4)</option>
-                                        <option value="dstip6sub">Destination subnets (IPv6)</option>
+                                        <option value="dstip4sub">Destination IPv4 subnets</option>
+                                        <option value="dstip6sub">Destination IPv6 subnets</option>
                                     </select>
                                 </div>
                             </div>
 
-                            <div class="col-sm-2">
+                            <div id="destinationCIDRPrefixDiv" class="col-sm-2 hidden">
                                 <div class="form-group">
-                                    <label for="destinationCIDRPrefix">Destination CIDR Prefix :</label>
-                                    <input id="destinationCIDRPrefix" type="text" class="form-control">
+                                    <label for="destinationCIDRPrefix">Destination CIDR Prefix:</label>
+                                    <input data-aggr-block="txtinput" id="destinationCIDRPrefix" type="text" class="form-control">
                                 </div>
                             </div>
                         </div> <!-- end row -->
 
                     </div><!-- flowsFilterAggregationDiv  -->
 
-                    <div id="filterFlowsLimit" class="hidden col-sm-2" data-view="flows">
+                    <div id="filterFlowsLimit" class="hidden col-sm-1" data-view="flows">
 
                         <h3>Limit</h3>
 
                         <div class="form-group">
-                            <label for="flowsFilterLimitSelection">Flows :</label>
+                            <label for="flowsFilterLimitSelection">Flows:</label>
                             <select id="flowsFilterLimitSelection" class="form-control">
                                 <option value='20'>20</option>
                                 <option value='50' >50</option>
@@ -230,7 +232,7 @@
 
                     </div>
 
-                    <div id="filterFlowsCommands" class="hidden col-sm-2" data-view="flows">
+                    <div id="filterFlowsCommands" class="hidden col-sm-3" data-view="flows">
 
                         <h3>Commands</h3>
                             <div class="btn-group btn-group-md" data-toggle="buttons">
@@ -244,7 +246,7 @@
                         <h3>Statistic properties</h3>
 
                         <div class="form-group">
-                            <label for="statsFilterTopSelection">Top records :</label>
+                            <label for="statsFilterTopSelection">Top records:</label>
                             <select id="statsFilterTopSelection" class="form-control">
                                 <option value='10' selected>10</option>
                                 <option value='20'>20</option>
@@ -256,7 +258,7 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="statsFilterForSelection">Statistic for :</label>
+                            <label for="statsFilterForSelection">Statistic for:</label>
                             <select id="statsFilterForSelection" class="form-control">
                                 <option value='record' selected>Flow Records</option>
                                 <option value='ip'>Any IP address</option>
@@ -307,7 +309,7 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="statsFilterOrderBySelection">Order by :</label>
+                            <label for="statsFilterOrderBySelection">Order by:</label>
                             <select id="statsFilterOrderBySelection" class="form-control">
                                 <option value='flows' selected>Flows</option>
                                 <option value='packets' >Packets</option>
@@ -332,7 +334,7 @@
                             <label><input type="checkbox" name="aggregation[]" value="protocol">Protocol</label>
                         </div>
 
-                        Source :
+                        Source:
                         <div class="btn-group">
                             <button type="button" class="btn btn-default">Source port</button>
 
@@ -349,7 +351,7 @@
                             </div>
                         </div>
 
-                        Destination :
+                        Destination:
                         <div class="btn-group">
                             <button type="checkbox" class="btn btn-default">Destination port</button>
 
@@ -372,7 +374,7 @@
 
                         <h3>Options</h3>
 
-                        Limit :
+                        Limit:
 
                         Full Ipv6 address
 

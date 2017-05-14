@@ -7,6 +7,7 @@ var dygraph_daterange;
 var dygraph_did_zoom;
 var date_range;
 var api_graph_options;
+var api_flows_options;
 
 $(document).ready(function() {
 
@@ -487,6 +488,64 @@ $(document).ready(function() {
             }
         });
     }
+
+
+
+    /**
+     * Process flow listing
+     *
+     */
+    $(document).on('click', '#getFlowDataBtn', function() {
+        //todo implement function correctly
+
+        //test, get raw data with static filter (for getting familiar with the API)
+
+        //get values for api_flows_options
+        var sources = $('#filterSourcesSelect').val(),
+            datestart = 1483228800,// todo change to get date from the slider (integer Unix timestamp needed)
+            dateend = 1485907200,// todo change to get date from the slider (integer Unix timestamp needed)
+            filter = ""+$('#flowsFilterTextarea').val(),
+            limit = $('#flowsFilterLimitSelection').val(),
+            aggregate =["bidirectional"], //todo see below aggregate=[array] can be bidirectional or a valid nfdump aggregation string (e.g. srcip4/24, dstport), but not both at the same time
+            sort ="", // todo ask bollm6 what this could be, eventually we don't need, to be confirmed
+            output =["auto"]; //todo remove this static value once the below function is implemented
+
+        // todo if bi-directional is set, aggregate = "bidirectional" otherwise, check other parameters
+        // todo check filterOutput options and other stuff and popoulate the variable
+
+        //set the api_flows_options
+        api_flows_options = {
+            datestart: datestart,
+            dateend: dateend,
+            sources: sources,
+            filter: filter,
+            limit: limit,
+            aggregate: aggregate,
+            sort: sort,
+            output: output
+        };
+
+        $.get('../api/flows', api_flows_options, function (data, status) {
+            if (status === 'success') {
+                console.log("api call worked"); //todo remove this, for test only
+                if (data.data.length === 0) return false;
+
+                //todo iterate over API result and do something with them
+            }
+            else{
+                //todo handle error
+                console.log("error?");//todo remove after test
+            }
+        });
+    });
+
+    /**
+     * Reset flow filter div parameters and "delete" flows from screen
+     */
+    $(document).on('click', '#resetFlowDataAndFilterBtn', function(){
+        //todo implement function
+    });
+
 
     /**
      * hide or show the custom output filter

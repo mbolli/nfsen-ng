@@ -163,20 +163,20 @@
                                 <label>Global:</label>
                                 <br>
                                 <label id="biDirectionalFlowBtn" class="btn btn-default"><input type="checkbox" name="" value="biDirectional">Bi-directional</label>
-                                <label class="btn btn-default" data-aggr-block="label"><input type="checkbox" name="" value="protocol">Protocol</label>
+                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="" value="protocol">Protocol</label>
                             </div>
 
                             <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons">
                                 <label>Port:</label>
                                 <br>
-                                <label class="btn btn-default" data-aggr-block="label"><input type="checkbox" name="" value="sourcePort">Source port</label>
-                                <label class="btn btn-default" data-aggr-block="label"><input type="checkbox" name="" value="destinationPort">Destination port</label>
+                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="" value="sourcePort">Source port</label>
+                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="" value="destinationPort">Destination port</label>
                             </div>
 
                             <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons">
                                 <label>Source address(es):</label>
                                 <div class="form-group">
-                                    <select data-aggr-block="select" id="filterFlowAggregationSourceAddressSelect" class="form-control">
+                                    <select data-disable-on="bi-directional" data-kind="source" id="filterFlowAggregationSourceAddressSelect" class="form-control">
                                         <option value="none">No aggregation</option>
                                         <option value="srcip">Source IP</option>
                                         <option value="srcip4sub">Source IPv4 subnets</option>
@@ -188,14 +188,14 @@
                             <div id="sourceCIDRPrefixDiv" class="col-sm-2 hidden">
                                 <div class="form-group">
                                     <label for="sourceCIDRPrefix">Source CIDR Prefix:</label>
-                                    <input data-aggr-block="txtinput" id="sourceCIDRPrefix" type="text" class="form-control">
+                                    <input data-disable-on="bi-directional" id="sourceCIDRPrefix" type="text" class="form-control">
                                 </div>
                             </div>
 
                             <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons">
                                 <label>Destination address(es):</label>
                                 <div class="form-group">
-                                    <select data-aggr-block="select"  id="filterFlowAggregationDestinationAddressSelect" class="form-control">
+                                    <select data-disable-on="bi-directional" data-kind="destination" id="filterFlowAggregationDestinationAddressSelect" class="form-control">
                                         <option value="none">No aggregation</option>
                                         <option value="dstip">Destination IP</option>
                                         <option value="dstip4sub">Destination IPv4 subnets</option>
@@ -207,7 +207,7 @@
                             <div id="destinationCIDRPrefixDiv" class="col-sm-2 hidden">
                                 <div class="form-group">
                                     <label for="destinationCIDRPrefix">Destination CIDR Prefix:</label>
-                                    <input data-aggr-block="txtinput" id="destinationCIDRPrefix" type="text" class="form-control">
+                                    <input data-disable-on="bi-directional" id="destinationCIDRPrefix" type="text" class="form-control">
                                 </div>
                             </div>
                         </div> <!-- end row -->

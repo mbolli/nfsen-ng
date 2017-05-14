@@ -494,8 +494,8 @@ $(document).ready(function() {
     $(document).on('change', '#flowsFilterOutputSelection', function() {
 
         // if "custom" is selected, show "customFlowListOutputFormat" otherwise hide it
-        if ($(this).val() === 'custom') {$("#customFlowListOutputFormat").removeClass("hidden");}
-        else {$("#customFlowListOutputFormat").addClass("hidden");}
+        if ($(this).val() === 'custom') $('#customFlowListOutputFormat').removeClass('hidden');
+        else $('#customFlowListOutputFormat').addClass('hidden');
     });
 
     /**
@@ -503,90 +503,56 @@ $(document).ready(function() {
      */
 
     $(document).on('change', '#biDirectionalFlowBtn', function() {
+        var $filterFlowsAggregation = $('#filterFlowsAggregation');
 
         // if "bi-directional" is checked, block (disable) all other aggregation options
-        if ($(this).hasClass("active")) {
-            var $filterFlowsAggregation = $("#filterFlowsAggregation");
+        if ($(this).hasClass('active')) {
 
-            // for labels, remove active and add disabled property (data-aggr-block="label")
-            $filterFlowsAggregation.find('[data-aggr-block="label"]').removeClass('active');
-            $filterFlowsAggregation.find('[data-aggr-block="label"]').attr('disabled', true);//do not replace with prop, won't work
+            $filterFlowsAggregation.find('[data-disable-on="bi-directional"]').each(function() {
+                $(this).parent().removeClass('active').addClass('disabled');
+                $(this).prop('disabled', true);
+                if ($(this).prop('tagName') === 'SELECT') $(this).prop('selectedIndex', 0);
+                else $(this).val('');
+            });
 
-            // for select, set to "no aggregation" and add disabled property (data-aggr-block="select")
-            $filterFlowsAggregation.find('[data-aggr-block="select"]').val("none");
-            $filterFlowsAggregation.find('[data-aggr-block="select"]').prop('disabled', true);
+        } else {
 
-            // for input text, empty the content and and add disabled property (data-aggr-block="txtinput")
-            $filterFlowsAggregation.find('[data-aggr-block="txtinput"]').val('');
-            $filterFlowsAggregation.find('[data-aggr-block="txtinput"]').prop('disabled', true);
-        }
-        else {
-            var $filterFlowsAggregation = $("#filterFlowsAggregation");
-
-            // for labels, remove disabled property (data-aggr-block="label")
-            $filterFlowsAggregation.find('[data-aggr-block="label"]').attr('disabled', false);//do not replace with prop, won't work
-
-            // for select, remove disabled property (data-aggr-block="select")
-            $filterFlowsAggregation.find('[data-aggr-block="select"]').prop('disabled', false);
-
-            // for input text, remove disabled property (data-aggr-block="txtinput")
-            $filterFlowsAggregation.find('[data-aggr-block="txtinput"]').prop('disabled', false);
+            $filterFlowsAggregation.find('[data-disable-on="bi-directional"]').each(function() {
+                $(this).parent().removeClass('disabled');
+                $(this).prop('disabled', false);
+            });
 
         }
     });
 
 
     /**
-     * handle "onchange" for source address(es) in aggregation filter
+     * handle "onchange" for source/destination address(es) in aggregation filter
      */
 
-    $(document).on('change', '#filterFlowAggregationSourceAddressSelect', function() {
+    $(document).on('change', '#filterFlowAggregationSourceAddressSelect, #filterFlowAggregationDestinationAddressSelect', function() {
+        var kind = $(this).attr('data-kind'),
+            $prefixDiv = $('#' + kind + 'CIDRPrefixDiv'); console.log($prefixDiv);
 
-        // if "none" or "srcip", hide prefix options
-
-        var $sourceAddressSelect = $("#filterFlowAggregationSourceAddressSelect");
-
-        if($sourceAddressSelect.val() === 'none' || $sourceAddressSelect.val() === 'srcip' ){
-            $("#sourceCIDRPrefixDiv").addClass("hidden");
-        }
-        else if ($sourceAddressSelect.val() === 'srcip4sub'){
-            $("#sourceCIDRPrefixDiv").removeClass("hidden");
-            $("#sourceCIDRPrefix").attr("maxlength",2);
-            $("#sourceCIDRPrefix").val("");
-        }
-
-        else if($sourceAddressSelect.val() === 'srcip6sub'){
-            $("#sourceCIDRPrefixDiv").removeClass("hidden");
-            $("#sourceCIDRPrefix").attr("maxlength",3);
-            $("#sourceCIDRPrefix").val("");
+        switch ($(this).val()) {
+            case 'none':
+            case 'srcip':
+            case 'dstip':
+                $prefixDiv.addClass('hidden');
+                break;
+            case 'srcip4sub':
+            case 'dstip4sub':
+                $prefixDiv.removeClass('hidden');
+                $prefixDiv.find('input').attr('maxlength', 2).val('');
+                break;
+            case 'srcip6sub':
+            case 'dstip6sub':
+                $prefixDiv.removeClass('hidden');
+                $prefixDiv.find('input').attr('maxlength', 3).val('');
+                break;
         }
     });
 
-    /**
-     * handle "onchange" for destination address(es) in aggregation filter
-     */
-
-    $(document).on('change', '#filterFlowAggregationDestinationAddressSelect', function() {
-
-        // if "none" or "dstip", hide prefix options
-
-        var $destinationAddressSelect = $("#filterFlowAggregationDestinationAddressSelect");
-
-        if($destinationAddressSelect.val() === 'none' || $destinationAddressSelect.val() === 'dstip' ){
-            $("#destinationCIDRPrefixDiv").addClass("hidden");
-        }
-        else if ($destinationAddressSelect.val() === 'dstip4sub'){
-            $("#destinationCIDRPrefixDiv").removeClass("hidden");
-            $("#destinationCIDRPrefix").attr("maxlength",2);
-            $("#destinationCIDRPrefix").val("");
-        }
-
-        else if($destinationAddressSelect.val() === 'dstip6sub'){
-            $("#destinationCIDRPrefixDiv").removeClass("hidden");
-            $("#destinationCIDRPrefix").attr("maxlength",3);
-            $("#destinationCIDRPrefix").val("");
-        }
-    });
 
     /**
      * modify some GUI elements if the user selected "sources" to display

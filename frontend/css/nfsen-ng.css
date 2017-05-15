@@ -11,6 +11,11 @@ code, pre, .code {
     font-family: Menlo, Monaco, Consolas, "Courier New", monospace
 }
 
+h3, h4 {
+    text-transform: uppercase;
+    font-weight: bold;
+    font-size: 1.5rem;
+}
 
 /* graph */
 .infotext {

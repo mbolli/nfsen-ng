@@ -104,7 +104,7 @@
                         <h3>NFDUMP filter (tcpdump syntax)</h3>
 
                         <div class="form-group">
-                            <textarea class="form-control" id="flowsFilterTextarea" rows="3"></textarea>
+                            <textarea class="form-control" id="filterNfdumpTextarea" rows="3"></textarea>
                         </div>
 
                         <div class="btn-group">
@@ -132,8 +132,8 @@
                         <h3>Output</h3>
                         <div class="row">
                             <div class="form-group col-sm-4">
-                                <label for="flowsFilterOutputSelection">Output type:</label>
-                                <select id="flowsFilterOutputSelection" name="flowsFilterOutputSelection" class="form-control">
+                                <label for="filterOutputSelection">Output type:</label>
+                                <select id="filterOutputSelection" name="filterOutputSelection" class="form-control">
                                     <option value='auto'>Auto</option>
                                     <option value='line'>Line</option>
                                     <option value='long'>Long</option>
@@ -233,15 +233,6 @@
                             </select>
                         </div>
 
-                    </div>
-
-                    <div id="filterFlowsCommands" class="hidden col-sm-3" data-view="flows">
-
-                        <h3>Commands</h3>
-                            <div class="btn-group btn-group-md" data-toggle="buttons">
-                                <button id="getFlowDataBtn" type="button" class="btn btn-primary" data-loading-text="Loading...">Process data</button>
-                                <button id="resetFlowDataAndFilterBtn"type="button" class="btn btn-default">Reset filters</button>
-                            </div>
                     </div>
 
                     <div id="filterStatsProperties" class="hidden col-sm-3" data-view="statistics">
@@ -385,6 +376,15 @@
                     </div><!-- statsFilterOptionsDiv  -->
 
 
+                    <div id="filterCommands" class="hidden col-sm-3" data-view="flows statistics">
+                        <h3>Commands</h3>
+                        <div class="btn-group btn-group-md" data-toggle="buttons">
+                            <button type="button" class="btn btn-primary submit" data-loading-text="Loading...">Process data</button>
+                            <button type="button" class="btn btn-default reset">Reset filters</button>
+                        </div>
+                    </div>
+
+
                 </div><!-- statsFilterDiv  -->
 
             </div><!-- filterDiv  -->
@@ -436,7 +436,9 @@
                 <table class="table" data-paging="true" data-paging-limit="10" data-paging-size="50" data-filtering="true" data-sorting="true"></table>
             </div><!-- flowsContentDiv  -->
 
-            <div id="statsContentDiv" data-view="stats" class="content"></div><!-- statsContentDiv  -->
+            <div id="statisticsContentDiv" data-view="statistics" class="content">
+                <table class="table" data-paging="true" data-paging-limit="10" data-paging-size="50" data-filtering="true" data-sorting="true"></table>
+            </div><!-- statsContentDiv  -->
 
         </div><!-- contentDiv  -->
 

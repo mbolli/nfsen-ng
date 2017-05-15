@@ -148,8 +148,8 @@ class NfDump {
      */
     public function convert_date_to_path(int $datestart, int $dateend) {
         $start = $end = new \DateTime();
-        $start->setTimestamp($datestart);
-        $end->setTimestamp($dateend);
+        $start->setTimestamp((int)$datestart - ($datestart % 300));
+        $end->setTimestamp((int)$dateend - ($dateend % 300));
 
         $pathstart = $start->format('Y/m/d') . DIRECTORY_SEPARATOR . 'nfcapd.' . $start->format('YmdHi');
         $pathend = $end->format('Y/m/d') . DIRECTORY_SEPARATOR . 'nfcapd.' . $start->format('YmdHi');

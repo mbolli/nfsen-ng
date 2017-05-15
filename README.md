@@ -103,7 +103,7 @@ The API is used by the frontend to retrieve data.
 
 ### flows
 * **URL**
-  `/api/flows?datestart=1482828600&dateend=1490604300&sources[0]=gate&sources[1]=swi6&filter=&limit=100&aggregate[]=srcip&sort=&output[format]=auto`
+  `/api/flows?datestart=1482828600&dateend=1490604300&sources[0]=gate&sources[1]=swi6&filter=&limit=100&aggregate=srcip&sort=&output[format]=auto`
 
 * **Method:**
   
@@ -115,7 +115,7 @@ The API is used by the frontend to retrieve data.
     * `sources=[array]` 
     * `filter=[string]` pcap-syntaxed filter
     * `limit=[int]` max. returned rows
-    * `aggregate=[array]` can be `bidirectional` or a valid nfdump aggregation string (e.g. `srcip4/24, dstport`), but not both at the same time
+    * `aggregate=[string]` can be `bidirectional` or a valid nfdump aggregation string (e.g. `srcip4/24, dstport`), but not both at the same time
     * `sort=[string]` (will probably cease to exist, as ordering is done directly in aggregation) e.g. `tstart`
     * `output=[array]` can contain `[format] = auto|line|long|extended` and `[IPv6]` 
 

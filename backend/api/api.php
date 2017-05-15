@@ -140,24 +140,16 @@ class API {
      * @param array $sources
      * @param string $filter
      * @param int $limit
-     * @param array $aggregate
+     * @param string $aggregate
      * @param string $sort
      * @param array $output
      * @return array
      */
-    public function flows(int $datestart, int $dateend, array $sources, string $filter, int $limit, array $aggregate, string $sort, array $output) {
+    public function flows(int $datestart, int $dateend, array $sources, string $filter, int $limit, string $aggregate, string $sort, array $output) {
         // nfdump -M /srv/nfsen/profiles-data/live/tiber:n048:gate:swibi:n055:swi6  -T  -r 2017/04/10/nfcapd.201704101150 -c 20
         $sources = implode(':', $sources);
-        $aggregate_command = '';
-        foreach($aggregate as $aggregation => $option) {
-            if (empty($option)) continue;
-            if ($option === 'bidirectional') {
-                $aggregate_command = '-B';
-                break;
-            } else {
-                $aggregate_command = '-A' . $option; // no space inbetween
-            }
-        }
+        $aggregate_command = ($aggregate === 'bidirectional') ? '-B' : '-A' . $aggregate; // no space inbetween
+
 
         $nfdump = new \common\NfDump();
         $nfdump->setOption('-M', $sources); // multiple sources
@@ -166,7 +158,7 @@ class API {
         $nfdump->setOption('-c', $limit); // limit
         $nfdump->setOption('-o', $output['format']);
         if (!empty($sort)) $nfdump->setOption('-O tstart', $sort); // todo other sorting mechanisms?
-        if (isset($output['IPv6'])) $nfdump->setOption('-6', $output['IPv6']);
+        if (array_key_exists('IPv6', $output)) $nfdump->setOption('-6', $output['IPv6']);
         if (!empty($aggregate_command)) $nfdump->setOption('-a', $aggregate_command);
         $nfdump->setFilter($filter);
 

@@ -36,6 +36,14 @@ $(document).ready(function() {
     });
 
     /**
+     * general ajax error handler
+     * todo: show errors somewhere other than console
+     */
+    $(document).on('ajaxError', function(e, jqXHR, ajaxSettings, error) {
+        console.log(jqXHR.responseJSON);
+    });
+
+    /**
      * navigation functionality
      * show/hides the correct containers, which are identified by the data-view attribute
      */
@@ -496,24 +504,23 @@ $(document).ready(function() {
      *
      */
     $(document).on('click', '#getFlowDataBtn', function() {
-        //todo implement function correctly
-
-        //test, get raw data with static filter (for getting familiar with the API)
-
-        //get values for api_flows_options
         var sources = $('#filterSourcesSelect').val(),
-            datestart = 1483228800,// todo change to get date from the slider (integer Unix timestamp needed)
-            dateend = 1485907200,// todo change to get date from the slider (integer Unix timestamp needed)
-            filter = ""+$('#flowsFilterTextarea').val(),
+            datestart = parseInt(dygraph_daterange[0].getTime()/1000),
+            dateend = parseInt(dygraph_daterange[1].getTime()/1000),
+            filter = ''+$('#flowsFilterTextarea').val(),
             limit = $('#flowsFilterLimitSelection').val(),
-            aggregate =["bidirectional"], //todo see below aggregate=[array] can be bidirectional or a valid nfdump aggregation string (e.g. srcip4/24, dstport), but not both at the same time
-            sort ="", // todo ask bollm6 what this could be, eventually we don't need, to be confirmed
-            output =["auto"]; //todo remove this static value once the below function is implemented
+            aggregate = '',
+            sort = '', // todo probably needs a new dropdown
+            output = {
+                format: $('#flowsFilterOutputSelection').val(),
+            };
 
-        // todo if bi-directional is set, aggregate = "bidirectional" otherwise, check other parameters
-        // todo check filterOutput options and other stuff and popoulate the variable
+        // parse form values to generate a proper API request
+        if ($('#biDirectionalFlowBtn').find(':checked').length === 0) {
+            // todo check other parameters
+            aggregate = 'srcip4/24';
+        } else aggregate = 'bidirectional';
 
-        //set the api_flows_options
         api_flows_options = {
             datestart: datestart,
             dateend: dateend,
@@ -525,16 +532,50 @@ $(document).ready(function() {
             output: output
         };
 
-        $.get('../api/flows', api_flows_options, function (data, status) {
-            if (status === 'success') {
-                console.log("api call worked"); //todo remove this, for test only
-                if (data.data.length === 0) return false;
+        var req = $.get('../api/flows', api_flows_options, function (data, status) {
+            if (status === 'success') { // todo error handling
 
-                //todo iterate over API result and do something with them
-            }
-            else{
-                //todo handle error
-                console.log("error?");//todo remove after test
+                // generate table header
+                var tempcolumns = data[0],
+                    columns = [];
+
+                $.each(tempcolumns, function(i, val) {
+                    // todo map titles to more meaningful names, optimize breakpoints
+                    var column = { name: val, title: val, type: 'number', breakpoints: 'xs sm' };
+                    switch (val) {
+                        case 'ts':
+                            column['type'] = 'text'; // 'date' needs moment.js library...
+                            column['breakpoints'] = '';
+                            break;
+                        case 'sa':
+                        case 'da':
+                        case 'pr':
+                            column['breakpoints'] = '';
+                            column['type'] = 'text';
+                            break;
+                    }
+                    columns.push(column);
+                });
+
+                // generate table data
+                var temprows = data.slice(1, data.length-4),
+                    rows = [];
+
+                $.each(temprows, function(i, val) {
+                    var row = { id: i };
+
+                    $.each(val, function (j, col) {
+                        row[tempcolumns[j]] = col;
+                    });
+
+                    rows.push(row);
+                });
+
+                // init footable
+                $('#flowsContentDiv').find('table.table').footable({
+                    columns: columns,
+                    rows: rows
+                });
             }
         });
     });

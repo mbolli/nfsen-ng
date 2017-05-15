@@ -1,22 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
+    <head>
         <meta charset="utf-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge"> <!-- as per bootstrap documentation -->
         <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- as per bootstrap documentation -->
-		<title>nfsen-ng</title>
+		    <title>nfsen-ng</title>
         <script src="js/jquery-3.2.1.min.js"></script>
         <script src="js/bootstrap.min.js"></script>
         <script src="js/ion.rangeSlider.min.js"></script>
         <script src="js/dygraph.min.js"></script>
-		<link rel="stylesheet" type="text/css" href="css/dygraph.css" />
-		<link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
+        <script src="js/footable.min.js"></script>
+		    <link rel="stylesheet" type="text/css" href="css/dygraph.css" />
+		    <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
         <link rel="stylesheet" type="text/css" href="css/bootstrap-theme.min.css" />
         <link rel="stylesheet" type="text/css" href="css/ion.rangeSlider.css" />
-		<link rel="stylesheet" type="text/css" href="css/nfsen-ng.css" />
-	</head>
+        <link rel="stylesheet" type="text/css" href="css/footable.bootstrap.min.css" />
+		    <link rel="stylesheet" type="text/css" href="css/nfsen-ng.css" />
+	  </head>
 
-	<body>
+	  <body>
         <header class="clearfix">
             <ul id="viewList" class="nav nav-tabs pull-right" role="tablist">
                 <li role="presentation" class="active"><a data-view="graphs" href="#">Graphs <span class="glyphicon glyphicon-search" aria-hidden="true"></span></a></li>
@@ -428,17 +430,13 @@
                 </div>
             </div>
             <div id="flowsContentDiv" data-view="flows" class="content">
-
-
+                <table class="table" data-paging="true" data-filtering="true" data-sorting="true"></table>
             </div><!-- flowsContentDiv  -->
 
-            <div id="statsContentDiv" data-view="stats" class="content">
-
-
-            </div><!-- statsContentDiv  -->
+            <div id="statsContentDiv" data-view="stats" class="content"></div><!-- statsContentDiv  -->
 
         </div><!-- contentDiv  -->
 
         <script src="js/nfsen-ng.js"></script>
-	</body>
+	  </body>
 </html>

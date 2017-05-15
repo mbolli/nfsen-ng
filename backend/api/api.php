@@ -127,7 +127,7 @@ class API {
         $nfdump->setOption('-R', array($datestart, $dateend)); // date range
         $nfdump->setOption('-n', $top);
         $nfdump->setOption('-s', $for);
-        $nfdump->setOption('-l', $limit); // todo -L for traffic, -l for packets
+        if (!empty($limit)) $nfdump->setOption('-l', $limit); // todo -L for traffic, -l for packets
         if (isset($output['IPv6'])) $nfdump->setOption('-6', null);
         $nfdump->setFilter($filter);
 

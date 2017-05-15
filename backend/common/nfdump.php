@@ -68,10 +68,17 @@ class NfDump {
      */
     public function execute() {
         $output = array();
+        $processes = array();
         $return = "";
         $filter = (empty($this->cfg['filter'])) ? "" : " " . escapeshellarg($this->cfg['filter']);
         $command = $this->cfg['env']['bin'] . " " . $this->flatten($this->cfg['option']) . $filter . ' 2>&1';
         $this->d->log('Trying to execute ' . $command, LOG_DEBUG);
+
+        // check for already running nfdump processes
+        exec('ps -eo user,pid,args | grep -v grep | grep `whoami` | grep "' . $this->cfg['env']['bin'] . '"', $processes);
+        if (count($processes) > 0) throw new \Exception("NfDump is already running!");
+
+        // execute nfdump
         exec($command, $output, $return);
 
         // prevent logging the command usage description
@@ -147,12 +154,13 @@ class NfDump {
      * @return string
      */
     public function convert_date_to_path(int $datestart, int $dateend) {
-        $start = $end = new \DateTime();
+        $start = new \DateTime();
+        $end = new \DateTime();
         $start->setTimestamp((int)$datestart - ($datestart % 300));
         $end->setTimestamp((int)$dateend - ($dateend % 300));
 
         $pathstart = $start->format('Y/m/d') . DIRECTORY_SEPARATOR . 'nfcapd.' . $start->format('YmdHi');
-        $pathend = $end->format('Y/m/d') . DIRECTORY_SEPARATOR . 'nfcapd.' . $start->format('YmdHi');
+        $pathend = $end->format('Y/m/d') . DIRECTORY_SEPARATOR . 'nfcapd.' . $end->format('YmdHi');
 
         if (!file_exists($pathstart) || !file_exists($pathend)) { } // todo something?
 

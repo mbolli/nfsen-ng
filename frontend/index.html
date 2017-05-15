@@ -4,26 +4,27 @@
         <meta charset="utf-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge"> <!-- as per bootstrap documentation -->
         <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- as per bootstrap documentation -->
-		    <title>nfsen-ng</title>
+        <title>nfsen-ng</title>
         <script src="js/jquery-3.2.1.min.js"></script>
         <script src="js/bootstrap.min.js"></script>
         <script src="js/ion.rangeSlider.min.js"></script>
         <script src="js/dygraph.min.js"></script>
         <script src="js/footable.min.js"></script>
-		    <link rel="stylesheet" type="text/css" href="css/dygraph.css" />
-		    <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
+        <link rel="stylesheet" type="text/css" href="css/dygraph.css" />
+        <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
         <link rel="stylesheet" type="text/css" href="css/bootstrap-theme.min.css" />
         <link rel="stylesheet" type="text/css" href="css/ion.rangeSlider.css" />
         <link rel="stylesheet" type="text/css" href="css/footable.bootstrap.min.css" />
-		    <link rel="stylesheet" type="text/css" href="css/nfsen-ng.css" />
-	  </head>
+        <link rel="stylesheet" type="text/css" href="css/nfsen-ng.css" />
+    </head>
 
-	  <body>
+    <body>
         <header class="clearfix">
+            <a href="#"><span class="glyphicon glyphicon-home" aria-hidden="true"></span></a>
             <ul id="viewList" class="nav nav-tabs pull-right" role="tablist">
-                <li role="presentation" class="active"><a data-view="graphs" href="#">Graphs <span class="glyphicon glyphicon-search" aria-hidden="true"></span></a></li>
-                <li role="presentation"><a data-view="flows" href="#">Flows</a></li>
-                <li role="presentation"><a data-view="statistics" href="#">Statistics</a></li>
+                <li role="presentation" class="active"><a data-view="graphs" href="#">Graphs <span class="glyphicon glyphicon-stats" aria-hidden="true"></span></a></li>
+                <li role="presentation"><a data-view="flows" href="#">Flows <span class="glyphicon glyphicon-zoom-in" aria-hidden="true"></span></a></li>
+                <li role="presentation"><a data-view="statistics" href="#">Statistics <span class="glyphicon glyphicon-list-alt" aria-hidden="true"></span></a></li>
             </ul>
         </header>
         <form autocomplete="off">
@@ -40,8 +41,8 @@
                         </div>
 
                         <div class="btn-group" id="date_slot_nav">
-                            <button type="button" class="btn btn-default prev" disabled>← Previous</button>
-                            <button type="button" class="btn btn-default next" disabled>Next →</button>
+                            <button type="button" class="btn btn-default prev" disabled><span class="glyphicon glyphicon-arrow-left" aria-hidden="true"></span></button>
+                            <button type="button" class="btn btn-default next" disabled><span class="glyphicon glyphicon-arrow-right" aria-hidden="true"></span></button>
                         </div>
                     </div>
 
@@ -50,7 +51,7 @@
                         <h3>Display</h3>
 
                         <div class="form-group">
-                            <select  id="filterDisplaySelect" class="form-control">
+                            <select id="filterDisplaySelect" class="form-control">
                                 <option value="sources">Sources</option>
                                 <option value="protocols">Protocols</option>
                                 <option value="ports">Ports</option>
@@ -132,7 +133,7 @@
                         <div class="row">
                             <div class="form-group col-sm-4">
                                 <label for="flowsFilterOutputSelection">Output type:</label>
-                                <select id="flowsFilterOutputSelection" name ="flowsFilterOutputSelection" class="form-control">
+                                <select id="flowsFilterOutputSelection" name="flowsFilterOutputSelection" class="form-control">
                                     <option value='auto'>Auto</option>
                                     <option value='line'>Line</option>
                                     <option value='long'>Long</option>
@@ -238,7 +239,7 @@
 
                         <h3>Commands</h3>
                             <div class="btn-group btn-group-md" data-toggle="buttons">
-                                <button id="getFlowDataBtn" type="button" class="btn btn-default">Process data</button>
+                                <button id="getFlowDataBtn" type="button" class="btn btn-default" data-loading-text="Loading...">Process data</button>
                                 <button id="resetFlowDataAndFilterBtn"type="button" class="btn btn-default">Reset filters</button>
                             </div>
                     </div>
@@ -389,6 +390,8 @@
             </div><!-- filterDiv  -->
         </form>
 
+        <div id="error"></div>
+
         <div id="contentDiv">
 
             <div id="graphsContentDiv" data-view="graphs" class="content container-fluid">
@@ -430,7 +433,7 @@
                 </div>
             </div>
             <div id="flowsContentDiv" data-view="flows" class="content">
-                <table class="table" data-paging="true" data-filtering="true" data-sorting="true"></table>
+                <table class="table" data-paging="true" data-paging-limit="10" data-paging-size="50" data-filtering="true" data-sorting="true"></table>
             </div><!-- flowsContentDiv  -->
 
             <div id="statsContentDiv" data-view="stats" class="content"></div><!-- statsContentDiv  -->
@@ -438,5 +441,5 @@
         </div><!-- contentDiv  -->
 
         <script src="js/nfsen-ng.js"></script>
-	  </body>
+    </body>
 </html>

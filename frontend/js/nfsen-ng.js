@@ -16,10 +16,7 @@ $(document).ready(function() {
      * example data:
      *
      *  config object {
-     *    "sources": {
-     *      "gate": [false,false], // timestamp start, timestamp end
-     *      "swi6": [false,false]
-     *    },
+     *    "sources": ["gate", "swi6"],
      *    "ports": [ 80, 23, 22 ],
      *    "stored_output_formats":[],
      *    "stored_filters":[]
@@ -30,17 +27,22 @@ $(document).ready(function() {
             config = data;
             init();
         } else {
-            // todo probably a red half-transparent overlay over the whole page?
-            console.log('There was a problem with getting the config.');
+            display_error('danger', 'Error getting the config!')
         }
     });
 
     /**
      * general ajax error handler
-     * todo: show errors somewhere other than console
      */
-    $(document).on('ajaxError', function(e, jqXHR, ajaxSettings, error) {
-        console.log(jqXHR.responseJSON);
+    $(document).on('ajaxError', function(e, jqXHR) {
+        console.log(jqXHR);
+        if (typeof jqXHR === 'undefined') {
+            display_error('danger', 'General error, please file a ticket on github!');
+        } else if (typeof jqXHR.responseJSON === 'undefined') {
+            display_error('danger', 'General error: ' + jqXHR.responseText);
+        } else {
+            display_error('danger', 'Got ' + jqXHR.responseJSON.error);
+        }
     });
 
     /**
@@ -214,7 +216,7 @@ $(document).ready(function() {
         $('header li a').eq(0).trigger('click');
 
         // load values for form
-        updateDropdown('sources', Object.keys(config['sources']));
+        updateDropdown('sources', config['sources']);
         updateDropdown('ports', config['ports']);
 
         init_rangeslider();
@@ -491,13 +493,39 @@ $(document).ready(function() {
                 dygraph_did_zoom = false;
 
             } else {
-                console.log('There was probably a problem with getting dygraph data.');
-                // todo consequences?
+                display_error('warning', 'There somehow was a problem getting data, please check your form values.');
             }
         });
     }
 
+    /**
+     * Display an error message in the frontend
+     * @param severity (success, info, warning, danger)
+     * @param message
+     */
+    function display_error(severity, message) {
+        var $error = $('#error'),
+            $buttons = $('button[data-loading-text]'),
+            icon;
 
+        switch (severity) {
+            case 'success': icon = 'ok'; break;
+            case 'info': icon = 'certificate'; break;
+            case 'warning': icon = 'warning-sign'; break;
+            case 'danger': icon = 'alert'; break;
+        }
+
+        // create new error element
+        $error.append('<div class="alert alert-dismissible" role="alert"><button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
+
+        // fill
+        $error.find('div.alert').last().addClass('alert-' + severity).append('<span class="glyphicon glyphicon-' + icon + '" aria-hidden="true"></span> ' + message);
+
+        // set default text to buttons, if needed
+        $buttons.each(function() {
+           $(this).button('reset');
+        });
+    }
 
     /**
      * Process flow listing
@@ -514,6 +542,8 @@ $(document).ready(function() {
             output = {
                 format: $('#flowsFilterOutputSelection').val(),
             };
+
+        $('#getFlowDataBtn').button('loading');
 
         // parse form values to generate a proper API request
         if ($('#biDirectionalFlowBtn').find(':checked').length === 0) {
@@ -536,12 +566,15 @@ $(document).ready(function() {
             if (status === 'success') { // todo error handling
 
                 // generate table header
-                var tempcolumns = data[0],
+                var translation = {
+                        ff: 'flow record flags in hex', ts: 'Start Time - first seen', te: 'End Time - last seen', tr: 'Time the flow was received by the collector', td: 'Duration', pr: 'Protocol', exp: 'Exporter ID', eng: 'Engine Type/ID', sa: 'Source Address', da: 'Destination Address', sap: 'Source Address:Port', dap: 'Destination Address:Port', sp: 'Source Port', dp: 'Destination Port', sn: 'Source Network (mask applied)', dn: 'Destination Network (mask applied)', nh: 'Next-hop IP Address', nhb: 'BGP Next-hop IP Address', ra: 'Router IP Address', sas: 'Source AS', das: 'Destination AS', nas: 'Next AS', pas: 'Previous AS', in: 'Input Interface num', out: 'Output Interface num', pkt: 'Packets - default input', ipkt: 'Input Packets', opkt: 'Output Packets', byt: 'Bytes - default input', ibyt: 'Input Bytes', obyt: 'Output Bytes', fl: 'Flows', flg: 'TCP Flags', tos: 'Tos - default src', stos: 'Src Tos', dtos: 'Dst Tos', dir: 'Direction: ingress, egress', smk: 'Src mask', dmk: 'Dst mask', fwd: 'Forwarding Status', svln: 'Src vlan label', dvln: 'Dst vlan label', ismc: 'Input Src Mac Addr', odmc: 'Output Dst Mac Addr', idmc: 'Input Dst Mac Addr', osmc: 'Output Src Mac Addr'
+                    },
+                    tempcolumns = data[0],
                     columns = [];
 
                 $.each(tempcolumns, function(i, val) {
-                    // todo map titles to more meaningful names, optimize breakpoints
-                    var column = { name: val, title: val, type: 'number', breakpoints: 'xs sm' };
+                    // todo optimize breakpoints
+                    var column = { name: val, title: translation[val], type: 'number', breakpoints: 'xs sm' };
                     switch (val) {
                         case 'ts':
                             column['type'] = 'text'; // 'date' needs moment.js library...
@@ -577,6 +610,9 @@ $(document).ready(function() {
                     rows: rows
                 });
             }
+
+            // reset button label
+            $('#getFlowDataBtn').button('reset');
         });
     });
 
@@ -719,37 +755,6 @@ $(document).ready(function() {
 
         // select all ports
         $portsSelect.find('option').prop('selected', true);
-    }
-
-
-
-
-    /**
-     * gets the latest last date of all sources from the config
-     * @param sources
-     * @returns {number}
-     */
-    function getLastDate(sources) {
-        var max = 0;
-        $.each(sources, function(id, source) {
-            var currentEnd = config['sources'][source][1]*1000;
-            if (max === 0 || max < currentEnd) max = currentEnd;
-        });
-        return max;
-    }
-
-    /**
-     * gets the firstmost first date of all sources from the config
-     * @param sources
-     * @returns {number}
-     */
-    function getFirstDate(sources) {
-        var min = 0;
-        $.each(sources, function(id, source) {
-            var currentStart = config['sources'][source][0]*1000;
-            if (min === 0 || min > currentStart) min = currentStart;
-        });
-        return min;
     }
 
     /**

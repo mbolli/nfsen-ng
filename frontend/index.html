@@ -36,8 +36,8 @@
                         <div class="btn-group" id="date_slot" data-toggle="buttons">
                             <label class="btn btn-default"><input type="radio" name="range" data-unit="d" value="86400000">24 hours</label>
                             <label class="btn btn-default"><input type="radio" name="range" data-unit="w" value="604800000">Week</label>
-                            <label class="btn btn-default"><input type="radio" name="range" data-unit="m" value="2419200000">Month</label>
-                            <label class="btn btn-default"><input type="radio" name="range" data-unit="y" value="29030400000">Year</label>
+                            <label class="btn btn-default"><input type="radio" name="range" data-unit="m" value="2592000000">Month</label>
+                            <label class="btn btn-default"><input type="radio" name="range" data-unit="y" value="31536000000">Year</label>
                         </div>
 
                         <div class="btn-group" id="date_slot_nav">
@@ -402,7 +402,7 @@
 
                 <div id="graphOptions">
                     <div class="col-sm-3">
-                        <h4>Scale</h4>
+                        <h4>Graph Scale</h4>
                         <div class="btn-group" data-toggle="buttons" id="graph_linlog">
                             <label class="btn btn-default active">
                                 <input type="radio" name="scale" autocomplete="off" value="linear" checked>Linear</label>
@@ -412,7 +412,7 @@
                     </div>
 
                     <div class="col-sm-3">
-                        <h4>Line/Stacked</h4>
+                        <h4>Series display</h4>
                         <div class="btn-group" data-toggle="buttons" id="graph_linestacked">
                             <label class="btn btn-default active">
                                 <input type="radio" name="type" autocomplete="off" value="stacked" checked>Stacked</label>

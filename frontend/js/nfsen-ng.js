@@ -1,13 +1,14 @@
-var config;
-var dygraph;
-var dygraph_config;
-var dygraph_data;
-var dygraph_rangeselector_active;
-var dygraph_daterange;
-var dygraph_did_zoom;
-var date_range;
-var api_graph_options;
-var api_flows_options;
+var config,
+    dygraph,
+    dygraph_config,
+    dygraph_data,
+    dygraph_rangeselector_active,
+    dygraph_daterange,
+    dygraph_did_zoom,
+    date_range,
+    api_graph_options,
+    api_flows_options,
+    nfdump_translation = {ff: 'flow record flags in hex', ts: 'Start Time - first seen', te: 'End Time - last seen', tr: 'Time the flow was received by the collector', td: 'Duration', pr: 'Protocol', exp: 'Exporter ID', eng: 'Engine Type/ID', sa: 'Source Address', da: 'Destination Address', sap: 'Source Address:Port', dap: 'Destination Address:Port', sp: 'Source Port', dp: 'Destination Port', sn: 'Source Network (mask applied)', dn: 'Destination Network (mask applied)', nh: 'Next-hop IP Address', nhb: 'BGP Next-hop IP Address', ra: 'Router IP Address', sas: 'Source AS', das: 'Destination AS', nas: 'Next AS', pas: 'Previous AS', in: 'Input Interface num', out: 'Output Interface num', pkt: 'Packets - default input', ipkt: 'Input Packets', opkt: 'Output Packets', byt: 'Bytes - default input', ibyt: 'Input Bytes', obyt: 'Output Bytes', fl: 'Flows', flg: 'TCP Flags', tos: 'Tos - default src', stos: 'Src Tos', dtos: 'Dst Tos', dir: 'Direction: ingress, egress', smk: 'Src mask', dmk: 'Dst mask', fwd: 'Forwarding Status', svln: 'Src vlan label', dvln: 'Dst vlan label', ismc: 'Input Src Mac Addr', odmc: 'Output Dst Mac Addr', idmc: 'Input Dst Mac Addr', osmc: 'Output Src Mac Addr', pps: 'Packets per second', bps: 'Bytes per second', bpp: 'Bytes per packet'};
 
 $(document).ready(function() {
 
@@ -143,6 +144,7 @@ $(document).ready(function() {
         // try to update graph
         updateGraph();
     });
+
     /**
      * protocols filter
      * reload the graph when the protocol selection changes
@@ -202,6 +204,38 @@ $(document).ready(function() {
     });
 
     /**
+     * Process flows/statistics form submission
+     */
+    $(document).on('click', '#filterCommands .submit', function() {
+        var current_view = $('header').find('li.active a').attr('data-view'),
+            do_continue = true,
+            date_diff = date_range.options.to-date_range.options.from;
+
+        // warn user of long-running query
+        if (date_diff > 1000*24*60*60*6) {
+            var count_days = parseInt(date_diff/1000/24/60/60),
+                count_sources = $('#filterSourcesSelect').val().length,
+                calc_info = count_days + ' days and ' + count_sources + ' sources',
+                ert = parseInt(2*count_days*count_sources/60)+1; // 2 seconds per day and source
+            do_continue = confirm('Be aware that nfdump will scan 288 capture files per day and source. You selected ' + calc_info + '. Estimated running time is ' + ert + ' minutes. Are you sure to submit this query?');
+        }
+
+        if (do_continue === false) return false;
+        if (current_view === 'statistics') submit_statistics();
+        if (current_view === 'flows') submit_flows();
+
+        $('#filterCommands').find('.submit').button('loading');
+
+    });
+
+    /**
+     * Reset flows/statistics form
+     */
+    $(document).on('click', '#filterCommands .reset', function(){
+        //todo implement function
+    });
+
+    /**
      * initialize the frontend
      * - set the select-list of sources
      * - initialize the range slider
@@ -218,7 +252,7 @@ $(document).ready(function() {
         init_rangeslider();
 
         // show graph for one year by default
-        $('#date_slot').find('[data-unit="y"]').trigger('change').parent().addClass('active');
+        $('#date_slot').find('[data-unit="y"]').parent().trigger('click');
 
         // show correct form elements
         $('#filterDisplaySelect').trigger('change');
@@ -363,7 +397,7 @@ $(document).ready(function() {
                 sources = ['any'];
             else return;
         }
-        if (protocols.length > 1 && sources.length > 1) return; // todo annotate wrong input?
+        if ($('#flowDiv:visible').length === 0) return;
         if (ports.length === 0) ports = [0];
 
         // set options
@@ -381,7 +415,7 @@ $(document).ready(function() {
         var elements = eval(display);
         var cat = elements.length > 1 ? display : display.substr(0, display.length-1); // plural
         // if more than 4, only show number of sources instead of names
-        if (elements.length > 4) title += cat + ' ' + elements.length;
+        if (elements.length > 4) title += elements.length + ' ' + cat;
         else title += cat + ' ' + elements.join(', ');
 
 
@@ -537,30 +571,27 @@ $(document).ready(function() {
     }
 
     /**
-     * Process flow listing
-     *
+     * Process flows form submission
      */
-    $(document).on('click', '#getFlowDataBtn', function() {
+    function submit_flows() {
         var sources = $('#filterSourcesSelect').val(),
             datestart = parseInt(dygraph_daterange[0].getTime()/1000),
             dateend = parseInt(dygraph_daterange[1].getTime()/1000),
-            filter = ''+$('#flowsFilterTextarea').val(),
+            filter = ''+$('#filterNfdumpTextarea').val(),
             limit = $('#flowsFilterLimitSelection').val(),
             aggregate = '',
             sort = '', // todo probably needs a new dropdown
             output = {
-                format: $('#flowsFilterOutputSelection').val(),
+                format: $('#filterOutputSelection').val(),
             };
-
-        $('#getFlowDataBtn').button('loading');
 
         // parse form values to generate a proper API request
         if ($('#biDirectionalFlowBtn').find(':checked').length === 0) {
             // todo check other parameters
-            aggregate = 'srcip4/24';
+            aggregate = '';
         } else aggregate = 'bidirectional';
 
-        api_flows_options = {
+        var api_flows_options = {
             datestart: datestart,
             dateend: dateend,
             sources: sources,
@@ -571,70 +602,109 @@ $(document).ready(function() {
             output: output
         };
 
-        var req = $.get('../api/flows', api_flows_options, function (data, status) {
-            if (status === 'success') { // todo error handling
+        var req = $.get('../api/flows', api_flows_options, render_table);
+    }
 
-                // generate table header
-                var translation = {
-                        ff: 'flow record flags in hex', ts: 'Start Time - first seen', te: 'End Time - last seen', tr: 'Time the flow was received by the collector', td: 'Duration', pr: 'Protocol', exp: 'Exporter ID', eng: 'Engine Type/ID', sa: 'Source Address', da: 'Destination Address', sap: 'Source Address:Port', dap: 'Destination Address:Port', sp: 'Source Port', dp: 'Destination Port', sn: 'Source Network (mask applied)', dn: 'Destination Network (mask applied)', nh: 'Next-hop IP Address', nhb: 'BGP Next-hop IP Address', ra: 'Router IP Address', sas: 'Source AS', das: 'Destination AS', nas: 'Next AS', pas: 'Previous AS', in: 'Input Interface num', out: 'Output Interface num', pkt: 'Packets - default input', ipkt: 'Input Packets', opkt: 'Output Packets', byt: 'Bytes - default input', ibyt: 'Input Bytes', obyt: 'Output Bytes', fl: 'Flows', flg: 'TCP Flags', tos: 'Tos - default src', stos: 'Src Tos', dtos: 'Dst Tos', dir: 'Direction: ingress, egress', smk: 'Src mask', dmk: 'Dst mask', fwd: 'Forwarding Status', svln: 'Src vlan label', dvln: 'Dst vlan label', ismc: 'Input Src Mac Addr', odmc: 'Output Dst Mac Addr', idmc: 'Input Dst Mac Addr', osmc: 'Output Src Mac Addr'
-                    },
-                    tempcolumns = data[0],
-                    columns = [];
-
-                $.each(tempcolumns, function(i, val) {
-                    // todo optimize breakpoints
-                    var column = { name: val, title: translation[val], type: 'number', breakpoints: 'xs sm' };
-                    switch (val) {
-                        case 'ts':
-                            column['breakpoints'] = '';
-                            column['type'] = 'text'; // 'date' needs moment.js library...
-                            break;
-                        case 'sa': case 'da': case 'pr':
-                            column['breakpoints'] = '';
-                            column['type'] = 'text';
-                            break;
-                        case 'ipkt': case 'opkt': case 'ibyt': case 'obyt':
-                            column['breakpoints'] = 'xs sm md';
-                            break;
-                    }
-                    columns.push(column);
-                });
-
-                // generate table data
-                var temprows = data.slice(1, data.length-4),
-                    rows = [];
-
-                $.each(temprows, function(i, val) {
-                    var row = { id: i };
-
-                    $.each(val, function (j, col) {
-                        row[tempcolumns[j]] = col;
-                    });
-
-                    rows.push(row);
-                });
-
-                // init footable
-                $('#flowsContentDiv').find('table.table').footable({
-                    columns: columns,
-                    rows: rows
-                });
-
-                // remove errors
-                $('#error').find('div.alert').fadeOut(1500, function() {$(this).remove(); });
-            }
-
-            // reset button label
-            $('#getFlowDataBtn').button('reset');
-        });
-    });
 
     /**
-     * Reset flow filter div parameters and "delete" flows from screen
+     * Process statistics form submission
      */
-    $(document).on('click', '#resetFlowDataAndFilterBtn', function(){
-        //todo implement function
-    });
+    function submit_statistics() {
+        var sources = $('#filterSourcesSelect').val(),
+            datestart = parseInt(dygraph_daterange[0].getTime() / 1000),
+            dateend = parseInt(dygraph_daterange[1].getTime() / 1000),
+            filter = '' + $('#filterNfdumpTextarea').val(),
+            top = $('#statsFilterTopSelection').val(),
+            s_for = $('#statsFilterForSelection').val(),
+            aggregate = '',
+            sort = $('#statsFilterOrderBySelection').val(),
+            output = {
+                format: $('#filterOutputSelection').val(),
+            };
+
+        // parse form values to generate a proper API request
+        if ($('#biDirectionalFlowBtn').find(':checked').length === 0) {
+            // todo check other parameters
+            aggregate = '';
+        } else aggregate = 'bidirectional';
+
+        var api_statistics_options = {
+            datestart: datestart,
+            dateend: dateend,
+            sources: sources,
+            filter: filter,
+            top: top,
+            for: s_for,
+            aggregate: aggregate,
+            sort: sort,
+            limit: '',
+            output: output
+        };
+
+        var req = $.get('../api/stats', api_statistics_options, render_table);
+    }
+
+    function render_table(data, status) {
+        if (status === 'success') {
+
+            // return if invalid data got returned
+            if (typeof data[0] !== 'object') {
+                display_error('warning', 'something went wrong. ' + data[0].toString());
+                return false;
+            }
+
+            // generate table header
+            var tempcolumns = data[0],
+                columns = [];
+
+            $.each(tempcolumns, function (i, val) {
+                // todo optimize breakpoints
+                var column = {name: val, title: nfdump_translation[val], type: 'number', breakpoints: 'xs sm'};
+                switch (val) {
+                    case 'ts': case 'te':
+                        column['breakpoints'] = '';
+                        column['type'] = 'text'; // 'date' needs moment.js library...
+                        break;
+                    case 'sa': case 'da': case 'pr':
+                        column['breakpoints'] = '';
+                        column['type'] = 'text';
+                        break;
+                    case 'ipkt': case 'opkt': case 'ibyt': case 'obyt':
+                        column['breakpoints'] = 'xs sm md';
+                        break;
+                }
+                columns.push(column);
+            });
+
+            // generate table data
+            var temprows = data.slice(1, data.length - 4),
+                rows = [];
+
+            $.each(temprows, function (i, val) {
+                var row = {id: i};
+
+                $.each(val, function (j, col) {
+                    row[tempcolumns[j]] = col;
+                });
+
+                rows.push(row);
+            });
+
+            // init footable
+            $('table.table:visible').footable({
+                columns: columns,
+                rows: rows
+            });
+
+            // remove errors
+            $('#error').find('div.alert').fadeOut(1500, function () {
+                $(this).remove();
+            });
+        }
+
+        // reset button label
+        $('#filterCommands').find('.submit').button('reset');
+    }
 
 
     /**

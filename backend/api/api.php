@@ -10,14 +10,21 @@ class API {
     public function __construct() {
         $this->d = \common\Debug::getInstance();
 
+        header('Content-Type: application/json');
+        header('X-Content-Type-Options: nosniff');
+        header('X-Frame-Options: deny');
+
+        // try to read config
+        try {
+            \common\Config::initialize();
+        } catch (\Exception $e) {
+            $this->error(503, $e->getMessage());
+        }
+
         // get the HTTP method, path and body of the request
         $this->method = $_SERVER['REQUEST_METHOD'];
         $this->request = explode('/', trim($_GET['request'],'/'));
         $this->input = json_decode(file_get_contents('php://input'),true);
-
-        header('Content-type: application/json');
-        header('X-Content-Type-Options: nosniff');
-        header('X-Frame-Options: deny');
 
         // only allow GET requests
         // if at some time POST requests are enabled, check the request's content type (or return 406)
@@ -195,21 +202,12 @@ class API {
      * @return array
      */
     public function config() {
-        http_response_code(200);
-
-        $rrd = new \datasources\RRD();
-
-        $definedSources = \common\Config::$cfg['general']['sources'];
-        $sources = array();
-        foreach ($definedSources as $source) {
-            $sources[$source] = $rrd->date_boundaries($source);
-        }
-
+        $sources = \common\Config::$cfg['general']['sources'];
         $ports = \common\Config::$cfg['general']['ports'];
 
         $stored_output_formats = array(); // todo implement
-
         $stored_filters = array(); // todo implement
+
         return array(
             'sources' => $sources,
             'ports' => $ports,

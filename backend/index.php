@@ -5,23 +5,9 @@ spl_autoload_register();
 ini_set('display_errors', true);
 ini_set('error_reporting', E_ALL);
 
-\common\Config::initialize();
-
 if (isset($_GET['request'])) {
 
     // initialize api
     $api = new \api\API();
-}
 
-// todo if import is accessible from the outside, somehow make it more accessible?
-if (isset($_GET['import'])) {
-
-    // perform import of last 3 years
-    ini_set('max_execution_time', 3600);
-    $start = new DateTime();
-    $start->setDate(date('Y')-3, date('m'), date('d'));
-    $i = new \common\Import();
-    $i->setVerbose(true);
-    $i->setProcessPorts(true);
-    $i->start($start);
 }

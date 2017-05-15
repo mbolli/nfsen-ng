@@ -20,10 +20,7 @@ The API is used by the frontend to retrieve data.
      **Content:** 
         ```json
         {
-          "sources": {
-            "gate": [1482828600,1490604300], 
-            "swi6": [1482828900,1490604600]
-          },
+          "sources": [ "gate", "swi6" ],
           "ports": [ 80, 22, 23 ],
           "stored_output_formats": [], 
           "stored_filters": []

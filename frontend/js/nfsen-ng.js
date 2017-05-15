@@ -63,17 +63,13 @@ $(document).ready(function() {
             else $(el).addClass('hidden');
         };
 
+        // show the right divs
         $filter.each(showDivs);
         $content.each(showDivs);
+
+        // trigger resize for the graph
+        if (typeof dygraph !== 'undefined') dygraph.resize();
     });
-
-    function check_daterange_boundaries(range) {
-        var $buttons = $('#date_slot_nav').find('button');
-
-        // reset next/prev buttons (depending on selected range)
-        $buttons.filter('.next').prop('disabled', (date_range.options.to + range > date_range.options.max));
-        $buttons.filter('.prev').prop('disabled', (date_range.options.from - range < date_range.options.min));
-    }
 
     /**
      * date range slider
@@ -528,6 +524,19 @@ $(document).ready(function() {
     }
 
     /**
+     * checks if with supplied date range, navigation is still possible (e.g. plus 1 month)
+     * and disables navigation buttons if not
+     * @param range date difference in milliseconds
+     */
+    function check_daterange_boundaries(range) {
+        var $buttons = $('#date_slot_nav').find('button');
+
+        // reset next/prev buttons (depending on selected range)
+        $buttons.filter('.next').prop('disabled', (date_range.options.to + range > date_range.options.max));
+        $buttons.filter('.prev').prop('disabled', (date_range.options.from - range < date_range.options.min));
+    }
+
+    /**
      * Process flow listing
      *
      */
@@ -577,14 +586,15 @@ $(document).ready(function() {
                     var column = { name: val, title: translation[val], type: 'number', breakpoints: 'xs sm' };
                     switch (val) {
                         case 'ts':
-                            column['type'] = 'text'; // 'date' needs moment.js library...
                             column['breakpoints'] = '';
+                            column['type'] = 'text'; // 'date' needs moment.js library...
                             break;
-                        case 'sa':
-                        case 'da':
-                        case 'pr':
+                        case 'sa': case 'da': case 'pr':
                             column['breakpoints'] = '';
                             column['type'] = 'text';
+                            break;
+                        case 'ipkt': case 'opkt': case 'ibyt': case 'obyt':
+                            column['breakpoints'] = 'xs sm md';
                             break;
                     }
                     columns.push(column);

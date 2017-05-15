@@ -609,6 +609,9 @@ $(document).ready(function() {
                     columns: columns,
                     rows: rows
                 });
+
+                // remove errors
+                $('#error').find('div.alert').fadeOut(1500, function() {$(this).remove(); });
             }
 
             // reset button label

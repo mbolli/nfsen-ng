@@ -782,7 +782,7 @@ $(document).ready(function() {
 
     $(document).on('change', '#filterFlowAggregationSourceAddressSelect, #filterFlowAggregationDestinationAddressSelect', function() {
         var kind = $(this).attr('data-kind'),
-            $prefixDiv = $('#' + kind + 'CIDRPrefixDiv'); console.log($prefixDiv);
+            $prefixDiv = $('#' + kind + 'CIDRPrefixDiv');
 
         switch ($(this).val()) {
             case 'none':

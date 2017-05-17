@@ -68,6 +68,9 @@ $(document).ready(function() {
         $filter.each(showDivs);
         $content.each(showDivs);
 
+        // re-initialize form
+        if (view === 'graphs') $('#filterDisplaySelect').trigger('change');
+
         // trigger resize for the graph
         if (typeof dygraph !== 'undefined') dygraph.resize();
     });
@@ -138,8 +141,8 @@ $(document).ready(function() {
                 break;
         }
 
-        // move wanted filter to first position
-        $(displayId).detach().insertBefore($filters.eq(0));
+        // initialize tooltips
+        $('[data-toggle="tooltip"]').tooltip();
 
         // try to update graph
         updateGraph();
@@ -209,15 +212,14 @@ $(document).ready(function() {
     $(document).on('click', '#filterCommands .submit', function() {
         var current_view = $('header').find('li.active a').attr('data-view'),
             do_continue = true,
-            date_diff = date_range.options.to-date_range.options.from;
+            date_diff = date_range.options.to-date_range.options.from,
+            count_sources = $('#filterSourcesSelect').val().length;
 
         // warn user of long-running query
-        if (date_diff > 1000*24*60*60*6) {
+        if (date_diff*count_sources > 1000*24*60*60*12) {
             var count_days = parseInt(date_diff/1000/24/60/60),
-                count_sources = $('#filterSourcesSelect').val().length,
-                calc_info = count_days + ' days and ' + count_sources + ' sources',
-                ert = parseInt(2*count_days*count_sources/60)+1; // 2 seconds per day and source
-            do_continue = confirm('Be aware that nfdump will scan 288 capture files per day and source. You selected ' + calc_info + '. Estimated running time is ' + ert + ' minutes. Are you sure to submit this query?');
+                calc_info = count_days + ' days and ' + count_sources + ' sources';
+            do_continue = confirm('Be aware that nfdump will scan 288 capture files per day and source. You selected ' + calc_info + '. Are you sure you want to submit this query?');
         }
 
         if (do_continue === false) return false;

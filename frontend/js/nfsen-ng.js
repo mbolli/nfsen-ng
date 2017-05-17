@@ -99,7 +99,7 @@ $(document).ready(function() {
      * date range slider
      * set predefined time range like day/week/month/year
      */
-    $(document).on('change', 'input[name=range]', function() {
+    $(document).on('change', '#date_slot input[name=range]', function() {
         var range = parseInt($(this).val());
 
         date_range.update({
@@ -108,6 +108,22 @@ $(document).ready(function() {
         });
 
         check_daterange_boundaries(range);
+    });
+
+    /**
+     * sync button
+     * gets the time range from the graph and updates the date range slider
+     */
+    $(document).on('click', '#date_syncing button.sync-date', function() {
+        var from = dygraph_daterange[0].getTime(),
+            to = dygraph_daterange[1].getTime();
+
+        date_range.update({
+            from: from,
+            to: to
+        });
+
+        check_daterange_boundaries(to-from);
     });
 
     /**
@@ -290,10 +306,18 @@ $(document).ready(function() {
                 dygraph_daterange = [new Date(data.from), new Date(data.to)];
                 date_range.update({ from: data.from, to: data.to });
                 check_daterange_boundaries(data.to-data.from);
+
+                // deactivate syncing button
+                $('#date_syncing').find('button.sync-date').prop('disabled', true);
+
                 updateGraph();
             },
             onUpdate: function(data) {
                 dygraph_daterange = [new Date(data.from), new Date(data.to)];
+
+                // deactivate syncing button
+                $('#date_syncing').find('button.sync-date').prop('disabled', true);
+
                 updateGraph();
             }
         });
@@ -330,6 +354,11 @@ $(document).ready(function() {
                 var range = dygraph.xAxisRange();
                 dygraph_daterange = [new Date(range[0]), new Date(range[1])];
                 dygraph_did_zoom = true;
+
+                // activate syncing button
+                $('#date_syncing').find('button.sync-date').prop('disabled', false);
+
+                // update graph
                 updateGraph();
             });
         });
@@ -712,11 +741,11 @@ $(document).ready(function() {
     /**
      * hide or show the custom output filter
      */
-    $(document).on('change', '#flowsFilterOutputSelection', function() {
+    $(document).on('change', '#filterOutputSelection', function() {
 
         // if "custom" is selected, show "customFlowListOutputFormat" otherwise hide it
-        if ($(this).val() === 'custom') $('#customFlowListOutputFormat').removeClass('hidden');
-        else $('#customFlowListOutputFormat').addClass('hidden');
+        if ($(this).val() === 'custom') $('#customListOutputFormat').removeClass('hidden');
+        else $('#customListOutputFormat').addClass('hidden');
     });
 
     /**

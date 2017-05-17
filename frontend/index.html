@@ -231,9 +231,9 @@
                                         <div class="form-group">
                                             <select data-disable-on="bi-directional" data-kind="destination" id="filterFlowAggregationDestinationAddressSelect" class="form-control">
                                                 <option value="none">No aggregation</option>
-                                                <option value="srcip">Source IP</option>
-                                                <option value="srcip4sub">Source IPv4 subnets</option>
-                                                <option value="srcip6sub">Source IPv6 subnets</option>
+                                                <option value="dstip">Destination IP</option>
+                                                <option value="dstip4sub">Destination IPv4 subnets</option>
+                                                <option value="dstip6sub">Destination IPv6 subnets</option>
                                             </select>
                                         </div>
                                     </div>
@@ -246,49 +246,21 @@
                                     </div>
                                 </div>
                             </div>
-<!--
-                            <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons">
-                                <label>Source address(es):</label>
-                                <div class="form-group">
-                                    <select data-disable-on="bi-directional" data-kind="source" id="filterFlowAggregationSourceAddressSelect" class="form-control">
-                                        <option value="none">No aggregation</option>
-                                        <option value="srcip">Source IP</option>
-                                        <option value="srcip4sub">Source IPv4 subnets</option>
-                                        <option value="srcip6sub">Source IPv6 subnets</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div id="sourceCIDRPrefixDiv" class="col-sm-2 hidden">
-                                <div class="form-group">
-                                    <label for="sourceCIDRPrefix">Source Prefix:</label>
-                                    <input data-disable-on="bi-directional" id="sourceCIDRPrefix" type="text" class="form-control">
-                                </div>
-                            </div>
-
-                            <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons">
-                                <label>Destination address(es):</label>
-                                <div class="form-group">
-                                    <select data-disable-on="bi-directional" data-kind="destination" id="filterFlowAggregationDestinationAddressSelect" class="form-control">
-                                        <option value="none">No aggregation</option>
-                                        <option value="dstip">Destination IP</option>
-                                        <option value="dstip4sub">Destination IPv4 subnets</option>
-                                        <option value="dstip6sub">Destination IPv6 subnets</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div id="destinationCIDRPrefixDiv" class="col-sm-2 hidden">
-                                <div class="form-group">
-                                    <label for="destinationCIDRPrefix">Destination Prefix:</label>
-                                    <input data-disable-on="bi-directional" id="destinationCIDRPrefix" type="text" class="form-control">
-                                </div>
-                            </div> -->
                         </div> <!-- end row -->
-
                     </div><!-- flowsFilterAggregationDiv  -->
 
-                    <div id="filterStatsProperties" class="hidden col-sm-3" data-view="statistics">
+                    <div id="statisLimitDiv" class="hidden col-sm-1" data-view="statistics">
+                        <h3>Limit</h3>
+                        <div class="form-group">
+                            <select id="statsLimitSelect" class="form-control" data-view="statistics">
+                                <option value="none">No limit</option>
+                                <option value="srcip">Packets</option>
+                                <option value="srcip4sub">Bytes</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="filterStatsProperties" class="hidden col-sm-1" data-view="statistics">
 
                         <h3>Statistic properties</h3>
 
@@ -369,14 +341,6 @@
 
                     </div><!-- statsFilterPropertiesDiv  -->
 
-                    <div id="filterStatsOptions" class="hidden col-sm-3" data-view="statistics">
-
-                        <h3>Options</h3>
-
-                        Limit:
-
-                        Full Ipv6 address
-                    </div><!-- statsFilterOptionsDiv  -->
 
                     <div id="filterCommands" class="hidden col-sm-1" data-view="flows statistics">
                         <h3>Commands</h3>

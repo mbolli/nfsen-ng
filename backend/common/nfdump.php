@@ -40,7 +40,7 @@ class NfDump {
                 $this->cfg['option'][$option] = $this->convert_date_to_path($value[0], $value[1]);
                 break;
             case '-o':
-                $this->cfg['format'] = $value; // store the output format for later usage
+                $this->cfg['format'] = $value;
                 break;
             case '-s':
             case '-S':
@@ -119,7 +119,6 @@ class NfDump {
             }
             $parsed_header = true;
             $line = array_values($line);
-
         }
         
         return $output;
@@ -207,6 +206,7 @@ class NfDump {
         // todo calculations like bps/pps? flows? concatenate sa/sp to sap?
         switch($format) {
             // nfdump format: %ts %td %pr %sap %dap %pkt %byt %fl
+            // csv output: ts,te,td,sa,da,sp,dp,pr,flg,fwd,stos,ipkt,ibyt,opkt,obyt,in,out,sas,das,smk,dmk,dtos,dir,nh,nhb,svln,dvln,ismc,odmc,idmc,osmc,mpls1,mpls2,mpls3,mpls4,mpls5,mpls6,mpls7,mpls8,mpls9,mpls10,cl,sl,al,ra,eng,exid,tr
             case 'auto':
             case 'line': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'opkt', 'ibyt', 'obyt');
             // nfdump format: %ts %td %pr %sap %dap %flg %tos %pkt %byt %fl
@@ -214,7 +214,8 @@ class NfDump {
             // nfdump format: %ts %td %pr %sap %dap %pkt %byt %pps %bps %bpp %fl
             case 'extended': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'opkt', 'ibyt', 'obyt');
             // stats have another format
-            case 'stats': return array('ts', 'te', 'td', 'pr', 'val', 'fl', 'flP', 'ipkt', 'ipktP', 'ibyt', 'ibytP', 'ipps', 'ipbs', 'ibpp');
+            case 'stats':
+                return array('ts', 'te', 'td', 'sa', 'da', 'sp', 'dp', 'pr', 'val', 'fl', 'ipkt', 'ibyt', 'ipps', 'ipbs', 'ibpp');
             default: return $format;
         }
     }

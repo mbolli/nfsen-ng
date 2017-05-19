@@ -8,7 +8,8 @@ var config,
     date_range,
     api_graph_options,
     api_flows_options,
-    nfdump_translation = {ff: 'flow record flags in hex', ts: 'Start Time - first seen', te: 'End Time - last seen', tr: 'Time the flow was received by the collector', td: 'Duration', pr: 'Protocol', exp: 'Exporter ID', eng: 'Engine Type/ID', sa: 'Source Address', da: 'Destination Address', sap: 'Source Address:Port', dap: 'Destination Address:Port', sp: 'Source Port', dp: 'Destination Port', sn: 'Source Network (mask applied)', dn: 'Destination Network (mask applied)', nh: 'Next-hop IP Address', nhb: 'BGP Next-hop IP Address', ra: 'Router IP Address', sas: 'Source AS', das: 'Destination AS', nas: 'Next AS', pas: 'Previous AS', in: 'Input Interface num', out: 'Output Interface num', pkt: 'Packets - default input', ipkt: 'Input Packets', opkt: 'Output Packets', byt: 'Bytes - default input', ibyt: 'Input Bytes', obyt: 'Output Bytes', fl: 'Flows', flg: 'TCP Flags', tos: 'Tos - default src', stos: 'Src Tos', dtos: 'Dst Tos', dir: 'Direction: ingress, egress', smk: 'Src mask', dmk: 'Dst mask', fwd: 'Forwarding Status', svln: 'Src vlan label', dvln: 'Dst vlan label', ismc: 'Input Src Mac Addr', odmc: 'Output Dst Mac Addr', idmc: 'Input Dst Mac Addr', osmc: 'Output Src Mac Addr', pps: 'Packets per second', bps: 'Bytes per second', bpp: 'Bytes per packet'};
+    api_statistics_options,
+    nfdump_translation = {ff: 'flow record flags in hex', ts: 'Start Time - first seen', te: 'End Time - last seen', tr: 'Time the flow was received by the collector', td: 'Duration', pr: 'Protocol', exp: 'Exporter ID', eng: 'Engine Type/ID', sa: 'Source Address', da: 'Destination Address', sap: 'Source Address:Port', dap: 'Destination Address:Port', sp: 'Source Port', dp: 'Destination Port', sn: 'Source Network (mask applied)', dn: 'Destination Network (mask applied)', nh: 'Next-hop IP Address', nhb: 'BGP Next-hop IP Address', ra: 'Router IP Address', sas: 'Source AS', das: 'Destination AS', nas: 'Next AS', pas: 'Previous AS', in: 'Input Interface num', out: 'Output Interface num', pkt: 'Packets - default input', ipkt: 'Input Packets', opkt: 'Output Packets', byt: 'Bytes - default input', ibyt: 'Input Bytes', obyt: 'Output Bytes', fl: 'Flows', flg: 'TCP Flags', tos: 'Tos - default src', stos: 'Src Tos', dtos: 'Dst Tos', dir: 'Direction: ingress, egress', smk: 'Src mask', dmk: 'Dst mask', fwd: 'Forwarding Status', svln: 'Src vlan label', dvln: 'Dst vlan label', ismc: 'Input Src Mac Addr', odmc: 'Output Dst Mac Addr', idmc: 'Input Dst Mac Addr', osmc: 'Output Src Mac Addr', pps: 'Packets per second', bps: 'Bytes per second', bpp: 'Bytes per packet', flP: 'Flows (%)', ipktP: 'Input Packets (%)', opktP: 'Output Packets (%)', ibytP: 'Input Bytes (%)', obytP: 'Output Bytes (%)', ipps: 'Input Packets/s', ibps: 'Input Bytes/s', ibpp: 'Input Bytes/Packet'};
 
 $(document).ready(function() {
 
@@ -632,7 +633,7 @@ $(document).ready(function() {
             sort = $('[name=ordertstart]:checked').val();
         }
 
-        var api_flows_options = {
+        api_flows_options = {
             datestart: datestart,
             dateend: dateend,
             sources: sources,
@@ -667,7 +668,7 @@ $(document).ready(function() {
 
         if (typeof sources === 'string') sources = [sources];
 
-        var api_statistics_options = {
+        api_statistics_options = {
             datestart: datestart,
             dateend: dateend,
             sources: sources,
@@ -733,19 +734,29 @@ $(document).ready(function() {
 
             $.each(tempcolumns, function (i, val) {
                 // todo optimize breakpoints
-                var column = {name: val, title: nfdump_translation[val], type: 'number', breakpoints: 'xs sm'};
-                switch (val) {
-                    case 'ts': case 'te':
-                        column['breakpoints'] = '';
-                        column['type'] = 'text'; // 'date' needs moment.js library...
-                        break;
-                    case 'sa': case 'da': case 'pr': case 'val': // todo case 'val': is the "for" field -> change the label
-                        column['breakpoints'] = '';
-                        column['type'] = 'text';
-                        break; // ts', 'te', 'td', 'sa', 'da', 'sp', 'dp', 'pr', 'val', 'fl', 'ipkt', 'ibyt', 'ipps', 'ipbs', 'ibpp'
-                    case 'ipkt': case 'opkt': case 'ibyt': case 'obyt':
-                        column['breakpoints'] = 'xs sm md';
-                        break;
+                var title = (val === 'val') ? api_statistics_options.for : nfdump_translation[val],
+                    column = {
+                        name: val,
+                        title: title,
+                        type: 'number',
+                        breakpoints: 'xs sm',
+                    };
+                if (['ts', 'te'].indexOf(val) !== -1) {
+                    column['breakpoints'] = '';
+                    column['type'] = 'text'; // 'date' needs moment.js library...
+                } else if (['td', 'fl', 'flP', 'ipktP', 'opktP', 'ibytP', 'obytP', 'ipps', 'opps', 'ibps', 'obps', 'ibpp', 'obpp'].indexOf(val) !== -1) {
+
+                } else if (['sa', 'da', 'pr', 'val'].indexOf(val) !== -1) {
+                    column['breakpoints'] = '';
+                    column['type'] = 'text';
+                } else if (['ipkt', 'opkt', 'ibyt', 'obyt'].indexOf(val) !== -1) {
+                    column['breakpoints'] = 'xs sm md';
+                } else if (['flg', 'fwd', 'stos', 'in', 'out', 'sas', 'das'].indexOf(val) !== -1) {
+                    column['breakpoints'] = 'all';
+                    column['type'] = 'text';
+                } else {
+                    column['visible'] = false;
+                    console.log('ignoring', val);
                 }
                 columns.push(column);
             });

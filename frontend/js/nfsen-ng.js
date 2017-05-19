@@ -123,6 +123,9 @@ $(document).ready(function() {
             to: to
         });
 
+        // remove active state of date slot button
+        $('#date_slot').find('label.active').removeClass('active').find('input').prop('checked', false);
+
         check_daterange_boundaries(to-from);
     });
 

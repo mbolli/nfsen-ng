@@ -45,7 +45,7 @@ class NfDump {
             case '-s':
             case '-S':
                 $this->cfg['option'][$option] = $value;
-                $this->cfg['format'] = 'stats';
+                $this->cfg['format'] = (strstr($value, 'record') === false) ? 'stats' : 'stats_flows';
                 break;
             default:
                 $this->cfg['option'][$option] = $value;
@@ -77,7 +77,7 @@ class NfDump {
 
         // check for already running nfdump processes
         exec('ps -eo user,pid,args | grep -v grep | grep `whoami` | grep "' . $this->cfg['env']['bin'] . '"', $processes);
-        if (count($processes) > intVal(\common\Config::$cfg['nfdump']['max-processes'])-1) throw new \Exception("NfDump is already running!");
+        if (count($processes) > intVal(\common\Config::$cfg['nfdump']['max-processes'])-1) throw new \Exception("There already are " . count($processes) . " of NfDump running!");
 
         // execute nfdump
         exec($command, $output, $return);
@@ -99,7 +99,7 @@ class NfDump {
         if (!preg_match('/,/', $output[1])) return $output;
         $fields_active = array();
         $parsed_header = false;
-        $format = $this->get_output_format($this->cfg['format']);
+        $format = ($this->cfg['format'] !== 'stats') ? $this->get_output_format($this->cfg['format']) : str_getcsv($output[1], ',');
 
         foreach ($output as $i => &$line) {
 
@@ -213,9 +213,7 @@ class NfDump {
             case 'long': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'flg', 'stos', 'dtos', 'ipkt', 'opkt', 'ibyt', 'obyt');
             // nfdump format: %ts %td %pr %sap %dap %pkt %byt %pps %bps %bpp %fl
             case 'extended': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'opkt', 'ibyt', 'obyt');
-            // stats have another format
-            case 'stats':
-                return array('ts', 'te', 'td', 'sa', 'da', 'sp', 'dp', 'pr', 'val', 'fl', 'ipkt', 'ibyt', 'ipps', 'ipbs', 'ibpp');
+
             default: return $format;
         }
     }

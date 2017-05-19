@@ -245,6 +245,11 @@ $(document).ready(function() {
         if (current_view === 'statistics') submit_statistics();
         if (current_view === 'flows') submit_flows();
 
+        // remove success errors
+        $('#error').find('div.alert-success').fadeOut(1500, function () {
+            $(this).remove();
+        });
+
         $('#filterCommands').find('.submit').button('loading');
 
     });
@@ -611,19 +616,44 @@ $(document).ready(function() {
         var sources = $('#filterSourcesSelect').val(),
             datestart = parseInt(dygraph_daterange[0].getTime()/1000),
             dateend = parseInt(dygraph_daterange[1].getTime()/1000),
-            filter = ''+$('#filterNfdumpTextarea').val(),
+            filter = '' + $('#filterNfdumpTextarea').val(),
             limit = $('#flowsFilterLimitSelection').val(),
             aggregate = '',
-            sort = '', // todo probably needs a new dropdown
+            $aggregation = $('#filterAggregation'),
+            sort = '',
             output = {
                 format: $('#filterOutputSelection').val(),
             };
 
         // parse form values to generate a proper API request
-        if ($('#biDirectionalFlowBtn').find(':checked').length === 0) {
-            // todo check other parameters
-            aggregate = '';
+        if ($aggregation.find('[name=bidirectional]:checked').length === 0) {
+            var validAggregations = ['proto', 'dstport', 'srcport', 'srcip', 'dstip'];
+
+            $.each(validAggregations, function(id, val) {
+                if ($aggregation.find('[name=' + val + ']:checked').length > 0) {
+                    aggregate += (aggregate === '') ? val : ',' + val;
+                } else {
+                    var select = $aggregation.find('[name=' + val + ']').val();
+                    if (select === 'none') return;
+                    if (val === 'srcip') {
+                        var prefix = parseInt($aggregation.find('[name=srcipprefix]:visible').val()),
+                            srcprefix = (isNaN(prefix) || prefix === 'srcip') ? '' : '/' + prefix,
+                            srcip = select + srcprefix;
+                        aggregate += (aggregate === '') ? srcip : ',' + srcip;
+                    } else if (val === 'dstip') {
+                        var prefix = parseInt($aggregation.find('[name=dstipprefix]:visible').val()),
+                            dstprefix = (isNaN(prefix) || prefix === 'dstip') ? '' : '/' + prefix,
+                            dstip = select + dstprefix;
+                        aggregate += (aggregate === '') ? dstip : ',' + dstip;
+                    }
+                }
+            });
+
         } else aggregate = 'bidirectional';
+
+        if ($('#flowsFilterOther').find('[name=ordertstart]:checked').length > 0) {
+            sort = $('[name=ordertstart]:checked').val();
+        }
 
         var api_flows_options = {
             datestart: datestart,
@@ -657,7 +687,7 @@ $(document).ready(function() {
             };
 
         // parse form values to generate a proper API request
-        if ($('#biDirectionalFlowBtn').find(':checked').length === 0) {
+        if ($('#filterAggregationGlobal').find('[name=bidirectional]:checked').length === 0) {
             // todo check other parameters
             aggregate = '';
         } else aggregate = 'bidirectional';
@@ -681,14 +711,19 @@ $(document).ready(function() {
     function render_table(data, status) {
         if (status === 'success') {
 
+            // print nfdump command
+            if (typeof data[0] === 'string') {
+                display_error('success', 'nfdump command: ' + data[0].toString())
+            }
+
             // return if invalid data got returned
-            if (typeof data[0] !== 'object') {
-                display_error('warning', 'something went wrong. ' + data[0].toString());
+            if (typeof data[1] !== 'object') {
+                display_error('warning', 'something went wrong. ' + data[1].toString());
                 return false;
             }
 
             // generate table header
-            var tempcolumns = data[0],
+            var tempcolumns = data[1],
                 columns = [];
 
             $.each(tempcolumns, function (i, val) {
@@ -711,7 +746,7 @@ $(document).ready(function() {
             });
 
             // generate table data
-            var temprows = data.slice(1, data.length - 4),
+            var temprows = data.slice(2, data.length - 4),
                 rows = [];
 
             $.each(temprows, function (i, val) {
@@ -730,8 +765,10 @@ $(document).ready(function() {
                 rows: rows
             });
 
-            // remove errors
-            $('#error').find('div.alert').fadeOut(1500, function () {
+            if (rows.length > 0) $('table.table:visible .footable-empty').remove();
+
+            // remove errors (except success)
+            $('#error').find('div.alert:not(.alert-success)').fadeOut(1500, function () {
                 $(this).remove();
             });
         }
@@ -755,13 +792,13 @@ $(document).ready(function() {
      * block not available options on "bi-direction" checked
      */
 
-    $(document).on('change', '#biDirectionalFlowBtn', function() {
-        var $filterFlowsAggregation = $('#filterFlowsAggregation');
+    $(document).on('change', '#filterAggregationGlobal input[name=bidirectional]', function() {
+        var $filterAggregation = $('#filterAggregation');
 
         // if "bi-directional" is checked, block (disable) all other aggregation options
-        if ($(this).hasClass('active')) {
+        if ($(this).parent().hasClass('active')) {
 
-            $filterFlowsAggregation.find('[data-disable-on="bi-directional"]').each(function() {
+            $filterAggregation.find('[data-disable-on="bi-directional"]').each(function() {
                 $(this).parent().removeClass('active').addClass('disabled');
                 $(this).prop('disabled', true);
                 if ($(this).prop('tagName') === 'SELECT') $(this).prop('selectedIndex', 0);
@@ -770,7 +807,7 @@ $(document).ready(function() {
 
         } else {
 
-            $filterFlowsAggregation.find('[data-disable-on="bi-directional"]').each(function() {
+            $filterAggregation.find('[data-disable-on="bi-directional"]').each(function() {
                 $(this).parent().removeClass('disabled');
                 $(this).prop('disabled', false);
             });
@@ -793,13 +830,13 @@ $(document).ready(function() {
             case 'dstip':
                 $prefixDiv.addClass('hidden');
                 break;
-            case 'srcip4sub':
-            case 'dstip4sub':
+            case 'srcip4':
+            case 'dstip4':
                 $prefixDiv.removeClass('hidden');
                 $prefixDiv.find('input').attr('maxlength', 2).val('');
                 break;
-            case 'srcip6sub':
-            case 'dstip6sub':
+            case 'srcip6':
+            case 'dstip6':
                 $prefixDiv.removeClass('hidden');
                 $prefixDiv.find('input').attr('maxlength', 3).val('');
                 break;

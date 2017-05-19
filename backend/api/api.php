@@ -28,7 +28,7 @@ class API {
 
         // only allow GET requests
         // if at some time POST requests are enabled, check the request's content type (or return 406)
-        if ($this->method !== "GET") $this->error(403);
+        if ($this->method !== "GET") $this->error(501);
 
         // call correct method
         if (!method_exists($this, $this->request[0])) $this->error(404);
@@ -95,6 +95,10 @@ class API {
                 break;
             case 404:
                 $response['error'] = '404 - Not found. ' . $msg;
+                $debug->log($response['error'], LOG_WARNING);
+                break;
+            case 501:
+                $response['error'] = '501 - Method not implemented. ' . $msg;
                 $debug->log($response['error'], LOG_WARNING);
                 break;
             case 503:

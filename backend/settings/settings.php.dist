@@ -21,6 +21,7 @@ $nfsen_config = array(
         'binary' => '/usr/bin/nfdump',
         'profiles-data' => '/var/nfdump/profiles-data',
         'profile' => 'live',
+        'max-processes' => 1, // maximum number of concurrently running nfdump processes
     ),
     'db' => array(
         'Akumuli' => array(

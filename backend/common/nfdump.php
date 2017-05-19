@@ -77,7 +77,7 @@ class NfDump {
 
         // check for already running nfdump processes
         exec('ps -eo user,pid,args | grep -v grep | grep `whoami` | grep "' . $this->cfg['env']['bin'] . '"', $processes);
-        if (count($processes) > 0) throw new \Exception("NfDump is already running!");
+        if (count($processes) > intVal(\common\Config::$cfg['nfdump']['max-processes'])-1) throw new \Exception("NfDump is already running!");
 
         // execute nfdump
         exec($command, $output, $return);

@@ -618,38 +618,13 @@ $(document).ready(function() {
             dateend = parseInt(dygraph_daterange[1].getTime()/1000),
             filter = '' + $('#filterNfdumpTextarea').val(),
             limit = $('#flowsFilterLimitSelection').val(),
-            aggregate = '',
-            $aggregation = $('#filterAggregation'),
             sort = '',
             output = {
                 format: $('#filterOutputSelection').val(),
             };
 
         // parse form values to generate a proper API request
-        if ($aggregation.find('[name=bidirectional]:checked').length === 0) {
-            var validAggregations = ['proto', 'dstport', 'srcport', 'srcip', 'dstip'];
-
-            $.each(validAggregations, function(id, val) {
-                if ($aggregation.find('[name=' + val + ']:checked').length > 0) {
-                    aggregate += (aggregate === '') ? val : ',' + val;
-                } else {
-                    var select = $aggregation.find('[name=' + val + ']').val();
-                    if (select === 'none') return;
-                    if (val === 'srcip') {
-                        var prefix = parseInt($aggregation.find('[name=srcipprefix]:visible').val()),
-                            srcprefix = (isNaN(prefix) || prefix === 'srcip') ? '' : '/' + prefix,
-                            srcip = select + srcprefix;
-                        aggregate += (aggregate === '') ? srcip : ',' + srcip;
-                    } else if (val === 'dstip') {
-                        var prefix = parseInt($aggregation.find('[name=dstipprefix]:visible').val()),
-                            dstprefix = (isNaN(prefix) || prefix === 'dstip') ? '' : '/' + prefix,
-                            dstip = select + dstprefix;
-                        aggregate += (aggregate === '') ? dstip : ',' + dstip;
-                    }
-                }
-            });
-
-        } else aggregate = 'bidirectional';
+        var aggregate = parse_aggregation_fields();
 
         if ($('#flowsFilterOther').find('[name=ordertstart]:checked').length > 0) {
             sort = $('[name=ordertstart]:checked').val();
@@ -680,17 +655,13 @@ $(document).ready(function() {
             filter = '' + $('#filterNfdumpTextarea').val(),
             top = $('#statsFilterTopSelection').val(),
             s_for = $('#statsFilterForSelection').val(),
-            aggregate = '',
             sort = $('#statsFilterOrderBySelection').val(),
             output = {
                 format: $('#filterOutputSelection').val(),
             };
 
         // parse form values to generate a proper API request
-        if ($('#filterAggregationGlobal').find('[name=bidirectional]:checked').length === 0) {
-            // todo check other parameters
-            aggregate = '';
-        } else aggregate = 'bidirectional';
+        var aggregate = parse_aggregation_fields();
 
         var api_statistics_options = {
             datestart: datestart,
@@ -706,6 +677,37 @@ $(document).ready(function() {
         };
 
         var req = $.get('../api/stats', api_statistics_options, render_table);
+    }
+
+    function parse_aggregation_fields() {
+        var $aggregation = $('#filterAggregation');
+        if ($aggregation.find('[name=bidirectional]:checked').length === 0) {
+            var validAggregations = ['proto', 'dstport', 'srcport', 'srcip', 'dstip'],
+                aggregate = '';
+
+            $.each(validAggregations, function(id, val) {
+                if ($aggregation.find('[name=' + val + ']:checked').length > 0) {
+                    aggregate += (aggregate === '') ? val : ',' + val;
+                } else {
+                    var select = $aggregation.find('[name=' + val + ']').val();
+                    if (select === 'none') return;
+                    if (val === 'srcip') {
+                        var prefix = parseInt($aggregation.find('[name=srcipprefix]:visible').val()),
+                            srcprefix = (isNaN(prefix) || prefix === 'srcip') ? '' : '/' + prefix,
+                            srcip = select + srcprefix;
+                        aggregate += (aggregate === '') ? srcip : ',' + srcip;
+                    } else if (val === 'dstip') {
+                        var prefix = parseInt($aggregation.find('[name=dstipprefix]:visible').val()),
+                            dstprefix = (isNaN(prefix) || prefix === 'dstip') ? '' : '/' + prefix,
+                            dstip = select + dstprefix;
+                        aggregate += (aggregate === '') ? dstip : ',' + dstip;
+                    }
+                }
+            });
+
+            return aggregate;
+
+        } else return 'bidirectional';
     }
 
     function render_table(data, status) {

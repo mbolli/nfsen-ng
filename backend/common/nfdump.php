@@ -91,15 +91,19 @@ class NfDump {
             case 254: throw new \Exception("NfDump: Error in filter syntax. " . implode(' ', $output)); break;
             case 250: throw new \Exception("NfDump: Internal error. " . implode(' ', $output)); break;
         }
-        
+
+        // add command to output
+        array_unshift($output, $command);
+
         // slice csv (only return the fields actually wanted)
-        if (!preg_match('/,/', $output[0])) return $output;
+        if (!preg_match('/,/', $output[1])) return $output;
         $fields_active = array();
         $parsed_header = false;
         $format = $this->get_output_format($this->cfg['format']);
 
-        foreach ($output as &$line) {
+        foreach ($output as $i => &$line) {
 
+            if ($i === 0) continue;
             $line = str_getcsv($line, ',');
 
             if (!is_array($format)) continue;

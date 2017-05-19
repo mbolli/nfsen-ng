@@ -34,6 +34,7 @@ class NfDump {
         switch($option) {
             case '-M':
                 $this->cfg['option'][$option] = $this->cfg['env']['profiles-data'] . DIRECTORY_SEPARATOR . $this->cfg['env']['profile'] . DIRECTORY_SEPARATOR . $value;
+                $this->cfg['env']['sources'] = explode(':', $value);
                 break;
             case '-R':
                 $this->cfg['option'][$option] = $this->convert_date_to_path($value[0], $value[1]);
@@ -143,12 +144,14 @@ class NfDump {
             'bin' => Config::$cfg['nfdump']['binary'],
             'profiles-data' => Config::$cfg['nfdump']['profiles-data'],
             'profile' => Config::$cfg['nfdump']['profile'],
+            'sources' => array(),
         );
         $this->cfg = $this->clean;
     }
 
     /**
      * Converts a time range to a nfcapd file range
+     * Ensures that files actually exist
      * @param int $datestart
      * @param int $dateend
      * @return string
@@ -158,13 +161,38 @@ class NfDump {
         $end = new \DateTime();
         $start->setTimestamp((int)$datestart - ($datestart % 300));
         $end->setTimestamp((int)$dateend - ($dateend % 300));
+        $filestart = $fileend = "-";
+        $filestartexists = false;
+        $fileendexists = false;
+        $sourcepath = $this->cfg['env']['profiles-data'] . DIRECTORY_SEPARATOR . $this->cfg['env']['profile'] . DIRECTORY_SEPARATOR;
 
-        $pathstart = $start->format('Y/m/d') . DIRECTORY_SEPARATOR . 'nfcapd.' . $start->format('YmdHi');
-        $pathend = $end->format('Y/m/d') . DIRECTORY_SEPARATOR . 'nfcapd.' . $end->format('YmdHi');
+        // if start file does not exist, increment by 5 minutes and try again
+        while ($filestartexists === false) {
+            if ($start >= $end) break;
 
-        if (!file_exists($pathstart) || !file_exists($pathend)) { } // todo something?
+            foreach ($this->cfg['env']['sources'] as $source) {
+                if (file_exists($sourcepath . $source . DIRECTORY_SEPARATOR . $filestart)) $filestartexists = true;
+            }
 
-        return $pathstart . ':' . $pathend;
+            $pathstart = $start->format('Y/m/d') . DIRECTORY_SEPARATOR;
+            $filestart = $pathstart . 'nfcapd.' . $start->format('YmdHi');
+            $start->add(new \DateInterval('PT5M'));
+        }
+
+        // if end file does not exist, subtract by 5 minutes and try again
+        while ($fileendexists === false) {
+            if ($end == $start) break; // strict comparison won't work
+
+            foreach ($this->cfg['env']['sources'] as $source) {
+                if (file_exists($sourcepath . $source . DIRECTORY_SEPARATOR . $fileend)) $fileendexists = true;
+            }
+
+            $pathend = $end->format('Y/m/d') . DIRECTORY_SEPARATOR;
+            $fileend = $pathend . 'nfcapd.' . $end->format('YmdHi');
+            $end->sub(new \DateInterval('PT5M'));
+        }
+
+        return $filestart . PATH_SEPARATOR . $fileend;
     }
 
     /**

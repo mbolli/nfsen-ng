@@ -51,7 +51,7 @@
                     </div>
 
 
-                    <div id="filterDisplay" class="hidden col-sm-2" data-view="graphs">
+                    <div id="filterDisplay" class="hidden col-xs-6 col-sm-2" data-view="graphs">
                         <h3>Display</h3>
 
                         <div class="form-group">
@@ -63,7 +63,7 @@
                         </div>
                     </div>
 
-                    <div id="filterPorts" class="hidden col-sm-1" data-view="graphs" data-display="ports">
+                    <div id="filterPorts" class="hidden col-xs-6 col-sm-2 col-md-2" data-view="graphs" data-display="ports">
                         <h3>Ports</h3>
 
                         <div class="form-group">
@@ -71,139 +71,121 @@
                         </div>
                     </div>
 
-                    <div class="row">
-                        <div id="filterSources" class="hidden col-sm-3" data-view="graphs flows statistics" data-display="sources protocols ports">
-                            <h3>Sources</h3>
-
-                            <div class="form-group">
-                                <select  id="filterSourcesSelect" multiple class="form-control">
-                                    <option value="any">Any</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div id="filterProtocols" class="hidden col-sm-3" data-view="graphs" data-display="sources protocols ports">
-                            <h3>Protocols</h3>
-
-                            <div id="filterProtocolButtons" class="btn-group btn-group-md" data-toggle="buttons">
-                                <label class="btn btn-default"><input type="radio" name="protocol[]" value="any">Any</label>
-                                <label class="btn btn-default"><input type="radio" name="protocol[]" value="tcp">TCP</label>
-                                <label class="btn btn-default"><input type="radio" name="protocol[]" value="udp">UDP</label>
-                                <label class="btn btn-default"><input type="radio" name="protocol[]" value="icmp">ICMP</label>
-                                <label class="btn btn-default"><input type="radio" name="protocol[]" value="other">Others</label>
-                            </div>
-                        </div>
-
-                        <div id="filterTypes" class="hidden col-sm-3" data-view="graphs" data-display="sources protocols ports">
-                            <h3>Data Type</h3>
-
-                            <div class="btn-group btn-group-md" data-toggle="buttons">
-                                <label class="btn btn-default active"><input type="radio" name="datatype"  value="flows" checked>Flows</label>
-                                <label class="btn btn-default"><input type="radio" name="datatype"  value="packets">Packets</label>
-                                <label class="btn btn-default"><input type="radio" name="datatype"  value="bytes">Traffic</label>
-                            </div>
-                        </div>
-
-                        <div id="filterNfdump" class="hidden col-sm-5" data-view="flows statistics">
-
-                            <h3>NFDUMP filter <span class="glyphicon glyphicon-info-sign" aria-hidden="true" data-toggle="tooltip" data-placement="right" title="The filter syntax is similar to the well known pcap library used by tcpdump. All keywords are case-independent. Example: dst port=80"></span></h3>
-
-                            <div class="form-group">
-                                <textarea class="form-control" id="filterNfdumpTextarea" rows="3"></textarea>
-                            </div>
-
-                            <div class="btn-group">
-                                <div class="btn-group">
-
-                                    <button type="button" class="btn btn-default dropdown-toggle disabled" data-toggle="dropdown">
-                                        Filters
-                                        <span class="caret"></span>
-                                    </button>
-                                    <ul class="dropdown-menu disabled">
-                                        <li><a>Dynamically load</a></li>
-                                        <li><a>Filters</a></li>
-                                        <li><a>From Backend</a></li>
-                                    </ul>
-                                </div>
-
-                                <button type="button" class="btn btn-default disabled">Delete filter (server)</button>
-                                <button type="button" class="btn btn-default disabled">Save filter (server)</button>
-                            </div>
-
-                        </div>
-
-                        <div id="filterOutput" class="hidden col-sm-4" data-view="flows statistics">
-
-                            <h3>Output</h3>
-                            <div class="row">
-                                <div class="form-group col-sm-4">
-                                    <label for="filterOutputSelection">Output type:</label>
-                                    <select id="filterOutputSelection" name="filterOutputSelection" class="form-control">
-                                        <option value='auto'>Auto</option>
-                                        <option value='line'>Line</option>
-                                        <option value='long'>Long</option>
-                                        <option value='extended'>Extended</option>
-                                        <option value='custom'>Custom</option>
-                                    </select>
-                                </div>
-
-                                <div class="form-group col-sm-8">
-                                    <label>Other options:</label>
-                                    <br>
-                                    <div class="btn-group btn-group-md" id="flowsFilterOther" data-toggle="buttons">
-                                        <label class="btn btn-default"><input type="checkbox" name="ordertstart" value="true">Order by flows' start time</label>
-                                        <label class="btn btn-default"><input type="checkbox" name="ipv6" value="true">Full IPv6 address</label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div id="customListOutputFormat" class="form-group hidden">
-                                <label for="customListOutputFormatValue">Custom output format:</label>
-                                <input id="customListOutputFormatValue" type="text" class="form-control">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="filterFlowsLimit" class="hidden col-sm-1" data-view="flows">
-                        <h3>Limit</h3>
+                    <div id="filterSources" class="hidden col-xs-6 col-sm-3 col-md-2" data-view="graphs flows statistics" data-display="sources protocols ports">
+                        <h3>Sources</h3>
 
                         <div class="form-group">
-                            <label for="flowsFilterLimitSelection">Flows:</label>
-                            <select id="flowsFilterLimitSelection" class="form-control">
-                                <option value='20'>20</option>
-                                <option value='50' >50</option>
-                                <option value='100' >100</option>
-                                <option value='500' >500</option>
-                                <option value='1000' >1000</option>
-                                <option value='10000' >10000</option>
+                            <select  id="filterSourcesSelect" multiple class="form-control">
+                                <option value="any">Any</option>
                             </select>
                         </div>
                     </div>
 
-                    <div id="filterAggregation" class="hidden col-sm-10" data-view="flows statistics">
+                    <div id="filterProtocols" class="hidden col-xs-12 col-sm-6 col-md-4" data-view="graphs" data-display="sources protocols ports">
+                        <h3>Protocols</h3>
 
-                        <h3>Aggregation</h3><!-- todo: check everywhere this "name" convention in divs and other elements-->
+                        <div id="filterProtocolButtons" class="btn-group btn-group-md" data-toggle="buttons">
+                            <label class="btn btn-default"><input type="radio" name="protocol[]" value="any">Any</label>
+                            <label class="btn btn-default"><input type="radio" name="protocol[]" value="tcp">TCP</label>
+                            <label class="btn btn-default"><input type="radio" name="protocol[]" value="udp">UDP</label>
+                            <label class="btn btn-default"><input type="radio" name="protocol[]" value="icmp">ICMP</label>
+                            <label class="btn btn-default"><input type="radio" name="protocol[]" value="other">Others</label>
+                        </div>
+                    </div>
+
+                    <div id="filterTypes" class="hidden col-xs-12 col-sm-6 col-md-3" data-view="graphs" data-display="sources protocols ports">
+                        <h3>Data Type</h3>
+
+                        <div class="btn-group btn-group-md" data-toggle="buttons">
+                            <label class="btn btn-default active"><input type="radio" name="datatype"  value="flows" checked>Flows</label>
+                            <label class="btn btn-default"><input type="radio" name="datatype"  value="packets">Packets</label>
+                            <label class="btn btn-default"><input type="radio" name="datatype"  value="bytes">Traffic</label>
+                        </div>
+                    </div>
+
+                    <div id="filterFlowsLimit" class="hidden col-xs-6 col-sm-2 col-md-2 col-lg-1" data-view="flows">
+                        <h3>Limit Flows</h3>
+
+                        <div class="form-group">
+                            <select id="flowsFilterLimitSelection" class="form-control">
+                                <option value="20">20</option>
+                                <option value="50" >50</option>
+                                <option value="100" >100</option>
+                                <option value="500" >500</option>
+                                <option value="1000" >1000</option>
+                                <option value="10000" >10000</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="filterStatisticsTop" class="hidden col-xs-6 col-sm-2 col-md-2 col-lg-1" data-view="statistics">
+                        <h3>Top records</h3>
+                        <div class="form-group">
+                            <select id="statsFilterTopSelection" class="form-control">
+                                <option value="10" selected>10</option>
+                                <option value="20">20</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                                <option value="500">500</option>
+                            </select>
+                        </div>
+                    </div>
+
+
+                    <div id="filterNfdump" class="hidden col-xs-12 col-sm-7 col-md-5" data-view="flows statistics">
+
+                        <h3>NFDUMP filter <span class="glyphicon glyphicon-info-sign" aria-hidden="true" data-toggle="tooltip" data-placement="right" title="The filter syntax is similar to the well known pcap library used by tcpdump. All keywords are case-independent. Example: dst port=80"></span></h3>
+
+                        <div class="form-group">
+                            <textarea class="form-control" id="filterNfdumpTextarea" rows="3"></textarea>
+                        </div>
+
+                        <div class="btn-group">
+                            <div class="btn-group">
+
+                                <button type="button" class="btn btn-default dropdown-toggle disabled" data-toggle="dropdown">
+                                    Filters
+                                    <span class="caret"></span>
+                                </button>
+                                <ul class="dropdown-menu disabled">
+                                    <li><a>Dynamically load</a></li>
+                                    <li><a>Filters</a></li>
+                                    <li><a>From Backend</a></li>
+                                </ul>
+                            </div>
+
+                            <button type="button" class="btn btn-default disabled">Delete filter (server)</button>
+                            <button type="button" class="btn btn-default disabled">Save filter (server)</button>
+                        </div>
+
+                    </div>
+
+                    <div id="filterAggregation">
+                    <div class="hidden col-xs-6 col-sm-6 col-md-3 col-lg-2" data-view="flows statistics">
+
+                        <h3>Global Aggregation</h3><!-- todo: check everywhere this "name" convention in divs and other elements-->
+                        <div class="btn-group btn-group-md" data-toggle="buttons" id="filterAggregationGlobal">
+                            <label class="btn btn-default"><input type="checkbox" name="bidirectional">Bi-directional</label>
+                            <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="proto">Protocol</label>
+                        </div>
+
+                    </div>
+                    <div class="hidden col-xs-6 col-sm-6 col-md-3 col-lg-2" data-view="flows statistics">
+                        <h3>Port Aggregation</h3>
+                        <div class="btn-group btn-group-md" data-toggle="buttons" id="filterAggregationPort">
+                            <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="srcport">Source port</label>
+                            <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="dstport">Destination port</label>
+                        </div>
+                    </div>
+
+                    <div class="hidden col-xs-12 col-sm-12 col-md-5 col-lg-4" data-view="flows statistics">
+                        <h3>ip Aggregation</h3>
                         <div class="row">
-                            <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons" id="filterAggregationGlobal">
-                                <label>Global:</label>
-                                <br>
-                                <label class="btn btn-default"><input type="checkbox" name="bidirectional">Bi-directional</label>
-                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="proto">Protocol</label>
-                            </div>
-
-                            <div class="btn-group-vertical btn-group-md col-sm-2" data-toggle="buttons" id="filterAggregationPort">
-                                <label>Port:</label>
-                                <br>
-                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="srcport">Source port</label>
-                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="dstport">Destination port</label>
-                            </div>
-
-                            <div class="col-sm-4">
+                            <div class="col-xs-6 col-sm-6">
                                 <label>Source</label>
                                 <div class="row">
-                                    <div class="btn-group-vertical btn-group-md col-sm-6" data-toggle="buttons">
-                                        <label>Address(es):</label>
-
+                                    <div class="btn-group-vertical btn-group-md col-sm-9" data-toggle="buttons">
                                         <div class="form-group">
                                             <select data-disable-on="bi-directional" data-kind="source" name="srcip" id="filterFlowAggregationSourceAddressSelect" class="form-control">
                                                 <option value="none">No aggregation</option>
@@ -214,20 +196,18 @@
                                         </div>
                                     </div>
 
-                                    <div id="sourceCIDRPrefixDiv" class="btn-group-vertical btn-group-md col-sm-6 hidden">
+                                    <div id="sourceCIDRPrefixDiv" class="btn-group-vertical btn-group-md col-sm-3 hidden">
                                         <div class="form-group">
-                                            <label for="sourceCIDRPrefix">CIDR Prefix:</label>
-                                            <input data-disable-on="bi-directional" id="sourceCIDRPrefix" name="srcipprefix" type="text" class="form-control">
+                                            <input data-disable-on="bi-directional" id="sourceCIDRPrefix" placeholder="/24" name="srcipprefix" type="text" class="form-control">
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="col-sm-4">
+                            <div class="col-xs-6 col-sm-6">
                                 <label>Destination</label>
                                 <div class="row">
-                                    <div class="btn-group-vertical btn-group-md col-sm-6" data-toggle="buttons">
-                                        <label>Address(es):</label>
+                                    <div class="btn-group-vertical btn-group-md col-sm-9" data-toggle="buttons">
                                         <div class="form-group">
                                             <select data-disable-on="bi-directional" data-kind="destination" name="dstip" id="filterFlowAggregationDestinationAddressSelect" class="form-control">
                                                 <option value="none">No aggregation</option>
@@ -238,21 +218,21 @@
                                         </div>
                                     </div>
 
-                                    <div id="destinationCIDRPrefixDiv" class="btn-group-vertical btn-group-md col-sm-6 hidden">
+                                    <div id="destinationCIDRPrefixDiv" class="btn-group-vertical btn-group-md col-sm-3 hidden">
                                         <div class="form-group">
-                                            <label for="destinationCIDRPrefix">CIDR Prefix:</label>
-                                            <input data-disable-on="bi-directional" id="destinationCIDRPrefix" name="dstipprefix" type="text" class="form-control">
+                                            <input data-disable-on="bi-directional" id="destinationCIDRPrefix" placeholder="/24" name="dstipprefix" type="text" class="form-control">
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div> <!-- end row -->
+                        </div>
                     </div><!-- flowsFilterAggregationDiv  -->
+                    </div>
 
-                    <div id="statisLimitDiv" class="hidden col-sm-1" data-view="statistics">
-                        <h3>Limit</h3>
+                    <div id="statisLimitDiv" class="hidden col-xs-6 col-sm-6 col-md-2" data-view="statistics">
+                        <h3>Data Limit</h3>
                         <div class="form-group">
-                            <select id="statsLimitSelect" class="form-control" data-view="statistics">
+                            <select id="statsLimitSelect" class="form-control" data-view="statistics" disabled>
                                 <option value="none">No limit</option>
                                 <option value="srcip">Packets</option>
                                 <option value="srcip4sub">Bytes</option>
@@ -260,91 +240,109 @@
                         </div>
                     </div>
 
-                    <div id="filterStatsProperties" class="hidden col-sm-1" data-view="statistics">
+                    <div id="filterStatsProperties" class="hidden col-xs-6 col-sm-6 col-md-4 col-lg-2" data-view="statistics">
 
                         <h3>Statistic properties</h3>
 
                         <div class="form-group">
-                            <label for="statsFilterTopSelection">Top records:</label>
-                            <select id="statsFilterTopSelection" class="form-control">
-                                <option value='10' selected>10</option>
-                                <option value='20'>20</option>
-                                <option value='50'>50</option>
-                                <option value='100'>100</option>
-                                <option value='200'>200</option>
-                                <option value='500'>500</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="statsFilterForSelection">Statistic for:</label>
+                            <label for="statsFilterForSelection">Statistic for</label>
                             <select id="statsFilterForSelection" class="form-control">
-                                <option value='record' selected>Flow Records</option>
-                                <option value='ip'>Any IP address</option>
-                                <option value='srcip'>Src IP address</option>
-                                <option value='dstip'>Dst IP address</option>
-                                <option value='port'>Any port</option>
-                                <option value='srcport'>Src port</option>
-                                <option value='dstport'>Dst port</option>
-                                <option value='if'>Any interface</option>
-                                <option value='inif'>IN interface</option>
-                                <option value='outif'>OUT interface</option>
-                                <option value='as'>Any AS</option>
-                                <option value='srcas'>Src AS</option>
-                                <option value='dstas'>Dst AS</option>
-                                <option value='nhip'>Next Hop IP</option>
-                                <option value='nhbip'>Next Hop BGP IP</option>
-                                <option value='tos'>Router IP</option>
-                                <option value='proto'>Proto</option>
-                                <option value='dir'>Direction</option>
-                                <option value='srctos'>Src TOS</option>
-                                <option value='dsttos'>Dst TOS</option>
-                                <option value='tos'>Tos</option>
-                                <option value='mask'>Any Mask Bits</option>
-                                <option value='srcmask'>Src Mask Bits</option>
-                                <option value='dstmask'>Dst Mask Bits</option>
-                                <option value='vlan'>Any VLAN ID</option>
-                                <option value='srcvlan'>Src VLAN ID</option>
-                                <option value='dstvlan'>Dst VLAN ID</option>
-                                <option value='srcmac'>Src MAC</option>
-                                <option value='dstmac'>Dst MAC</option>
-                                <option value='inmac'>IN MAC</option>
-                                <option value='outmac'>OUT MAC</option>
-                                <option value='insrcmac'>IN src MAC</option>
-                                <option value='outdstmac'>OUT dst MAC</option>
-                                <option value='indstmac'>IN dst MAC</option>
-                                <option value='outsrcmac'>OUT src MAC</option>
-                                <option value='mpls1'>MPLS Label 1</option>
-                                <option value='mpls2'>MPLS Label 2</option>
-                                <option value='mpls3'>MPLS Label 3</option>
-                                <option value='mpls4'>MPLS Label 4</option>
-                                <option value='mpls5'>MPLS Label 5</option>
-                                <option value='mpls6'>MPLS Label 6</option>
-                                <option value='mpls7'>MPLS Label 7</option>
-                                <option value='mpls8'>MPLS Label 8</option>
-                                <option value='mpls9'>MPLS Label 9</option>
-                                <option value='mpls10'>MPLS Label 10</option>
+                                <option value="record" selected>Flow Records</option>
+                                <option value="ip">Any IP address</option>
+                                <option value="srcip">Src IP address</option>
+                                <option value="dstip">Dst IP address</option>
+                                <option value="port">Any port</option>
+                                <option value="srcport">Src port</option>
+                                <option value="dstport">Dst port</option>
+                                <option value="if">Any interface</option>
+                                <option value="inif">IN interface</option>
+                                <option value="outif">OUT interface</option>
+                                <option value="as">Any AS</option>
+                                <option value="srcas">Src AS</option>
+                                <option value="dstas">Dst AS</option>
+                                <option value="nhip">Next Hop IP</option>
+                                <option value="nhbip">Next Hop BGP IP</option>
+                                <option value="tos">Router IP</option>
+                                <option value="proto">Proto</option>
+                                <option value="dir">Direction</option>
+                                <option value="srctos">Src TOS</option>
+                                <option value="dsttos">Dst TOS</option>
+                                <option value="tos">Tos</option>
+                                <option value="mask">Any Mask Bits</option>
+                                <option value="srcmask">Src Mask Bits</option>
+                                <option value="dstmask">Dst Mask Bits</option>
+                                <option value="vlan">Any VLAN ID</option>
+                                <option value="srcvlan">Src VLAN ID</option>
+                                <option value="dstvlan">Dst VLAN ID</option>
+                                <option value="srcmac">Src MAC</option>
+                                <option value="dstmac">Dst MAC</option>
+                                <option value="inmac">IN MAC</option>
+                                <option value="outmac">OUT MAC</option>
+                                <option value="insrcmac">IN src MAC</option>
+                                <option value="outdstmac">OUT dst MAC</option>
+                                <option value="indstmac">IN dst MAC</option>
+                                <option value="outsrcmac">OUT src MAC</option>
+                                <option value="mpls1">MPLS Label 1</option>
+                                <option value="mpls2">MPLS Label 2</option>
+                                <option value="mpls3">MPLS Label 3</option>
+                                <option value="mpls4">MPLS Label 4</option>
+                                <option value="mpls5">MPLS Label 5</option>
+                                <option value="mpls6">MPLS Label 6</option>
+                                <option value="mpls7">MPLS Label 7</option>
+                                <option value="mpls8">MPLS Label 8</option>
+                                <option value="mpls9">MPLS Label 9</option>
+                                <option value="mpls10">MPLS Label 10</option>
                             </select>
                         </div>
 
                         <div class="form-group">
-                            <label for="statsFilterOrderBySelection">Order by:</label>
+                            <label for="statsFilterOrderBySelection">Order by</label>
                             <select id="statsFilterOrderBySelection" class="form-control">
-                                <option value='flows' selected>Flows</option>
-                                <option value='packets' >Packets</option>
-                                <option value='bytes' >Bytes</option>
-                                <option value='packetsPerSecond' >Packets per second</option>
-                                <option value='bitsPerSecond' >Bits per second</option>
-                                <option value='bytesPerPacket' >Bytes per packet</option>
+                                <option value="flows" selected>Flows</option>
+                                <option value="packets" >Packets</option>
+                                <option value="bytes" >Bytes</option>
+                                <option value="packetsPerSecond" >Packets per second</option>
+                                <option value="bitsPerSecond" >Bits per second</option>
+                                <option value="bytesPerPacket" >Bytes per packet</option>
                             </select>
                         </div>
 
                     </div><!-- statsFilterPropertiesDiv  -->
 
+                    <div id="filterOutput" class="hidden col-xs-12 col-sm-6 col-md-4 col-lg-3" data-view="flows statistics">
 
-                    <div id="filterCommands" class="hidden col-sm-1" data-view="flows statistics">
+                        <h3>Output</h3>
+                        <div class="row">
+                            <div class="form-group col-xs-6 col-sm-6">
+                                <label for="filterOutputSelection">Output type</label>
+                                <select id="filterOutputSelection" name="filterOutputSelection" class="form-control">
+                                    <option value="auto">Auto</option>
+                                    <option value="line">Line</option>
+                                    <option value="long">Long</option>
+                                    <option value="extended">Extended</option>
+                                    <option value="custom">Custom</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group col-xs-6 col-sm-6">
+                                <label>Other options</label>
+                                <br>
+                                <div class="btn-group btn-group-md" id="flowsFilterOther" data-toggle="buttons">
+                                    <label class="btn btn-default"><input type="checkbox" name="ordertstart" value="true">Order by tstart</label>
+                                    <label class="btn btn-default"><input type="checkbox" name="ipv6" value="true">Full IPv6 address</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="customListOutputFormat" class="form-group hidden">
+                            <label for="customListOutputFormatValue">Custom output format:</label>
+                            <input id="customListOutputFormatValue" type="text" class="form-control">
+                        </div>
+                    </div>
+
+                    <div id="filterCommands" class="hidden col-xs-12 col-sm-6 col-md-3" data-view="flows statistics">
                         <h3>Commands</h3>
-                        <div class="btn-group-vertical btn-group-md" data-toggle="buttons">
+                        <div class="btn-group btn-group-md" data-toggle="buttons">
                             <button type="button" class="btn btn-primary submit" data-loading-text="Loading...">Process data</button>
                             <button type="button" class="btn btn-default reset">Reset filters</button>
                         </div>

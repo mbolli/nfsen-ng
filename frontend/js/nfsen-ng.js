@@ -238,7 +238,7 @@ $(document).ready(function() {
         if (date_diff*count_sources > 1000*24*60*60*12) {
             var count_days = parseInt(date_diff/1000/24/60/60),
                 calc_info = count_days + ' days and ' + count_sources + ' sources';
-            do_continue = confirm('Be aware that nfdump will scan 288 capture files per day and source. You selected ' + calc_info + '. Are you sure you want to submit this query?');
+            do_continue = confirm('Be aware that nfdump will scan 288 capture files per day and source. You selected ' + calc_info + '. This might take a long time and lots of server resources. Are you sure you want to submit this query?');
         }
 
         if (do_continue === false) return false;
@@ -626,6 +626,8 @@ $(document).ready(function() {
         // parse form values to generate a proper API request
         var aggregate = parse_aggregation_fields();
 
+        if (typeof sources === 'string') sources = [sources];
+
         if ($('#flowsFilterOther').find('[name=ordertstart]:checked').length > 0) {
             sort = $('[name=ordertstart]:checked').val();
         }
@@ -663,15 +665,16 @@ $(document).ready(function() {
         // parse form values to generate a proper API request
         var aggregate = parse_aggregation_fields();
 
+        if (typeof sources === 'string') sources = [sources];
+
         var api_statistics_options = {
             datestart: datestart,
             dateend: dateend,
             sources: sources,
             filter: filter,
             top: top,
-            for: s_for,
+            for: s_for + '/' + sort,
             aggregate: aggregate,
-            sort: sort,
             limit: '',
             output: output
         };
@@ -736,10 +739,10 @@ $(document).ready(function() {
                         column['breakpoints'] = '';
                         column['type'] = 'text'; // 'date' needs moment.js library...
                         break;
-                    case 'sa': case 'da': case 'pr':
+                    case 'sa': case 'da': case 'pr': case 'val': // todo case 'val': is the "for" field -> change the label
                         column['breakpoints'] = '';
                         column['type'] = 'text';
-                        break;
+                        break; // ts', 'te', 'td', 'sa', 'da', 'sp', 'dp', 'pr', 'val', 'fl', 'ipkt', 'ibyt', 'ipps', 'ipbs', 'ibpp'
                     case 'ipkt': case 'opkt': case 'ibyt': case 'obyt':
                         column['breakpoints'] = 'xs sm md';
                         break;

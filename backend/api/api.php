@@ -127,7 +127,6 @@ class API {
 
         $nfdump = new \common\NfDump();
         $nfdump->setOption('-M', $sources); // multiple sources
-        $nfdump->setOption('-T', null); // output = flows
         $nfdump->setOption('-R', array($datestart, $dateend)); // date range
         $nfdump->setOption('-n', $top);
         $nfdump->setOption('-s', $for);

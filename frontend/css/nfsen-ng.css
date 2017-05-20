@@ -53,5 +53,5 @@ h3, h4 {
 }
 
 #contentDiv {
-    overflow-x: scroll;
+    overflow-x: auto;
 }

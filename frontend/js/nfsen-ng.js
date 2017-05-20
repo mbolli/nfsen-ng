@@ -270,7 +270,12 @@ $(document).ready(function() {
      * Reset flows/statistics form
      */
     $(document).on('click', '#filterCommands .reset', function(){
-        //todo implement function
+        var view = $('header').find('li.active a').attr('data-view'),
+            $filter = $('#filterContainer');
+
+        $filter.find('form').eq(0).trigger('reset');
+        $filter.find('input:visible, textarea:visible, select:visible, button:visible').trigger('change');
+
     });
 
     /**

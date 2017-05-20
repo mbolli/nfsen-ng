@@ -71,6 +71,7 @@ $(document).ready(function() {
 
         // re-initialize form
         if (view === 'graphs') $('#filterDisplaySelect').trigger('change');
+        if (view === 'flows') $('#statsFilterForSelection').val('record').trigger('change');
 
         // trigger resize for the graph
         if (typeof dygraph !== 'undefined') dygraph.resize();
@@ -235,13 +236,15 @@ $(document).ready(function() {
         $('#filterAggregation').find('label, input, select, button').each(function() {
             $(this).prop('disabled', disabled).toggleClass('disabled', disabled);
         });
+
+        $('#filterOutputSelection').prop('disabled', disabled).toggleClass('disabled', disabled);
     });
 
     /**
      * Process flows/statistics form submission
      */
     $(document).on('click', '#filterCommands .submit', function() {
-        var current_view = $('header').find('li.active a').attr('data-view'),
+        var current_view = $(this).attr('data-view'),
             do_continue = true,
             date_diff = date_range.options.to-date_range.options.from,
             count_sources = $('#filterSourcesSelect').val().length;
@@ -262,7 +265,7 @@ $(document).ready(function() {
             $(this).remove();
         });
 
-        $('#filterCommands').find('.submit').button('loading');
+        $(this).button('loading');
 
     });
 
@@ -590,8 +593,9 @@ $(document).ready(function() {
      * @param message
      */
     function display_error(severity, message) {
-        var $error = $('#error'),
-            $buttons = $('button[data-loading-text]'),
+        var current_view = $('header').find('li.active a').attr('data-view'),
+            $error = $('#error'),
+            $buttons = $('button[data-loading-text][data-view=' + current_view +']'),
             icon;
 
         switch (severity) {
@@ -611,6 +615,9 @@ $(document).ready(function() {
         $buttons.each(function() {
            $(this).button('reset');
         });
+
+        // empty data table
+        $('#contentDiv').find('table.table').empty();
     }
 
     /**
@@ -761,7 +768,8 @@ $(document).ready(function() {
                     column['breakpoints'] = '';
                     column['type'] = 'text'; // 'date' needs moment.js library...
                 } else if (['td', 'fl', 'flP', 'ipktP', 'opktP', 'ibytP', 'obytP', 'ipps', 'opps', 'ibps', 'obps', 'ibpp', 'obpp'].indexOf(val) !== -1) {
-
+                    column['type'] = 'number';
+                    column['thousandSeparator'] = '\'';
                 } else if (['sa', 'da', 'pr', 'val'].indexOf(val) !== -1) {
                     column['breakpoints'] = '';
                     column['type'] = 'text';

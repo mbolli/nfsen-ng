@@ -27,11 +27,11 @@
                 <li role="presentation"><a data-view="statistics" href="#">Statistics <span class="glyphicon glyphicon-list-alt" aria-hidden="true"></span></a></li>
             </ul>
         </header>
-        <form autocomplete="off">
-            <div id="filterContainer" class="container-fluid tab-content">
+        <div id="filterContainer" class="container-fluid tab-content">
+            <form autocomplete="off">
                 <div id="filter" class="filter row well well-sm">
                     <div class="date_selection">
-                        <input type="text" id="date_range"/>
+                        <input type="text" name="date_range" id="date_range"/>
 
                         <div class="btn-group" id="date_slot" data-toggle="buttons">
                             <label class="btn btn-default"><input type="radio" name="range" data-unit="d" value="86400000">24 hours</label>
@@ -183,45 +183,31 @@
                         <h3>ip Aggregation</h3>
                         <div class="row">
                             <div class="col-xs-6 col-sm-6">
-                                <label>Source</label>
-                                <div class="row">
-                                    <div class="btn-group-vertical btn-group-md col-sm-9" data-toggle="buttons">
-                                        <div class="form-group">
-                                            <select data-disable-on="bi-directional" data-kind="source" name="srcip" id="filterFlowAggregationSourceAddressSelect" class="form-control">
-                                                <option value="none">No aggregation</option>
-                                                <option value="srcip">IP</option>
-                                                <option value="srcip4">IPv4 subnets</option>
-                                                <option value="srcip6">IPv6 subnets</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div id="sourceCIDRPrefixDiv" class="btn-group-vertical btn-group-md col-sm-3 hidden">
-                                        <div class="form-group">
-                                            <input data-disable-on="bi-directional" id="sourceCIDRPrefix" placeholder="/24" name="srcipprefix" type="text" class="form-control">
-                                        </div>
+                                <label>Source</label><br>
+                                <div class="form-group">
+                                    <select data-disable-on="bi-directional" data-kind="source" name="srcip" id="filterFlowAggregationSourceAddressSelect" class="form-control pull-left" style="width: 70%">
+                                        <option value="none">No aggregation</option>
+                                        <option value="srcip">IP</option>
+                                        <option value="srcip4">IPv4 subnets</option>
+                                        <option value="srcip6">IPv6 subnets</option>
+                                    </select>
+                                    <div id="sourceCIDRPrefixDiv" class="hidden pull-left" style="width:30%">
+                                        <input data-disable-on="bi-directional" id="sourceCIDRPrefix" placeholder="/24" name="srcipprefix" type="text" class="form-control">
                                     </div>
                                 </div>
                             </div>
 
                             <div class="col-xs-6 col-sm-6">
                                 <label>Destination</label>
-                                <div class="row">
-                                    <div class="btn-group-vertical btn-group-md col-sm-9" data-toggle="buttons">
-                                        <div class="form-group">
-                                            <select data-disable-on="bi-directional" data-kind="destination" name="dstip" id="filterFlowAggregationDestinationAddressSelect" class="form-control">
-                                                <option value="none">No aggregation</option>
-                                                <option value="dstip">IP</option>
-                                                <option value="dstip4">IPv4 subnets</option>
-                                                <option value="dstip6">IPv6 subnets</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div id="destinationCIDRPrefixDiv" class="btn-group-vertical btn-group-md col-sm-3 hidden">
-                                        <div class="form-group">
-                                            <input data-disable-on="bi-directional" id="destinationCIDRPrefix" placeholder="/24" name="dstipprefix" type="text" class="form-control">
-                                        </div>
+                                <div class="form-group">
+                                    <select data-disable-on="bi-directional" data-kind="destination" name="dstip" id="filterFlowAggregationDestinationAddressSelect" class="form-control pull-left" style="width: 70%">
+                                        <option value="none">No aggregation</option>
+                                        <option value="dstip">IP</option>
+                                        <option value="dstip4">IPv4 subnets</option>
+                                        <option value="dstip6">IPv6 subnets</option>
+                                    </select>
+                                    <div id="destinationCIDRPrefixDiv" class="hidden pull-left" style="width:30%">
+                                        <input data-disable-on="bi-directional" id="destinationCIDRPrefix" placeholder="/24" name="dstipprefix" type="text" class="form-control">
                                     </div>
                                 </div>
                             </div>
@@ -348,8 +334,9 @@
                         </div>
                     </div>
                 </div><!-- statsFilterDiv  -->
-            </div><!-- filterDiv  -->
-        </form>
+            </form>
+
+        </div><!-- filterDiv  -->
 
         <div id="error"></div>
 

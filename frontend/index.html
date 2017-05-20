@@ -314,7 +314,7 @@
                                 <label>Other options</label>
                                 <br>
                                 <div class="btn-group btn-group-md" id="flowsFilterOther" data-toggle="buttons">
-                                    <label class="btn btn-default"><input type="checkbox" name="ordertstart" value="true">Order by tstart</label>
+                                    <label class="btn btn-default" data-view="flows"><input type="checkbox" name="ordertstart" value="true">Order by tstart</label>
                                     <label class="btn btn-default"><input type="checkbox" name="ipv6" value="true">Full IPv6 address</label>
                                 </div>
                             </div>
@@ -329,7 +329,9 @@
                     <div id="filterCommands" class="hidden col-xs-12 col-sm-6 col-md-3" data-view="flows statistics">
                         <h3>Commands</h3>
                         <div class="btn-group btn-group-md" data-toggle="buttons">
-                            <button type="button" class="btn btn-primary submit" data-loading-text="Loading...">Process data</button>
+                            <button type="button" class="btn btn-primary submit" data-view="flows" data-loading-text="Loading...">Process data</button>
+                            <button type="button" class="btn btn-primary submit" data-view="statistics" data-loading-text="Loading...">Process data</button>
+
                             <button type="button" class="btn btn-default reset">Reset filters</button>
                         </div>
                     </div>

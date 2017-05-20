@@ -227,6 +227,17 @@ $(document).ready(function() {
     });
 
     /**
+     * disable aggregation fields if statistics "for" field is not "flow records"
+     */
+    $(document).on('change', '#statsFilterForSelection', function() {
+        var disabled = ($(this).val() !== 'record');
+
+        $('#filterAggregation').find('label, input, select, button').each(function() {
+            $(this).prop('disabled', disabled).toggleClass('disabled', disabled);
+        });
+    });
+
+    /**
      * Process flows/statistics form submission
      */
     $(document).on('click', '#filterCommands .submit', function() {

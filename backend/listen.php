@@ -1,3 +1,4 @@
+#!/usr/bin/php
 <?php
 /**
  *
@@ -10,8 +11,8 @@
 
     [Service]
     PIDFile=/var/run/apache2/nfsen-ng.pid
-    WorkingDirectory=/var/www/html/nfsen-ng
-    ExecStart=/usr/bin/php /var/www/apache2/nfsen-ng/listen.php
+    WorkingDirectory=/var/www/html/nfsen-ng/backend/
+    ExecStart=/usr/bin/php /var/www/apache2/nfsen-ng/backend/listen.php
     Restart=always
     Type=simple
     KillMode=process
@@ -28,23 +29,33 @@
 
  */
 
-namespace common;
-
 spl_autoload_extensions(".php");
 spl_autoload_register();
 
 ini_set('display_errors', true);
 ini_set('error_reporting', E_ALL);
 
-Config::initialize();
-$dbg = Debug::getInstance();
+\common\Config::initialize();
+$dbg = \common\Debug::getInstance();
 
+/**
+ * remove non-interesting files from folder list
+ * @param $x
+ * @return bool
+ */
 $clean_folder = function($x) { return !in_array($x, array('.', '..')); };
+
+// first import missed data if available
+$start = new DateTime();
+$start->setDate(date('Y') - 3, date('m'), date('d'));
+$i = new \common\Import();
+$i->setProcessPorts(true);
+$i->start($start);
 
 while (1) {
 
-    foreach(Config::$cfg['general']['sources'] as $source) {
-        $source_path = Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . Config::$cfg['nfdump']['profile'] . DIRECTORY_SEPARATOR . $source;
+    foreach(\common\Config::$cfg['general']['sources'] as $source) {
+        $source_path = \common\Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . \common\Config::$cfg['nfdump']['profile'] . DIRECTORY_SEPARATOR . $source;
 
         $years = scandir($source_path);
         $years = array_filter($years, $clean_folder);
@@ -72,14 +83,9 @@ while (1) {
         if (!preg_match('/nfcapd\.([0-9]{12})$/', $capture, $date)) continue; // nothing to import
 
         $file_datetime = new \DateTime($date[1]);
-        $db_datetime = new \DateTime();
-        $db_datetime->setTimestamp(Config::$db->last_update($source));
-        $diff = $file_datetime->diff($db_datetime);
+        $file_datetime->sub(new \DateInterval('PT5M')); // subtract 5 min just in case
 
-        echo $diff->format('%R%a days %h h %i min');
-
-        ob_flush();
-        flush();
+        $i->start($file_datetime);
     }
 
     sleep(10);

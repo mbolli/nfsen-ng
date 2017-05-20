@@ -139,8 +139,9 @@ class Import {
         );
         // $input data is an array of lines looking like this:
         // flows_tcp: 323829
-        foreach($input as $line) {
+        foreach($input as $i => $line) {
             if (!is_string($line)) $this->d->log('Got no output of previous command', LOG_DEBUG);
+            if ($i === 0) continue; // skip nfdump command
             list($type, $value) = explode(": ", $line);
 
             // we only need flows/packets/bytes values, the source and the timestamp

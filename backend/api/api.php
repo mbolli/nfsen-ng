@@ -65,8 +65,28 @@ class API {
             }
         }
 
-        // write output
-        echo json_encode($this->{$this->request[0]}(...array_values($args)));
+        // get output
+        $output = $this->{$this->request[0]}(...array_values($args));
+
+        // return output
+        if (array_key_exists('csv', $_REQUEST)) {
+
+            // output CSV
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename=export.csv');
+            $return = fopen('php://output', 'w');
+            foreach ($output as $i => $line) {
+                if ($i === 0) continue; // skip first line
+                fputcsv($return, $line);
+            }
+
+            fclose($return);
+
+        } else {
+
+            // output JSON
+            echo json_encode($output);
+        }
 
     }
 

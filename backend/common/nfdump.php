@@ -77,7 +77,7 @@ class NfDump {
 
         // check for already running nfdump processes
         exec('ps -eo user,pid,args | grep -v grep | grep `whoami` | grep "' . $this->cfg['env']['bin'] . '"', $processes);
-        if (count($processes) > intVal(\common\Config::$cfg['nfdump']['max-processes'])-1) throw new \Exception("There already are " . count($processes) . " processes of NfDump running!");
+        if (count($processes)/2 > intVal(\common\Config::$cfg['nfdump']['max-processes'])) throw new \Exception("There already are " . count($processes)/2 . " processes of NfDump running!");
 
         // execute nfdump
         exec($command, $output, $return);
@@ -208,11 +208,11 @@ class NfDump {
             // nfdump format: %ts %td %pr %sap %dap %pkt %byt %fl
             // csv output: ts,te,td,sa,da,sp,dp,pr,flg,fwd,stos,ipkt,ibyt,opkt,obyt,in,out,sas,das,smk,dmk,dtos,dir,nh,nhb,svln,dvln,ismc,odmc,idmc,osmc,mpls1,mpls2,mpls3,mpls4,mpls5,mpls6,mpls7,mpls8,mpls9,mpls10,cl,sl,al,ra,eng,exid,tr
             case 'auto':
-            case 'line': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'opkt', 'ibyt', 'obyt');
+            case 'line': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'ibyt', 'fl');
             // nfdump format: %ts %td %pr %sap %dap %flg %tos %pkt %byt %fl
-            case 'long': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'flg', 'stos', 'dtos', 'ipkt', 'opkt', 'ibyt', 'obyt');
+            case 'long': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'flg', 'stos', 'dtos', 'ipkt', 'ibyt', 'fl');
             // nfdump format: %ts %td %pr %sap %dap %pkt %byt %pps %bps %bpp %fl
-            case 'extended': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'opkt', 'ibyt', 'obyt');
+            case 'extended': return array('ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'ibyt', 'ibps', 'ipps', 'ibpp');
 
             default: return $format;
         }

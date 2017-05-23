@@ -5,7 +5,9 @@ var config,
     dygraph_rangeselector_active,
     dygraph_daterange,
     dygraph_did_zoom,
+    footable_data,
     date_range,
+    api_last_query,
     api_graph_options,
     api_flows_options,
     api_statistics_options,
@@ -270,9 +272,17 @@ $(document).ready(function() {
     });
 
     /**
+     * Get a CSV of the currently selected data
+     */
+    $(document).on('click', '#filterCommands .csv', function() {
+        $('#filterCommands .submit:visible').trigger('click');
+        window.open(api_last_query + '&csv', '_blank');
+    });
+
+    /**
      * Reset flows/statistics form
      */
-    $(document).on('click', '#filterCommands .reset', function(){
+    $(document).on('click', '#filterCommands .reset', function() {
         var view = $('header').find('li.active a').attr('data-view'),
             $filter = $('#filterContainer');
 
@@ -667,6 +677,7 @@ $(document).ready(function() {
             output: output
         };
 
+        api_last_query = '../api/flows/?' + $.param( api_flows_options );
         var req = $.get('../api/flows', api_flows_options, render_table);
     }
 
@@ -703,9 +714,14 @@ $(document).ready(function() {
             output: output
         };
 
+        api_last_query = '../api/stats/?' + $.param( api_statistics_options );
         var req = $.get('../api/stats', api_statistics_options, render_table);
     }
 
+    /**
+     * Parse aggregation fields and return something meaningful, e.g. proto,srcip/24
+     * @returns string
+     */
     function parse_aggregation_fields() {
         var $aggregation = $('#filterAggregation');
         if ($aggregation.find('[name=bidirectional]:checked').length === 0) {
@@ -737,8 +753,15 @@ $(document).ready(function() {
         } else return 'bidirectional';
     }
 
+    /**
+     * parses the provided data, converts it into a better suitable format and populates a html table
+     * @param data
+     * @param status
+     * @returns boolean
+     */
     function render_table(data, status) {
         if (status === 'success') {
+            footable_data = data;
 
             // print nfdump command
             if (typeof data[0] === 'string') {
@@ -773,9 +796,9 @@ $(document).ready(function() {
                 } else if (['sa', 'da', 'pr', 'val'].indexOf(val) !== -1) {
                     column['breakpoints'] = '';
                     column['type'] = 'text';
-                } else if (['ipkt', 'opkt', 'ibyt', 'obyt'].indexOf(val) !== -1) {
+                } else if (['dtos', 'stos', 'tos', 'ipkt', 'opkt', 'ibyt', 'obyt', 'fl'].indexOf(val) !== -1) {
                     column['breakpoints'] = 'xs sm md';
-                } else if (['flg', 'fwd', 'stos', 'in', 'out', 'sas', 'das'].indexOf(val) !== -1) {
+                } else if (['flg', 'fwd', 'in', 'out', 'sas', 'das'].indexOf(val) !== -1) {
                     column['breakpoints'] = 'all';
                     column['type'] = 'text';
                 } else {
@@ -859,7 +882,6 @@ $(document).ready(function() {
     /**
      * handle "onchange" for source/destination address(es) in aggregation filter
      */
-
     $(document).on('change', '#filterFlowAggregationSourceAddressSelect, #filterFlowAggregationDestinationAddressSelect', function() {
         var kind = $(this).attr('data-kind'),
             $prefixDiv = $('#' + kind + 'CIDRPrefixDiv');

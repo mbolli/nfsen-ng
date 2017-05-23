@@ -285,11 +285,11 @@
                             <label for="statsFilterOrderBySelection">Order by</label>
                             <select id="statsFilterOrderBySelection" class="form-control">
                                 <option value="flows" selected>Flows</option>
-                                <option value="packets" >Packets</option>
-                                <option value="bytes" >Bytes</option>
-                                <option value="packetsPerSecond" >Packets per second</option>
-                                <option value="bitsPerSecond" >Bits per second</option>
-                                <option value="bytesPerPacket" >Bytes per packet</option>
+                                <option value="packets">Packets</option>
+                                <option value="bytes">Bytes</option>
+                                <option value="pps">Packets per second</option>
+                                <option value="bps">Bits per second</option>
+                                <option value="bpp">Bytes per packet</option>
                             </select>
                         </div>
 
@@ -332,6 +332,8 @@
                             <button type="button" class="btn btn-primary submit" data-view="flows" data-loading-text="Loading...">Process data</button>
                             <button type="button" class="btn btn-primary submit" data-view="statistics" data-loading-text="Loading...">Process data</button>
 
+                            <button type="button" class="btn btn-success csv">Get CSV</button>
+
                             <button type="button" class="btn btn-default reset">Reset filters</button>
                         </div>
                     </div>
@@ -351,7 +353,7 @@
                 </div>
 
                 <div id="graphOptions">
-                    <div class="col-sm-3">
+                    <div class="col-xs-6 col-sm-3">
                         <h4>Graph Scale</h4>
                         <div class="btn-group" data-toggle="buttons" id="graph_linlog">
                             <label class="btn btn-default active">
@@ -361,7 +363,7 @@
                         </div>
                     </div>
 
-                    <div class="col-sm-3">
+                    <div class="col-xs-6 col-sm-3">
                         <h4>Series display</h4>
                         <div class="btn-group" data-toggle="buttons" id="graph_linestacked">
                             <label class="btn btn-default active">
@@ -371,12 +373,12 @@
                         </div>
                     </div>
 
-                    <div class="col-sm-3">
+                    <div class="col-xs-6 col-sm-3">
                         <h4>Series</h4>
                         <div id="series"></div>
                     </div>
 
-                    <div class="col-sm-3">
+                    <div class="col-xs-6 col-sm-3">
                         <h4>Values</h4>
                         <div id="legend"></div>
                     </div>

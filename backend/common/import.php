@@ -207,8 +207,8 @@ class Import {
             // process protocols
             // headers: ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ipbs,ibpp
             foreach ($input as $i => $line) {
-                if ($i === 0) continue;
-                if ($i === $rows-4) break;
+                if ($i === 0 || $i === 1) continue; // skip headers and executed command
+                if ($i === $rows-4) { break; }
 
                 $proto = strtolower($line[3]);
                 $data['fields']['flows_' . $proto] = (int)$line[5];

@@ -38,19 +38,35 @@ ini_set('error_reporting', E_ALL);
 \common\Config::initialize();
 $dbg = \common\Debug::getInstance();
 
+$folder = dirname(__FILE__);
+$lock_file = fopen($folder . '/nfsen-ng.pid', 'c');
+$got_lock = flock($lock_file, LOCK_EX | LOCK_NB, $wouldblock);
+if ($lock_file === false || (!$got_lock && !$wouldblock)) {
+    exit(128);
+} elseif (!$got_lock && $wouldblock) {
+    exit(129);
+}
+
+// Lock acquired; let's write our PID to the lock file for the convenience
+// of humans who may wish to terminate the script.
+ftruncate($lock_file, 0);
+fwrite($lock_file, getmypid() . "\n");
+
+// first import missed data if available
+$start = new DateTime();
+$start->setDate(date('Y') - 3, date('m'), date('d'));
+$i = new \common\Import();
+$i->setQuiet(true);
+$i->setProcessPorts(true);
+$i->start($start);
+
 /**
  * remove non-interesting files from folder list
  * @param $x
  * @return bool
  */
 $clean_folder = function($x) { return !in_array($x, array('.', '..')); };
-
-// first import missed data if available
-$start = new DateTime();
-$start->setDate(date('Y') - 3, date('m'), date('d'));
-$i = new \common\Import();
-$i->setProcessPorts(true);
-$i->start($start);
+$last_import = 0;
 
 while (1) {
 
@@ -70,7 +86,7 @@ while (1) {
         $day = array_pop($days); // most recent day
 
         if ($year === null || $month === null || $day === null) {
-            // nothing to import
+            // nothing to import, try next source
             continue;
         }
 
@@ -82,11 +98,13 @@ while (1) {
         $date = array();
         if (!preg_match('/nfcapd\.([0-9]{12})$/', $capture, $date)) continue; // nothing to import
 
-        $file_datetime = new \DateTime($date[1]);
-        $file_datetime->sub(new \DateInterval('PT5M')); // subtract 5 min just in case
-
-        $i->start($file_datetime);
+        $dbg->log('Importing from ' . $file_datetime->format('Y-m-d H:i'), LOG_INFO);
+        $i->import_file($capture, $source);
     }
 
     sleep(10);
 }
+
+// all done; we blank the PID file and explicitly release the lock
+ftruncate($lock_file, 0);
+flock($lock_file, LOCK_UN);

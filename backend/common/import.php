@@ -7,6 +7,7 @@ class Import {
     private $cli;
     private $verbose;
     private $force;
+    private $quiet;
     private $processPorts;
 
     private $days_total = 0;
@@ -16,6 +17,7 @@ class Import {
         $this->cli = (php_sapi_name() === 'cli');
         $this->force = false;
         $this->verbose = false;
+        $this->quiet = false;
         $this->processPorts = false;
         $this->d->setDebug($this->verbose);
 	}
@@ -33,13 +35,15 @@ class Import {
 
         // start progress bar (CLI only)
         $this->days_total = ((int)$datestart->diff(new \DateTime())->format('%a')+1)*count($sources);
-        if ($this->cli === true) echo "\n" . \vendor\ProgressBar::start($this->days_total, 'Processing ' . count($sources) . ' sources...');
+        if ($this->cli === true && $this->quiet === false)
+            echo "\n" . \vendor\ProgressBar::start($this->days_total, 'Processing ' . count($sources) . ' sources...');
 
         // process each source, e.g. gateway, mailserver, etc.
         foreach ($sources as $source) {
             $source_path = Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . Config::$cfg['nfdump']['profile'];
             if (!file_exists($source_path)) throw new \Exception("Could not read nfdump profile directory " . $source_path);
-            if ($this->cli === true) echo "\nProcessing source " . $source . "...\n";
+            if ($this->cli === true && $this->quiet === false)
+                echo "\nProcessing source " . $source . "...\n";
 
             $today = new \DateTime();
             $date = clone $datestart;
@@ -51,7 +55,8 @@ class Import {
                 $last_update->setTimestamp($last_update_db);
                 $days_saved = (int)$date->diff($last_update)->format('%a');
                 $this->days_total = $this->days_total-$days_saved;
-                if ($this->cli === true) \vendor\ProgressBar::setTotal($this->days_total);
+                if ($this->cli === true && $this->quiet === false)
+                    \vendor\ProgressBar::setTotal($this->days_total);
 
                 // set progress to the date when the import was stopped
                 $date->setTimestamp($last_update_db);
@@ -68,7 +73,8 @@ class Import {
                 // if no data exists for current date  (e.g. .../2017/03/03)
                 if (!file_exists($scan_path)) {
                     $this->d->dpr($scan_path . " does not exist!");
-                    if ($this->cli === true) echo \vendor\ProgressBar::next(1);
+                    if ($this->cli === true && $this->quiet === false)
+                        echo \vendor\ProgressBar::next(1);
                     continue;
                 }
 
@@ -76,7 +82,8 @@ class Import {
                 $this->d->log('Scanning path ' . $scan_path, LOG_INFO);
                 $scan_files = scandir($scan_path);
 
-                if ($this->cli === true) echo \vendor\ProgressBar::next(1, 'Scanning ' . $scan_path . "...");
+                if ($this->cli === true && $this->quiet === false)
+                    echo \vendor\ProgressBar::next(1, 'Scanning ' . $scan_path . "...");
 
                 foreach($scan_files as $file) {
                     if (in_array($file, array(".", ".."))) continue;
@@ -90,7 +97,8 @@ class Import {
                         $this->write_sources_data($source, $stats_path);
 
                         // write general port data (not depending on source, so only executed per port)
-                        $this->write_ports_data($stats_path);
+                        if ($source === $sources[0])
+                            $this->write_ports_data($stats_path);
 
                         // if enabled, process ports per source as well (source_80.rrd)
                         if ($this->processPorts === true) {
@@ -105,7 +113,8 @@ class Import {
             $processed_sources++;
         }
         if ($processed_sources === 0) $this->d->log('Import did not process any sources.', LOG_WARNING);
-        if ($this->cli === true) echo \vendor\ProgressBar::finish();
+        if ($this->cli === true && $this->quiet === false)
+            echo \vendor\ProgressBar::finish();
 
     }
 
@@ -222,6 +231,29 @@ class Import {
     }
 
     /**
+     * @param string $file
+     * @param string $source
+     */
+    public function import_file(string $file, string $source) {
+        try {
+
+            // fill source.rrd
+            $this->write_sources_data($source, $file);
+
+            // write general port data (not depending on source, so only executed per port)
+            $this->write_ports_data($file);
+
+            // if enabled, process ports per source as well (source_80.rrd)
+            if ($this->processPorts === true) {
+                $this->write_ports_data($file, $source);
+            }
+
+        } catch (\Exception $e) {
+            $this->d->log('Catched exception: ' . $e->getMessage(), LOG_WARNING);
+        }
+    }
+
+    /**
      * @param bool $verbose
      */
     public function setVerbose(bool $verbose) {
@@ -241,6 +273,13 @@ class Import {
      */
     public function setForce(bool $force) {
         $this->force = $force;
+    }
+
+    /**
+     * @param bool $quiet
+     */
+    public function setQuiet(bool $quiet) {
+        $this->quiet = $quiet;
     }
 }
 

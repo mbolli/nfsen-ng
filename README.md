@@ -1,6 +1,18 @@
 # nfsen-ng
 nfsen-ng is an in-place replacement for the ageing nfsen.
 
+## TOC
+
+   * [nfsen-ng](#nfsen-ng)
+      * [Installation](#installation)
+      * [Configuration](#configuration)
+      * [CLI](#cli)
+      * [API](#api)
+         * [/api/config](#apiconfig)
+         * [/api/graph](#apigraph)
+         * [/api/flows](#apiflows)
+         * [/api/stats](#apistats)
+
 ## Installation
 
 **Prerequisites:**

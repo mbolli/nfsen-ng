@@ -73,7 +73,7 @@ $dbg->log('Starting periodic execution', LOG_INFO);
 
 while (1) {
 
-    foreach(\common\Config::$cfg['general']['sources'] as $source) {
+    foreach(\common\Config::$cfg['general']['sources'] as $key => $source) {
         $source_path = \common\Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . \common\Config::$cfg['nfdump']['profile'] . DIRECTORY_SEPARATOR . $source;
 
         $years = scandir($source_path);
@@ -117,7 +117,8 @@ while (1) {
         $dbg->log('Importing from ' . $file_datetime->format('Y-m-d H:i'), LOG_INFO);
 
         // import current nfcapd file
-        $i->import_file($capture, $source);
+        $last = ($key === count(\common\Config::$cfg['general']['sources'])-1);
+        $i->import_file($capture, $source, $last);
     }
 
     sleep(10);

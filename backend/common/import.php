@@ -218,7 +218,9 @@ class Import {
             // headers: ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ipbs,ibpp
             foreach ($input as $i => $line) {
                 if ($i === 0 || $i === 1) continue; // skip headers and executed command
-                if ($i === $rows-4) { break; }
+                if (preg_match('/error/', $line)) continue; // skip stat errors (e.g. if other sources not up to date)
+                // todo check if this leads to skipped/incorrect data for ports (all sources)
+                if ($i === $rows-4) break; // skip summary for now
 
                 $proto = strtolower($line[3]);
                 $data['fields']['flows_' . $proto] = (int)$line[5];
@@ -241,17 +243,19 @@ class Import {
     }
 
     /**
+     * Import a single nfcapd file
      * @param string $file
      * @param string $source
+     * @param bool $last
      */
-    public function import_file(string $file, string $source) {
+    public function import_file(string $file, string $source, bool $last) {
         try {
 
             // fill source.rrd
             $this->write_sources_data($source, $file);
 
             // write general port data (not depending on source, so only executed per port)
-            $this->write_ports_data($file);
+            if ($last === true) $this->write_ports_data($file);
 
             // if enabled, process ports per source as well (source_80.rrd)
             if ($this->processPorts === true) {

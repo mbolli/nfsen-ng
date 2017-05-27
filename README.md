@@ -142,18 +142,16 @@ The API is used by the frontend to retrieve data.
     },"start":1490562300,"end":1490590800,"step":300,"legend":["swi6_flows_tcp","gate_flows_tcp"]}
     ```
  
-* **Error Response:**
-  * **Error Response:**
-  
-    * **Code:** 400 BAD REQUEST <br />
+* **Error Response:**  
+  * **Code:** 400 BAD REQUEST <br />
       **Content:** 
         ```json
         {"code": 400, "error": "400 - Bad Request. Probably wrong or not enough arguments."}
         ```
   
-     OR
+   OR
   
-    * **Code:** 404 NOT FOUND <br />
+  * **Code:** 404 NOT FOUND <br />
       **Content:** 
         ```json 
         {"code": 404, "error": "400 - Not found. "}
@@ -194,17 +192,16 @@ The API is used by the frontend to retrieve data.
     ```
  
 * **Error Response:**
-  * **Error Response:**
   
-    * **Code:** 400 BAD REQUEST <br />
+  * **Code:** 400 BAD REQUEST <br />
       **Content:** 
         ```json
         {"code": 400, "error": "400 - Bad Request. Probably wrong or not enough arguments."}
         ```
   
-     OR
+   OR
   
-    * **Code:** 404 NOT FOUND <br />
+  * **Code:** 404 NOT FOUND <br />
       **Content:** 
         ```json 
         {"code": 404, "error": "400 - Not found. "}
@@ -248,17 +245,16 @@ The API is used by the frontend to retrieve data.
     ```
  
 * **Error Response:**
-  * **Error Response:**
   
-    * **Code:** 400 BAD REQUEST <br />
+  * **Code:** 400 BAD REQUEST <br />
       **Content:** 
         ```json
         {"code": 400, "error": "400 - Bad Request. Probably wrong or not enough arguments."}
         ```
   
-     OR
+   OR
   
-    * **Code:** 404 NOT FOUND <br />
+  * **Code:** 404 NOT FOUND <br />
       **Content:** 
         ```json 
         {"code": 404, "error": "400 - Not found. "}

@@ -3,6 +3,11 @@
 header {
     margin-top: 1vw;
 }
+
+header .reload {
+    padding: 10px 15px;
+}
+
 textarea {
     resize: none;
 }
@@ -17,9 +22,15 @@ h3, h4 {
     font-size: 1.5rem;
 }
 
-/* graph */
-.infotext {
+ul.nav-tabs {
+    border: none;
 }
+
+#contentDiv {
+    overflow-x: auto;
+}
+
+/* graph */
 
 #flowDiv .dygraph-title {
     font-size: 1.5rem;
@@ -42,16 +53,6 @@ h3, h4 {
     display: block;
 }
 
-.chart {
-    border: 1px dashed black;
-    margin: 5px 5px 5px 50px;
-    padding: 2px;
-}
-
 #viewList li h4 {
     margin-left: 10px;
-}
-
-#contentDiv {
-    overflow-x: auto;
 }

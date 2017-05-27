@@ -53,7 +53,7 @@ $(document).ready(function() {
      * navigation functionality
      * show/hides the correct containers, which are identified by the data-view attribute
      */
-    $(document).on('click', 'header a', function(e) {
+    $(document).on('click', 'header li a', function(e) {
         e.preventDefault();
         var view = $(this).attr('data-view');
         var $filter = $('#filter').find('[data-view]');
@@ -77,6 +77,15 @@ $(document).ready(function() {
 
         // trigger resize for the graph
         if (typeof dygraph !== 'undefined') dygraph.resize();
+    });
+
+    /**
+     * home-button functionality
+     * reloads the page
+     */
+    $(document).on('click', 'header .reload', function(e) {
+        e.preventDefault();
+        window.location.reload(true);
     });
 
     /**

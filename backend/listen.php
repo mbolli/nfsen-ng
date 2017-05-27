@@ -66,8 +66,10 @@ $i->start($start);
  * @param $x
  * @return bool
  */
-$clean_folder = function($x) { return is_numeric($x); };
+$clean_folder = function($x) { return is_numeric($x) || preg_match('/nfcapd\.([0-9]{12})$/', $x); };
 $last_import = 0;
+
+$dbg->log('Starting periodic execution', LOG_INFO);
 
 while (1) {
 
@@ -100,7 +102,21 @@ while (1) {
         if (!preg_match('/nfcapd\.([0-9]{12})$/', $capture, $date)) continue; // nothing to import
 
         $file_datetime = new \DateTime($date[1]);
+
+        // get last updated time from database
+        $last_update_db = \common\Config::$db->last_update($source);
+        $last_update = null;
+        if ($last_update_db !== false && $last_update_db !== 0) {
+            $last_update = new \DateTime();
+            $last_update->setTimestamp($last_update_db);
+        }
+
+        // prevent attempting to import the same file again
+        if ($file_datetime <= $last_update) continue;
+
         $dbg->log('Importing from ' . $file_datetime->format('Y-m-d H:i'), LOG_INFO);
+
+        // import current nfcapd file
         $i->import_file($capture, $source);
     }
 

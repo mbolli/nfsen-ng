@@ -22,8 +22,9 @@ $(document).ready(function() {
      *  config object {
      *    "sources": ["gate", "swi6"],
      *    "ports": [ 80, 23, 22 ],
-     *    "stored_output_formats":[],
-     *    "stored_filters":[]
+     *    "stored_output_formats": [],
+     *    "stored_filters": [],
+     *    "daemon_running": true,
      *  }
      */
     $.get('../api/config', function(data, status) {
@@ -33,7 +34,12 @@ $(document).ready(function() {
 
             if (config.daemon_running === true) {
                 display_error('info', 'Daemon is running, graph is reloading each 30 seconds.');
-                setInterval(updateGraph, 30000);
+                setInterval(function() {
+                    if (date_range.options.max === date_range.options.to) {
+                        var now = new Date();
+                        date_range.update({ max: now.getTime(), to: now.getTime() });
+                    }
+                }, 30000);
             }
         } else {
             display_error('danger', 'Error getting the config!')

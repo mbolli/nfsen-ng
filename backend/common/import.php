@@ -218,7 +218,7 @@ class Import {
             // headers: ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ipbs,ibpp
             foreach ($input as $i => $line) {
                 if (count($line) !== 14) continue; // skip anything invalid
-                if ($line[1] === "ts") continue; // skip header
+                if ($line[0] === "ts") continue; // skip header
 
                 $proto = strtolower($line[3]);
                 $data['fields']['flows_' . $proto] = (int)$line[5];

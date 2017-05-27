@@ -88,7 +88,8 @@ The API is used by the frontend to retrieve data.
           "sources": [ "gate", "swi6" ],
           "ports": [ 80, 22, 23 ],
           "stored_output_formats": [], 
-          "stored_filters": []
+          "stored_filters": [],
+          "daemon_running": true
         }
         ```
   

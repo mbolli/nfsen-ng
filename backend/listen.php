@@ -66,7 +66,7 @@ $i->start($start);
  * @param $x
  * @return bool
  */
-$clean_folder = function($x) { return !in_array($x, array('.', '..')); };
+$clean_folder = function($x) { return is_numeric($x); };
 $last_import = 0;
 
 while (1) {

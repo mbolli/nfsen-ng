@@ -3,7 +3,8 @@
 /**
  *
  *  daemon for nfsen-ng
- *  to use with systemd:
+ *  to be used with systemd:
+ *  todo: test this
  *
     [Unit]
     Description=nfsen-ng daemon
@@ -98,6 +99,7 @@ while (1) {
         $date = array();
         if (!preg_match('/nfcapd\.([0-9]{12})$/', $capture, $date)) continue; // nothing to import
 
+        $file_datetime = new \DateTime($date[1]);
         $dbg->log('Importing from ' . $file_datetime->format('Y-m-d H:i'), LOG_INFO);
         $i->import_file($capture, $source);
     }

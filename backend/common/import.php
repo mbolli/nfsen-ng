@@ -50,11 +50,16 @@ class Import {
 
             // check if we want to continue a stopped import
             $last_update_db = Config::$db->last_update($source);
-            if ($this->force === false && $last_update_db !== false && $last_update_db !== 0) {
+            $last_update = null;
+            if ($last_update_db !== false && $last_update_db !== 0) {
                 $last_update = new \DateTime();
                 $last_update->setTimestamp($last_update_db);
+            }
+
+            if ($this->force === false && isset($last_update)) {
                 $days_saved = (int)$date->diff($last_update)->format('%a');
                 $this->days_total = $this->days_total-$days_saved;
+                if ($this->quiet === false) $this->d->log('Last update: ' . $last_update->format('Y-m-d H:i'), LOG_INFO);
                 if ($this->cli === true && $this->quiet === false)
                     \vendor\ProgressBar::setTotal($this->days_total);
 
@@ -87,6 +92,11 @@ class Import {
 
                 foreach($scan_files as $file) {
                     if (in_array($file, array(".", ".."))) continue;
+
+                    // parse date of file name to compare against last_update
+                    preg_match('/nfcapd\.([0-9]{12})$/', $file, $file_date);
+                    $file_datetime = new \DateTime($file_date[1]);
+                    if ($file_datetime <= $last_update) continue;
 
                     // let nfdump parse each nfcapd file
                     $stats_path = implode(DIRECTORY_SEPARATOR, array_slice($scan, 2, 5)) . DIRECTORY_SEPARATOR . $file;

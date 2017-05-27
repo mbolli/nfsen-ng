@@ -4,6 +4,7 @@ spl_autoload_extensions('.php');
 spl_autoload_register();
 
 \common\Config::initialize();
+$d = \common\Debug::getInstance();
 
 if ($argc < 2 || in_array($argv[1], array('--help', '-help', '-h', '-?'))) {
 ?>
@@ -34,6 +35,7 @@ else {
 
     if (in_array('import', $argv)) {
 
+        $d->log('CLI: Starting import', LOG_INFO);
         $start = new DateTime();
         $start->setDate(date('Y') - 3, date('m'), date('d'));
         $i = new \common\Import();
@@ -44,8 +46,10 @@ else {
 
     } elseif (in_array('start', $argv)) {
 
+        $d->log('CLI: Starting daemon...', LOG_INFO);
         $pid = exec('nohup `which php` ' . $folder . '/listen.php > nfsen-ng.log 2>&1 & echo $!', $op, $exit);
         var_dump($exit);
+        // todo: get exit code of background process. possible at all?
         switch (intval($exit)) {
             case 128: echo 'Unexpected error opening or locking lock file. Perhaps you don\'t have permission to write to the lock file or its containing directory?'; break;
             case 129: echo 'Another instance is already running; terminating.'; break;
@@ -54,12 +58,12 @@ else {
         echo "\n";
 
     } elseif (in_array('stop', $argv)) {
-
         if (!file_exists($pidfile)) {
             echo "Not running\n";
             exit();
         }
         $pid = file_get_contents($pidfile);
+        $d->log('CLI: Stopping daemon', LOG_INFO);
         exec('kill ' . $pid);
 
         echo "Stopped. \n";

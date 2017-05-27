@@ -233,11 +233,16 @@ class API {
         $stored_output_formats = array(); // todo implement
         $stored_filters = array(); // todo implement
 
+        $folder = dirname(__FILE__, 2);
+        $pidfile = $folder . '/nfsen-ng.pid';
+        $daemon_running = file_exists($pidfile);
+
         return array(
             'sources' => $sources,
             'ports' => $ports,
             'stored_output_formats' => $stored_output_formats,
-            'stored_filters' => $stored_filters
+            'stored_filters' => $stored_filters,
+            'daemon_running' => $daemon_running,
         );
     }
 }

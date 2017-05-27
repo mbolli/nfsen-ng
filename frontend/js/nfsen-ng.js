@@ -30,6 +30,11 @@ $(document).ready(function() {
         if (status === 'success') {
             config = data;
             init();
+
+            if (config.daemon_running === true) {
+                display_error('info', 'Daemon is running, graph is reloading each 30 seconds.');
+                setInterval(updateGraph, 30000);
+            }
         } else {
             display_error('danger', 'Error getting the config!')
         }

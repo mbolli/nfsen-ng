@@ -29,21 +29,21 @@ class Import {
 
         // if in force mode, reset existing data
         if ($this->force === true) {
-            if ($this->cli === true) echo "Resetting existing data...\n";
+            if ($this->cli === true) echo "Resetting existing data..." . PHP_EOL;
             Config::$db->reset(array());
         }
 
         // start progress bar (CLI only)
         $this->days_total = ((int)$datestart->diff(new \DateTime())->format('%a')+1)*count($sources);
         if ($this->cli === true && $this->quiet === false)
-            echo "\n" . \vendor\ProgressBar::start($this->days_total, 'Processing ' . count($sources) . ' sources...');
+            echo PHP_EOL . \vendor\ProgressBar::start($this->days_total, 'Processing ' . count($sources) . ' sources...');
 
         // process each source, e.g. gateway, mailserver, etc.
         foreach ($sources as $source) {
             $source_path = Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . Config::$cfg['nfdump']['profile'];
             if (!file_exists($source_path)) throw new \Exception("Could not read nfdump profile directory " . $source_path);
             if ($this->cli === true && $this->quiet === false)
-                echo "\nProcessing source " . $source . "...\n";
+                echo PHP_EOL . "Processing source " . $source . "..." . PHP_EOL;
 
             $today = new \DateTime();
             $date = clone $datestart;

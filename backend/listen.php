@@ -51,7 +51,7 @@ if ($lock_file === false || (!$got_lock && !$wouldblock)) {
 // Lock acquired; let's write our PID to the lock file for the convenience
 // of humans who may wish to terminate the script.
 ftruncate($lock_file, 0);
-fwrite($lock_file, getmypid() . "\n");
+fwrite($lock_file, getmypid() . PHP_EOL);
 
 // first import missed data if available
 $start = new DateTime();

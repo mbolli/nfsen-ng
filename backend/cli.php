@@ -55,28 +55,28 @@ else {
             case 129: echo 'Another instance is already running; terminating.'; break;
             default: echo 'Daemon running, pid=' . $pid; break;
         }
-        echo "\n";
+        echo PHP_EOL;
 
     } elseif (in_array('stop', $argv)) {
         if (!file_exists($pidfile)) {
-            echo "Not running\n";
+            echo "Not running" . PHP_EOL;
             exit();
         }
         $pid = file_get_contents($pidfile);
         $d->log('CLI: Stopping daemon', LOG_INFO);
         exec('kill ' . $pid);
 
-        echo "Stopped. \n";
+        echo "Stopped." . PHP_EOL;
 
     } elseif (in_array('status', $argv)) {
 
         if (!file_exists($pidfile)) {
-            echo "Not running\n";
+            echo "Not running" . PHP_EOL;
             exit();
         }
         $pid = file_get_contents($pidfile);
         exec('ps -p ' . $pid, $op);
-        if (!isset($op[1])) echo "Not running\n";
+        if (!isset($op[1])) echo "Not running" . PHP_EOL;
         else echo 'Running: ' . $pid;
 
     }

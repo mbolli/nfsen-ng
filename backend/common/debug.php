@@ -30,7 +30,7 @@ class Debug {
         if (Config::$cfg['log']['priority'] >= $priority) {
             syslog($priority, 'nfsen-ng: ' . $message);
 
-            if ($this->cli === true && $this->debug === true) echo $message . "\n";
+            if ($this->cli === true && $this->debug === true) echo $message . PHP_EOL;
         }
     }
 
@@ -53,7 +53,7 @@ class Debug {
         if($this->debug === false) return;
 
         foreach($mixed as $param) {
-            echo ($this->cli) ? "\n" . $this->stopWatch() . "s " : "<br /><span style='color: green;'>" . $this->stopWatch() . "</span> ";
+            echo ($this->cli) ? PHP_EOL . $this->stopWatch() . "s " : "<br /><span style='color: green;'>" . $this->stopWatch() . "</span> ";
             if(is_array($param)) {
                 echo ($this->cli) ? print_r($mixed, true) : "<pre>", var_dump($mixed), "</pre>";
             } else {

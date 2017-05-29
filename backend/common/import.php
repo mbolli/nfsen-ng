@@ -9,6 +9,8 @@ class Import {
     private $force;
     private $quiet;
     private $processPorts;
+    private $processPortsBySource;
+    private $skipSources;
 
     private $days_total = 0;
 
@@ -19,6 +21,8 @@ class Import {
         $this->verbose = false;
         $this->quiet = false;
         $this->processPorts = false;
+        $this->processPortsBySource = false;
+        $this->skipSources = false;
         $this->d->setDebug($this->verbose);
 	}
 
@@ -104,14 +108,15 @@ class Import {
                     try {
 
                         // fill source.rrd
-                        $this->write_sources_data($source, $stats_path);
+                        if ($this->skipSources === false)
+                            $this->write_sources_data($source, $stats_path);
 
                         // write general port data (not depending on source, so only executed per port)
-                        if ($source === $sources[0])
+                        if ($this->processPorts === true && $source === $sources[0])
                             $this->write_ports_data($stats_path);
 
                         // if enabled, process ports per source as well (source_80.rrd)
-                        if ($this->processPorts === true) {
+                        if ($this->processPortsBySource === true) {
                             $this->write_ports_data($stats_path, $source);
                         }
 
@@ -276,7 +281,7 @@ class Import {
     /**
      * @param bool $processPorts
      */
-    public function setProcessPorts(bool $processPorts)     {
+    public function setProcessPorts(bool $processPorts) {
         $this->processPorts = $processPorts;
     }
 
@@ -292,6 +297,20 @@ class Import {
      */
     public function setQuiet(bool $quiet) {
         $this->quiet = $quiet;
+    }
+
+    /**
+     * @param mixed $processPortsBySource
+     */
+    public function setProcessPortsBySource($processPortsBySource) {
+        $this->processPortsBySource = $processPortsBySource;
+    }
+
+    /**
+     * @param mixed $skipSources
+     */
+    public function setSkipSources($skipSources) {
+        $this->skipSources = $skipSources;
     }
 }
 

@@ -12,11 +12,14 @@ if ($argc < 2 || in_array($argv[1], array('--help', '-help', '-h', '-?'))) {
     This is the command line interface to nfsen-ng.
 
     Usage:
-        <?php echo $argv[0]; ?> [options] command
+        <?php echo $argv[0]; ?> [options] import
+        <?php echo $argv[0]; ?> start|stop|status
 
     Options:
         -v  Show verbose output
-        -p  Import ports per source
+        -p  Import ports data
+        -ps Import ports data per source
+        -s  Skip importing sources data
         -f  Force overwriting database and start at the beginning
 
     Commands:
@@ -25,6 +28,16 @@ if ($argc < 2 || in_array($argv[1], array('--help', '-help', '-h', '-?'))) {
         start   - Start the daemon for continuous reading of new data
         stop    - Stop the daemon
         status  - Get the daemon's status
+
+    Examples:
+        <?php echo $argv[0]; ?> -f import
+        Imports fresh data for sources
+
+        <?php echo $argv[0]; ?> -s -p import
+        Imports data for ports only
+
+        <?php echo $argv[0]; ?> start
+        Start the daemon
 
 <?php
 }
@@ -41,6 +54,8 @@ else {
         $i = new \common\Import();
         if (in_array('-v', $argv)) $i->setVerbose(true);
         if (in_array('-p', $argv)) $i->setProcessPorts(true);
+        if (in_array('-ps', $argv)) $i->setProcessPortsBySource(true);
+        if (in_array('-s', $argv)) $i->setSkipSources(true);
         if (in_array('-f', $argv)) $i->setForce(true);
         $i->start($start);
 

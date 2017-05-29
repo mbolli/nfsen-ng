@@ -22,11 +22,11 @@ class RRD implements Datasource {
     );
 
     private $layout = array(
-        "0.5:1:" . ((60/(1*5))*24*90), // 90 days of 5 min samples
-        "0.5:6:" . ((60/(6*5))*24*180), // 180 days of 30 min samples
-        "0.5:24:" . ((60/(24*5))*24*270), // 270 days of 2 hour samples
-        "0.5:288:540" // 540 days of daily samples
-        // = 1080 days of samples = 3 years
+        "0.5:1:" . ((60/(1*5))*24*45), // 45 days of 5 min samples
+        "0.5:6:" . ((60/(6*5))*24*90), // 90 days of 30 min samples
+        "0.5:24:" . ((60/(24*5))*24*360), // 360 days of 2 hour samples
+        "0.5:288:1080" // 1080 days of daily samples
+        // = 3 years of data
     );
 
     function __construct() {

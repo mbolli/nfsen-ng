@@ -1,4 +1,7 @@
 # nfsen-ng
+[![GitHub license](https://img.shields.io/github/license/mbolli/nfsen-ng.svg?style=flat-square)](https://github.com/mbolli/nfsen-ng/blob/master/LICENSE.TXT)
+[![GitHub issues](https://img.shields.io/github/issues/mbolli/nfsen-ng.svg?style=flat-square)](https://github.com/mbolli/nfsen-ng/issues)
+
 nfsen-ng is an in-place replacement for the ageing nfsen.
 
 ## TOC
@@ -52,11 +55,18 @@ The default settings file is `backend/settings/settings.php.dist`. Copy it to `b
 
 The command line interface is used to initially scan existing nfcapd.* files, or to administer the daemon.
 
-Usage: `./cli.php [ options ] command`
+Usage: 
+  
+  `./cli.php [ options ] import`
+or  
+  `./cli.php start|stop|status`
+
 
  * **Options:**
      * **-v**  Show verbose output
-     * **-p**  Import ports per source as well _Note:_ Using RRD this will take quite a bit longer, depending on the number of your defined ports.
+     * **-p**  Import ports data as well _Note:_ Using RRD this will take quite a bit longer, depending on the number of your defined ports.
+     * **-ps**  Import ports per source as well _Note:_ Using RRD this will take quite a bit longer, depending on the number of your defined ports.
+     * **-s** Skip importing sources data
      * **-f**  Force overwriting database and start fresh
 
  * **Commands:**
@@ -64,6 +74,16 @@ Usage: `./cli.php [ options ] command`
      * **start** Start the daemon for continuous reading of new data
      * **stop** Stop the daemon
      * **status** Get the daemon's status
+        
+ * **Examples:**
+     * `./cli.php -f import`
+        Imports fresh data for sources
+
+     * `./cli.php -s -p import`
+        Imports data for ports only
+
+     * `./cli.php start`
+        Starts the daemon
         
         
 ## API

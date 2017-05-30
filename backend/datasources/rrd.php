@@ -51,10 +51,11 @@ class RRD implements Datasource {
     /**
      * Gets the timestamp of the last update of this specific source
      * @param string $source
+     * @param int $port
      * @return int timestamp or false
      */
-    public function last_update(string $source) : int {
-        $rrdFile = $this->get_data_path($source);
+    public function last_update(string $source = '', int $port = 0) : int {
+        $rrdFile = $this->get_data_path($source, $port);
         return rrd_last($rrdFile);
     }
 

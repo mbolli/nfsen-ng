@@ -29,6 +29,7 @@ class Import {
 	function start(\DateTime $datestart) {
 
         $sources = Config::$cfg['general']['sources'];
+        $ports = Config::$cfg['general']['ports'];
         $processed_sources = 0;
 
         // if in force mode, reset existing data
@@ -53,7 +54,12 @@ class Import {
             $date = clone $datestart;
 
             // check if we want to continue a stopped import
-            $last_update_db = Config::$db->last_update($source);
+
+            if ($this->skipSources === false) $last_update_db = Config::$db->last_update($source);
+            else {
+                if ($this->processPortsBySource === true) $last_update_db = Config::$db->last_update($source, $ports[0]);
+                if ($this->processPorts === true) $last_update_db = Config::$db->last_update('', $ports[0]);
+            }
             $last_update = null;
             if ($last_update_db !== false && $last_update_db !== 0) {
                 $last_update = new \DateTime();

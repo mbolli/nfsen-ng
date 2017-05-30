@@ -106,6 +106,7 @@ class RRD implements Datasource {
      */
     public function write(array $data) {
         $rrdFile = $this->get_data_path($data['source'], $data['port']);
+        if (!file_exists($rrdFile)) $this->create($data['source'], $data['port'], false);
 
         $nearest = (int)$data['date_timestamp'] - ($data['date_timestamp'] % 300);
 

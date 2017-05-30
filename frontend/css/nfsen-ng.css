@@ -56,3 +56,15 @@ ul.nav-tabs {
 #viewList li h4 {
     margin-left: 10px;
 }
+
+/* graph options */
+
+.accordion h4:after {
+    font-family: "Glyphicons Halflings";
+    content: "\e114";
+    float: right;
+}
+
+.accordion h4.collapsed:after {
+    content: "\e080";
+}

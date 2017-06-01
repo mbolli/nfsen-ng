@@ -7,6 +7,7 @@ var config,
     dygraph_did_zoom,
     footable_data,
     date_range,
+    date_range_interval,
     api_last_query,
     api_graph_options,
     api_flows_options,
@@ -33,16 +34,16 @@ $(document).ready(function() {
             init();
 
             if (config.daemon_running === true) {
-                display_error('info', 'Daemon is running, graph is reloading each 30 seconds.');
-                setInterval(function() {
+                display_message('info', 'Daemon is running, graph is reloading each minute.');
+                date_range_interval = setInterval(function() {
                     if (date_range.options.max === date_range.options.to) {
                         var now = new Date();
                         date_range.update({ max: now.getTime(), to: now.getTime() });
                     }
-                }, 30000);
+                }, 60000);
             }
         } else {
-            display_error('danger', 'Error getting the config!')
+            display_message('danger', 'Error getting the config!')
         }
     });
 
@@ -52,11 +53,11 @@ $(document).ready(function() {
     $(document).on('ajaxError', function(e, jqXHR) {
         console.log(jqXHR);
         if (typeof jqXHR === 'undefined') {
-            display_error('danger', 'General error, please file a ticket on github!');
+            display_message('danger', 'General error, please file a ticket on github!');
         } else if (typeof jqXHR.responseJSON === 'undefined') {
-            display_error('danger', 'General error: ' + jqXHR.responseText);
+            display_message('danger', 'General error: ' + jqXHR.responseText);
         } else {
-            display_error('danger', 'Got ' + jqXHR.responseJSON.error);
+            display_message('danger', 'Got ' + jqXHR.responseJSON.error);
         }
     });
 
@@ -612,17 +613,17 @@ $(document).ready(function() {
                 dygraph_did_zoom = false;
 
             } else {
-                display_error('warning', 'There somehow was a problem getting data, please check your form values.');
+                display_message('warning', 'There somehow was a problem getting data, please check your form values.');
             }
         });
     }
 
     /**
-     * Display an error message in the frontend
+     * Display a message in the frontend
      * @param severity (success, info, warning, danger)
      * @param message
      */
-    function display_error(severity, message) {
+    function display_message(severity, message) {
         var current_view = $('header').find('li.active a').attr('data-view'),
             $error = $('#error'),
             $buttons = $('button[data-loading-text][data-view=' + current_view +']'),
@@ -785,12 +786,12 @@ $(document).ready(function() {
 
             // print nfdump command
             if (typeof data[0] === 'string') {
-                display_error('success', 'nfdump command: ' + data[0].toString())
+                display_message('success', 'nfdump command: ' + data[0].toString())
             }
 
             // return if invalid data got returned
             if (typeof data[1] !== 'object') {
-                display_error('warning', 'something went wrong. ' + data[1].toString());
+                display_message('warning', 'something went wrong. ' + data[1].toString());
                 return false;
             }
 

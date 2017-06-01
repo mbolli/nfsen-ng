@@ -27,10 +27,13 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
  * nfdump
  
  ```sh
- apt-get install nfdump rrdtool php7.0-dev librrd-dev
+ apt-get install apache2 php7.0 php7.0-dev pkg-config nfdump rrdtool librrd-dev
+ a2enmod rewrite deflate headers expires
  pecl install rrd
  cd /etc/php/7.0/mods-available && vim rrd.ini  # add extension=rrd.so
  phpenmod rrd
+ vim /etc/apache2/apache2.conf # allow overrides by .htaccess
+ service apache2 restart
  cd /var/www # or wherever
  git clone https://github.com/mbolli/nfsen-ng
  ```

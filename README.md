@@ -1,9 +1,14 @@
 # nfsen-ng
-[![GitHub license](https://img.shields.io/github/license/mbolli/nfsen-ng.svg?style=flat-square)](https://github.com/mbolli/nfsen-ng/blob/master/LICENSE.TXT)
+[![GitHub license](https://img.shields.io/github/license/mbolli/nfsen-ng.svg?style=flat-square)](https://github.com/mbolli/nfsen-ng/blob/master/LICENSE)
 [![GitHub issues](https://img.shields.io/github/issues/mbolli/nfsen-ng.svg?style=flat-square)](https://github.com/mbolli/nfsen-ng/issues)
 [![Donate a beer](https://img.shields.io/badge/paypal-donate-yellow.svg?style=flat-square)](https://paypal.me/bolli)
 
 nfsen-ng is an in-place replacement for the ageing nfsen.
+
+**Used components**
+
+ * Front end: [jQuery](https://jquery.com), [dygraphs](http://dygraphs.com), [FooTable](http://fooplugins.github.io/FooTable/), [ion.rangeSlider](http://ionden.com/a/plugins/ion.rangeSlider/en.html)
+ * Back end:  [RRDtool](http://oss.oetiker.ch/rrdtool/), [nfdump tools](https://github.com/phaag/nfdump), 
 
 ## TOC
 
@@ -19,18 +24,12 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 
 ## Installation
 
-**Prerequisites:**
- * apache2 with the following mods enabled: rewrite, deflate, headers, expires
- * PHP >= 7.0
- * rrdtool
- * librrd
- * rrd PECL library
- * nfdump
+Ubuntu 16.04 LTS:
  
  ```sh
  apt-get install apache2 php7.0 php7.0-dev pkg-config nfdump rrdtool librrd-dev
  a2enmod rewrite deflate headers expires
- pecl install rrd
+ pecl install rrd # install rrd library for php
  cd /etc/php/7.0/mods-available && vim rrd.ini  # add extension=rrd.so
  phpenmod rrd
  vim /etc/apache2/apache2.conf # allow overrides by .htaccess
@@ -38,6 +37,8 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
  cd /var/www # or wherever
  git clone https://github.com/mbolli/nfsen-ng
  ```
+ 
+ Fedora/CentOS: (TBD)
 
 ## Configuration
 The default settings file is `backend/settings/settings.php.dist`. Copy it to `backend/settings/settings.php` and start modifying it:

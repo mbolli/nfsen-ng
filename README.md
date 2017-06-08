@@ -5,6 +5,8 @@
 
 nfsen-ng is an in-place replacement for the ageing nfsen.
 
+<div><img src="https://user-images.githubusercontent.com/722725/26952171-ee1ac112-4cac-11e7-842d-ccefbda9b287.png" style="width: 100%" /></div>
+
 **Used components**
 
  * Front end: [jQuery](https://jquery.com), [dygraphs](http://dygraphs.com), [FooTable](http://fooplugins.github.io/FooTable/), [ion.rangeSlider](http://ionden.com/a/plugins/ion.rangeSlider/en.html)

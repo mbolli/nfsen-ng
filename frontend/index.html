@@ -135,7 +135,7 @@
 
                     <div id="filterNfdump" class="hidden col-xs-12 col-sm-7 col-md-5" data-view="flows statistics">
 
-                        <h3>NFDUMP filter <span class="glyphicon glyphicon-info-sign" aria-hidden="true" data-toggle="tooltip" data-placement="right" title="The filter syntax is similar to the well known pcap library used by tcpdump. All keywords are case-independent. Example: dst port=80"></span></h3>
+                        <h3>NFDUMP filter <span class="glyphicon glyphicon-info-sign" aria-hidden="true" data-toggle="tooltip" data-placement="right" title="The filter syntax is similar to the well known pcap library used by tcpdump. All keywords are case-independent. Example: dst port 80"></span></h3>
 
                         <div class="form-group">
                             <textarea class="form-control" id="filterNfdumpTextarea" rows="3"></textarea>
@@ -220,8 +220,8 @@
                         <div class="form-group">
                             <select id="statsLimitSelect" class="form-control" data-view="statistics" disabled>
                                 <option value="none">No limit</option>
-                                <option value="srcip">Packets</option>
-                                <option value="srcip4sub">Bytes</option>
+                                <option value="">Packets</option>
+                                <option value="">Bytes</option>
                             </select>
                         </div>
                     </div>

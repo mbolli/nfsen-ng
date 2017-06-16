@@ -29,15 +29,16 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 Ubuntu 16.04 LTS:
  
  ```sh
- apt-get install apache2 php7.0 php7.0-dev pkg-config nfdump rrdtool librrd-dev
+ apt-get install apache2 php7.0 php7.0-dev libapache2-mod-php7.0 pkg-config nfdump rrdtool librrd-dev
  a2enmod rewrite deflate headers expires
  pecl install rrd # install rrd library for php
  cd /etc/php/7.0/mods-available && vim rrd.ini  # add extension=rrd.so
  phpenmod rrd
- vim /etc/apache2/apache2.conf # allow overrides by .htaccess
+ vim /etc/apache2/apache2.conf # set AllowOverride All for /var/www
  service apache2 restart
- cd /var/www # or wherever
+ cd /var/www/html # or wherever
  git clone https://github.com/mbolli/nfsen-ng
+ chown -R www-data:www-data .
  ```
  
  Fedora/CentOS: (TBD)

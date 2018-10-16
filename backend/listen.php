@@ -114,7 +114,7 @@ while (1) {
         // prevent attempting to import the same file again
         if ($file_datetime <= $last_update) continue;
 
-        $dbg->log('Importing from ' . $file_datetime->format('Y-m-d H:i'), LOG_INFO);
+        $dbg->log('Importing from ' . $source . ': ' . $file_datetime->format('Y-m-d H:i'), LOG_INFO);
 
         // import current nfcapd file
         $last = ($key === count(\common\Config::$cfg['general']['sources'])-1);

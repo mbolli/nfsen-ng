@@ -70,6 +70,9 @@ class RRD implements Datasource {
     public function create(string $source, int $port = 0, bool $reset = false) {
         $rrdFile = $this->get_data_path($source, $port);
 
+        // check if folder exists
+		if (!file_exists(dirname($rrdFile))) mkdir(dirname($rrdFile));
+        
         // check if folder has correct access rights
         if (!is_writable(dirname($rrdFile))) {
             $this->d->log('Error creating ' . $rrdFile . ': Not writable', LOG_CRIT);

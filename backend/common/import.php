@@ -50,7 +50,6 @@ class Import {
             if ($this->cli === true && $this->quiet === false)
                 echo PHP_EOL . "Processing source " . $source . "..." . PHP_EOL;
 
-            $today = new \DateTime();
             $date = clone $datestart;
 
             // check if we want to continue a stopped import
@@ -78,7 +77,7 @@ class Import {
             }
 
             // iterate from $datestart until today
-            while ((int)$date->format("Ymd") <= (int)$today->format("Ymd")) {
+            while ((int)$date->format("Ymd") <= (int)(new \DateTime)->format("Ymd")) {
                 $scan = array($source_path, $source, $date->format("Y"), $date->format("m"), $date->format("d"));
                 $scan_path = implode(DIRECTORY_SEPARATOR, $scan);
 

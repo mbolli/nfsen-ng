@@ -228,6 +228,7 @@ class Import {
             // process protocols
             // headers: ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ipbs,ibpp
             foreach ($input as $i => $line) {
+            	if ($line instanceof \Countable === false) continue; // skip anything uncountable
                 if (count($line) !== 14) continue; // skip anything invalid
                 if ($line[0] === "ts") continue; // skip header
 

@@ -26,10 +26,10 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 
 ## Installation
 
-Ubuntu 16.04 LTS:
+Ubuntu 18.04 LTS:
  
  ```sh
- apt-get install apache2 php7.0 php7.0-dev libapache2-mod-php7.0 pkg-config nfdump rrdtool librrd-dev
+ apt-get install apache2 php7.2 php7.2-dev libapache2-mod-php7.2 pkg-config nfdump rrdtool librrd-dev
  a2enmod rewrite deflate headers expires
  pecl install rrd # install rrd library for php
  cd /etc/php/7.0/mods-available && vim rrd.ini  # add extension=rrd.so

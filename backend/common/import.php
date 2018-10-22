@@ -269,7 +269,9 @@ class Import {
      */
     public function import_file(string $file, string $source, bool $last) {
         try {
-
+	
+			$this->d->log('Importing file ' . $file . ' (' . $source . '), last=' . (int)$last, LOG_INFO);
+			
             // fill source.rrd
             $this->write_sources_data($source, $file);
 
@@ -282,7 +284,7 @@ class Import {
             }
 
         } catch (\Exception $e) {
-            $this->d->log('Catched exception: ' . $e->getMessage(), LOG_WARNING);
+			$this->d->log('Caught exception: ' . $e->getMessage(), LOG_WARNING);
         }
     }
 	

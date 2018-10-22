@@ -101,17 +101,19 @@ class RRD implements Datasource {
 
         return $creator->save();
     }
-
-    /**
-     * Write to an RRD file with supplied data
-     * @param array $data
-     * @return bool
-     */
+	
+	/**
+	 * Write to an RRD file with supplied data
+	 * @param array $data
+	 * @return bool
+	 * @throws \Exception
+	 */
     public function write(array $data) {
         $rrdFile = $this->get_data_path($data['source'], $data['port']);
         if (!file_exists($rrdFile)) $this->create($data['source'], $data['port'], false);
 
         $nearest = (int)$data['date_timestamp'] - ($data['date_timestamp'] % 300);
+		$this->d->log('Writing to file ' . $rrdFile, LOG_DEBUG);
 
         // write data
         $updater = new \RRDUpdater($rrdFile);

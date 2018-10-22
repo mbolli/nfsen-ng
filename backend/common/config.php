@@ -5,6 +5,9 @@ abstract class Config {
 
     static $cfg;
     static $path;
+	/**
+	 * @var \datasources\Datasource
+	 */
     static $db;
     private static $initialized = false;
 

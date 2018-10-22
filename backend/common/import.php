@@ -11,6 +11,7 @@ class Import {
     private $processPorts;
     private $processPortsBySource;
     private $skipSources;
+    private $checkLastUpdate;
 
     private $days_total = 0;
 
@@ -23,6 +24,7 @@ class Import {
         $this->processPorts = false;
         $this->processPortsBySource = false;
         $this->skipSources = false;
+        $this->checkLastUpdate = false;
         $this->d->setDebug($this->verbose);
 	}
 
@@ -150,6 +152,8 @@ class Import {
         $nfdump->setOption("-I", null);
         $nfdump->setOption("-r", $stats_path);
         $nfdump->setOption("-M", $source);
+	
+		if ($this->db_updateable($stats_path, $source) === false) return false;
 
         try {
             $input = $nfdump->execute();
@@ -180,14 +184,15 @@ class Import {
         }
 
         // write to database
-        Config::$db->write($data);
+		return Config::$db->write($data);
     }
-
-    /**
-     * @param $stats_path
-     * @param $source
-     * @return bool
-     */
+	
+	/**
+	 * @param $stats_path
+	 * @param $source
+	 * @return bool
+	 * @throws \Exception
+	 */
     private function write_ports_data($stats_path, $source = "") {
 	    $ports = \common\Config::$cfg['general']['ports'];
 	    $sources = \common\Config::$cfg['general']['sources'];
@@ -203,7 +208,12 @@ class Import {
             $nfdump->setOption("-M", $source);
 
             // if no source is specified, get data for all sources
-            if (empty($source)) $nfdump->setOption("-M", implode(":", $sources));
+			if (empty($source)) {
+				$nfdump->setOption("-M", implode(":", $sources));
+				if ($this->db_updateable($stats_path, '', $port) === false) return false;
+			} else {
+				if ($this->db_updateable($stats_path, $source, $port) === false) return false;
+			}
 
             try {
                 $input = $nfdump->execute();
@@ -275,6 +285,34 @@ class Import {
             $this->d->log('Catched exception: ' . $e->getMessage(), LOG_WARNING);
         }
     }
+	
+	/**
+	 * Check if db is free to update (some databases only allow inserting data at the end)
+	 * @param string $file
+	 * @param string $source
+	 * @param int $port
+	 * @return bool
+	 */
+	public function db_updateable(string $file, string $source = '', int $port = 0) {
+		if ($this->checkLastUpdate === false) return true;
+		
+		// parse capture file's datetime. can't use filemtime as we need the datetime in the file name.
+		$date = array();
+		if (!preg_match('/nfcapd\.([0-9]{12})$/', $file, $date)) return false; // nothing to import
+
+        $file_datetime = new \DateTime($date[1]);
+
+        // get last updated time from database
+        $last_update_db = Config::$db->last_update($source, $port);
+        $last_update = null;
+        if ($last_update_db !== false && $last_update_db !== 0) {
+			$last_update = new \DateTime();
+			$last_update->setTimestamp($last_update_db);
+		}
+
+        // prevent attempting to import the same file again
+        return ($file_datetime > $last_update);
+    }
 
     /**
      * @param bool $verbose
@@ -318,5 +356,12 @@ class Import {
     public function setSkipSources($skipSources) {
         $this->skipSources = $skipSources;
     }
+	
+	/**
+	 * @param bool $checkLastUpdate
+	 */
+	public function setCheckLastUpdate(bool $checkLastUpdate) {
+		$this->checkLastUpdate = $checkLastUpdate;
+	}
 }
 

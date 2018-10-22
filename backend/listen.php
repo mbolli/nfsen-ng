@@ -57,8 +57,11 @@ fwrite($lock_file, getmypid() . PHP_EOL);
 $start = new DateTime();
 $start->setDate(date('Y') - 3, date('m'), date('d'));
 $i = new \common\Import();
-$i->setQuiet(true);
+$i->setQuiet(false);
+$i->setVerbose(true);
 $i->setProcessPorts(true);
+$i->setProcessPortsBySource(true);
+$i->setCheckLastUpdate(true);
 $i->start($start);
 
 /**
@@ -95,33 +98,14 @@ while (1) {
 
         $captures = scandir($source_path . DIRECTORY_SEPARATOR . $year . DIRECTORY_SEPARATOR . $month . DIRECTORY_SEPARATOR . $day);
         $captures = array_filter($captures, $clean_folder);
-        $capture = array_pop($captures);
-
-        // parse last file's datetime. can't use filemtime as we need the datetime in the file name.
-        $date = array();
-        if (!preg_match('/nfcapd\.([0-9]{12})$/', $capture, $date)) continue; // nothing to import
-
-        $file_datetime = new \DateTime($date[1]);
-
-        // get last updated time from database
-        $last_update_db = \common\Config::$db->last_update($source);
-        $last_update = null;
-        if ($last_update_db !== false && $last_update_db !== 0) {
-            $last_update = new \DateTime();
-            $last_update->setTimestamp($last_update_db);
-        }
-
-        // prevent attempting to import the same file again
-        if ($file_datetime <= $last_update) continue;
-
-        $dbg->log('Importing from ' . $source . ': ' . $file_datetime->format('Y-m-d H:i'), LOG_INFO);
-
+		$capture = $captures[count($captures)-2]; // get second to last capture, as it is certainly complete
+        
         // import current nfcapd file
         $last = ($key === count(\common\Config::$cfg['general']['sources'])-1);
         $i->import_file($capture, $source, $last);
     }
 
-    sleep(10);
+    sleep(30);
 }
 
 // all done; we blank the PID file and explicitly release the lock

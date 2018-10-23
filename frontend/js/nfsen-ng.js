@@ -197,15 +197,21 @@ $(document).ready(function() {
      * reload the graph when the protocol selection changes
      */
     $(document).on('change', '#filterProtocols input', function() {
+        var $filter = $('#filterProtocols');
         if ($(this).val() === 'any') {
             // uncheck all other input elements
             $(this).parent().addClass('active');
-            $('#filterProtocols').find('input[value!="any"]').each(function () {
+            $filter.find('input[value!="any"]').each(function () {
                 $(this).prop('checked', false).parent().removeClass('active');
             });
         } else {
             // uncheck 'any' input element
-            $('#filterProtocols').find('input[value="any"]').prop('checked', false).parent().removeClass('active');
+            $filter.find('input[value="any"]').prop('checked', false).parent().removeClass('active');
+        }
+
+        // prevent having none checked - select 'any' as fallback
+        if ($filter.find('input:checked').length === 0) {
+            $filter.find('input[value="any"]').prop('checked', true).parent().addClass('active');
         }
         updateGraph();
     });
@@ -875,7 +881,6 @@ $(document).ready(function() {
     /**
      * block not available options on "bi-direction" checked
      */
-
     $(document).on('change', '#filterAggregationGlobal input[name=bidirectional]', function() {
         var $filterAggregation = $('#filterAggregation');
 

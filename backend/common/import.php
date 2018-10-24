@@ -148,8 +148,8 @@ class Import {
         $nfdump = NfDump::getInstance();
         $nfdump->reset();
         $nfdump->setOption("-I", null);
-        $nfdump->setOption("-r", $stats_path);
-        $nfdump->setOption("-M", $source);
+		$nfdump->setOption("-M", $source);
+		$nfdump->setOption("-r", $stats_path);
 	
 		if ($this->db_updateable($stats_path, $source) === false) return false;
 
@@ -193,68 +193,73 @@ class Import {
 	 */
     private function write_ports_data($stats_path, $source = "") {
 	    $ports = \common\Config::$cfg['general']['ports'];
-	    $sources = \common\Config::$cfg['general']['sources'];
 
-	    foreach ($ports as $port) {
+	    foreach ($ports as $port) $this->write_port_data($port, $stats_path, $source);
 
-            // set options and get netflow statistics
-            $nfdump = NfDump::getInstance();
-            $nfdump->reset();
-            $nfdump->setFilter("dst port=" . $port);
-            $nfdump->setOption("-s", "dstport:p");
-            $nfdump->setOption("-r", $stats_path);
-            $nfdump->setOption("-M", $source);
-
-            // if no source is specified, get data for all sources
-			if (empty($source)) {
-				$nfdump->setOption("-M", implode(":", $sources));
-				if ($this->db_updateable($stats_path, '', $port) === false) return false;
-			} else {
-				if ($this->db_updateable($stats_path, $source, $port) === false) return false;
-			}
-
-            try {
-                $input = $nfdump->execute();
-            } catch (\Exception $e) {
-                $this->d->log('Exception: ' . $e->getMessage(), LOG_WARNING);
-                return false;
-            }
-
-            // parse and turn into usable data
-
-            $date = new \DateTime(substr($stats_path, -12));
-            $data = array(
-                'fields' => array(),
-                'source' => $source,
-                'port' => $port,
-                'date_iso' => $date->format("Ymd\THis"),
-                'date_timestamp' => $date->getTimestamp()
-            );
-            $rows = count($input);
-
-            // process protocols
-            // headers: ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ipbs,ibpp
-            foreach ($input as $i => $line) {
-            	if ($line instanceof \Countable === false) continue; // skip anything uncountable
-                if (count($line) !== 14) continue; // skip anything invalid
-                if ($line[0] === "ts") continue; // skip header
-
-                $proto = strtolower($line[3]);
-                $data['fields']['flows_' . $proto] = (int)$line[5];
-                $data['fields']['packets_' . $proto] = (int)$line[7];
-                $data['fields']['bytes_' . $proto] = (int)$line[9];
-            }
-
-            // process summary
-            // headers: flows,bytes,packets,avg_bps,avg_pps,avg_bpp
-            $lastline = $input[$rows-1];
-            $data['fields']['flows'] = (int)$lastline[0];
-            $data['fields']['packets'] = (int)$lastline[2];
-            $data['fields']['bytes'] = (int)$lastline[1];
-
-            // write to database
-            Config::$db->write($data);
-        }
+        return true;
+    }
+    
+    public function write_port_data($port, $stats_path, $source = "") {
+		$sources = \common\Config::$cfg['general']['sources'];
+	
+		// set options and get netflow statistics
+		$nfdump = NfDump::getInstance();
+		$nfdump->reset();
+		$nfdump->setFilter("dst port=" . $port);
+		$nfdump->setOption("-s", "dstport:p");
+		$nfdump->setOption("-M", $source);
+		$nfdump->setOption("-r", $stats_path);
+	
+		// if no source is specified, get data for all sources
+		if (empty($source)) {
+			$nfdump->setOption("-M", implode(":", $sources));
+			if ($this->db_updateable($stats_path, '', $port) === false) return false;
+		} else {
+			if ($this->db_updateable($stats_path, $source, $port) === false) return false;
+		}
+	
+		try {
+			$input = $nfdump->execute();
+		} catch (\Exception $e) {
+			$this->d->log('Exception: ' . $e->getMessage(), LOG_WARNING);
+			return false;
+		}
+	
+		// parse and turn into usable data
+	
+		$date = new \DateTime(substr($stats_path, -12));
+		$data = array(
+			'fields' => array(),
+			'source' => $source,
+			'port' => $port,
+			'date_iso' => $date->format("Ymd\THis"),
+			'date_timestamp' => $date->getTimestamp()
+		);
+		$rows = count($input);
+	
+		// process protocols
+		// headers: ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ipbs,ibpp
+		foreach ($input as $i => $line) {
+			if ($line instanceof \Countable === false) continue; // skip anything uncountable
+			if (count($line) !== 14) continue; // skip anything invalid
+			if ($line[0] === "ts") continue; // skip header
+		
+			$proto = strtolower($line[3]);
+			$data['fields']['flows_' . $proto] = (int)$line[5];
+			$data['fields']['packets_' . $proto] = (int)$line[7];
+			$data['fields']['bytes_' . $proto] = (int)$line[9];
+		}
+	
+		// process summary
+		// headers: flows,bytes,packets,avg_bps,avg_pps,avg_bpp
+		$lastline = $input[$rows-1];
+		$data['fields']['flows'] = (int)$lastline[0];
+		$data['fields']['packets'] = (int)$lastline[2];
+		$data['fields']['bytes'] = (int)$lastline[1];
+	
+		// write to database
+		Config::$db->write($data);
+	}
 
         return true;
     }

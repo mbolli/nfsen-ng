@@ -39,6 +39,10 @@ class NfDump {
             case '-R':
                 $this->cfg['option'][$option] = $this->convert_date_to_path($value[0], $value[1]);
                 break;
+			case '-r':
+				// prevent nfdump error: File -r must not start with '/', when combined with a source list -M
+				$this->cfg['option'][$option] = str_replace($this->cfg['option']['-M'] . DIRECTORY_SEPARATOR, '', $value);
+				break;
             case '-o':
                 $this->cfg['format'] = $value;
                 break;
@@ -151,14 +155,14 @@ class NfDump {
         );
         $this->cfg = $this->clean;
     }
-
-    /**
-     * Converts a time range to a nfcapd file range
-     * Ensures that files actually exist
-     * @param int $datestart
-     * @param int $dateend
-     * @return string
-     */
+	
+	/**
+	 * Converts a time range to a nfcapd file range
+	 * Ensures that files actually exist
+	 * @param int $datestart
+	 * @param int $dateend
+	 * @return string
+	 */
     public function convert_date_to_path(int $datestart, int $dateend) {
         $start = new \DateTime();
         $end = new \DateTime();

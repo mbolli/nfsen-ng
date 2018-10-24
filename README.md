@@ -74,7 +74,6 @@ or
      * **-v**  Show verbose output
      * **-p**  Import ports data as well _Note:_ Using RRD this will take quite a bit longer, depending on the number of your defined ports.
      * **-ps**  Import ports per source as well _Note:_ Using RRD this will take quite a bit longer, depending on the number of your defined ports.
-     * **-s** Skip importing sources data
      * **-f**  Force overwriting database and start fresh
 
  * **Commands:**

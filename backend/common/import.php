@@ -10,7 +10,6 @@ class Import {
     private $quiet;
     private $processPorts;
     private $processPortsBySource;
-    private $skipSources;
     private $checkLastUpdate;
 
     private $days_total = 0;
@@ -23,7 +22,6 @@ class Import {
         $this->quiet = false;
         $this->processPorts = false;
         $this->processPortsBySource = false;
-        $this->skipSources = false;
         $this->checkLastUpdate = false;
         $this->d->setDebug($this->verbose);
 	}
@@ -350,13 +348,6 @@ class Import {
      */
     public function setProcessPortsBySource($processPortsBySource) {
         $this->processPortsBySource = $processPortsBySource;
-    }
-
-    /**
-     * @param mixed $skipSources
-     */
-    public function setSkipSources($skipSources) {
-        $this->skipSources = $skipSources;
     }
 	
 	/**

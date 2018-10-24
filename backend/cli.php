@@ -19,7 +19,6 @@ if ($argc < 2 || in_array($argv[1], array('--help', '-help', '-h', '-?'))) {
         -v  Show verbose output
         -p  Import ports data
         -ps Import ports data per source
-        -s  Skip importing sources data
         -f  Force overwriting database and start at the beginning
 
     Commands:
@@ -55,7 +54,6 @@ else {
         if (in_array('-v', $argv)) $i->setVerbose(true);
         if (in_array('-p', $argv)) $i->setProcessPorts(true);
         if (in_array('-ps', $argv)) $i->setProcessPortsBySource(true);
-        if (in_array('-s', $argv)) $i->setSkipSources(true);
         if (in_array('-f', $argv)) $i->setForce(true);
         $i->start($start);
 
@@ -80,6 +78,7 @@ else {
         $pid = file_get_contents($pidfile);
         $d->log('CLI: Stopping daemon', LOG_INFO);
         exec('kill ' . $pid);
+        unlink($pidfile);
 
         echo "Stopped." . PHP_EOL;
 

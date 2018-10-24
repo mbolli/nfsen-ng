@@ -113,8 +113,7 @@ class Import {
                     try {
 
                         // fill source.rrd
-                        if ($this->skipSources === false)
-                            $this->write_sources_data($source, $stats_path);
+						$this->write_source_data($source, $stats_path);
 
                         // write general port data (not depending on source, so only executed per port)
                         if ($this->processPorts === true && $source === $sources[0])
@@ -137,13 +136,15 @@ class Import {
             echo \vendor\ProgressBar::finish();
 
     }
-
-    /**
-     * @param $source
-     * @param $stats_path
-     * @return bool
-     */
-    private function write_sources_data($source, $stats_path) {
+	
+	/**
+	 * @param $source
+	 * @param $stats_path
+	 * @return bool
+	 * @throws \Exception
+	 */
+    public function write_source_data($source, $stats_path) {
+    	
         // set options and get netflow summary statistics (-I)
         $nfdump = NfDump::getInstance();
         $nfdump->reset();
@@ -261,9 +262,6 @@ class Import {
 		Config::$db->write($data);
 	}
 
-        return true;
-    }
-
     /**
      * Import a single nfcapd file
      * @param string $file
@@ -276,7 +274,7 @@ class Import {
 			$this->d->log('Importing file ' . $file . ' (' . $source . '), last=' . (int)$last, LOG_INFO);
 			
             // fill source.rrd
-            $this->write_sources_data($source, $file);
+            $this->write_source_data($source, $file);
 
             // write general port data (not depending on source, so only executed per port)
             if ($last === true) $this->write_ports_data($file);

@@ -3,8 +3,13 @@
 spl_autoload_extensions('.php');
 spl_autoload_register();
 
-\common\Config::initialize();
 $d = \common\Debug::getInstance();
+try {
+	\common\Config::initialize();
+} catch (Exception $e) {
+    $d->log('Fatal: ' . $e->getMessage(), LOG_ALERT);
+    exit();
+}
 
 if ($argc < 2 || in_array($argv[1], array('--help', '-help', '-h', '-?'))) {
 ?>

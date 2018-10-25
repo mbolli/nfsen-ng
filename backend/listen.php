@@ -36,8 +36,13 @@ spl_autoload_register();
 ini_set('display_errors', true);
 ini_set('error_reporting', E_ALL);
 
-\common\Config::initialize();
-$dbg = \common\Debug::getInstance();
+$d = \common\Debug::getInstance();
+try {
+	\common\Config::initialize();
+} catch (Exception $e) {
+	$d->log('Fatal: ' . $e->getMessage(), LOG_ALERT);
+	exit();
+}
 
 $folder = dirname(__FILE__);
 $lock_file = fopen($folder . '/nfsen-ng.pid', 'c');
@@ -72,7 +77,7 @@ $i->start($start);
 $clean_folder = function($x) { return is_numeric($x) || preg_match('/nfcapd\.([0-9]{12})$/', $x); };
 $last_import = 0;
 
-$dbg->log('Starting periodic execution', LOG_INFO);
+$d->log('Starting periodic execution', LOG_INFO);
 
 while (1) {
 

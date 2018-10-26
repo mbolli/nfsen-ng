@@ -10,7 +10,7 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 **Used components**
 
  * Front end: [jQuery](https://jquery.com), [dygraphs](http://dygraphs.com), [FooTable](http://fooplugins.github.io/FooTable/), [ion.rangeSlider](http://ionden.com/a/plugins/ion.rangeSlider/en.html)
- * Back end:  [RRDtool](http://oss.oetiker.ch/rrdtool/), [nfdump tools](https://github.com/phaag/nfdump), 
+ * Back end:  [RRDtool](http://oss.oetiker.ch/rrdtool/), [nfdump tools](https://github.com/phaag/nfdump) 
 
 ## TOC
 
@@ -29,16 +29,26 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 Ubuntu 18.04 LTS:
  
  ```sh
+ # install packages
  apt-get install apache2 php7.2 php7.2-dev libapache2-mod-php7.2 pkg-config nfdump rrdtool librrd-dev
+ # enable apache modules
  a2enmod rewrite deflate headers expires
- pecl install rrd # install rrd library for php
- cd /etc/php/7.0/mods-available && vim rrd.ini  # add extension=rrd.so
+ # install rrd library for php
+ pecl install rrd 
+ # create rrd library mod entry for php
+ cd /etc/php/7.2/mods-available && vim rrd.ini  # add extension=rrd.so
+ # enable php mod
  phpenmod rrd
+ # configure virtual host to read .htaccess files
  vim /etc/apache2/apache2.conf # set AllowOverride All for /var/www
+ # restart httpd
  service apache2 restart
+ # install nfsen-ng
  cd /var/www/html # or wherever
  git clone https://github.com/mbolli/nfsen-ng
  chown -R www-data:www-data .
+ chmod +x backend/cli.php
+ # next step: configuration
  ```
  
  Fedora/CentOS: (TBD)
@@ -78,7 +88,7 @@ or
 
  * **Commands:**
      * **import** Import existing nfdump data to nfsen-ng. _Note:_ If you have existing nfcapd files, better do this overnight.
-     * **start** Start the daemon for continuous reading of new data
+     * **start** Start the daemon for continuous reading of new data. Logs go into backend/nfsen-ng.log.
      * **stop** Stop the daemon
      * **status** Get the daemon's status
         
@@ -86,8 +96,8 @@ or
      * `./cli.php -f import`
         Imports fresh data for sources
 
-     * `./cli.php -s -p import`
-        Imports data for ports only
+     * `./cli.php -f -p -ps import`
+        Imports all data
 
      * `./cli.php start`
         Starts the daemon

@@ -1,5 +1,5 @@
 <?php
-namespace datasources;
+namespace nfsen_ng\datasources;
 
 interface Datasource {
 

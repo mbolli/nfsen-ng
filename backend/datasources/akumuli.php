@@ -1,5 +1,5 @@
 <?php
-namespace datasources;
+namespace nfsen_ng\datasources;
 
 class Akumuli implements Datasource  {
 

@@ -1,5 +1,5 @@
 <?php
-namespace common;
+namespace nfsen_ng\common;
 
 class Import {
 
@@ -25,7 +25,11 @@ class Import {
         $this->checkLastUpdate = false;
         $this->d->setDebug($this->verbose);
 	}
-
+	
+	/**
+	 * @param \DateTime $datestart
+	 * @throws \Exception
+	 */
 	function start(\DateTime $datestart) {
 
         $sources = Config::$cfg['general']['sources'];
@@ -125,7 +129,7 @@ class Import {
                         }
 
                     } catch (\Exception $e) {
-                        $this->d->log('Catched exception: ' . $e->getMessage(), LOG_WARNING);
+                        $this->d->log('Caught exception: ' . $e->getMessage(), LOG_WARNING);
                     }
                 }
             }
@@ -143,7 +147,7 @@ class Import {
 	 * @return bool
 	 * @throws \Exception
 	 */
-    public function write_source_data($source, $stats_path) {
+    private function write_source_data($source, $stats_path) {
     	
         // set options and get netflow summary statistics (-I)
         $nfdump = NfDump::getInstance();
@@ -193,15 +197,15 @@ class Import {
 	 * @throws \Exception
 	 */
     private function write_ports_data($stats_path, $source = "") {
-	    $ports = \common\Config::$cfg['general']['ports'];
+	    $ports = Config::$cfg['general']['ports'];
 
 	    foreach ($ports as $port) $this->write_port_data($port, $stats_path, $source);
 
         return true;
     }
     
-    public function write_port_data($port, $stats_path, $source = "") {
-		$sources = \common\Config::$cfg['general']['sources'];
+    private function write_port_data($port, $stats_path, $source = "") {
+		$sources = Config::$cfg['general']['sources'];
 	
 		// set options and get netflow statistics
 		$nfdump = NfDump::getInstance();

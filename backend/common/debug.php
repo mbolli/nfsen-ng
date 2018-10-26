@@ -1,6 +1,6 @@
 <?php
 
-namespace common;
+namespace nfsen_ng\common;
 
 class Debug {
     private $stopwatch;

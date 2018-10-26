@@ -1,5 +1,5 @@
 <?php
-namespace common;
+namespace nfsen_ng\common;
 
 class NfDump {
     private $cfg = array(

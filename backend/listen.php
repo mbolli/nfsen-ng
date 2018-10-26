@@ -30,15 +30,19 @@
 
  */
 
-spl_autoload_extensions(".php");
-spl_autoload_register();
+spl_autoload_register(function($class) {
+	$class = strtolower(str_replace('nfsen_ng\\', '', $class));
+	include_once __DIR__ . DIRECTORY_SEPARATOR . str_replace('\\', DIRECTORY_SEPARATOR, $class) . '.php';
+});
+
+use \nfsen_ng\common\{Debug, Config, Import};
 
 ini_set('display_errors', true);
 ini_set('error_reporting', E_ALL);
 
-$d = \common\Debug::getInstance();
+$d = Debug::getInstance();
 try {
-	\common\Config::initialize();
+	Config::initialize();
 } catch (Exception $e) {
 	$d->log('Fatal: ' . $e->getMessage(), LOG_ALERT);
 	exit();
@@ -61,7 +65,7 @@ fwrite($lock_file, getmypid() . PHP_EOL);
 // first import missed data if available
 $start = new DateTime();
 $start->setDate(date('Y') - 3, date('m'), date('d'));
-$i = new \common\Import();
+$i = new Import();
 $i->setQuiet(false);
 $i->setVerbose(true);
 $i->setProcessPorts(true);
@@ -113,6 +117,6 @@ while (1) {
     sleep(30);
 }
 
-// all done; we blank the PID file and explicitly release the lock
+// all done; blank the PID file and explicitly release the lock
 ftruncate($lock_file, 0);
 flock($lock_file, LOCK_UN);

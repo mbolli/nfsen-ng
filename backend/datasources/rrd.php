@@ -1,5 +1,7 @@
 <?php
-namespace datasources;
+namespace nfsen_ng\datasources;
+
+use nfsen_ng\common\{Debug, Config};
 
 class RRD implements Datasource {
     private $d;
@@ -30,7 +32,7 @@ class RRD implements Datasource {
     );
 
     function __construct() {
-        $this->d = \common\Debug::getInstance();
+        $this->d = Debug::getInstance();
 
         if (!function_exists('rrd_version')) {
             throw new \Exception("Please install the PECL rrd library.");
@@ -141,8 +143,8 @@ class RRD implements Datasource {
         );
 
         if (empty($protocols)) $protocols = array('tcp', 'udp', 'icmp', 'other');
-        if (empty($sources)) $sources = \common\Config::$cfg['general']['sources'];
-        if (empty($ports)) $ports = \common\Config::$cfg['general']['ports'];
+        if (empty($sources)) $sources = Config::$cfg['general']['sources'];
+        if (empty($ports)) $ports = Config::$cfg['general']['ports'];
 
         switch ($display) {
             case 'protocols':
@@ -212,8 +214,8 @@ class RRD implements Datasource {
      * @return bool
      */
     public function reset(array $sources) {
-        if (empty($sources)) $sources = \Common\Config::$cfg['general']['sources'];
-        $ports = \Common\Config::$cfg['general']['ports'];
+        if (empty($sources)) $sources = Config::$cfg['general']['sources'];
+        $ports = Config::$cfg['general']['ports'];
         $ports[] = 0;
         foreach ($ports as $port) {
             if ($port !== 0) $return = $this->create('', $port, true);
@@ -238,7 +240,7 @@ class RRD implements Datasource {
         else {
             $port = (empty($source)) ? $port : '_' . $port;
         }
-        $path = \common\Config::$path . DIRECTORY_SEPARATOR . 'datasources' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . $source . $port . '.rrd';
+        $path = Config::$path . DIRECTORY_SEPARATOR . 'datasources' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . $source . $port . '.rrd';
 
         if (!file_exists($path)) $this->d->log('Was not able to find ' . $path, LOG_INFO);
 

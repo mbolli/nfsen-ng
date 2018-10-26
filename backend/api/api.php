@@ -1,5 +1,7 @@
 <?php
-namespace api;
+namespace nfsen_ng\api;
+
+use nfsen_ng\common\{Debug, Config, NfDump};
 
 class API {
     private $method;
@@ -8,7 +10,7 @@ class API {
     private $d;
 
     public function __construct() {
-        $this->d = \common\Debug::getInstance();
+        $this->d = Debug::getInstance();
 
         header('Content-Type: application/json');
         header('X-Content-Type-Options: nosniff');
@@ -16,7 +18,7 @@ class API {
 
         // try to read config
         try {
-            \common\Config::initialize();
+            Config::initialize();
         } catch (\Exception $e) {
             $this->error(503, $e->getMessage());
         }
@@ -97,7 +99,7 @@ class API {
      */
     public function error(int $code, $msg = '') {
         http_response_code($code);
-        $debug = \common\Debug::getInstance();
+        $debug = Debug::getInstance();
 
         $response = array('code' => $code, 'error' => '');
         switch($code) {
@@ -145,7 +147,7 @@ class API {
     public function stats(int $datestart, int $dateend, array $sources, string $filter, int $top, string $for, string $limit, array $output) {
         $sources = implode(':', $sources);
 
-        $nfdump = new \common\NfDump();
+        $nfdump = new NfDump();
         $nfdump->setOption('-M', $sources); // multiple sources
         $nfdump->setOption('-R', array($datestart, $dateend)); // date range
         $nfdump->setOption('-n', $top);
@@ -183,7 +185,7 @@ class API {
             $aggregate_command = ($aggregate === 'bidirectional') ? '-B' : '-A' . $aggregate; // no space inbetween
 
 
-        $nfdump = new \common\NfDump();
+        $nfdump = new NfDump();
         $nfdump->setOption('-M', $sources); // multiple sources
         $nfdump->setOption('-R', array($datestart, $dateend)); // date range
         $nfdump->setOption('-c', $limit); // limit
@@ -215,7 +217,7 @@ class API {
      * @return array|string
      */
     public function graph(int $datestart, int $dateend, array $sources, array $protocols, array $ports, string $type, string $display) {
-        $graph = \common\Config::$db->get_graph_data($datestart, $dateend, $sources, $protocols, $ports, $type, $display);
+        $graph = Config::$db->get_graph_data($datestart, $dateend, $sources, $protocols, $ports, $type, $display);
         if (!is_array($graph)) $this->error(400, $graph);
         return $graph;
     }
@@ -227,8 +229,8 @@ class API {
      * @return array
      */
     public function config() {
-        $sources = \common\Config::$cfg['general']['sources'];
-        $ports = \common\Config::$cfg['general']['ports'];
+        $sources = Config::$cfg['general']['sources'];
+        $ports = Config::$cfg['general']['ports'];
 
         $stored_output_formats = array(); // todo implement
         $stored_filters = array(); // todo implement

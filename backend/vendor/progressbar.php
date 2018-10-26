@@ -140,14 +140,13 @@ class progressbar
 
         $width = strlen(preg_replace('@(?:\r|:\w+:)@', '', $return));
 
-        if (strlen(self::$message) > (self::$width - $width - 3)) {
-            $message = substr(self::$message, 0, (self::$width - $width - 4)) . '...';
+        if (strlen(self::$message) > ((int)self::$width - (int)$width - 3)) {
+            $message = substr(self::$message, 0, ((int)self::$width - (int)$width - 4)) . '...';
             $padding = '';
-            echo "\n" . strlen($return);
         } else {
             $message = self::$message;
             $width += strlen($message);
-            $padding = str_repeat(' ', (self::$width - $width));
+            $padding = str_repeat(' ', ((int)self::$width - (int)$width));
         }
 
         $return = str_replace(':message:', $message, $return);

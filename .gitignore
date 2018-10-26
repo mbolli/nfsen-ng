@@ -1,5 +1,6 @@
 .idea/
 backend/settings/settings.php
 backend/datasources/data/
-backend/nfsen-ng.log
-backend/nfsen-ng.pid
+backend/cli/nfsen-ng.log
+backend/cli/nfsen-ng.pid
+profiles-data/

@@ -39,10 +39,6 @@ class NfDump {
             case '-R':
                 $this->cfg['option'][$option] = $this->convert_date_to_path($value[0], $value[1]);
                 break;
-			case '-r':
-				// prevent nfdump error: File -r must not start with '/', when combined with a source list -M
-				$this->cfg['option'][$option] = str_replace($this->cfg['option']['-M'] . DIRECTORY_SEPARATOR, '', $value);
-				break;
             case '-o':
                 $this->cfg['format'] = $value;
                 break;
@@ -81,7 +77,7 @@ class NfDump {
 
         // check for already running nfdump processes
         exec('ps -eo user,pid,args | grep -v grep | grep `whoami` | grep "' . $this->cfg['env']['bin'] . '"', $processes);
-        if (count($processes)/2 > intVal(\common\Config::$cfg['nfdump']['max-processes'])) throw new \Exception("There already are " . count($processes)/2 . " processes of NfDump running!");
+        if (count($processes)/2 > intVal(Config::$cfg['nfdump']['max-processes'])) throw new \Exception("There already are " . count($processes)/2 . " processes of NfDump running!");
 
         // execute nfdump
         exec($command, $output, $return);
@@ -99,32 +95,39 @@ class NfDump {
         // add command to output
         array_unshift($output, $command);
 
-        // slice csv (only return the fields actually wanted)
-        if (!preg_match('/,/', $output[1])) return $output;
-        $fields_active = array();
+		// if last element contains a colon, it's not a csv - todo better check?
+		if (preg_match('/:/', $output[count($output)-1])) {
+			return $output; // return output if it is a flows/packets/bytes dump
+		}
+	
+		// slice csv (only return the fields actually wanted)
+		$fields_active = array();
         $parsed_header = false;
-        $format = ($this->cfg['format'] !== 'stats') ? $this->get_output_format($this->cfg['format']) : str_getcsv($output[1], ',');
+        $format = ($this->cfg['format'] !== 'stats') ? $this->get_output_format($this->cfg['format']) : false;
 
         foreach ($output as $i => &$line) {
 
-            if ($i === 0) continue;
+            if ($i === 0) continue; // skip nfdump command
             $line = str_getcsv($line, ',');
-
-            if (!is_array($format)) continue;
+            
             if (preg_match('/limit/', $line[0])) continue;
-            foreach ($line as $field_id => $field) {
+			if (preg_match('/error/', $line[0])) continue;
+			if (!is_array($format)) $format = $line; // set first valid line as header if not already defined
+
+			foreach ($line as $field_id => $field) {
+            	
                 // heading has the field identifiers. fill $fields_active with all active fields
-                if($parsed_header === false) {
+                if ($parsed_header === false) {
                     if (in_array($field, $format)) $fields_active[] = $field_id;
                 }
 
                 // remove field if not in $fields_active
                 if (!in_array($field_id, $fields_active)) unset($line[$field_id]);
             }
+	
             $parsed_header = true;
             $line = array_values($line);
         }
-        
         return $output;
     }
 
@@ -134,7 +137,7 @@ class NfDump {
      * @return bool|string
      */
     private function flatten($array) {
-        if(!is_array($array)) return false;
+        if (!is_array($array)) return false;
         $output = "";
 
         foreach($array as $key => $value) {
@@ -162,6 +165,7 @@ class NfDump {
 	 * @param int $datestart
 	 * @param int $dateend
 	 * @return string
+	 * @throws \Exception
 	 */
     public function convert_date_to_path(int $datestart, int $dateend) {
         $start = new \DateTime();

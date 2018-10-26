@@ -58,7 +58,9 @@ class RRD implements Datasource {
      */
     public function last_update(string $source = '', int $port = 0) : int {
         $rrdFile = $this->get_data_path($source, $port);
-        return rrd_last($rrdFile);
+        $last_update = rrd_last($rrdFile);
+        //$this->d->log('Last update of ' . $rrdFile . ': ' . date('d.m.Y H:i', $last_update), LOG_DEBUG);
+        return (int)$last_update;
     }
 
 

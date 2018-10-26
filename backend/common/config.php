@@ -6,7 +6,7 @@ abstract class Config {
     static $cfg;
     static $path;
 	/**
-	 * @var \datasources\Datasource
+	 * @var \nfsen_ng\datasources\Datasource
 	 */
     static $db;
     private static $initialized = false;

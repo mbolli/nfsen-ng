@@ -84,37 +84,13 @@ $last_import = 0;
 $d->log('Starting periodic execution', LOG_INFO);
 
 while (1) {
+ 
+	// next import in 30 seconds
+	sleep(30);
 
-    foreach(\common\Config::$cfg['general']['sources'] as $key => $source) {
-        $source_path = \common\Config::$cfg['nfdump']['profiles-data'] . DIRECTORY_SEPARATOR . \common\Config::$cfg['nfdump']['profile'] . DIRECTORY_SEPARATOR . $source;
-
-        $years = scandir($source_path);
-        $years = array_filter($years, $clean_folder);
-        $year = array_pop($years); // most recent year
-
-        $months = scandir($source_path . DIRECTORY_SEPARATOR . $year);
-        $months = array_filter($months, $clean_folder);
-        $month = array_pop($months); // most recent month
-
-        $days = scandir($source_path . DIRECTORY_SEPARATOR . $year . DIRECTORY_SEPARATOR . $month);
-        $days = array_filter($days, $clean_folder);
-        $day = array_pop($days); // most recent day
-
-        if ($year === null || $month === null || $day === null) {
-            // nothing to import, try next source
-            continue;
-        }
-
-        $captures = scandir($source_path . DIRECTORY_SEPARATOR . $year . DIRECTORY_SEPARATOR . $month . DIRECTORY_SEPARATOR . $day);
-        $captures = array_filter($captures, $clean_folder);
-		$capture = $captures[count($captures)-2]; // get second to last capture, as it is certainly complete
-        
-        // import current nfcapd file
-        $last = ($key === count(\common\Config::$cfg['general']['sources'])-1);
-        $i->import_file($capture, $source, $last);
-    }
-
-    sleep(30);
+    // import from last db update
+    $i->start($start);
+    
 }
 
 // all done; blank the PID file and explicitly release the lock

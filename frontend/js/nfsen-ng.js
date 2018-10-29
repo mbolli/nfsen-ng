@@ -35,12 +35,16 @@ $(document).ready(function() {
 
             if (config.daemon_running === true) {
                 display_message('info', 'Daemon is running, graph is reloading each minute.');
+
+                var reload_seconds = 60;
+                if (typeof config.frontend.reload_interval !== 'undefined') reload_seconds = config.frontend.reload_interval;
+
                 date_range_interval = setInterval(function() {
                     if (date_range.options.max === date_range.options.to) {
                         var now = new Date();
                         date_range.update({ max: now.getTime(), to: now.getTime() });
                     }
-                }, 60000);
+                }, reload_seconds*1000);
             }
         } else {
             display_message('danger', 'Error getting the config!')

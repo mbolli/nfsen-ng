@@ -231,6 +231,7 @@ class API {
     public function config() {
         $sources = Config::$cfg['general']['sources'];
         $ports = Config::$cfg['general']['ports'];
+        $frontend = Config::$cfg['frontend'];
 
         $stored_output_formats = array(); // todo implement
         $stored_filters = array(); // todo implement
@@ -245,6 +246,7 @@ class API {
             'stored_output_formats' => $stored_output_formats,
             'stored_filters' => $stored_filters,
             'daemon_running' => $daemon_running,
+			'frontend' => $frontend,
         );
     }
 }

@@ -17,6 +17,9 @@ $nfsen_config = array(
         ),
         'db' => 'RRD',
     ),
+    'frontend' => array(
+        'reload_interval' => 60,
+    ),
     'nfdump' => array(
         'binary' => '/usr/bin/nfdump',
         'profiles-data' => '/var/nfdump/profiles-data',

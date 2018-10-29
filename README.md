@@ -60,6 +60,8 @@ The default settings file is `backend/settings/settings.php.dist`. Copy it to `b
     * **ports:** (_array(80, 23, 22, ...)_) The ports to examine. _Note:_ If you use RRD as datasource and want to import existing data, you might keep the number of ports to a minimum, or the import time will be measured in moon cycles...
     * **sources:** (_array('source1', ...)_) The sources to scan. 
     * **db:** (_RRD_) The name of the datasource class (case-sensitive).
+ * **frontend**
+    * **reload_interval:** Interval in seconds between graph reloads. 
  * **nfdump**
     * **binary:** (_/usr/bin/nfdump_) The location of your nfdump executable
     * **profiles-data:** (_/var/nfdump/profiles_data_) The location of your nfcapd files

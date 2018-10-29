@@ -34,10 +34,11 @@ $(document).ready(function() {
             init();
 
             if (config.daemon_running === true) {
-                display_message('info', 'Daemon is running, graph is reloading each minute.');
 
                 var reload_seconds = 60;
                 if (typeof config.frontend.reload_interval !== 'undefined') reload_seconds = config.frontend.reload_interval;
+
+                display_message('info', 'Daemon is running, graph is reloading each ' + ((reload_seconds === 60) ? 'minute' : reload_seconds + ' seconds') + '.');
 
                 date_range_interval = setInterval(function() {
                     if (date_range.options.max === date_range.options.to) {

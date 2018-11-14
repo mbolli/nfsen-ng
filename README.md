@@ -28,9 +28,11 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 
 Ubuntu 18.04 LTS:
  
- ```sh
+ ```bash
+ # enable universe repository
+ add-apt-repository universe && sudo apt update
  # install packages
- apt-get install apache2 php7.2 php7.2-dev libapache2-mod-php7.2 pkg-config nfdump rrdtool librrd-dev
+ apt install apache2 php7.2 php7.2-dev libapache2-mod-php7.2 pkg-config nfdump rrdtool librrd-dev
  # enable apache modules
  a2enmod rewrite deflate headers expires
  # install rrd library for php

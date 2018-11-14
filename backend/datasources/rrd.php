@@ -103,7 +103,10 @@ class RRD implements Datasource {
             $creator->addArchive("MAX:" . $rra);
         }
 
-        return $creator->save();
+        $saved = $creator->save();
+        if ($saved === false) $this->d->log('Error saving RRD data structure to ' . $rrdFile, LOG_ERR);
+        
+        return $saved;
     }
 	
 	/**

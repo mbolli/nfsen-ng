@@ -102,9 +102,17 @@ class Import {
                 foreach ($scan_files as $file) {
                     if (in_array($file, array(".", ".."))) continue;
 
-                    // parse date of file name to compare against last_update
-                    preg_match('/nfcapd\.([0-9]{12})$/', $file, $file_date);
-                    $file_datetime = new \DateTime($file_date[1]);
+                    try {
+						// parse date of file name to compare against last_update
+						preg_match('/nfcapd\.([0-9]{12})$/', $file, $file_date);
+						if (count($file_date) !== 2) throw new \LengthException('Bad file name format of nfcapd file: ' . $file);
+						$file_datetime = new \DateTime($file_date[1]);
+					} catch (\LengthException $e) {
+                    	$this->d->log('Caught exception: ' . $e->getMessage(), LOG_DEBUG);
+                    	continue;
+					}
+					
+					// compare file name date with last update
                     if ($file_datetime <= $last_update) continue;
 
                     // let nfdump parse each nfcapd file

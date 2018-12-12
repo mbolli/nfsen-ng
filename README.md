@@ -56,7 +56,10 @@ Ubuntu 18.04 LTS:
  Fedora/CentOS: (TBD)
 
 ## Configuration
-The default settings file is `backend/settings/settings.php.dist`. Copy it to `backend/settings/settings.php` and start modifying it:
+
+> *Note:* nfsen-ng expects the profiles-data folder structure to be `PROFILES_DATA_PATH/PROFILE/SOURCE/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`, e.g. `/var/nfdump/profiles_data/live/source1/2018/12/01/nfcapd.201812010225`.
+
+The default settings file is `backend/settings/settings.php.dist`. Copy it to `backend/settings/settings.php` and start modifying it. Example values are in *italic*:
 
  * **general**
     * **ports:** (_array(80, 23, 22, ...)_) The ports to examine. _Note:_ If you use RRD as datasource and want to import existing data, you might keep the number of ports to a minimum, or the import time will be measured in moon cycles...
@@ -80,7 +83,9 @@ The command line interface is used to initially scan existing nfcapd.* files, or
 Usage: 
   
   `./cli.php [ options ] import`
-or  
+  
+or for the daemon
+
   `./cli.php start|stop|status`
 
 

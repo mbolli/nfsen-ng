@@ -123,4 +123,15 @@ class Akumuli implements Datasource  {
     {
         // TODO: Implement get_data_path() method.
     }
-}
+    
+    /**
+     * Removes all existing data for every source in $sources.
+     * If $sources is empty, remove all existing data.
+     *
+     * @param array $sources
+     *
+     * @return bool
+     */
+    public function reset(array $sources) {
+        // TODO: Implement reset() method.
+}}

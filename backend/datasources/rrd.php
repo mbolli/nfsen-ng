@@ -1,4 +1,5 @@
 <?php
+
 namespace nfsen_ng\datasources;
 
 use nfsen_ng\common\{Debug, Config};
@@ -22,60 +23,66 @@ class RRD implements Datasource {
         'bytes_icmp',
         'bytes_other',
     );
-
+    
     private $layout = array(
-        "0.5:1:" . ((60/(1*5))*24*45), // 45 days of 5 min samples
-        "0.5:6:" . ((60/(6*5))*24*90), // 90 days of 30 min samples
-        "0.5:24:" . ((60/(24*5))*24*360), // 360 days of 2 hour samples
+        "0.5:1:" . ((60 / (1 * 5)) * 24 * 45), // 45 days of 5 min samples
+        "0.5:6:" . ((60 / (6 * 5)) * 24 * 90), // 90 days of 30 min samples
+        "0.5:24:" . ((60 / (24 * 5)) * 24 * 360), // 360 days of 2 hour samples
         "0.5:288:1080" // 1080 days of daily samples
         // = 3 years of data
     );
-
+    
     function __construct() {
         $this->d = Debug::getInstance();
-
+        
         if (!function_exists('rrd_version')) {
             throw new \Exception("Please install the PECL rrd library.");
         }
-
+        
     }
-
+    
     /**
      * Gets the timestamps of the first and last entry of this specific source
+     *
      * @param string $source
+     *
      * @return array
      */
-    public function date_boundaries(string $source) : array {
+    public function date_boundaries(string $source): array {
         $rrdFile = $this->get_data_path($source);
         return array(rrd_first($rrdFile), rrd_last($rrdFile));
     }
-
+    
     /**
      * Gets the timestamp of the last update of this specific source
+     *
      * @param string $source
-     * @param int $port
+     * @param int    $port
+     *
      * @return int timestamp or false
      */
-    public function last_update(string $source = '', int $port = 0) : int {
+    public function last_update(string $source = '', int $port = 0): int {
         $rrdFile = $this->get_data_path($source, $port);
         $last_update = rrd_last($rrdFile);
         //$this->d->log('Last update of ' . $rrdFile . ': ' . date('d.m.Y H:i', $last_update), LOG_DEBUG);
         return (int)$last_update;
     }
-
-
+    
+    
     /**
      * Create a new RRD file for a source
+     *
      * @param string $source e.g. gateway or server_xyz
-     * @param int $port
-     * @param bool $reset overwrites existing RRD file if true
+     * @param int    $port
+     * @param bool   $reset  overwrites existing RRD file if true
+     *
      * @return bool
      */
     public function create(string $source, int $port = 0, bool $reset = false) {
         $rrdFile = $this->get_data_path($source, $port);
-
+        
         // check if folder exists
-		if (!file_exists(dirname($rrdFile))) mkdir(dirname($rrdFile));
+        if (!file_exists(dirname($rrdFile))) mkdir(dirname($rrdFile));
         
         // check if folder has correct access rights
         if (!is_writable(dirname($rrdFile))) {
@@ -90,11 +97,11 @@ class RRD implements Datasource {
                 return false;
             }
         }
-
+        
         $start = strtotime("3 years ago");
         $starttime = (int)$start - ($start % 300);
-
-        $creator = new \RRDCreator($rrdFile, $starttime, (60*5));
+        
+        $creator = new \RRDCreator($rrdFile, $starttime, (60 * 5));
         foreach ($this->fields as $field) {
             $creator->addDataSource($field . ":ABSOLUTE:600:U:U");
         }
@@ -102,55 +109,70 @@ class RRD implements Datasource {
             $creator->addArchive("AVERAGE:" . $rra);
             $creator->addArchive("MAX:" . $rra);
         }
-
+        
         $saved = $creator->save();
         if ($saved === false) $this->d->log('Error saving RRD data structure to ' . $rrdFile, LOG_ERR);
         
         return $saved;
     }
-	
-	/**
-	 * Write to an RRD file with supplied data
-	 * @param array $data
-	 * @return bool
-	 * @throws \Exception
-	 */
+    
+    /**
+     * Write to an RRD file with supplied data
+     *
+     * @param array $data
+     *
+     * @return bool
+     * @throws \Exception
+     */
     public function write(array $data) {
         $rrdFile = $this->get_data_path($data['source'], $data['port']);
         if (!file_exists($rrdFile)) $this->create($data['source'], $data['port'], false);
-
+        
         $nearest = (int)$data['date_timestamp'] - ($data['date_timestamp'] % 300);
-		$this->d->log('Writing to file ' . $rrdFile, LOG_DEBUG);
-
+        $this->d->log('Writing to file ' . $rrdFile, LOG_DEBUG);
+        
         // write data
         $updater = new \RRDUpdater($rrdFile);
         return $updater->update($data['fields'], $nearest);
     }
-
+    
     /**
-     * @param int $start
-     * @param int $end
-     * @param array $sources
-     * @param array $protocols
-     * @param array $ports
-     * @param string $type flows/packets/traffic
+     * @param int    $start
+     * @param int    $end
+     * @param array  $sources
+     * @param array  $protocols
+     * @param array  $ports
+     * @param string $type    flows/packets/traffic
      * @param string $display protocols/sources/ports
+     *
      * @return array|string
      */
-    public function get_graph_data(int $start, int $end, array $sources, array $protocols, array $ports, string $type = 'flows', string $display = 'sources') {
-
+    public function get_graph_data(
+        int $start,
+        int $end,
+        array $sources,
+        array $protocols,
+        array $ports,
+        string $type = 'flows',
+        string $display = 'sources'
+    ) {
+        
         $options = array(
-            '--start', $start-($start%300),
-            '--end', $end-($end%300),
-            '--maxrows', 300, // number of values. works like the width value (in pixels) in rrd_graph
+            '--start',
+            $start - ($start % 300),
+            '--end',
+            $end - ($end % 300),
+            '--maxrows',
+            300,
+            // number of values. works like the width value (in pixels) in rrd_graph
             // '--step', 1200, // by default, rrdtool tries to get data for each row. if you want rrdtool to get data at a one-hour resolution, set step to 3600.
             '--json'
         );
-
+        
         if (empty($protocols)) $protocols = array('tcp', 'udp', 'icmp', 'other');
         if (empty($sources)) $sources = Config::$cfg['general']['sources'];
         if (empty($ports)) $ports = Config::$cfg['general']['ports'];
-
+        
         switch ($display) {
             case 'protocols':
                 foreach ($protocols as $protocol) {
@@ -180,13 +202,13 @@ class RRD implements Datasource {
                     $options[] = 'XPORT:data' . $source . $port . ':' . implode('_', $legend);
                 }
         }
-
+        
         ob_start();
         $data = rrd_xport($options);
         $error = ob_get_clean(); // rrd_xport weirdly prints stuff on error
-
+        
         if (!is_array($data)) return $error . ". " . rrd_error();
-
+        
         // remove invalid numbers and create processable array
         $output = array(
             'data' => array(),
@@ -200,7 +222,7 @@ class RRD implements Datasource {
             foreach ($source['data'] as $date => $measure) {
                 // ignore non-valid measures
                 if (is_nan($measure)) $measure = null;
-
+                
                 // add measure to output array
                 if (array_key_exists($date, $output['data'])) {
                     $output['data'][$date][] = $measure;
@@ -209,13 +231,15 @@ class RRD implements Datasource {
                 }
             }
         }
-
+        
         return $output;
     }
-
+    
     /**
      * Creates a new database for every source/port combination
+     *
      * @param array $sources
+     *
      * @return bool
      */
     public function reset(array $sources) {
@@ -225,7 +249,7 @@ class RRD implements Datasource {
         foreach ($ports as $port) {
             if ($port !== 0) $return = $this->create('', $port, true);
             if ($return === false) return false;
-
+            
             foreach ($sources as $source) {
                 $return = $this->create($source, $port, true);
                 if ($return === false) return false;
@@ -233,11 +257,13 @@ class RRD implements Datasource {
         }
         return true;
     }
-
+    
     /**
      * Concatenates the path to the source's rrd file
+     *
      * @param string $source
-     * @param int $port
+     * @param int    $port
+     *
      * @return string
      */
     public function get_data_path($source = '', $port = 0) {
@@ -246,9 +272,9 @@ class RRD implements Datasource {
             $port = (empty($source)) ? $port : '_' . $port;
         }
         $path = Config::$path . DIRECTORY_SEPARATOR . 'datasources' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . $source . $port . '.rrd';
-
+        
         if (!file_exists($path)) $this->d->log('Was not able to find ' . $path, LOG_INFO);
-
+        
         return $path;
     }
 }

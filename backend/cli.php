@@ -71,7 +71,7 @@ if ($argc < 2 || in_array($argv[1], array('--help', '-help', '-h', '-?'))) {
         // start the daemon
         
         $d->log('CLI: Starting daemon...', LOG_INFO);
-        $pid = exec('nohup `which php` ' . $folder . '/listen.php > nfsen-ng.log 2>&1 & echo $!', $op, $exit);
+        $pid = exec('nohup `which php` ' . $folder . '/listen.php > /dev/null 2>&1 & echo $!', $op, $exit);
         var_dump($exit);
         // todo: get exit code of background process. possible at all?
         switch (intval($exit)) {

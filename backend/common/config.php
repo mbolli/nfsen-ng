@@ -18,11 +18,11 @@ abstract class Config {
     public static function initialize() {
         if (self::$initialized === true) return;
         
-        $settings_file = getcwd() . DIRECTORY_SEPARATOR . 'settings' . DIRECTORY_SEPARATOR . 'settings.php';
+        $settings_file = dirname(dirname(__FILE__)) . DIRECTORY_SEPARATOR . 'settings' . DIRECTORY_SEPARATOR . 'settings.php';
         if (!file_exists($settings_file)) throw new \Exception('No settings.php found. Did you rename the distributed settings correctly?');
         include $settings_file;
         self::$cfg = $nfsen_config;
-        self::$path = getcwd();
+        self::$path = dirname(dirname(__FILE__));
         self::$initialized = true;
         
         // find data source

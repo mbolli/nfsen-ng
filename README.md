@@ -188,7 +188,7 @@ The API is used by the frontend to retrieve data.
  
 ### /api/graph
 * **URL**
-  `/api/graph?datestart=1490484000&dateend=1490652000&type=flows&sources[0]=gate&protocols[0]=tcp&protocols[1]=icmp`
+  `/api/graph?datestart=1490484000&dateend=1490652000&type=flows&sources[0]=gate&protocols[0]=tcp&protocols[1]=icmp&display=sources`
 
 * **Method:**
   
@@ -201,6 +201,7 @@ The API is used by the frontend to retrieve data.
     * `sources=[array]` 
     * `protocols=[array]`
     * `ports=[array]`
+    * `display=[string]` can be `sources`, `protocols` or `ports`
     
     There can't be multiple sources and multiple protocols both. Either one source and multiple protocols, or one protocol and multiple sources.
 
@@ -233,7 +234,7 @@ The API is used by the frontend to retrieve data.
 * **Sample Call:**
 
   ```sh
-  curl -g "http://localhost/nfsen-ng/api/graph?datestart=1490484000&dateend=1490652000&type=flows&sources[0]=gate&protocols[0]=tcp&protocols[1]=icmp"
+  curl -g "http://localhost/nfsen-ng/api/graph?datestart=1490484000&dateend=1490652000&type=flows&sources[0]=gate&protocols[0]=tcp&protocols[1]=icmp&display=sources"
   ```
 
 ### /api/flows

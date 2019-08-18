@@ -2,7 +2,7 @@
 
 namespace nfsen_ng\api;
 
-use nfsen_ng\common\{Debug, Config, NfDump};
+use nfsen_ng\common\{Debug, Config};
 
 class API {
     private $method;
@@ -136,6 +136,12 @@ class API {
         exit();
     }
     
+    private function NewNfDump()
+    {
+        $nfdump_class = 'nfsen_ng\\common\\'.Config::$cfg['general']['nfdump'];
+        return new $nfdump_class();
+    }
+
     /**
      * Execute the nfdump command to get statistics
      *
@@ -162,7 +168,7 @@ class API {
     ) {
         $sources = implode(':', $sources);
         
-        $nfdump = new NfDump();
+        $nfdump = self::NewNfDump();
         $nfdump->setOption('-M', $sources); // multiple sources
         $nfdump->setOption('-R', array($datestart, $dateend)); // date range
         $nfdump->setOption('-n', $top);
@@ -211,7 +217,7 @@ class API {
             $aggregate_command = ($aggregate === 'bidirectional') ? '-B' : '-A' . $aggregate; // no space inbetween
         
         
-        $nfdump = new NfDump();
+        $nfdump = self::NewNfDump();
         $nfdump->setOption('-M', $sources); // multiple sources
         $nfdump->setOption('-R', array($datestart, $dateend)); // date range
         $nfdump->setOption('-c', $limit); // limit

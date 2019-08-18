@@ -16,6 +16,7 @@ $nfsen_config = array(
             'source1', 'source2',
         ),
         'db' => 'RRD',
+        'nfdump' => 'NfDump',
     ),
     'frontend' => array(
         'reload_interval' => 60,

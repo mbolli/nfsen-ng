@@ -10,6 +10,10 @@ abstract class Config {
      * @var \nfsen_ng\datasources\Datasource
      */
     static $db;
+    /**
+      * @var \nfsen_ng\processor\Processor
+      */
+    static $processorClass;
     private static $initialized = false;
     
     private function __construct() {
@@ -32,6 +36,16 @@ abstract class Config {
         } else {
             throw new \Exception('Failed loading class ' . self::$cfg['general']['db'] . '. The class doesn\'t exist.');
         }
+
+        // find processor
+        $proc_class = array_key_exists('processor', self::$cfg['general']) ? self::$cfg['general']['processor'] : 'NfDump';
+        self::$processorClass = 'nfsen_ng\\processor\\' . $proc_class;
+        if (!class_exists(self::$processorClass))
+            throw new \Exception('Failed loading class ' . self::$processorClass . '. The class doesn\'t exist.');
+
+        $proc_iface = 'nfsen_ng\\processor\\Processor';
+        if (!in_array($proc_iface, class_implements(self::$processorClass)))
+            throw new \Exception('Processor class ' . self::$processorClass . ' doesn\'t implement ' . $proc_iface . '.');
     }
     
 }

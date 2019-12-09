@@ -111,6 +111,9 @@ class NfDump {
             return $output; // return output if it is a flows/packets/bytes dump
         }
         
+        // remove the 3 summary lines at the end of the csv output
+        $output = array_slice($output, 0, -3);
+
         // slice csv (only return the fields actually wanted)
         $fields_active = array();
         $parsed_header = false;

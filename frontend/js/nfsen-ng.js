@@ -724,6 +724,7 @@ $(document).ready(function() {
             filter = '' + $('#filterNfdumpTextarea').val(),
             top = $('#statsFilterTopSelection').val(),
             s_for = $('#statsFilterForSelection').val(),
+            title = $('#statsFilterForSelection :selected').text(),
             sort = $('#statsFilterOrderBySelection').val(),
             output = {
                 format: $('#filterOutputSelection').val(),
@@ -741,6 +742,7 @@ $(document).ready(function() {
             filter: filter,
             top: top,
             for: s_for + '/' + sort,
+            title: title,
             aggregate: aggregate,
             limit: '',
             output: output
@@ -812,7 +814,7 @@ $(document).ready(function() {
 
             $.each(tempcolumns, function (i, val) {
                 // todo optimize breakpoints
-                var title = (val === 'val') ? api_statistics_options.for : nfdump_translation[val],
+                var title = (val === 'val') ? api_statistics_options.title : nfdump_translation[val],
                     column = {
                         name: val,
                         title: title,

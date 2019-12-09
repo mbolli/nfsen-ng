@@ -841,7 +841,7 @@ $(document).ready(function() {
             });
 
             // generate table data
-            var temprows = data.slice(2, data.length - 4),
+            var temprows = data.slice(2),
                 rows = [];
 
             $.each(temprows, function (i, val) {

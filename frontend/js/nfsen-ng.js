@@ -726,9 +726,11 @@ $(document).ready(function() {
             s_for = $('#statsFilterForSelection').val(),
             title = $('#statsFilterForSelection :selected').text(),
             sort = $('#statsFilterOrderBySelection').val(),
-            output = {
-                format: $('#filterOutputSelection').val(),
-            };
+            fmt = $('#filterOutputSelection'),
+            output = {};
+
+        if (!fmt.prop('disabled'))
+            output.format = fmt.val();
 
         // parse form values to generate a proper API request
         var aggregate = parse_aggregation_fields();

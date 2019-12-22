@@ -1,8 +1,10 @@
 <?php
 
-namespace nfsen_ng\common;
+namespace nfsen_ng\processor;
 
-class NfDump {
+use nfsen_ng\common\{Debug, Config};
+
+class NfDump implements Processor {
     private $cfg = array(
         'env' => array(),
         'option' => array(),

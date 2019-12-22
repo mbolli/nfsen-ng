@@ -2,7 +2,7 @@
 
 namespace nfsen_ng\api;
 
-use nfsen_ng\common\{Debug, Config, NfDump};
+use nfsen_ng\common\{Debug, Config};
 
 class API {
     private $method;
@@ -137,7 +137,7 @@ class API {
     }
     
     /**
-     * Execute the nfdump command to get statistics
+     * Execute the processor to get statistics
      *
      * @param int    $datestart
      * @param int    $dateend
@@ -162,17 +162,17 @@ class API {
     ) {
         $sources = implode(':', $sources);
         
-        $nfdump = new NfDump();
-        $nfdump->setOption('-M', $sources); // multiple sources
-        $nfdump->setOption('-R', array($datestart, $dateend)); // date range
-        $nfdump->setOption('-n', $top);
-        $nfdump->setOption('-s', $for);
-        if (!empty($limit)) $nfdump->setOption('-l', $limit); // todo -L for traffic, -l for packets
-        if (isset($output['IPv6'])) $nfdump->setOption('-6', null);
-        $nfdump->setFilter($filter);
+        $processor = new Config::$processorClass();
+        $processor->setOption('-M', $sources); // multiple sources
+        $processor->setOption('-R', array($datestart, $dateend)); // date range
+        $processor->setOption('-n', $top);
+        $processor->setOption('-s', $for);
+        if (!empty($limit)) $processor->setOption('-l', $limit); // todo -L for traffic, -l for packets
+        if (isset($output['IPv6'])) $processor->setOption('-6', null);
+        $processor->setFilter($filter);
         
         try {
-            $return = $nfdump->execute();
+            $return = $processor->execute();
         } catch (\Exception $e) {
             $this->error(503, $e->getMessage());
         }
@@ -181,7 +181,7 @@ class API {
     }
     
     /**
-     * Execute the nfdump command to get flows
+     * Execute the processor to get flows
      *
      * @param int    $datestart
      * @param int    $dateend
@@ -211,19 +211,19 @@ class API {
             $aggregate_command = ($aggregate === 'bidirectional') ? '-B' : '-A' . $aggregate; // no space inbetween
         
         
-        $nfdump = new NfDump();
-        $nfdump->setOption('-M', $sources); // multiple sources
-        $nfdump->setOption('-R', array($datestart, $dateend)); // date range
-        $nfdump->setOption('-c', $limit); // limit
-        $nfdump->setOption('-o', $output['format']);
+        $processor = new Config::$processorClass();
+        $processor->setOption('-M', $sources); // multiple sources
+        $processor->setOption('-R', array($datestart, $dateend)); // date range
+        $processor->setOption('-c', $limit); // limit
+        $processor->setOption('-o', $output['format']);
         
-        if (!empty($sort)) $nfdump->setOption('-O', 'tstart');
-        if (array_key_exists('IPv6', $output)) $nfdump->setOption('-6', $output['IPv6']);
-        if (!empty($aggregate_command)) $nfdump->setOption('-a', $aggregate_command);
-        $nfdump->setFilter($filter);
+        if (!empty($sort)) $processor->setOption('-O', 'tstart');
+        if (array_key_exists('IPv6', $output)) $processor->setOption('-6', $output['IPv6']);
+        if (!empty($aggregate_command)) $processor->setOption('-a', $aggregate_command);
+        $processor->setFilter($filter);
         
         try {
-            $return = $nfdump->execute();
+            $return = $processor->execute();
         } catch (\Exception $e) {
             $this->error(503, $e->getMessage());
         }

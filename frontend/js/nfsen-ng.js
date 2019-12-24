@@ -585,6 +585,7 @@ $(document).ready(function() {
                         labelsDiv: $('#legend')[0],
                         labelsSeparateLines: true,
                         legend: 'always',
+                        stepPlot: true,
                         showRangeSelector: true,
                         dateWindow: [dygraph_data[0][0], dygraph_data[dygraph_data.length - 1][0]],
                         zoomCallback: dygraph_zoom,

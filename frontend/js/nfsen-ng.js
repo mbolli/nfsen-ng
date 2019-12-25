@@ -346,6 +346,17 @@ $(document).ready(function() {
         updateDropdown('sources', config['sources']);
         updateDropdown('ports', config['ports']);
 
+        if (config['sources'].length == 1) {
+            $('#filterDisplaySelect option[value="sources"]').remove();
+            $('#filterSources').hide();
+        }
+
+        if (config['ports'].length == 0)
+            $('#filterDisplaySelect option[value="ports"]').remove();
+
+        if ($('#filterDisplaySelect').length == 1)
+            $('#filterDisplay').hide();
+
         init_rangeslider();
 
         // show graph for one year by default

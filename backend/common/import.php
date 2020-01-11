@@ -2,6 +2,8 @@
 
 namespace nfsen_ng\common;
 
+use nfsen_ng\processor\NfDump;
+
 class Import {
     
     private $d;

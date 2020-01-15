@@ -8,7 +8,7 @@ class NfDump implements Processor {
     private $cfg = array(
         'env' => array(),
         'option' => array(),
-        'format' => 'line',
+        'format' => null,
         'filter' => array()
     );
     private $clean = array();
@@ -45,11 +45,6 @@ class NfDump implements Processor {
                 break;
             case '-o':
                 $this->cfg['format'] = $value;
-                break;
-            case '-s':
-            case '-S':
-                $this->cfg['option'][$option] = $value;
-                $this->cfg['format'] = (strstr($value, 'record') === false) ? 'stats' : 'stats_flows';
                 break;
             default:
                 $this->cfg['option'][$option] = $value;
@@ -119,7 +114,9 @@ class NfDump implements Processor {
         // slice csv (only return the fields actually wanted)
         $fields_active = array();
         $parsed_header = false;
-        $format = ($this->cfg['format'] !== 'stats') ? $this->get_output_format($this->cfg['format']) : false;
+        $format = false;
+        if (isset($this->cfg['format']))
+            $format = $this->get_output_format($this->cfg['format']);
         
         foreach ($output as $i => &$line) {
             

@@ -49,7 +49,11 @@ class API {
         $args = array();
         // iterate over each parameter
         foreach ($method->getParameters() as $arg) {
-            if (!isset($_REQUEST[$arg->name])) $this->error(400, 'Expected parameter ' . $arg->name);
+            if (!isset($_REQUEST[$arg->name])) {
+                if ($arg->isOptional())
+                    continue;
+                $this->error(400, 'Expected parameter ' . $arg->name);
+            }
             
             // make sure the data types are correct
             switch ($arg->getType()) {
@@ -158,7 +162,7 @@ class API {
         int $top,
         string $for,
         string $limit,
-        array $output
+        array $output = array()
     ) {
         $sources = implode(':', $sources);
         
@@ -166,6 +170,8 @@ class API {
         $processor->setOption('-M', $sources); // multiple sources
         $processor->setOption('-R', array($datestart, $dateend)); // date range
         $processor->setOption('-n', $top);
+        if (array_key_exists('format', $output))
+            $processor->setOption('-o', $output['format']);
         $processor->setOption('-s', $for);
         if (!empty($limit)) $processor->setOption('-l', $limit); // todo -L for traffic, -l for packets
         if (isset($output['IPv6'])) $processor->setOption('-6', null);

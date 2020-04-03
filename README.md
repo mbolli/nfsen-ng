@@ -29,6 +29,7 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 Ubuntu 18.04 LTS:
  
  ```bash
+ # run following commands as root
  # enable universe repository
  add-apt-repository universe && sudo apt update
  # install packages
@@ -38,7 +39,7 @@ Ubuntu 18.04 LTS:
  # install rrd library for php
  pecl install rrd 
  # create rrd library mod entry for php
- cd /etc/php/7.2/mods-available && vim rrd.ini  # add extension=rrd.so
+ echo "extension=rrd.so" > /etc/php/7.2/mods-available/rrd.ini
  # enable php mod
  phpenmod rrd
  # configure virtual host to read .htaccess files
@@ -56,6 +57,7 @@ Ubuntu 18.04 LTS:
  CentOS 7:
 
  ```bash
+ # run following commands as root
  # update packages
  yum update
  # enable EPEL repo

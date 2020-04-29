@@ -239,14 +239,23 @@ $(document).ready(function() {
     });
 
     /**
+     * set graph display to curve or step plot
+     */
+    $(document).on('change', '#graph_lineplot input', function() {
+        dygraph.updateOptions({
+            stepPlot: ($(this).val() === 'step')
+        });
+    })
+
+    /**
      * set graph display to lines or stacked
      */
     $(document).on('change', '#graph_linestacked input', function() {
         var stacked = ($(this).val() === 'stacked');
 
         dygraph.updateOptions({
-            stackedGraph : stacked,
-            fillGraph: stacked
+            stackedGraph: ($(this).val() === 'stacked'),
+            fillGraph: ($(this).val() !== 'line')
         });
     });
 

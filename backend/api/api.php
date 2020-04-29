@@ -56,7 +56,7 @@ class API {
             }
             
             // make sure the data types are correct
-            switch ($arg->getType()) {
+            switch ($arg->getType()->getName()) {
                 case 'int':
                     if (!is_numeric($_REQUEST[$arg->name])) $this->error(400, 'Expected type int for ' . $arg->name);
                     $args[$arg->name] = intval($_REQUEST[$arg->name]);

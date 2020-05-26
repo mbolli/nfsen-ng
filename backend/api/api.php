@@ -170,8 +170,14 @@ class API {
         $processor->setOption('-M', $sources); // multiple sources
         $processor->setOption('-R', array($datestart, $dateend)); // date range
         $processor->setOption('-n', $top);
-        if (array_key_exists('format', $output))
+        if (array_key_exists('format', $output)) {
             $processor->setOption('-o', $output['format']);
+
+            if ($output['format'] === 'custom' && array_key_exists('custom', $output) && !empty($output['custom'])) {
+                $processor->setOption('-o', 'fmt:' . $output['custom']);
+            }
+        }
+
         $processor->setOption('-s', $for);
         if (!empty($limit)) $processor->setOption('-l', $limit); // todo -L for traffic, -l for packets
         if (isset($output['IPv6'])) $processor->setOption('-6', null);
@@ -222,6 +228,9 @@ class API {
         $processor->setOption('-R', array($datestart, $dateend)); // date range
         $processor->setOption('-c', $limit); // limit
         $processor->setOption('-o', $output['format']);
+        if ($output['format'] === 'custom' && array_key_exists('custom', $output) && !empty($output['custom'])) {
+            $processor->setOption('-o', 'fmt:' . $output['custom']);
+        }
         
         if (!empty($sort)) $processor->setOption('-O', 'tstart');
         if (array_key_exists('IPv6', $output)) $processor->setOption('-6', $output['IPv6']);

@@ -697,6 +697,7 @@ $(document).ready(function() {
             sort = '',
             output = {
                 format: $('#filterOutputSelection').val(),
+                custom: $('#customListOutputFormatValue').val()
             };
 
         // parse form values to generate a proper API request
@@ -739,8 +740,10 @@ $(document).ready(function() {
             fmt = $('#filterOutputSelection'),
             output = {};
 
-        if (!fmt.prop('disabled'))
+        if (!fmt.prop('disabled')) {
             output.format = fmt.val();
+            output.custom = $('#customListOutputFormatValue').val();
+        }
 
         // parse form values to generate a proper API request
         var aggregate = parse_aggregation_fields();
@@ -833,7 +836,7 @@ $(document).ready(function() {
                         type: 'number',
                         breakpoints: 'xs sm',
                     };
-                if (['ts', 'te'].indexOf(val) !== -1) {
+                if (['ts', 'te', 'tr'].indexOf(val) !== -1) {
                     column['breakpoints'] = '';
                     column['type'] = 'text'; // 'date' needs moment.js library...
                 } else if (['sp', 'dp', 'td', 'fl', 'flP', 'ipktP', 'opktP', 'ibytP', 'obytP', 'ipps', 'opps', 'ibps', 'obps', 'ibpp', 'obpp'].indexOf(val) !== -1) {
@@ -848,8 +851,8 @@ $(document).ready(function() {
                     column['breakpoints'] = 'all';
                     column['type'] = 'text';
                 } else {
-                    column['visible'] = false;
-                    console.log('ignoring', val);
+                    column['breakpoints'] = '';
+                    column['type'] = 'text';
                 }
                 columns.push(column);
             });

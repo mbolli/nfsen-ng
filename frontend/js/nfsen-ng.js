@@ -836,7 +836,7 @@ $(document).ready(function() {
                 if (['ts', 'te'].indexOf(val) !== -1) {
                     column['breakpoints'] = '';
                     column['type'] = 'text'; // 'date' needs moment.js library...
-                } else if (['td', 'fl', 'flP', 'ipktP', 'opktP', 'ibytP', 'obytP', 'ipps', 'opps', 'ibps', 'obps', 'ibpp', 'obpp'].indexOf(val) !== -1) {
+                } else if (['sp', 'dp', 'td', 'fl', 'flP', 'ipktP', 'opktP', 'ibytP', 'obytP', 'ipps', 'opps', 'ibps', 'obps', 'ibpp', 'obpp'].indexOf(val) !== -1) {
                     column['type'] = 'number';
                     column['thousandSeparator'] = '\'';
                 } else if (['sa', 'da', 'pr', 'val'].indexOf(val) !== -1) {

@@ -5,13 +5,13 @@ namespace nfsen_ng\processor;
 use nfsen_ng\common\{Debug, Config};
 
 class NfDump implements Processor {
-    private $cfg = array(
-        'env' => array(),
-        'option' => array(),
+    private $cfg = [
+        'env' => [],
+        'option' => [],
         'format' => null,
-        'filter' => array()
-    );
-    private $clean = array();
+        'filter' => []
+    ];
+    private $clean;
     private $d;
     public static $_instance;
 
@@ -36,14 +36,30 @@ class NfDump implements Processor {
      */
     public function setOption($option, $value) {
         switch ($option) {
-            case '-M':
-                $this->cfg['option'][$option] = $this->cfg['env']['profiles-data'] . DIRECTORY_SEPARATOR . $this->cfg['env']['profile'] . DIRECTORY_SEPARATOR . $value;
-                $this->cfg['env']['sources'] = explode(':', $value);
+            case '-M': // set sources
+
+                // only sources specified in settings allowed
+                $queried_sources = explode(':', $value);
+                foreach ($queried_sources as $s) {
+                    if (!in_array($s, Config::$cfg['general']['sources'])) continue;
+                    $this->cfg['env']['sources'][] = $s;
+                }
+
+                // cancel if no sources remain
+                if (empty($this->cfg['env']['sources'])) break;
+
+                // set sources path
+                $this->cfg['option'][$option] = implode(DIRECTORY_SEPARATOR, [
+                    $this->cfg['env']['profiles-data'],
+                    $this->cfg['env']['profile'],
+                    implode(':', $this->cfg['env']['sources'])
+                ]);
+
                 break;
-            case '-R':
+            case '-R': // set path
                 $this->cfg['option'][$option] = $this->convert_date_to_path($value[0], $value[1]);
                 break;
-            case '-o':
+            case '-o': // set output format
                 $this->cfg['format'] = $value;
                 break;
             default:
@@ -68,8 +84,8 @@ class NfDump implements Processor {
      * @throws \Exception
      */
     public function execute() {
-        $output = array();
-        $processes = array();
+        $output = [];
+        $processes = [];
         $return = "";
         $filter = (empty($this->cfg['filter'])) ? "" : " " . escapeshellarg($this->cfg['filter']);
         $command = $this->cfg['env']['bin'] . " " . $this->flatten($this->cfg['option']) . $filter . ' 2>&1';
@@ -83,7 +99,7 @@ class NfDump implements Processor {
         exec($command, $output, $return);
 
         // prevent logging the command usage description
-        if (isset($output[0]) && preg_match('/^usage/i', $output[0])) $output = array();
+        if (isset($output[0]) && preg_match('/^usage/i', $output[0])) $output = [];
 
         switch ($return) {
             case 127:
@@ -175,12 +191,12 @@ class NfDump implements Processor {
      * Reset config
      */
     public function reset() {
-        $this->clean['env'] = array(
+        $this->clean['env'] = [
             'bin' => Config::$cfg['nfdump']['binary'],
             'profiles-data' => Config::$cfg['nfdump']['profiles-data'],
             'profile' => Config::$cfg['nfdump']['profile'],
-            'sources' => array(),
-        );
+            'sources' => [],
+        ];
         $this->cfg = $this->clean;
     }
 

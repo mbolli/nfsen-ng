@@ -265,8 +265,7 @@ class Import {
             'date_iso' => $date->format("Ymd\THis"),
             'date_timestamp' => $date->getTimestamp()
         ];
-        $rows = count($input);
-
+        
         // process protocols
         // headers: ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ipbs,ibpp
         foreach ($input as $i => $line) {

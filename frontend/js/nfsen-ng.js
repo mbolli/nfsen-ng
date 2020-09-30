@@ -1024,12 +1024,12 @@ $(document).ready(function() {
             case 'srcip4':
             case 'dstip4':
                 $prefixDiv.removeClass('hidden');
-                $prefixDiv.find('input').attr('maxlength', 2).val('');
+                $prefixDiv.find('input').attr('maxlength', 2).val('24');
                 break;
             case 'srcip6':
             case 'dstip6':
                 $prefixDiv.removeClass('hidden');
-                $prefixDiv.find('input').attr('maxlength', 3).val('');
+                $prefixDiv.find('input').attr('maxlength', 3).val('128');
                 break;
         }
     });

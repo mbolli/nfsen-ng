@@ -347,18 +347,19 @@ $(document).ready(function() {
      * - select default view if set in the config
      */
     function init() {
-        // load default view
-        if (typeof config.frontend.defaults.view !== 'undefined') {
-            $('header li a[data-view="' + config.frontend.defaults.view + '"]').trigger('click');
-        } else {
-            $('header li a').eq(0).trigger('click');
-        }
 
         // load values for form
         updateDropdown('sources', config['sources']);
         updateDropdown('ports', config['ports']);
 
         init_rangeslider();
+
+        // load default view
+        if (typeof config.frontend.defaults !== 'undefined') {
+            $('header li a[data-view="' + config.frontend.defaults.view + '"]').trigger('click');
+        } else {
+            $('header li a').eq(0).trigger('click');
+        }
 
         // show graph for one year by default
         $('#date_slot').find('[data-unit="y"]').parent().trigger('click');
@@ -370,8 +371,9 @@ $(document).ready(function() {
      * @param view
      */
     function init_defaults(view) {
+        var defaults = {graphs: {}, flows: {}, statistics: {}};
         if (typeof config.frontend.defaults !== 'undefined') {
-            var defaults = config.frontend.defaults;
+            defaults = config.frontend.defaults;
         }
 
         // graphs defaults
@@ -402,16 +404,16 @@ $(document).ready(function() {
             }
 
             // graphs: hide unneeded controls
-            if (config['sources'].length == 1) { // only one source defined
+            if (config['sources'].length === 1) { // only one source defined
                 $('#filterDisplaySelect option[value="sources"]').remove();
                 $('#filterSources').hide();
             }
 
-            if (config['ports'].length == 0) { // only one port defined
+            if (config['ports'].length === 0) { // only one port defined
                 $('#filterDisplaySelect option[value="ports"]').remove();
             }
 
-            if ($('#filterDisplaySelect option').length == 1) { // only one display option left
+            if ($('#filterDisplaySelect option').length === 1) { // only one display option left
                 $('#filterDisplay').hide();
             }
         }

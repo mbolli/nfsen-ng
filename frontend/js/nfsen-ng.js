@@ -12,7 +12,8 @@ var config,
     api_graph_options,
     api_flows_options,
     api_statistics_options,
-    nfdump_translation = {ff: 'flow record flags in hex', ts: 'Start Time - first seen', te: 'End Time - last seen', tr: 'Time the flow was received by the collector', td: 'Duration', pr: 'Protocol', exp: 'Exporter ID', eng: 'Engine Type/ID', sa: 'Source Address', da: 'Destination Address', sap: 'Source Address:Port', dap: 'Destination Address:Port', sp: 'Source Port', dp: 'Destination Port', sn: 'Source Network (mask applied)', dn: 'Destination Network (mask applied)', nh: 'Next-hop IP Address', nhb: 'BGP Next-hop IP Address', ra: 'Router IP Address', sas: 'Source AS', das: 'Destination AS', nas: 'Next AS', pas: 'Previous AS', in: 'Input Interface num', out: 'Output Interface num', pkt: 'Packets - default input', ipkt: 'Input Packets', opkt: 'Output Packets', byt: 'Bytes - default input', ibyt: 'Input Bytes', obyt: 'Output Bytes', fl: 'Flows', flg: 'TCP Flags', tos: 'Tos - default src', stos: 'Src Tos', dtos: 'Dst Tos', dir: 'Direction: ingress, egress', smk: 'Src mask', dmk: 'Dst mask', fwd: 'Forwarding Status', svln: 'Src vlan label', dvln: 'Dst vlan label', ismc: 'Input Src Mac Addr', odmc: 'Output Dst Mac Addr', idmc: 'Input Dst Mac Addr', osmc: 'Output Src Mac Addr', pps: 'Packets per second', bps: 'Bytes per second', bpp: 'Bytes per packet', flP: 'Flows (%)', ipktP: 'Input Packets (%)', opktP: 'Output Packets (%)', ibytP: 'Input Bytes (%)', obytP: 'Output Bytes (%)', ipps: 'Input Packets/s', ibps: 'Input Bytes/s', ibpp: 'Input Bytes/Packet', pktP: 'Packets (%)', bytP: 'Bytes (%)'};
+    nfdump_translation = {ff: 'flow record flags in hex', ts: 'Start Time - first seen', te: 'End Time - last seen', tr: 'Time the flow was received by the collector', td: 'Duration', pr: 'Protocol', exp: 'Exporter ID', eng: 'Engine Type/ID', sa: 'Source Address', da: 'Destination Address', sap: 'Source Address:Port', dap: 'Destination Address:Port', sp: 'Source Port', dp: 'Destination Port', sn: 'Source Network (mask applied)', dn: 'Destination Network (mask applied)', nh: 'Next-hop IP Address', nhb: 'BGP Next-hop IP Address', ra: 'Router IP Address', sas: 'Source AS', das: 'Destination AS', nas: 'Next AS', pas: 'Previous AS', in: 'Input Interface num', out: 'Output Interface num', pkt: 'Packets - default input', ipkt: 'Input Packets', opkt: 'Output Packets', byt: 'Bytes - default input', ibyt: 'Input Bytes', obyt: 'Output Bytes', fl: 'Flows', flg: 'TCP Flags', tos: 'Tos - default src', stos: 'Src Tos', dtos: 'Dst Tos', dir: 'Direction: ingress, egress', smk: 'Src mask', dmk: 'Dst mask', fwd: 'Forwarding Status', svln: 'Src vlan label', dvln: 'Dst vlan label', ismc: 'Input Src Mac Addr', odmc: 'Output Dst Mac Addr', idmc: 'Input Dst Mac Addr', osmc: 'Output Src Mac Addr', pps: 'Packets per second', bps: 'Bytes per second', bpp: 'Bytes per packet', flP: 'Flows (%)', ipktP: 'Input Packets (%)', opktP: 'Output Packets (%)', ibytP: 'Input Bytes (%)', obytP: 'Output Bytes (%)', ipps: 'Input Packets/s', ibps: 'Input Bytes/s', ibpp: 'Input Bytes/Packet', pktP: 'Packets (%)', bytP: 'Bytes (%)'},
+    views_view_status = {graphs: false, flows: false, statistics: false};
 
 $(document).ready(function() {
 
@@ -94,6 +95,12 @@ $(document).ready(function() {
 
         // trigger resize for the graph
         if (typeof dygraph !== 'undefined') dygraph.resize();
+
+        // set defaults for the view
+        init_defaults(view);
+
+        // set view state to true
+        views_view_status[view] = true;
     });
 
     /**
@@ -337,10 +344,15 @@ $(document).ready(function() {
      * - set the select-list of sources
      * - initialize the range slider
      * - load the graph
+     * - select default view if set in the config
      */
     function init() {
         // load default view
-        $('header li a').eq(0).trigger('click');
+        if (typeof config.frontend.defaults.view !== 'undefined') {
+            $('header li a[data-view="' + config.frontend.defaults.view + '"]').trigger('click');
+        } else {
+            $('header li a').eq(0).trigger('click');
+        }
 
         // load values for form
         updateDropdown('sources', config['sources']);
@@ -350,9 +362,63 @@ $(document).ready(function() {
 
         // show graph for one year by default
         $('#date_slot').find('[data-unit="y"]').parent().trigger('click');
+    }
 
-        // show correct form elements
-        $('#filterDisplaySelect').trigger('change');
+    /**
+     * sets default values for the view (graphs, flows, statistics)
+     * @param view
+     */
+    function init_defaults(view) {
+        if (typeof config.frontend.defaults !== 'undefined') {
+            var defaults = config.frontend.defaults;
+        }
+
+        // graphs defaults
+        if (view === 'graphs' && views_view_status.graphs === false) {
+            // graphs: set default display (sources, protocols, ports)
+            if (typeof defaults.graphs.display !== 'undefined') {
+                $('#filterDisplaySelect').val(defaults.graphs.display).trigger('change');
+            } else {
+                $('#filterDisplaySelect').trigger('change');
+            }
+
+            // graphs: set default datatype
+            if (typeof defaults.graphs.datatype !== 'undefined') {
+                $('#filterTypes input[value="' + defaults.graphs.datatype + '"]').trigger('click');
+            }
+
+            // graphs: set default protocols
+            if (typeof defaults.graphs.protocols !== 'undefined') {
+                // multiple possible if on protocols display
+                if (defaults.graphs.display === 'protocols') {
+                    $('#filterProtocolButtons input[value="any"]').trigger('click');
+                    $.each(defaults.graphs.protocols, function (i, proto) {
+                        $('#filterProtocolButtons input[value="' + proto + '"]').trigger('click');
+                    });
+                } else {
+                    $('#filterProtocolButtons input[value="' + defaults.graphs.protocols[0] + '"]').trigger('click');
+                }
+            }
+        }
+
+        // flows defaults
+        if (view === 'flows' && views_view_status.flows === false) {
+
+            // flows: limit
+            if (typeof defaults.flows.limit !== 'undefined') {
+                $('#flowsFilterLimitSelection').val(defaults.flows.limit);
+            }
+        }
+
+        // statistics defaults
+        if (view === 'statistics' && views_view_status.statistics === false) {
+
+            // statistics: order by
+            if (typeof defaults.statistics.orderby !== 'undefined') {
+                $('#statsFilterOrderBySelection').val(defaults.statistics.orderby);
+            }
+        }
+
     }
 
     /**

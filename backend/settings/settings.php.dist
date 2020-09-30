@@ -20,6 +20,20 @@ $nfsen_config = array(
     ),
     'frontend' => array(
         'reload_interval' => 60,
+        'defaults' => array(
+            'view' => 'graphs', // graphs, flows, statistics
+            'graphs' => array(
+                'display' => 'sources', // sources, protocols, ports
+                'datatype' => 'flows', // flows, packets, bytes
+                'protocols' => array('any'), // any, tcp, udp, icmp, others (multiple possible if display=protocols)
+            ),
+            'flows' => array(
+                'limit' => 50,
+            ),
+            'statistics' => array(
+                'order_by' => 'bytes',
+            ),
+        ),
     ),
     'nfdump' => array(
         'binary' => '/usr/bin/nfdump',

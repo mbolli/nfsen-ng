@@ -180,7 +180,8 @@ class API {
 
         $processor->setOption('-s', $for);
         if (!empty($limit)) $processor->setOption('-l', $limit); // todo -L for traffic, -l for packets
-        if (isset($output['IPv6'])) $processor->setOption('-6', null);
+        if ($output['ipv6'] == true) $processor->setOption('-6', null);
+
         $processor->setFilter($filter);
         
         try {
@@ -221,8 +222,7 @@ class API {
         $sources = implode(':', $sources);
         if (!empty($aggregate))
             $aggregate_command = ($aggregate === 'bidirectional') ? '-B' : '-A' . $aggregate; // no space inbetween
-        
-        
+
         $processor = new Config::$processorClass();
         $processor->setOption('-M', $sources); // multiple sources
         $processor->setOption('-R', array($datestart, $dateend)); // date range
@@ -233,7 +233,7 @@ class API {
         }
         
         if (!empty($sort)) $processor->setOption('-O', 'tstart');
-        if (array_key_exists('IPv6', $output)) $processor->setOption('-6', $output['IPv6']);
+        if ($output['ipv6'] == true) $processor->setOption('-6', null);
         if (!empty($aggregate_command)) $processor->setOption('-a', $aggregate_command);
         $processor->setFilter($filter);
         

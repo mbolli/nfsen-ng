@@ -780,7 +780,8 @@ $(document).ready(function() {
             sort = '',
             output = {
                 format: $('#filterOutputSelection').val(),
-                custom: $('#customListOutputFormatValue').val()
+                custom: $('#customListOutputFormatValue').val(),
+                ipv6: $('#flowsFilterOther input[name="ipv6"]').prop('checked') | 0
             };
 
         // parse form values to generate a proper API request
@@ -826,6 +827,7 @@ $(document).ready(function() {
         if (!fmt.prop('disabled')) {
             output.format = fmt.val();
             output.custom = $('#customListOutputFormatValue').val();
+            output.ipv6 = $('#flowsFilterOther input[name="ipv6"]').prop('checked') | 0;
         }
 
         // parse form values to generate a proper API request

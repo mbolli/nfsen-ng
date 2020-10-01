@@ -162,58 +162,58 @@
 
                     </div>
 
-                    <div id="filterAggregation">
-                    <div class="hidden col-xs-6 col-sm-6 col-md-3 col-lg-2" data-view="flows statistics">
+                    <div id="filterFlowAggregation">
+                        <div class="hidden col-xs-6 col-sm-6 col-md-3 col-lg-2" data-view="flows">
 
-                        <h3>Global Aggregation</h3><!-- todo: check everywhere this "name" convention in divs and other elements-->
-                        <div class="btn-group btn-group-md" data-toggle="buttons" id="filterAggregationGlobal">
-                            <label class="btn btn-default"><input type="checkbox" name="bidirectional">Bi-directional</label>
-                            <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="proto">Protocol</label>
+                            <h3>Global Aggregation</h3>
+                            <div class="btn-group btn-group-md" data-toggle="buttons" id="filterFlowAggregationGlobal">
+                                <label class="btn btn-default"><input type="checkbox" name="bidirectional">Bi-directional</label>
+                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="proto">Protocol</label>
+                            </div>
+
+                        </div>
+                        <div class="hidden col-xs-6 col-sm-6 col-md-3 col-lg-2" data-view="flows">
+                            <h3>Port Aggregation</h3>
+                            <div class="btn-group btn-group-md" data-toggle="buttons" id="filterFlowAggregationPort">
+                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="srcport">Source port</label>
+                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="dstport">Destination port</label>
+                            </div>
                         </div>
 
-                    </div>
-                    <div class="hidden col-xs-6 col-sm-6 col-md-3 col-lg-2" data-view="flows statistics">
-                        <h3>Port Aggregation</h3>
-                        <div class="btn-group btn-group-md" data-toggle="buttons" id="filterAggregationPort">
-                            <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="srcport">Source port</label>
-                            <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="dstport">Destination port</label>
-                        </div>
-                    </div>
+                        <div class="hidden col-xs-12 col-sm-12 col-md-5 col-lg-4" data-view="flows">
+                            <h3>IP Aggregation</h3>
+                            <div class="row">
+                                <div class="col-xs-6 col-sm-6">
+                                    <label>Source</label><br>
+                                    <div class="form-group">
+                                        <select data-disable-on="bi-directional" data-kind="source" name="srcip" id="filterFlowAggregationSourceAddressSelect" class="form-control pull-left" style="width: 70%">
+                                            <option value="none">No aggregation</option>
+                                            <option value="srcip">IP</option>
+                                            <option value="srcip4">IPv4 subnets</option>
+                                            <option value="srcip6">IPv6 subnets</option>
+                                        </select>
+                                        <div id="sourceCIDRPrefixDiv" class="hidden pull-left" style="width:30%">
+                                            <input data-disable-on="bi-directional" id="sourceCIDRPrefix" placeholder="24" name="srcipprefix" type="text" class="form-control">
+                                        </div>
+                                    </div>
+                                </div>
 
-                    <div class="hidden col-xs-12 col-sm-12 col-md-5 col-lg-4" data-view="flows statistics">
-                        <h3>ip Aggregation</h3>
-                        <div class="row">
-                            <div class="col-xs-6 col-sm-6">
-                                <label>Source</label><br>
-                                <div class="form-group">
-                                    <select data-disable-on="bi-directional" data-kind="source" name="srcip" id="filterFlowAggregationSourceAddressSelect" class="form-control pull-left" style="width: 70%">
-                                        <option value="none">No aggregation</option>
-                                        <option value="srcip">IP</option>
-                                        <option value="srcip4">IPv4 subnets</option>
-                                        <option value="srcip6">IPv6 subnets</option>
-                                    </select>
-                                    <div id="sourceCIDRPrefixDiv" class="hidden pull-left" style="width:30%">
-                                        <input data-disable-on="bi-directional" id="sourceCIDRPrefix" placeholder="24" name="srcipprefix" type="text" class="form-control">
+                                <div class="col-xs-6 col-sm-6">
+                                    <label>Destination</label>
+                                    <div class="form-group">
+                                        <select data-disable-on="bi-directional" data-kind="destination" name="dstip" id="filterFlowAggregationDestinationAddressSelect" class="form-control pull-left" style="width: 70%">
+                                            <option value="none">No aggregation</option>
+                                            <option value="dstip">IP</option>
+                                            <option value="dstip4">IPv4 subnets</option>
+                                            <option value="dstip6">IPv6 subnets</option>
+                                        </select>
+                                        <div id="destinationCIDRPrefixDiv" class="hidden pull-left" style="width:30%">
+                                            <input data-disable-on="bi-directional" id="destinationCIDRPrefix" placeholder="24" name="dstipprefix" type="text" class="form-control">
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-
-                            <div class="col-xs-6 col-sm-6">
-                                <label>Destination</label>
-                                <div class="form-group">
-                                    <select data-disable-on="bi-directional" data-kind="destination" name="dstip" id="filterFlowAggregationDestinationAddressSelect" class="form-control pull-left" style="width: 70%">
-                                        <option value="none">No aggregation</option>
-                                        <option value="dstip">IP</option>
-                                        <option value="dstip4">IPv4 subnets</option>
-                                        <option value="dstip6">IPv6 subnets</option>
-                                    </select>
-                                    <div id="destinationCIDRPrefixDiv" class="hidden pull-left" style="width:30%">
-                                        <input data-disable-on="bi-directional" id="destinationCIDRPrefix" placeholder="24" name="dstipprefix" type="text" class="form-control">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div><!-- flowsFilterAggregationDiv  -->
+                        </div><!-- flowsFilterAggregationDiv  -->
                     </div>
 
                     <div id="statsLimitDiv" class="hidden col-xs-6 col-sm-6 col-md-2" data-view="statistics">

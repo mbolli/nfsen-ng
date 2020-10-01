@@ -283,7 +283,7 @@ $(document).ready(function() {
     $(document).on('change', '#statsFilterForSelection', function() {
         var disabled = ($(this).val() !== 'record');
 
-        $('#filterAggregation').find('label, input, select, button').each(function() {
+        $('#filterFlowAggregation').find('label, input, select, button').each(function() {
             $(this).prop('disabled', disabled).toggleClass('disabled', disabled);
         });
 
@@ -830,9 +830,6 @@ $(document).ready(function() {
             output.ipv6 = $('#flowsFilterOther input[name="ipv6"]').prop('checked') | 0;
         }
 
-        // parse form values to generate a proper API request
-        var aggregate = parse_aggregation_fields();
-
         if (typeof sources === 'string') sources = [sources];
 
         api_statistics_options = {
@@ -843,7 +840,6 @@ $(document).ready(function() {
             top: top,
             for: s_for + '/' + sort,
             title: title,
-            aggregate: aggregate,
             limit: '',
             output: output
         };
@@ -857,7 +853,7 @@ $(document).ready(function() {
      * @returns string
      */
     function parse_aggregation_fields() {
-        var $aggregation = $('#filterAggregation');
+        var $aggregation = $('#filterFlowAggregation');
         if ($aggregation.find('[name=bidirectional]:checked').length === 0) {
             var validAggregations = ['proto', 'dstport', 'srcport', 'srcip', 'dstip'],
                 aggregate = '';
@@ -988,13 +984,13 @@ $(document).ready(function() {
     /**
      * block not available options on "bi-direction" checked
      */
-    $(document).on('change', '#filterAggregationGlobal input[name=bidirectional]', function() {
-        var $filterAggregation = $('#filterAggregation');
+    $(document).on('change', '#filterFlowAggregationGlobal input[name=bidirectional]', function() {
+        var $filterFlowAggregation = $('#filterFlowAggregation');
 
         // if "bi-directional" is checked, block (disable) all other aggregation options
         if ($(this).parent().hasClass('active')) {
 
-            $filterAggregation.find('[data-disable-on="bi-directional"]').each(function() {
+            $filterFlowAggregation.find('[data-disable-on="bi-directional"]').each(function() {
                 $(this).parent().removeClass('active').addClass('disabled');
                 $(this).prop('disabled', true);
                 if ($(this).prop('tagName') === 'SELECT') $(this).prop('selectedIndex', 0);
@@ -1003,7 +999,7 @@ $(document).ready(function() {
 
         } else {
 
-            $filterAggregation.find('[data-disable-on="bi-directional"]').each(function() {
+            $filterFlowAggregation.find('[data-disable-on="bi-directional"]').each(function() {
                 $(this).parent().removeClass('disabled');
                 $(this).prop('disabled', false);
             });

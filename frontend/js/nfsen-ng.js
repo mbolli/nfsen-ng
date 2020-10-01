@@ -843,12 +843,13 @@ $(document).ready(function() {
             title = $('#statsFilterForSelection :selected').text(),
             sort = $('#statsFilterOrderBySelection').val(),
             fmt = $('#filterOutputSelection'),
-            output = {};
+            output = {
+                ipv6: $('#flowsFilterOther input[name="ipv6"]').prop('checked') | 0,
+            };
 
         if (!fmt.prop('disabled')) {
             output.format = fmt.val();
             output.custom = $('#customListOutputFormatValue').val();
-            output.ipv6 = $('#flowsFilterOther input[name="ipv6"]').prop('checked') | 0;
         }
 
         if (typeof sources === 'string') sources = [sources];

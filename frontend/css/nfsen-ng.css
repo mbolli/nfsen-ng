@@ -68,3 +68,13 @@ ul.nav-tabs {
 .accordion h4.collapsed:after {
     content: "\e080";
 }
+
+/* flows */
+#sourceCIDRPrefixDiv:before, #destinationCIDRPrefixDiv:before {
+    content: "/";
+    width: auto;
+    position: absolute;
+    font-size: 170%;
+    padding-left: 1rem;
+}
+#sourceCIDRPrefix, #destinationCIDRPrefix { padding-left: 2rem; }

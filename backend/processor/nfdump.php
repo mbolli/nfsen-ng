@@ -238,7 +238,10 @@ class NfDump implements Processor {
 
         // if end file does not exist, subtract by 5 minutes and try again
         while ($fileendexists === false) {
-            if ($end == $start) break; // strict comparison won't work
+            if ($end == $start) { // strict comparison won't work
+                $fileend = $filestart;
+                break;
+            }
 
             foreach ($this->cfg['env']['sources'] as $source) {
                 if (file_exists($sourcepath . $source . DIRECTORY_SEPARATOR . $fileend)) $fileendexists = true;

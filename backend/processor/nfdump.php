@@ -140,8 +140,11 @@ class NfDump implements Processor {
             $line = str_getcsv($line, ',');
             $temp_line = [];
 
-            if (preg_match('/limit/', $line[0])) continue;
-            if (preg_match('/error/', $line[0])) continue;
+            if (count($line) === 1 || preg_match('/limit/', $line[0]) || preg_match('/error/', $line[0])) { // probably an error message or warning. add to command
+                $output[0] .= ' <br><b>' . $line[0] . '</b>';
+                unset($output[$i]);
+                continue;
+            }
             if (!is_array($format)) $format = $line; // set first valid line as header if not already defined
 
             foreach ($line as $field_id => $field) {
@@ -163,7 +166,7 @@ class NfDump implements Processor {
             ksort($temp_line);
             $line = array_values($temp_line);
         }
-        return $output;
+        return array_values($output);
     }
 
     /**

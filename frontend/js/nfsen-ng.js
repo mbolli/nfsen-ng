@@ -572,6 +572,26 @@ $(document).ready(function() {
     }
 
     /**
+     *
+     * @param e The event object for the click
+     * @param x The x value that was clicked (for dates, this is milliseconds since epoch)
+     * @param points The closest points along that date
+     */
+    function dygraph_click(e, x, points) {
+        if (confirm('Zoom in to this data point?')) {
+            date_range.update({
+                from: x,
+                to: x+300000
+            });
+
+            // remove active state of date slot button
+            $('#date_slot').find('label.active').removeClass('active').find('input').prop('checked', false);
+
+            check_daterange_boundaries((x+300)-x);
+        }
+    }
+
+    /**
      * reads options from api_graph_options, performs a request on the API
      * and tries to display the received data in the dygraph.
      */
@@ -681,6 +701,7 @@ $(document).ready(function() {
                         showRangeSelector: true,
                         dateWindow: [dygraph_data[0][0], dygraph_data[dygraph_data.length - 1][0]],
                         zoomCallback: dygraph_zoom,
+                        clickCallback: dygraph_click,
                         highlightSeriesOpts: {
                             strokeWidth: 2,
                             strokeBorderWidth: 1,

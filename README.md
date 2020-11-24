@@ -183,7 +183,7 @@ or for the daemon
 
  * **Commands:**
      * **import** Import existing nfdump data to nfsen-ng. _Note:_ If you have existing nfcapd files, better do this overnight.
-     * **start** Start the daemon for continuous reading of new data. Logs go into backend/nfsen-ng.log.
+     * **start** Start the daemon for continuous reading of new data
      * **stop** Stop the daemon
      * **status** Get the daemon's status
         

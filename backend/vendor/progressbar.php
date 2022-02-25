@@ -331,7 +331,7 @@ class progressbar
     protected static function setWidth($width = null)
     {
         if ($width === null) {
-            if (DIRECTORY_SEPARATOR === '/') {
+            if (DIRECTORY_SEPARATOR === '/' && getenv("TERM")) {
                 $width = `tput cols`;
             }
             if ($width < 80) {

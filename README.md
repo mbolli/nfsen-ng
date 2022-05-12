@@ -80,6 +80,32 @@ Ubuntu 20.04 LTS:
  # next step: configuration
  ```
  
+ Ubuntu 22.04 LTS:
+ 
+ ```bash
+ # run following commands as root
+ # install packages
+ apt install apache2 git nfdump pkg-config php8.1 php8.1-dev libapache2-mod-php8.1 rrdtool librrd-dev
+ # enable apache modules
+ a2enmod rewrite deflate headers expires
+ # install rrd library for php
+ pecl install rrd
+ # create rrd library mod entry for php
+ echo "extension=rrd.so" > /etc/php/8.1/mods-available/rrd.ini
+ # enable php mod
+ phpenmod rrd
+ # configure virtual host to read .htaccess files
+ vi /etc/apache2/apache2.conf # set AllowOverride All for /var/www
+ # restart apache web server
+ systemctl restart apache2
+ # install nfsen-ng
+ cd /var/www/html # or wherever
+ git clone https://github.com/mbolli/nfsen-ng
+ chown -R www-data:www-data .
+ chmod +x nfsen-ng/backend/cli.php
+ # next step: configuration
+ ```
+ 
  CentOS 7:
 
  ```bash

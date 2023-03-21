@@ -192,6 +192,116 @@ chmod +x nfsen-ng/backend/cli.php
  chmod +x nfsen-ng/backend/cli.php
  # next step: configuration
  ```
+
+  openSUSE Leap 15.2:
+
+ ```bash
+ ## complete end to end guide showing 1 sflow and 1 ipfix collector
+ ## "firewall1" is type ipfix, "switch1" is type sflow
+ # install packages
+ zypper in apache2 apache2-mod_php7 nfdump rrdtool rrdtool-devel php7-pear php7-pecl php7-devel
+ # install rrd library for php
+ pecl install rrd
+ # create rrd library mod entry for php
+ echo "extension=rrd.so" > /etc/php7/conf.d/rrd.ini
+ echo "extension=rrd.so" > /etc/php7/cli/rrd.ini
+ # configure virtual host to read .htaccess files
+ vim /etc/apache2/vhosts.d/yourserver.conf # set AllowOverride All for /var/www/html
+ <VirtualHost *:80>
+        DocumentRoot /srv/www/htdocs
+        ServerName server.domain.com
+        ErrorLog /var/log/apache2/error_log
+        TransferLog /var/log/apache2/access_log
+        <Directory /srv/www/htdocs>
+            Options Indexes FollowSymLinks
+            AllowOverride All
+            Require all granted
+        </Directory>
+ </VirtualHost>
+ # enable apache modules
+ vim /etc/sysconfig/apache2 # make sure you have these modules
+ APACHE_MODULES="actions alias auth_basic authn_file authnz_ldap authn_alias authz_host authz_groupfile authz_core authz_user autoindex cgi dir env expires include ldap log_config mime negotiation setenvif ssl socache_shmcb userdir reqtimeout authn_core proxy proxy_http proxy_ajp rewrite deflate headers proxy_balancer proxy_connect proxy_html mod_xml2enc mod_slotmem_shm php7 filter"
+ # clone nfsen-ng
+ git clone https://github.com/mbolli/nfsen-ng.git /srv/www/htdocs
+ # set ownership to wwwrun
+ chown -R wwwrun.www /srv/www/htdocs
+ # configure sources in nfsen-ng settings.php
+ vim /srv/www/htdocs/backend/settings/settings.php
+ $nfsen_config = array(
+  ...
+        'sources' => array(
+         'firewall1','switch1',
+        ),
+  ...
+ # create firewalld rules
+ firewall-cmd --permanent --new-service=sflow
+ firewall-cmd --permanent --service=sflow --add-port=6343/udp
+ firewall-cmd --permanent --new-service=ipfix
+ firewall-cmd --permanent --service=sflow --add-port=4739/udp
+ firewall-cmd --permanent --zone=public --add-service=sflow
+ firewall-cmd --permanent --zone=public --add-service=ipfix
+ firewall-cmd --permanent --zone=public --add-service=http
+ firewall-cmd --reload
+ # create collector directories
+ mkdir -p /var/nfdump/profiles-data/live/{firewall1, switch1}
+ # set flow lifetime (expire 26 weeks, use -s for disk usage)
+ /usr/bin/nfexpire -u /var/nfdump/profiles-data/live/{firewall1, switch1}/ -s 0 -t 26w
+ # create systemd service for nfcapd (ipfix) and sfcapd (sflow) collectors
+ vim /etc/systemd/system/sflow.service
+ [Unit]
+ Description=sflow collector
+ After=network.target
+
+ [Service]
+ Type=simple
+ ExecStart=/usr/bin/sfcapd \
+ -n switch1,ipaddress,/var/nfdump/profiles-data/live/switch1 \
+ -w -e -p 6343 -T all -B 128000 -S 1 -z
+
+ [Install]
+ WantedBy=multi-user.target
+ # create systemd service for nfcapd (ipfix) and sfcapd (sflow) collectors
+ vim /etc/systemd/system/ipfix.service
+ [Unit]
+ Description=ipfix collector
+ After=network.target
+
+ [Service]
+ Type=simple
+ ExecStart=/usr/bin/nfcapd \
+ -n firewall1,ipaddress,/var/nfdump/profiles-data/live/firewall1 \
+ -w -e -p 4739 -T all -B 128000 -S 1 -z
+
+ [Install]
+ WantedBy=multi-user.target
+ ## reload systemd and start services
+ systemctl daemon-reload
+ systemctl enable sflow ipfix
+ systemctl start sflow ipfix
+ # start and enable apache2
+ systemctl enable apache2
+ systemctl start apache2
+ # run first flow import
+ /usr/bin/php /srv/www/htdocs/backend/cli.php import
+ # create systemd service for continuous imports
+ vim /etc/systemd/system/nfsen-import.service
+ [Unit]
+ Description=Import flow data to nfsen-ng
+ After=network.target
+
+ [Service]
+ Type=simple
+ ExecStart=/usr/bin/php /srv/www/htdocs/backend/listen.php
+
+ [Install]
+ WantedBy=multi-user.target
+
+ # enable and start
+ systemctl enable nfsen-import
+ systemctl start nfsen-import
+ ```
+
+
  
 ## Configuration
 

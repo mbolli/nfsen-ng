@@ -1,8 +1,8 @@
 <?php
+
 namespace nfsen_ng\datasources;
 
-class Akumuli implements Datasource  {
-
+class akumuli implements Datasource {
     private $d;
     private $client;
 
@@ -12,66 +12,70 @@ class Akumuli implements Datasource  {
     }
 
     /**
-     * connects to TCP socket
+     * connects to TCP socket.
      */
-    function connect() {
+    public function connect(): void {
         try {
-            $this->client = stream_socket_client("tcp://" . \common\Config::$cfg['db']['akumuli']['host'] . ":" . \common\Config::$cfg['db']['akumuli']['port'], $errno, $errmsg);
+            $this->client = stream_socket_client('tcp://' . \common\Config::$cfg['db']['akumuli']['host'] . ':' . \common\Config::$cfg['db']['akumuli']['port'], $errno, $errmsg);
 
-            if ($this->client === false) throw new \Exception("Failed to connect to Akumuli: " . $errmsg);
-
+            if ($this->client === false) {
+                throw new \Exception('Failed to connect to Akumuli: ' . $errmsg);
+            }
         } catch (\Exception $e) {
             $this->d->dpr($e);
         }
     }
 
     /**
-     * Convert data to redis-compatible string and write to Akumuli
-     * @param array $data
+     * Convert data to redis-compatible string and write to Akumuli.
+     *
      * @return string
      */
-    function write(array $data) {
-
+    public function write(array $data) {
         $fields = array_keys($data['fields']);
         $values = array_values($data['fields']);
 
         // writes assume redis protocol. first byte identification:
         // "+" simple strings  "-" errors  ":" integers  "$" bulk strings  "*" array
-        $query = "+" . implode("|", $fields) . " source=" . $data['source'] . "\r\n" .
-            "+" . $data['date_iso'] . "\r\n" . // timestamp
-            "*" . count($fields) . "\r\n"; // length of following array
+        $query = '+' . implode('|', $fields) . ' source=' . $data['source'] . "\r\n"
+            . '+' . $data['date_iso'] . "\r\n" // timestamp
+            . '*' . \count($fields) . "\r\n"; // length of following array
 
         // add the $values corresponding to $fields
-        foreach($values as $v) $query .= ":" . $v . "\r\n";
+        foreach ($values as $v) {
+            $query .= ':' . $v . "\r\n";
+        }
 
-        $this->d->dpr(array($query));
+        $this->d->dpr([$query]);
 
         // write redis-compatible string to socket
         fwrite($this->client, $query);
+
         return stream_get_contents($this->client);
 
         // to read:
         // curl localhost:8181/api/query -d "{'select':'flows'}"
     }
 
-    function __destruct() {
-        if (is_resource($this->client)) {
+    public function __destruct() {
+        if (\is_resource($this->client)) {
             fclose($this->client);
         }
     }
-
 
     /**
      * Gets data for plotting the graph in the frontend.
      * Each row in $return['data'] will be one line in the graph.
      * The lines can be
      *   * protocols - $sources must not contain more than one source (legend e.g. gateway_flows_udp, gateway_flows_tcp)
-     *   * sources - $protocols must not contain more than one protocol (legend e.g. gateway_traffic_icmp, othersource_traffic_icmp)
-     * @param int $start timestamp
-     * @param int $end timestamp
-     * @param array $sources subset of sources specified in settings
-     * @param array $protocols UDP/TCP/ICMP/other
-     * @param string $type flows/packets/traffic
+     *   * sources - $protocols must not contain more than one protocol (legend e.g. gateway_traffic_icmp, othersource_traffic_icmp).
+     *
+     * @param int    $start     timestamp
+     * @param int    $end       timestamp
+     * @param array  $sources   subset of sources specified in settings
+     * @param array  $protocols UDP/TCP/ICMP/other
+     * @param string $type      flows/packets/traffic
+     *
      * @return array in the following format:
      *
      * $return = array(
@@ -90,48 +94,42 @@ class Akumuli implements Datasource  {
      *  )
      * );
      */
-    public function get_graph_data(int $start, int $end, array $sources, array $protocols, string $type)
-    {
+    public function get_graph_data(int $start, int $end, array $sources, array $protocols, string $type) {
         // TODO: Implement get_graph_data() method.
     }
 
     /**
-     * Gets the timestamps of the first and last entry in the datasource (for this specific source)
-     * @param string $source
+     * Gets the timestamps of the first and last entry in the datasource (for this specific source).
+     *
      * @return array (timestampfirst, timestamplast)
      */
-    public function date_boundaries(string $source): array
-    {
+    public function date_boundaries(string $source): array {
         // TODO: Implement date_boundaries() method.
     }
 
     /**
-     * Gets the timestamp of the last update of the datasource (for this specific source)
-     * @param string $source
-     * @return int
+     * Gets the timestamp of the last update of the datasource (for this specific source).
      */
-    public function last_update(string $source): int
-    {
+    public function last_update(string $source): int {
         // TODO: Implement last_update() method.
     }
 
     /**
-     * Gets the path where the datasource's data is stored
+     * Gets the path where the datasource's data is stored.
+     *
      * @return string
      */
-    public function get_data_path()
-    {
+    public function get_data_path() {
         // TODO: Implement get_data_path() method.
     }
-    
+
     /**
      * Removes all existing data for every source in $sources.
      * If $sources is empty, remove all existing data.
-     *
-     * @param array $sources
      *
      * @return bool
      */
     public function reset(array $sources) {
         // TODO: Implement reset() method.
-}}
+    }
+}

@@ -1,41 +1,42 @@
 #!/usr/bin/php
 <?php
 /**
- *
- *  daemon for nfsen-ng
+ *  daemon for nfsen-ng.
  */
-
-spl_autoload_register(function ($class) {
-    $class = strtolower(str_replace('nfsen_ng\\', '', $class));
-    include_once __DIR__ . DIRECTORY_SEPARATOR . str_replace('\\', DIRECTORY_SEPARATOR, $class) . '.php';
+spl_autoload_register(function ($class): void {
+    $class = mb_strtolower(str_replace('nfsen_ng\\', '', $class));
+    include_once __DIR__ . \DIRECTORY_SEPARATOR . str_replace('\\', \DIRECTORY_SEPARATOR, $class) . '.php';
 });
 
-use \nfsen_ng\common\{Debug, Config, Import};
+use nfsen_ng\common\Config;
+use nfsen_ng\common\Debug;
+use nfsen_ng\common\Import;
 
 ini_set('display_errors', true);
-ini_set('error_reporting', E_ALL);
+ini_set('error_reporting', \E_ALL);
 
 $d = Debug::getInstance();
 try {
     Config::initialize();
 } catch (Exception $e) {
-    $d->log('Fatal: ' . $e->getMessage(), LOG_ALERT);
-    exit();
+    $d->log('Fatal: ' . $e->getMessage(), \LOG_ALERT);
+    exit;
 }
 
-$folder = dirname(__FILE__);
+$folder = __DIR__;
 $lock_file = fopen($folder . '/nfsen-ng.pid', 'c');
-$got_lock = flock($lock_file, LOCK_EX | LOCK_NB, $wouldblock);
+$got_lock = flock($lock_file, \LOCK_EX | \LOCK_NB, $wouldblock);
 if ($lock_file === false || (!$got_lock && !$wouldblock)) {
     exit(128);
-} elseif (!$got_lock && $wouldblock) {
+}
+if (!$got_lock && $wouldblock) {
     exit(129);
 }
 
 // Lock acquired; let's write our PID to the lock file for the convenience
 // of humans who may wish to terminate the script.
 ftruncate($lock_file, 0);
-fwrite($lock_file, getmypid() . PHP_EOL);
+fwrite($lock_file, getmypid() . \PHP_EOL);
 
 // first import missed data if available
 $start = new DateTime();
@@ -48,18 +49,16 @@ $i->setProcessPortsBySource(true);
 $i->setCheckLastUpdate(true);
 $i->start($start);
 
-$d->log('Starting periodic execution', LOG_INFO);
+$d->log('Starting periodic execution', \LOG_INFO);
 
 while (1) {
-    
     // next import in 30 seconds
     sleep(30);
-    
+
     // import from last db update
     $i->start($start);
-    
 }
 
 // all done; blank the PID file and explicitly release the lock
 ftruncate($lock_file, 0);
-flock($lock_file, LOCK_UN);
+flock($lock_file, \LOCK_UN);

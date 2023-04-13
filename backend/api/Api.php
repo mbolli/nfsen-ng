@@ -23,7 +23,7 @@ class Api {
 
         // get the HTTP method, path and body of the request
         $this->method = $_SERVER['REQUEST_METHOD'];
-        $this->request = explode('/', trim($_GET['request'], '/'));
+        $this->request = explode('/', trim((string) $_GET['request'], '/'));
 
         // only allow GET requests
         // if at some time POST requests are enabled, check the request's content type (or return 406)
@@ -106,7 +106,7 @@ class Api {
             fclose($return);
         } else {
             // output JSON
-            echo json_encode($output);
+            echo json_encode($output, JSON_THROW_ON_ERROR);
         }
     }
 
@@ -146,7 +146,7 @@ class Api {
                 $debug->log($response['error'], \LOG_ERR);
                 break;
         }
-        echo json_encode($response);
+        echo json_encode($response, JSON_THROW_ON_ERROR);
         exit;
     }
 

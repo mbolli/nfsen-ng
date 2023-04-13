@@ -39,7 +39,7 @@ class Nfdump implements Processor {
         switch ($option) {
             case '-M': // set sources
                 // only sources specified in settings allowed
-                $queried_sources = explode(':', $value);
+                $queried_sources = explode(':', (string) $value);
                 foreach ($queried_sources as $s) {
                     if (!\in_array($s, Config::$cfg['general']['sources'], true)) {
                         continue;
@@ -89,7 +89,7 @@ class Nfdump implements Processor {
         $output = [];
         $processes = [];
         $return = '';
-        $filter = (empty($this->cfg['filter'])) ? '' : ' ' . escapeshellarg($this->cfg['filter']);
+        $filter = (empty($this->cfg['filter'])) ? '' : ' ' . escapeshellarg((string) $this->cfg['filter']);
         $command = $this->cfg['env']['bin'] . ' ' . $this->flatten($this->cfg['option']) . $filter . ' 2>&1';
         $this->d->log('Trying to execute ' . $command, \LOG_DEBUG);
 
@@ -185,7 +185,7 @@ class Nfdump implements Processor {
             if ($value === null) {
                 $output .= $key . ' ';
             } else {
-                $output .= \is_int($key) ?: $key . ' ' . escapeshellarg($value) . ' ';
+                $output .= \is_int($key) ?: $key . ' ' . escapeshellarg((string) $value) . ' ';
             }
         }
 

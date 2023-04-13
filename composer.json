@@ -1,0 +1,34 @@
+{
+    "name": "mbolli/nfsen-ng",
+    "description": "Responsive NetFlow visualizer built on top of nfdump tools",
+    "license": "Apache-2.0",
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "require": {
+        "php": "^7.4 || ^8.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "3.x",
+        "phpstan/phpstan": "^1.9",
+        "vincentlanglet/twig-cs-fixer": "^1.0",
+        "vimeo/psalm": "^5.4"
+    },
+    "scripts": {
+        "before-commit": [
+            "@fix",
+            "@test-phpstan",
+            "@test-psalm"
+        ],
+        "lint": "@fix --dry-run",
+        "lint-diff": "@fix --dry-run --diff",
+        "fix": "php-cs-fixer fix backend --ansi --allow-risky=yes -v --config=./.php-cs-fixer.php",
+        "test-phpstan": "phpstan analyse backend -l 5 -a backend/settings/settings.php",
+        "test-psalm": "psalm --php-version=7.4 --threads=1 --no-diff"
+    },
+    "authors": [
+        {
+            "name": "Michael Bolli",
+            "email": "michael@bolli.us"
+        }
+    ]
+}

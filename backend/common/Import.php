@@ -2,38 +2,30 @@
 
 namespace nfsen_ng\common;
 
-use nfsen_ng\processor\NfDump;
+use nfsen_ng\processor\Nfdump;
 
-class import {
-    private $d;
-    private $cli;
-    private $verbose;
-    private $force;
-    private $quiet;
-    private $processPorts;
-    private $processPortsBySource;
-    private $checkLastUpdate;
-
-    private $days_total = 0;
+class Import {
+    private Debug $d;
+    private bool $cli;
+    private bool $verbose = false;
+    private bool $force = false;
+    private bool $quiet = false;
+    private bool $processPorts = false;
+    private bool $processPortsBySource = false;
+    private bool $checkLastUpdate = false;
 
     public function __construct() {
         $this->d = Debug::getInstance();
-        $this->cli = (PHP_SAPI === 'cli');
-        $this->force = false;
-        $this->verbose = false;
-        $this->quiet = false;
-        $this->processPorts = false;
-        $this->processPortsBySource = false;
-        $this->checkLastUpdate = false;
+        $this->cli = (\PHP_SAPI === 'cli');
         $this->d->setDebug($this->verbose);
     }
 
     /**
      * @throws \Exception
      */
-    public function start(\DateTime $datestart): void {
+    public function start(\DateTime $dateStart): void {
         $sources = Config::$cfg['general']['sources'];
-        $processed_sources = 0;
+        $processedSources = 0;
 
         // if in force mode, reset existing data
         if ($this->force === true) {
@@ -44,139 +36,137 @@ class import {
         }
 
         // start progress bar (CLI only)
-        $this->days_total = ((int) $datestart->diff(new \DateTime())->format('%a') + 1) * \count($sources);
+        $daysTotal = ((int) $dateStart->diff(new \DateTime())->format('%a') + 1) * \count($sources);
         if ($this->cli === true && $this->quiet === false) {
-            echo \PHP_EOL . \vendor\ProgressBar::start($this->days_total, 'Processing ' . \count($sources) . ' sources...');
+            echo \PHP_EOL . \nfsen_ng\vendor\ProgressBar::start($daysTotal, 'Processing ' . \count($sources) . ' sources...');
         }
 
         // process each source, e.g. gateway, mailserver, etc.
         foreach ($sources as $nr => $source) {
-            $source_path = Config::$cfg['nfdump']['profiles-data'] . \DIRECTORY_SEPARATOR . Config::$cfg['nfdump']['profile'];
-            if (!file_exists($source_path)) {
-                throw new \Exception('Could not read nfdump profile directory ' . $source_path);
+            $sourcePath = Config::$cfg['nfdump']['profiles-data'] . \DIRECTORY_SEPARATOR . Config::$cfg['nfdump']['profile'];
+            if (!file_exists($sourcePath)) {
+                throw new \Exception('Could not read nfdump profile directory ' . $sourcePath);
             }
             if ($this->cli === true && $this->quiet === false) {
                 echo \PHP_EOL . 'Processing source ' . $source . ' (' . ($nr + 1) . '/' . \count($sources) . ')...' . \PHP_EOL;
             }
 
-            $date = clone $datestart;
+            $date = clone $dateStart;
 
             // check if we want to continue a stopped import
             // assumes the last update of a source is similar to the last update of its ports...
-            $last_update_db = Config::$db->last_update($source);
+            $lastUpdateDb = Config::$db->last_update($source);
 
-            $last_update = null;
-            if ($last_update_db !== false && $last_update_db !== 0) {
-                $last_update = (new \DateTime())->setTimestamp($last_update_db);
+            $lastUpdate = null;
+            if ($lastUpdateDb !== false && $lastUpdateDb !== 0) {
+                $lastUpdate = (new \DateTime())->setTimestamp($lastUpdateDb);
             }
 
-            if ($this->force === false && isset($last_update)) {
-                $days_saved = (int) $date->diff($last_update)->format('%a');
-                $this->days_total = $this->days_total - $days_saved;
+            if ($this->force === false && isset($lastUpdate)) {
+                $daysSaved = (int) $date->diff($lastUpdate)->format('%a');
+                $daysTotal = $daysTotal - $daysSaved;
                 if ($this->quiet === false) {
-                    $this->d->log('Last update: ' . $last_update->format('Y-m-d H:i'), \LOG_INFO);
+                    $this->d->log('Last update: ' . $lastUpdate->format('Y-m-d H:i'), \LOG_INFO);
                 }
                 if ($this->cli === true && $this->quiet === false) {
-                    \vendor\ProgressBar::setTotal($this->days_total);
+                    \nfsen_ng\vendor\ProgressBar::setTotal($daysTotal);
                 }
 
                 // set progress to the date when the import was stopped
-                $date->setTimestamp($last_update_db);
+                $date->setTimestamp($lastUpdateDb);
                 $date->setTimezone(new \DateTimeZone(date_default_timezone_get()));
             }
 
             // iterate from $datestart until today
             while ((int) $date->format('Ymd') <= (int) (new \DateTime())->format('Ymd')) {
-                $scan = [$source_path, $source, $date->format('Y'), $date->format('m'), $date->format('d')];
-                $scan_path = implode(\DIRECTORY_SEPARATOR, $scan);
+                $scan = [$sourcePath, $source, $date->format('Y'), $date->format('m'), $date->format('d')];
+                $scanPath = implode(\DIRECTORY_SEPARATOR, $scan);
 
                 // set date to tomorrow for next iteration
                 $date->modify('+1 day');
 
                 // if no data exists for current date  (e.g. .../2017/03/03)
-                if (!file_exists($scan_path)) {
-                    $this->d->dpr($scan_path . ' does not exist!');
+                if (!file_exists($scanPath)) {
+                    $this->d->dpr($scanPath . ' does not exist!');
                     if ($this->cli === true && $this->quiet === false) {
-                        echo \vendor\ProgressBar::next(1);
+                        echo \nfsen_ng\vendor\ProgressBar::next(1);
                     }
                     continue;
                 }
 
                 // scan path
-                $this->d->log('Scanning path ' . $scan_path, \LOG_INFO);
-                $scan_files = scandir($scan_path);
+                $this->d->log('Scanning path ' . $scanPath, \LOG_INFO);
+                $scanFiles = scandir($scanPath);
 
                 if ($this->cli === true && $this->quiet === false) {
-                    echo \vendor\ProgressBar::next(1, 'Scanning ' . $scan_path . '...');
+                    echo \nfsen_ng\vendor\ProgressBar::next(1, 'Scanning ' . $scanPath . '...');
                 }
 
-                foreach ($scan_files as $file) {
+                foreach ($scanFiles as $file) {
                     if (\in_array($file, ['.', '..'], true)) {
                         continue;
                     }
 
                     try {
                         // parse date of file name to compare against last_update
-                        preg_match('/nfcapd\.([0-9]{12})$/', $file, $file_date);
-                        if (\count($file_date) !== 2) {
+                        preg_match('/nfcapd\.([0-9]{12})$/', $file, $fileDate);
+                        if (\count($fileDate) !== 2) {
                             throw new \LengthException('Bad file name format of nfcapd file: ' . $file);
                         }
-                        $file_datetime = new \DateTime($file_date[1]);
+                        $fileDatetime = new \DateTime($fileDate[1]);
                     } catch (\LengthException $e) {
                         $this->d->log('Caught exception: ' . $e->getMessage(), \LOG_DEBUG);
                         continue;
                     }
 
                     // compare file name date with last update
-                    if ($file_datetime <= $last_update) {
+                    if ($fileDatetime <= $lastUpdate) {
                         continue;
                     }
 
                     // let nfdump parse each nfcapd file
-                    $stats_path = implode(\DIRECTORY_SEPARATOR, \array_slice($scan, 2, 5)) . \DIRECTORY_SEPARATOR . $file;
+                    $statsPath = implode(\DIRECTORY_SEPARATOR, \array_slice($scan, 2, 5)) . \DIRECTORY_SEPARATOR . $file;
 
                     try {
                         // fill source.rrd
-                        $this->write_source_data($source, $stats_path);
+                        $this->writeSourceData($source, $statsPath);
 
                         // write general port data (queries data for all sources, should only be executed when data for all sources exists...)
                         if ($this->processPorts === true && $nr === \count($sources) - 1) {
-                            $this->write_ports_data($stats_path);
+                            $this->writePortsData($statsPath);
                         }
 
                         // if enabled, process ports per source as well (source_80.rrd)
                         if ($this->processPortsBySource === true) {
-                            $this->write_ports_data($stats_path, $source);
+                            $this->writePortsData($statsPath, $source);
                         }
                     } catch (\Exception $e) {
                         $this->d->log('Caught exception: ' . $e->getMessage(), \LOG_WARNING);
                     }
                 }
             }
-            ++$processed_sources;
+            ++$processedSources;
         }
-        if ($processed_sources === 0) {
+        if ($processedSources === 0) {
             $this->d->log('Import did not process any sources.', \LOG_WARNING);
         }
         if ($this->cli === true && $this->quiet === false) {
-            echo \vendor\ProgressBar::finish();
+            echo \nfsen_ng\vendor\ProgressBar::finish();
         }
     }
 
     /**
-     * @return bool
-     *
      * @throws \Exception
      */
-    private function write_source_data($source, $stats_path) {
+    private function writeSourceData(string $source, string $statsPath): bool {
         // set options and get netflow summary statistics (-I)
-        $nfdump = NfDump::getInstance();
+        $nfdump = Nfdump::getInstance();
         $nfdump->reset();
         $nfdump->setOption('-I', null);
         $nfdump->setOption('-M', $source);
-        $nfdump->setOption('-r', $stats_path);
+        $nfdump->setOption('-r', $statsPath);
 
-        if ($this->db_updateable($stats_path, $source) === false) {
+        if ($this->dbUpdatable($statsPath, $source) === false) {
             return false;
         }
 
@@ -188,7 +178,7 @@ class import {
             return false;
         }
 
-        $date = new \DateTime(mb_substr($stats_path, -12));
+        $date = new \DateTime(mb_substr($statsPath, -12));
         $data = [
             'fields' => [],
             'source' => $source,
@@ -218,57 +208,51 @@ class import {
 
         // write to database
         if (Config::$db->write($data) === false) {
-            throw new \Exception('Error writing to ' . $stats_path);
-        }
-    }
-
-    /**
-     * @param string $source
-     *
-     * @return bool
-     *
-     * @throws \Exception
-     */
-    private function write_ports_data($stats_path, $source = '') {
-        $ports = Config::$cfg['general']['ports'];
-
-        foreach ($ports as $port) {
-            $this->write_port_data($port, $stats_path, $source);
+            throw new \Exception('Error writing to ' . $statsPath);
         }
 
         return true;
     }
 
     /**
-     * @param string $source
-     *
-     * @return bool
-     *
      * @throws \Exception
      */
-    private function write_port_data($port, $stats_path, $source = '') {
+    private function writePortsData(string $statsPath, string $source = ''): bool {
+        $ports = Config::$cfg['general']['ports'];
+
+        foreach ($ports as $port) {
+            $this->writePortData($port, $statsPath, $source);
+        }
+
+        return true;
+    }
+
+    /**
+     * @throws \Exception
+     */
+    private function writePortData(int $port, string $statsPath, string $source = ''): bool {
         $sources = Config::$cfg['general']['sources'];
 
         // set options and get netflow statistics
-        $nfdump = NfDump::getInstance();
+        $nfdump = Nfdump::getInstance();
         $nfdump->reset();
 
         if (empty($source)) {
             // if no source is specified, get data for all sources
             $nfdump->setOption('-M', implode(':', $sources));
-            if ($this->db_updateable($stats_path, '', $port) === false) {
+            if ($this->dbUpdatable($statsPath, '', $port) === false) {
                 return false;
             }
         } else {
             $nfdump->setOption('-M', $source);
-            if ($this->db_updateable($stats_path, $source, $port) === false) {
+            if ($this->dbUpdatable($statsPath, $source, $port) === false) {
                 return false;
             }
         }
 
         $nfdump->setFilter('dst port=' . $port);
         $nfdump->setOption('-s', 'dstport:p');
-        $nfdump->setOption('-r', $stats_path);
+        $nfdump->setOption('-r', $statsPath);
 
         try {
             $input = $nfdump->execute();
@@ -280,7 +264,7 @@ class import {
 
         // parse and turn into usable data
 
-        $date = new \DateTime(mb_substr($stats_path, -12));
+        $date = new \DateTime(mb_substr($statsPath, -12));
         $data = [
             'fields' => [
                 'flows' => 0,
@@ -321,28 +305,30 @@ class import {
 
         // write to database
         if (Config::$db->write($data) === false) {
-            throw new \Exception('Error writing to ' . $stats_path);
+            throw new \Exception('Error writing to ' . $statsPath);
         }
+
+        return true;
     }
 
     /**
      * Import a single nfcapd file.
      */
-    public function import_file(string $file, string $source, bool $last): void {
+    public function importFile(string $file, string $source, bool $last): void {
         try {
             $this->d->log('Importing file ' . $file . ' (' . $source . '), last=' . (int) $last, \LOG_INFO);
 
             // fill source.rrd
-            $this->write_source_data($source, $file);
+            $this->writeSourceData($source, $file);
 
             // write general port data (not depending on source, so only executed per port)
             if ($last === true) {
-                $this->write_ports_data($file);
+                $this->writePortsData($file);
             }
 
             // if enabled, process ports per source as well (source_80.rrd)
             if ($this->processPorts === true) {
-                $this->write_ports_data($file, $source);
+                $this->writePortsData($file, $source);
             }
         } catch (\Exception $e) {
             $this->d->log('Caught exception: ' . $e->getMessage(), \LOG_WARNING);
@@ -352,11 +338,9 @@ class import {
     /**
      * Check if db is free to update (some databases only allow inserting data at the end).
      *
-     * @return bool
-     *
      * @throws \Exception
      */
-    public function db_updateable(string $file, string $source = '', int $port = 0) {
+    public function dbUpdatable(string $file, string $source = '', int $port = 0): bool {
         if ($this->checkLastUpdate === false) {
             return true;
         }
@@ -367,18 +351,18 @@ class import {
             return false;
         } // nothing to import
 
-        $file_datetime = new \DateTime($date[1]);
+        $fileDatetime = new \DateTime($date[1]);
 
         // get last updated time from database
-        $last_update_db = Config::$db->last_update($source, $port);
-        $last_update = null;
-        if ($last_update_db !== false && $last_update_db !== 0) {
-            $last_update = new \DateTime();
-            $last_update->setTimestamp($last_update_db);
+        $lastUpdateDb = Config::$db->last_update($source, $port);
+        $lastUpdate = null;
+        if ($lastUpdateDb !== 0) {
+            $lastUpdate = new \DateTime();
+            $lastUpdate->setTimestamp($lastUpdateDb);
         }
 
         // prevent attempt to import the same file again
-        return $file_datetime > $last_update;
+        return $fileDatetime > $lastUpdate;
     }
 
     public function setVerbose(bool $verbose): void {

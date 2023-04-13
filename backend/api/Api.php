@@ -5,22 +5,18 @@ namespace nfsen_ng\api;
 use nfsen_ng\common\Config;
 use nfsen_ng\common\Debug;
 
-class api {
-    private $method;
-    private $request;
-    private $input;
-    private $d;
+class Api {
+    private string $method;
+    private array $request;
 
     public function __construct() {
-        $this->d = Debug::getInstance();
-
         header('Content-Type: application/json');
         header('X-Content-Type-Options: nosniff');
         header('X-Frame-Options: deny');
 
         // try to read config
         try {
-            Config::initialize();
+            Config::initialize(true);
         } catch (\Exception $e) {
             $this->error(503, $e->getMessage());
         }
@@ -28,7 +24,6 @@ class api {
         // get the HTTP method, path and body of the request
         $this->method = $_SERVER['REQUEST_METHOD'];
         $this->request = explode('/', trim($_GET['request'], '/'));
-        $this->input = json_decode(file_get_contents('php://input'), true);
 
         // only allow GET requests
         // if at some time POST requests are enabled, check the request's content type (or return 406)
@@ -61,8 +56,14 @@ class api {
                 $this->error(400, 'Expected parameter ' . $arg->name);
             }
 
+            /** @var ?\ReflectionNamedType $namedType */
+            $namedType = $arg->getType();
+            if ($namedType === null) {
+                continue;
+            }
+
             // make sure the data types are correct
-            switch ($arg->getType()->getName()) {
+            switch ($namedType->getName()) {
                 case 'int':
                     if (!is_numeric($_REQUEST[$arg->name])) {
                         $this->error(400, 'Expected type int for ' . $arg->name);
@@ -112,9 +113,9 @@ class api {
     /**
      * Helper function, returns the http status and exits the application.
      *
-     * @param string $msg
+     * @return never-returns
      */
-    public function error(int $code, $msg = ''): void {
+    public function error(int $code, string $msg = ''): void {
         http_response_code($code);
         $debug = Debug::getInstance();
 
@@ -166,7 +167,7 @@ class api {
     ) {
         $sources = implode(':', $sources);
 
-        $processor = new Config::$processorClass();
+        $processor = Config::$processorClass;
         $processor->setOption('-M', $sources); // multiple sources
         $processor->setOption('-R', [$datestart, $dateend]); // date range
         $processor->setOption('-n', $top);
@@ -189,12 +190,10 @@ class api {
         $processor->setFilter($filter);
 
         try {
-            $return = $processor->execute();
+            return $processor->execute();
         } catch (\Exception $e) {
             $this->error(503, $e->getMessage());
         }
-
-        return $return;
     }
 
     /**

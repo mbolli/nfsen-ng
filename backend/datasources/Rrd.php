@@ -5,9 +5,9 @@ namespace nfsen_ng\datasources;
 use nfsen_ng\common\Config;
 use nfsen_ng\common\Debug;
 
-class rrd implements Datasource {
-    private $d;
-    private $fields = [
+class Rrd implements Datasource {
+    private Debug $d;
+    private array $fields = [
         'flows',
         'flows_tcp',
         'flows_udp',
@@ -25,7 +25,7 @@ class rrd implements Datasource {
         'bytes_other',
     ];
 
-    private $layout = [
+    private array $layout = [
         '0.5:1:' . ((60 / (1 * 5)) * 24 * 45), // 45 days of 5 min samples
         '0.5:6:' . ((60 / (6 * 5)) * 24 * 90), // 90 days of 30 min samples
         '0.5:24:' . ((60 / (24 * 5)) * 24 * 360), // 360 days of 2 hour samples
@@ -98,7 +98,7 @@ class rrd implements Datasource {
         $start = strtotime('3 years ago');
         $starttime = (int) $start - ($start % 300);
 
-        $creator = new \RRDCreator($rrdFile, $starttime, 60 * 5);
+        $creator = new \RRDCreator($rrdFile, (string) $starttime, 60 * 5);
         foreach ($this->fields as $field) {
             $creator->addDataSource($field . ':ABSOLUTE:600:U:U');
         }
@@ -134,7 +134,7 @@ class rrd implements Datasource {
         // write data
         $updater = new \RRDUpdater($rrdFile);
 
-        return $updater->update($data['fields'], $nearest);
+        return $updater->update($data['fields'], (string) $nearest);
     }
 
     /**
@@ -242,10 +242,9 @@ class rrd implements Datasource {
 
     /**
      * Creates a new database for every source/port combination.
-     *
-     * @return bool
      */
-    public function reset(array $sources) {
+    public function reset(array $sources): bool {
+        $return = false;
         if (empty($sources)) {
             $sources = Config::$cfg['general']['sources'];
         }
@@ -272,13 +271,8 @@ class rrd implements Datasource {
 
     /**
      * Concatenates the path to the source's rrd file.
-     *
-     * @param string $source
-     * @param int    $port
-     *
-     * @return string
      */
-    public function get_data_path($source = '', $port = 0) {
+    public function get_data_path(string $source = '', int $port = 0): string {
         if ((int) $port === 0) {
             $port = '';
         } else {

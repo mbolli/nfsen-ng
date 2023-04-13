@@ -18,9 +18,9 @@
  * Static wrapper class for generating progress bars for cli tasks
  *
  */
-namespace vendor;
+namespace nfsen_ng\vendor;
 
-class progressbar
+class ProgressBar
 {
 
     /**
@@ -234,7 +234,7 @@ class progressbar
     /**
      * change the total on a running progress bar
      *
-     * @param int $total the new number of times we're expecting to run for
+     * @param int|string $total the new number of times we're expecting to run for
      *
      * @static
      * @return void
@@ -247,14 +247,14 @@ class progressbar
     /**
      * Initialize a progress bar
      *
-     * @param mixed $total   number of times we're going to call set
-     * @param int   $message message to prefix the bar with
-     * @param int   $options overrides for default options
+     * @param int|null $total   number of times we're going to call set
+     * @param string   $message message to prefix the bar with
+     * @param array    $options overrides for default options
      *
      * @static
      * @return string - the progress bar string with 0 progress
      */
-    public static function start($total = null, $message = '', $options = array())
+    public static function start(?int $total = null, string $message = '', array $options = [])
     {
         if ($message) {
             $options['message'] = $message;
@@ -269,13 +269,13 @@ class progressbar
     /**
      * Convert a number of seconds into something human readable like "2 days, 4 hrs"
      *
-     * @param int    $seconds how far in the future/past to display
-     * @param string $nowText if there are no seconds, what text to display
+     * @param int|float $seconds how far in the future/past to display
+     * @param string    $nowText if there are no seconds, what text to display
      *
      * @static
      * @return string representation of the time
      */
-    protected static function humanTime($seconds, $nowText = '< 1 sec')
+    protected static function humanTime($seconds, string $nowText = '< 1 sec')
     {
         $prefix = '';
         if ($seconds < 0) {

@@ -2,7 +2,7 @@
 
 namespace nfsen_ng\datasources;
 
-interface datasource {
+interface Datasource {
     /**
      * Writes a new record to the datasource.
      * Expects an array in the following format:
@@ -76,10 +76,8 @@ interface datasource {
     /**
      * Removes all existing data for every source in $sources.
      * If $sources is empty, remove all existing data.
-     *
-     * @return bool
      */
-    public function reset(array $sources);
+    public function reset(array $sources): bool;
 
     /**
      * Gets the timestamps of the first and last entry in the datasource (for this specific source).
@@ -91,12 +89,10 @@ interface datasource {
     /**
      * Gets the timestamp of the last update of the datasource (for this specific source).
      */
-    public function last_update(string $source): int;
+    public function last_update(string $source, int $port = 0): int;
 
     /**
      * Gets the path where the datasource's data is stored.
-     *
-     * @return string
      */
-    public function get_data_path();
+    public function get_data_path(): string;
 }

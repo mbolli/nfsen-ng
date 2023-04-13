@@ -2,19 +2,18 @@
 
 namespace nfsen_ng\common;
 
-class debug {
-    private $stopwatch;
-    private $debug;
-    private $cli;
-    public static $_instance;
+class Debug {
+    private float $stopwatch;
+    private bool $debug = true;
+    private bool $cli;
+    public static self $_instance;
 
     public function __construct() {
         $this->stopwatch = microtime(true);
-        $this->debug = true;
-        $this->cli = (PHP_SAPI === 'cli');
+        $this->cli = (\PHP_SAPI === 'cli');
     }
 
-    public static function getInstance() {
+    public static function getInstance(): self {
         if (!(self::$_instance instanceof self)) {
             self::$_instance = new self();
         }
@@ -37,10 +36,8 @@ class debug {
 
     /**
      * Returns the time passed from initialization.
-     *
-     * @return float|mixed
      */
-    public function stopWatch(bool $precise = false) {
+    public function stopWatch(bool $precise = false): float {
         $result = microtime(true) - $this->stopwatch;
         if ($precise === false) {
             $result = round($result, 4);
@@ -60,7 +57,7 @@ class debug {
         foreach ($mixed as $param) {
             echo ($this->cli) ? \PHP_EOL . $this->stopWatch() . 's ' : "<br /><span style='color: green;'>" . $this->stopWatch() . '</span> ';
             if (\is_array($param)) {
-                echo ($this->cli) ? print_r($mixed, true) : '<pre>', var_dump($mixed), '</pre>';
+                echo ($this->cli) ? print_r($mixed, true) : '<pre>', var_export($mixed, true), '</pre>';
             } else {
                 echo $param;
             }

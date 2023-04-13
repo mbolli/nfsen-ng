@@ -109,7 +109,7 @@ class Import {
 
                     try {
                         // parse date of file name to compare against last_update
-                        preg_match('/nfcapd\.([0-9]{12})$/', $file, $fileDate);
+                        preg_match('/nfcapd\.([0-9]{12})$/', (string) $file, $fileDate);
                         if (\count($fileDate) !== 2) {
                             throw new \LengthException('Bad file name format of nfcapd file: ' . $file);
                         }
@@ -195,10 +195,10 @@ class Import {
             if ($i === 0) {
                 continue;
             } // skip nfdump command
-            if (!preg_match('/:/', $line)) {
+            if (!preg_match('/:/', (string) $line)) {
                 continue;
             } // skip invalid lines like error messages
-            [$type, $value] = explode(': ', $line);
+            [$type, $value] = explode(': ', (string) $line);
 
             // we only need flows/packets/bytes values, the source and the timestamp
             if (preg_match('/^(flows|packets|bytes)/i', $type)) {
@@ -290,7 +290,7 @@ class Import {
                 continue;
             } // skip header
 
-            $proto = mb_strtolower($line[3]);
+            $proto = mb_strtolower((string) $line[3]);
 
             // add protocol-specific
             $data['fields']['flows_' . $proto] = (int) $line[5];

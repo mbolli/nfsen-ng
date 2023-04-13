@@ -26,17 +26,12 @@ class ProgressBar
     /**
      * Merged with options passed in start function
      */
-    protected static $defaults = array(
-        'format' => "\r:message::padding:%.01f%% %2\$d/%3\$d ETC: %4\$s. Elapsed: %5\$s [%6\$s]",
-        'message' => 'Running',
-        'size' => 30,
-        'width' => null
-    );
+    protected static $defaults = ['format' => "\r:message::padding:%.01f%% %2\$d/%3\$d ETC: %4\$s. Elapsed: %5\$s [%6\$s]", 'message' => 'Running', 'size' => 30, 'width' => null];
 
     /**
      * Runtime options
      */
-    protected static $options = array();
+    protected static $options = [];
 
     /**
      * How much have we done already
@@ -140,12 +135,12 @@ class ProgressBar
 
         $width = strlen(preg_replace('@(?:\r|:\w+:)@', '', $return));
 
-        if (strlen(self::$message) > ((int)self::$width - (int)$width - 3)) {
-            $message = substr(self::$message, 0, ((int)self::$width - (int)$width - 4)) . '...';
+        if (strlen((string) self::$message) > ((int)self::$width - (int)$width - 3)) {
+            $message = substr((string) self::$message, 0, ((int)self::$width - (int)$width - 4)) . '...';
             $padding = '';
         } else {
             $message = self::$message;
-            $width += strlen($message);
+            $width += strlen((string) $message);
             $padding = str_repeat(' ', ((int)self::$width - (int)$width));
         }
 
@@ -195,7 +190,7 @@ class ProgressBar
      * @static
      * @return void
      */
-    public static function reset($options = array())
+    public static function reset(array $options = [])
     {
         $options = array_merge(self::$defaults, $options);
 
@@ -299,7 +294,7 @@ class ProgressBar
         }
         $seconds = (int) $seconds;
 
-        $return = array();
+        $return = [];
 
         if ($days) {
             $return[] = "$days days";

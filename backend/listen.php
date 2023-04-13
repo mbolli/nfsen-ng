@@ -1,7 +1,9 @@
 #!/usr/bin/php
 <?php
 /**
- *  daemon for nfsen-ng.
+ * daemon for nfsen-ng.
+ *
+ * @phpstan-return never-return
  */
 spl_autoload_register(function ($class): void {
     $class = mb_strtolower(str_replace('nfsen_ng\\', '', $class));
@@ -40,7 +42,7 @@ fwrite($lock_file, getmypid() . \PHP_EOL);
 
 // first import missed data if available
 $start = new DateTime();
-$start->setDate(date('Y') - 3, date('m'), date('d'));
+$start->setDate(date('Y') - 3, (int) date('m'), (int) date('d'));
 $i = new Import();
 $i->setQuiet(false);
 $i->setVerbose(true);
@@ -51,6 +53,7 @@ $i->start($start);
 
 $d->log('Starting periodic execution', \LOG_INFO);
 
+/* @phpstan-ignore-next-line */
 while (1) {
     // next import in 30 seconds
     sleep(30);

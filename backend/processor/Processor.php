@@ -6,24 +6,24 @@ namespace nfsen_ng\processor;
  * Provides access to netflow data using a model
  * compatible with nfdump commandline options.
  */
-interface processor {
+interface Processor {
     /**
      * Sets an option's value.
+     *
+     * @param string|array|int|null $value
      */
-    public function setOption($option, $value);
+    public function setOption(string $option, $value): void;
 
     /**
      * Sets a filter's value.
      */
-    public function setFilter($filter);
+    public function setFilter(string $filter): void;
 
     /**
      * Executes the processor command, tries to throw an
      * exception based on the return code.
      *
-     * @return array
-     *
      * @throws \Exception
      */
-    public function execute();
+    public function execute(): array;
 }

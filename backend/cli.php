@@ -59,7 +59,7 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
 
         $d->log('CLI: Starting import', \LOG_INFO);
         $start = new DateTime();
-        $start->setDate(date('Y') - 3, date('m'), date('d'));
+        $start->setDate(date('Y') - 3, (int) date('m'), (int) date('d'));
         $i = new Import();
         if (in_array('-v', $argv, true)) {
             $i->setVerbose(true);

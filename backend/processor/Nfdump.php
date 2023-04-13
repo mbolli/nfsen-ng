@@ -5,16 +5,16 @@ namespace nfsen_ng\processor;
 use nfsen_ng\common\Config;
 use nfsen_ng\common\Debug;
 
-class nfdump implements Processor {
-    private $cfg = [
+class Nfdump implements Processor {
+    private array $cfg = [
         'env' => [],
         'option' => [],
         'format' => null,
         'filter' => [],
     ];
-    private $clean;
-    private $d;
-    public static $_instance;
+    private array $clean;
+    private Debug $d;
+    public static self $_instance;
 
     public function __construct() {
         $this->d = Debug::getInstance();
@@ -22,7 +22,7 @@ class nfdump implements Processor {
         $this->reset();
     }
 
-    public static function getInstance() {
+    public static function getInstance(): self {
         if (!(self::$_instance instanceof self)) {
             self::$_instance = new self();
         }
@@ -32,8 +32,10 @@ class nfdump implements Processor {
 
     /**
      * Sets an option's value.
+     *
+     * @param mixed $value
      */
-    public function setOption($option, $value): void {
+    public function setOption(string $option, $value): void {
         switch ($option) {
             case '-M': // set sources
                 // only sources specified in settings allowed
@@ -74,18 +76,16 @@ class nfdump implements Processor {
     /**
      * Sets a filter's value.
      */
-    public function setFilter($filter): void {
+    public function setFilter(string $filter): void {
         $this->cfg['filter'] = $filter;
     }
 
     /**
      * Executes the nfdump command, tries to throw an exception based on the return code.
      *
-     * @return array
-     *
      * @throws \Exception
      */
-    public function execute() {
+    public function execute(): array {
         $output = [];
         $processes = [];
         $return = '';
@@ -110,16 +110,12 @@ class nfdump implements Processor {
         switch ($return) {
             case 127:
                 throw new \Exception('NfDump: Failed to start process. Is nfdump installed? ' . implode(' ', $output));
-                break;
             case 255:
                 throw new \Exception('NfDump: Initialization failed. ' . $command);
-                break;
             case 254:
                 throw new \Exception('NfDump: Error in filter syntax. ' . implode(' ', $output));
-                break;
             case 250:
                 throw new \Exception('NfDump: Internal error. ' . implode(' ', $output));
-                break;
         }
 
         // add command to output
@@ -181,13 +177,8 @@ class nfdump implements Processor {
 
     /**
      * Concatenates key and value of supplied array.
-     *
-     * @return bool|string
      */
-    private function flatten($array) {
-        if (!\is_array($array)) {
-            return false;
-        }
+    private function flatten(array $array): string {
         $output = '';
 
         foreach ($array as $key => $value) {
@@ -218,11 +209,9 @@ class nfdump implements Processor {
      * Converts a time range to a nfcapd file range
      * Ensures that files actually exist.
      *
-     * @return string
-     *
      * @throws \Exception
      */
-    public function convert_date_to_path(int $datestart, int $dateend) {
+    public function convert_date_to_path(int $datestart, int $dateend): string {
         $start = new \DateTime();
         $end = new \DateTime();
         $start->setTimestamp((int) $datestart - ($datestart % 300));
@@ -271,9 +260,9 @@ class nfdump implements Processor {
     }
 
     /**
-     * @return array|string
+     * @param mixed $format
      */
-    public function get_output_format($format) {
+    public function get_output_format($format): array {
         // todo calculations like bps/pps? flows? concatenate sa/sp to sap?
         switch ($format) {
             // nfdump format: %ts %td %pr %sap %dap %pkt %byt %fl

@@ -2,12 +2,15 @@
 
 namespace nfsen_ng\datasources;
 
-class akumuli implements Datasource {
+use nfsen_ng\common\Config;
+use nfsen_ng\common\Debug;
+
+class Akumuli implements Datasource {
     private $d;
     private $client;
 
     public function __construct() {
-        $this->d = \common\Debug::getInstance();
+        $this->d = Debug::getInstance();
         $this->connect();
     }
 
@@ -16,7 +19,7 @@ class akumuli implements Datasource {
      */
     public function connect(): void {
         try {
-            $this->client = stream_socket_client('tcp://' . \common\Config::$cfg['db']['akumuli']['host'] . ':' . \common\Config::$cfg['db']['akumuli']['port'], $errno, $errmsg);
+            $this->client = stream_socket_client('tcp://' . Config::$cfg['db']['akumuli']['host'] . ':' . Config::$cfg['db']['akumuli']['port'], $errno, $errmsg);
 
             if ($this->client === false) {
                 throw new \Exception('Failed to connect to Akumuli: ' . $errmsg);
@@ -29,7 +32,7 @@ class akumuli implements Datasource {
     /**
      * Convert data to redis-compatible string and write to Akumuli.
      *
-     * @return string
+     * @return string|bool
      */
     public function write(array $data) {
         $fields = array_keys($data['fields']);
@@ -94,8 +97,9 @@ class akumuli implements Datasource {
      *  )
      * );
      */
-    public function get_graph_data(int $start, int $end, array $sources, array $protocols, string $type) {
+    public function get_graph_data(int $start, int $end, array $sources, array $protocols, array $ports, string $type = 'flows', string $display = 'sources'): array {
         // TODO: Implement get_graph_data() method.
+        return [];
     }
 
     /**
@@ -105,31 +109,31 @@ class akumuli implements Datasource {
      */
     public function date_boundaries(string $source): array {
         // TODO: Implement date_boundaries() method.
+        return [];
     }
 
     /**
      * Gets the timestamp of the last update of the datasource (for this specific source).
      */
-    public function last_update(string $source): int {
+    public function last_update(string $source, int $port = 0): int {
         // TODO: Implement last_update() method.
+        return 0;
     }
 
     /**
      * Gets the path where the datasource's data is stored.
-     *
-     * @return string
      */
-    public function get_data_path() {
+    public function get_data_path(): string {
         // TODO: Implement get_data_path() method.
+        return '';
     }
 
     /**
      * Removes all existing data for every source in $sources.
      * If $sources is empty, remove all existing data.
-     *
-     * @return bool
      */
-    public function reset(array $sources) {
+    public function reset(array $sources): bool {
         // TODO: Implement reset() method.
+        return true;
     }
 }

@@ -105,7 +105,7 @@ Ubuntu 20.04 LTS:
  chmod +x nfsen-ng/backend/cli.php
  # next step: configuration
  ```
- Debian 11 :
+ Debian 11 *Bullseys* and 12 *Bookworm*:
  
  ```bash
 # run following commands as root
@@ -116,7 +116,7 @@ a2enmod rewrite deflate headers expires
 # install rrd library for php
 pecl install rrd
 # create rrd library mod entry for php
-echo "extension=rrd.so" > /etc/php/7.4/mods-available/rrd.ini
+echo "extension=rrd.so" > /etc/php/*/mods-available/rrd.ini
 # enable php mod
 phpenmod rrd
 # configure virtual host to read .htaccess files

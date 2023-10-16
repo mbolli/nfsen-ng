@@ -32,8 +32,6 @@ class Nfdump implements Processor {
 
     /**
      * Sets an option's value.
-     *
-     * @param mixed $value
      */
     public function setOption(string $option, $value): void {
         switch ($option) {
@@ -259,27 +257,14 @@ class Nfdump implements Processor {
         return $filestart . \PATH_SEPARATOR . $fileend;
     }
 
-    /**
-     * @param mixed $format
-     */
     public function get_output_format($format): array {
         // todo calculations like bps/pps? flows? concatenate sa/sp to sap?
-        switch ($format) {
-            // nfdump format: %ts %td %pr %sap %dap %pkt %byt %fl
-            // csv output: ts,te,td,sa,da,sp,dp,pr,flg,fwd,stos,ipkt,ibyt,opkt,obyt,in,out,sas,das,smk,dmk,dtos,dir,nh,nhb,svln,dvln,ismc,odmc,idmc,osmc,mpls1,mpls2,mpls3,mpls4,mpls5,mpls6,mpls7,mpls8,mpls9,mpls10,cl,sl,al,ra,eng,exid,tr
-            case 'line':
-                return ['ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'ibyt', 'fl'];
-                // nfdump format: %ts %td %pr %sap %dap %flg %tos %pkt %byt %fl
-            case 'long':
-                return ['ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'flg', 'stos', 'dtos', 'ipkt', 'ibyt', 'fl'];
-                // nfdump format: %ts %td %pr %sap %dap %pkt %byt %pps %bps %bpp %fl
-            case 'extended':
-                return ['ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'ibyt', 'ibps', 'ipps', 'ibpp'];
-            case 'full':
-                return ['ts', 'te', 'td', 'sa', 'da', 'sp', 'dp', 'pr', 'flg', 'fwd', 'stos', 'ipkt', 'ibyt', 'opkt', 'obyt', 'in', 'out', 'sas', 'das', 'smk', 'dmk', 'dtos', 'dir', 'nh', 'nhb', 'svln', 'dvln', 'ismc', 'odmc', 'idmc', 'osmc', 'mpls1', 'mpls2', 'mpls3', 'mpls4', 'mpls5', 'mpls6', 'mpls7', 'mpls8', 'mpls9', 'mpls10', 'cl', 'sl', 'al', 'ra', 'eng', 'exid', 'tr'];
-
-            default:
-                return explode(' ', str_replace(['fmt:', '%'], '', $format));
-        }
+        return match ($format) {
+            'line' => ['ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'ibyt', 'fl'],
+            'long' => ['ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'flg', 'stos', 'dtos', 'ipkt', 'ibyt', 'fl'],
+            'extended' => ['ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'ibyt', 'ibps', 'ipps', 'ibpp'],
+            'full' => ['ts', 'te', 'td', 'sa', 'da', 'sp', 'dp', 'pr', 'flg', 'fwd', 'stos', 'ipkt', 'ibyt', 'opkt', 'obyt', 'in', 'out', 'sas', 'das', 'smk', 'dmk', 'dtos', 'dir', 'nh', 'nhb', 'svln', 'dvln', 'ismc', 'odmc', 'idmc', 'osmc', 'mpls1', 'mpls2', 'mpls3', 'mpls4', 'mpls5', 'mpls6', 'mpls7', 'mpls8', 'mpls9', 'mpls10', 'cl', 'sl', 'al', 'ra', 'eng', 'exid', 'tr'],
+            default => explode(' ', str_replace(['fmt:', '%'], '', (string) $format)),
+        };
     }
 }

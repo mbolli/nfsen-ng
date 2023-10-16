@@ -64,7 +64,7 @@ class Import {
 
             if ($this->force === false && isset($lastUpdate)) {
                 $daysSaved = (int) $date->diff($lastUpdate)->format('%a');
-                $daysTotal = $daysTotal - $daysSaved;
+                $daysTotal -= $daysSaved;
                 if ($this->quiet === false) {
                     $this->d->log('Last update: ' . $lastUpdate->format('Y-m-d H:i'), \LOG_INFO);
                 }
@@ -384,9 +384,6 @@ class Import {
         $this->quiet = $quiet;
     }
 
-    /**
-     * @param mixed $processPortsBySource
-     */
     public function setProcessPortsBySource($processPortsBySource): void {
         $this->processPortsBySource = $processPortsBySource;
     }

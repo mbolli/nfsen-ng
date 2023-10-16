@@ -106,7 +106,7 @@ class Api {
             fclose($return);
         } else {
             // output JSON
-            echo json_encode($output, JSON_THROW_ON_ERROR);
+            echo json_encode($output, \JSON_THROW_ON_ERROR);
         }
     }
 
@@ -146,7 +146,7 @@ class Api {
                 $debug->log($response['error'], \LOG_ERR);
                 break;
         }
-        echo json_encode($response, JSON_THROW_ON_ERROR);
+        echo json_encode($response, \JSON_THROW_ON_ERROR);
         exit;
     }
 
@@ -269,8 +269,7 @@ class Api {
         return $graph;
     }
 
-    public function graph_stats(): void {
-    }
+    public function graph_stats(): void {}
 
     /**
      * Get config info.

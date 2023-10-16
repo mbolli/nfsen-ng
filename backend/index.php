@@ -1,7 +1,7 @@
 <?php
 
 spl_autoload_register(function ($class): void {
-    $class = mb_strtolower(str_replace('nfsen_ng\\', '', (string) $class));
+    $class = str_replace('nfsen_ng\\', '', (string) $class);
     include_once __DIR__ . \DIRECTORY_SEPARATOR . str_replace('\\', \DIRECTORY_SEPARATOR, $class) . '.php';
 });
 

@@ -7,6 +7,7 @@ class Debug {
     private bool $debug = true;
     private bool $cli;
     public static self $_instance;
+    public static ?self $_instance = null;
 
     public function __construct() {
         $this->stopwatch = microtime(true);

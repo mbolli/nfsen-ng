@@ -21,8 +21,7 @@ abstract class Config {
     public static Processor $processorClass;
     private static bool $initialized = false;
 
-    private function __construct() {
-    }
+    private function __construct() {}
 
     public static function initialize(bool $initProcessor = false): void {
         if (self::$initialized === true) {

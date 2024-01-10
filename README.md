@@ -26,6 +26,8 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 
 ## Installation
 
+We try to support a decent range of Linux distributions. Additional installation instructions are available in [INSTALL.md](./INSTALL.md). Pull requests for additional distributions are welcome.
+
  Ubuntu 22.04 LTS:
  
  ```bash

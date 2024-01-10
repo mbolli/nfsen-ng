@@ -1,12 +1,12 @@
 <?php
 
-namespace nfsen_ng\datasources;
+namespace mbolli\nfsen_ng\datasources;
 
-use nfsen_ng\common\Config;
-use nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Debug;
 
 class Akumuli implements Datasource {
-    private $d;
+    private readonly Debug $d;
     private $client;
 
     public function __construct() {
@@ -31,10 +31,8 @@ class Akumuli implements Datasource {
 
     /**
      * Convert data to redis-compatible string and write to Akumuli.
-     *
-     * @return string|bool
      */
-    public function write(array $data) {
+    public function write(array $data): bool {
         $fields = array_keys($data['fields']);
         $values = array_values($data['fields']);
 
@@ -97,7 +95,7 @@ class Akumuli implements Datasource {
      *  )
      * );
      */
-    public function get_graph_data(int $start, int $end, array $sources, array $protocols, array $ports, string $type = 'flows', string $display = 'sources'): array {
+    public function get_graph_data(int $start, int $end, array $sources, array $protocols, array $ports, string $type = 'flows', string $display = 'sources'): array|string {
         // TODO: Implement get_graph_data() method.
         return [];
     }

@@ -5,14 +5,11 @@
  *
  * @phpstan-return never-return
  */
-spl_autoload_register(function ($class): void {
-    $class = mb_strtolower(str_replace('nfsen_ng\\', '', (string) $class));
-    include_once __DIR__ . \DIRECTORY_SEPARATOR . str_replace('\\', \DIRECTORY_SEPARATOR, $class) . '.php';
-});
+include_once implode(\DIRECTORY_SEPARATOR, [__DIR__, '..', 'vendor', 'autoload.php']);
 
-use nfsen_ng\common\Config;
-use nfsen_ng\common\Debug;
-use nfsen_ng\common\Import;
+use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\Import;
 
 ini_set('display_errors', true);
 ini_set('error_reporting', \E_ALL);
@@ -63,5 +60,6 @@ while (1) {
 }
 
 // all done; blank the PID file and explicitly release the lock
+/* @phpstan-ignore-next-line */
 ftruncate($lock_file, 0);
 flock($lock_file, \LOCK_UN);

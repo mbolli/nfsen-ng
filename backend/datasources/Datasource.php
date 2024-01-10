@@ -1,6 +1,6 @@
 <?php
 
-namespace nfsen_ng\datasources;
+namespace mbolli\nfsen_ng\datasources;
 
 interface Datasource {
     /**
@@ -32,7 +32,7 @@ interface Datasource {
      *
      * @throws \Exception on error
      */
-    public function write(array $data);
+    public function write(array $data): bool;
 
     /**
      * Gets data for plotting the graph in the frontend.
@@ -71,7 +71,7 @@ interface Datasource {
         array $ports,
         string $type = 'flows',
         string $display = 'sources'
-    );
+    ): array|string;
 
     /**
      * Removes all existing data for every source in $sources.

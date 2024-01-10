@@ -1,13 +1,10 @@
 #!/usr/bin/env php
 <?php
-spl_autoload_register(function ($class): void {
-    $class = mb_strtolower(str_replace('nfsen_ng\\', '', $class));
-    include_once __DIR__ . \DIRECTORY_SEPARATOR . str_replace('\\', \DIRECTORY_SEPARATOR, $class) . '.php';
-});
+include_once implode(\DIRECTORY_SEPARATOR, [__DIR__, '..', 'vendor', 'autoload.php']);
 
-use nfsen_ng\common\Config;
-use nfsen_ng\common\Debug;
-use nfsen_ng\common\Import;
+use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\Import;
 
 $d = Debug::getInstance();
 try {

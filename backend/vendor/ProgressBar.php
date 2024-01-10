@@ -18,7 +18,7 @@
  * Static wrapper class for generating progress bars for cli tasks
  *
  */
-namespace nfsen_ng\vendor;
+namespace mbolli\nfsen_ng\vendor;
 
 class ProgressBar
 {

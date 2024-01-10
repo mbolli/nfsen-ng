@@ -1,12 +1,13 @@
 <?php
 
-namespace nfsen_ng\datasources;
+namespace mbolli\nfsen_ng\datasources;
 
-use nfsen_ng\common\Config;
-use nfsen_ng\common\Debug;
+use JetBrains\PhpStorm\ExpectedValues;
+use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Debug;
 
 class Rrd implements Datasource {
-    private Debug $d;
+    private readonly Debug $d;
     private array $fields = [
         'flows',
         'flows_tcp',
@@ -68,10 +69,8 @@ class Rrd implements Datasource {
      *
      * @param string $source e.g. gateway or server_xyz
      * @param bool   $reset  overwrites existing RRD file if true
-     *
-     * @return bool
      */
-    public function create(string $source, int $port = 0, bool $reset = false) {
+    public function create(string $source, int $port = 0, bool $reset = false): bool {
         $rrdFile = $this->get_data_path($source, $port);
 
         // check if folder exists
@@ -119,11 +118,9 @@ class Rrd implements Datasource {
     /**
      * Write to an RRD file with supplied data.
      *
-     * @return bool
-     *
      * @throws \Exception
      */
-    public function write(array $data) {
+    public function write(array $data): bool {
         $rrdFile = $this->get_data_path($data['source'], $data['port']);
         if (!file_exists($rrdFile)) {
             $this->create($data['source'], $data['port'], false);
@@ -141,8 +138,6 @@ class Rrd implements Datasource {
     /**
      * @param string $type    flows/packets/traffic
      * @param string $display protocols/sources/ports
-     *
-     * @return array|string
      */
     public function get_graph_data(
         int $start,
@@ -150,9 +145,11 @@ class Rrd implements Datasource {
         array $sources,
         array $protocols,
         array $ports,
+        #[ExpectedValues(['flows', 'packets', 'traffic'])]
         string $type = 'flows',
+        #[ExpectedValues(['protocols', 'sources', 'ports'])]
         string $display = 'sources'
-    ) {
+    ): array|string {
         $options = [
             '--start',
             $start - ($start % 300),

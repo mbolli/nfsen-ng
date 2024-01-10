@@ -14,7 +14,7 @@ class Nfdump implements Processor {
     ];
     private array $clean;
     private readonly Debug $d;
-    public static self $_instance;
+    public static ?self $_instance = null;
 
     public function __construct() {
         $this->d = Debug::getInstance();

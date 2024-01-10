@@ -1,12 +1,12 @@
 <?php
 
-namespace nfsen_ng\common;
+namespace mbolli\nfsen_ng\common;
 
-use nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\processor\Nfdump;
 
 class Import {
-    private Debug $d;
-    private bool $cli;
+    private readonly Debug $d;
+    private readonly bool $cli;
     private bool $verbose = false;
     private bool $force = false;
     private bool $quiet = false;
@@ -38,7 +38,7 @@ class Import {
         // start progress bar (CLI only)
         $daysTotal = ((int) $dateStart->diff(new \DateTime())->format('%a') + 1) * \count($sources);
         if ($this->cli === true && $this->quiet === false) {
-            echo \PHP_EOL . \nfsen_ng\vendor\ProgressBar::start($daysTotal, 'Processing ' . \count($sources) . ' sources...');
+            echo \PHP_EOL . \mbolli\nfsen_ng\vendor\ProgressBar::start($daysTotal, 'Processing ' . \count($sources) . ' sources...');
         }
 
         // process each source, e.g. gateway, mailserver, etc.
@@ -69,7 +69,7 @@ class Import {
                     $this->d->log('Last update: ' . $lastUpdate->format('Y-m-d H:i'), \LOG_INFO);
                 }
                 if ($this->cli === true && $this->quiet === false) {
-                    \nfsen_ng\vendor\ProgressBar::setTotal($daysTotal);
+                    \mbolli\nfsen_ng\vendor\ProgressBar::setTotal($daysTotal);
                 }
 
                 // set progress to the date when the import was stopped
@@ -89,7 +89,7 @@ class Import {
                 if (!file_exists($scanPath)) {
                     $this->d->dpr($scanPath . ' does not exist!');
                     if ($this->cli === true && $this->quiet === false) {
-                        echo \nfsen_ng\vendor\ProgressBar::next(1);
+                        echo \mbolli\nfsen_ng\vendor\ProgressBar::next(1);
                     }
                     continue;
                 }
@@ -99,7 +99,7 @@ class Import {
                 $scanFiles = scandir($scanPath);
 
                 if ($this->cli === true && $this->quiet === false) {
-                    echo \nfsen_ng\vendor\ProgressBar::next(1, 'Scanning ' . $scanPath . '...');
+                    echo \mbolli\nfsen_ng\vendor\ProgressBar::next(1, 'Scanning ' . $scanPath . '...');
                 }
 
                 foreach ($scanFiles as $file) {
@@ -151,7 +151,7 @@ class Import {
             $this->d->log('Import did not process any sources.', \LOG_WARNING);
         }
         if ($this->cli === true && $this->quiet === false) {
-            echo \nfsen_ng\vendor\ProgressBar::finish();
+            echo \mbolli\nfsen_ng\vendor\ProgressBar::finish();
         }
     }
 

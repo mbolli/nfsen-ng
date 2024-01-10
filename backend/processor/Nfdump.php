@@ -1,9 +1,9 @@
 <?php
 
-namespace nfsen_ng\processor;
+namespace mbolli\nfsen_ng\processor;
 
-use nfsen_ng\common\Config;
-use nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Debug;
 
 class Nfdump implements Processor {
     private array $cfg = [
@@ -13,7 +13,7 @@ class Nfdump implements Processor {
         'filter' => [],
     ];
     private array $clean;
-    private Debug $d;
+    private readonly Debug $d;
     public static self $_instance;
 
     public function __construct() {

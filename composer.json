@@ -5,14 +5,21 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "php": "^8.0"
+        "php": "^8.1",
+        "ext-rrd": "*"
     },
     "require-dev": {
         "friendsofphp/php-cs-fixer": "3.x",
+        "jetbrains/phpstorm-attributes": "^1.0",
         "phpstan/phpstan": "^1.9",
-        "vincentlanglet/twig-cs-fixer": "^1.0",
+        "rector/rector": "^0.19.0",
         "vimeo/psalm": "^5.4",
-        "rector/rector": "^0.18.5"
+        "vincentlanglet/twig-cs-fixer": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "mbolli\\nfsen_ng\\": "backend/"
+        }
     },
     "scripts": {
         "before-commit": [
@@ -24,12 +31,15 @@
         "lint-diff": "@fix --dry-run --diff",
         "fix": "php-cs-fixer fix backend --ansi --allow-risky=yes -v --config=./.php-cs-fixer.php",
         "test-phpstan": "phpstan analyse backend -l 5 -a backend/settings/settings.php",
-        "test-psalm": "psalm --php-version=7.4 --threads=1 --no-diff"
+        "test-psalm": "psalm --php-version=8.2 --threads=1 --no-diff"
     },
     "authors": [
         {
             "name": "Michael Bolli",
             "email": "michael@bolli.us"
         }
-    ]
+    ],
+    "config": {
+        "sort-packages": true
+    }
 }

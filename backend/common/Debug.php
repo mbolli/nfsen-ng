@@ -1,12 +1,11 @@
 <?php
 
-namespace nfsen_ng\common;
+namespace mbolli\nfsen_ng\common;
 
 class Debug {
-    private float $stopwatch;
+    private readonly float $stopwatch;
     private bool $debug = true;
-    private bool $cli;
-    public static self $_instance;
+    private readonly bool $cli;
     public static ?self $_instance = null;
 
     public function __construct() {

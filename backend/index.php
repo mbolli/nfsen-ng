@@ -1,11 +1,8 @@
 <?php
 
-spl_autoload_register(function ($class): void {
-    $class = str_replace('nfsen_ng\\', '', (string) $class);
-    include_once __DIR__ . \DIRECTORY_SEPARATOR . str_replace('\\', \DIRECTORY_SEPARATOR, $class) . '.php';
-});
+include_once implode(\DIRECTORY_SEPARATOR, [__DIR__, '..', 'vendor', 'autoload.php']);
 
-use nfsen_ng\api\Api;
+use mbolli\nfsen_ng\api\Api;
 
 ini_set('display_errors', true);
 ini_set('error_reporting', \E_ALL);

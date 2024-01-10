@@ -1,12 +1,12 @@
 <?php
 
-namespace nfsen_ng\api;
+namespace mbolli\nfsen_ng\api;
 
-use nfsen_ng\common\Config;
-use nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Debug;
 
 class Api {
-    private string $method;
+    private readonly string $method;
     private array $request;
 
     public function __construct() {

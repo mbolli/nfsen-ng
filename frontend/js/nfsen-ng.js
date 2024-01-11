@@ -715,7 +715,8 @@ $(document).ready(function() {
                     labels: labels,
                     ylabel: type.toUpperCase() + '/s',
                     xlabel: 'TIME',
-                    labelsKMG2: true,
+                    labelsKMB: type === 'flows' || type === 'packets',
+                    labelsKMG2: type === 'bits' || type === 'bytes', // only show KMG for traffic, not for packets or flows
                     labelsDiv: $('#legend')[0],
                     labelsSeparateLines: true,
                     legend: 'always',
@@ -743,6 +744,8 @@ $(document).ready(function() {
                     // series: series,
                     // axes: axes,
                     ylabel: type.toUpperCase() + '/s',
+                    labelsKMB: type === 'flows' || type === 'packets',
+                    labelsKMG2: type === 'bits' || type === 'bytes', // only show KMG for traffic, not for packets or flows
                     title: title,
                     labels: labels,
                     file: dygraph_data,

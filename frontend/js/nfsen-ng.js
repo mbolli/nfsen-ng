@@ -294,11 +294,12 @@ $(document).ready(function() {
 
     var setButtonLoading = function($button, setTo = true) {
         $button.toggleClass('disabled', setTo);
-        if (setTo === false || $button.data('old-text')) {
+        if (setTo === false && $button.data('old-text') !== undefined) {
             $button.html($button.data('old-text'));
+            $button.data('old-text', undefined);
         } else {
             $button.data('old-text', $button.html());
-            $button.html('<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span role="status">&nbsp;Loading...</span>');
+            $button.html('<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span role="status">&nbsp;Loading&#133;</span>');
         }
     }
 
@@ -313,7 +314,7 @@ $(document).ready(function() {
 
         // warn user of long-running query
         if (date_diff*count_sources > 1000*24*60*60*12) {
-            var count_days = parseInt(date_diff/1000/24/60/60),
+            var count_days = Number(date_diff/1000/24/60/60),
                 calc_info = count_days + ' days and ' + count_sources + ' sources';
             do_continue = confirm('Be aware that nfdump will scan 288 capture files per day and source. You selected ' + calc_info + '. This might take a long time and lots of server resources. Are you sure you want to submit this query?');
         }
@@ -954,12 +955,12 @@ $(document).ready(function() {
 
             // print nfdump command
             if (typeof data[0] === 'string') {
-                display_message('success', 'nfdump command: ' + data[0].toString())
+                display_message('success', '<b>nfdump command:</b> ' + data[0].toString())
             }
 
             // return if invalid data got returned
             if (typeof data[1] !== 'object') {
-                display_message('warning', 'something went wrong. ' + data[1].toString());
+                display_message('warning', '<b>something went wrong.</b> ' + data[1].toString());
                 return false;
             }
 

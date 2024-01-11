@@ -145,7 +145,7 @@ class Rrd implements Datasource {
         array $sources,
         array $protocols,
         array $ports,
-        #[ExpectedValues(['flows', 'packets', 'traffic'])]
+        #[ExpectedValues(['flows', 'packets', 'bytes', 'bits'])]
         string $type = 'flows',
         #[ExpectedValues(['protocols', 'sources', 'ports'])]
         string $display = 'sources'
@@ -161,6 +161,12 @@ class Rrd implements Datasource {
             // '--step', 1200, // by default, rrdtool tries to get data for each row. if you want rrdtool to get data at a one-hour resolution, set step to 3600.
             '--json',
         ];
+
+        $useBits = false;
+        if ($type === 'bits') {
+            $type = 'bytes';
+            $useBits = true;
+        }
 
         if (empty($protocols)) {
             $protocols = ['tcp', 'udp', 'icmp', 'other'];
@@ -224,6 +230,10 @@ class Rrd implements Datasource {
                 // ignore non-valid measures
                 if (is_nan($measure)) {
                     $measure = null;
+                }
+
+                if ($type === 'bytes' && $useBits) {
+                    $measure *= 8;
                 }
 
                 // add measure to output array

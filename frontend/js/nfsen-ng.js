@@ -649,112 +649,114 @@ $(document).ready(function() {
 
         // make actual request
         $.get('../api/graph', api_graph_options, function (data, status) {
-            if (status === 'success') {
-                if (data.data.length === 0) return false;
+            if (status !== 'success') {
+                display_message('warning', 'There somehow was a problem getting data, please check your form values.');
+                return false;
+            }
 
-                var labels = ['Date'], index_to_insert = false;
+            if (data.data.length === 0) {
+                return false;
+            }
 
-                // iterate over labels
-                $('#series').empty();
-                $.each(data.legend, function (id, legend) {
-                    labels.push(legend);
+            var labels = ['Date'], index_to_insert = false;
 
-                    $('#series').append('<label><input type="checkbox" checked> ' + legend + '</label>');
+            // iterate over labels
+            $('#series').empty();
+            $.each(data.legend, function (id, legend) {
+                labels.push(legend);
+
+                $('#series').append('<label><input type="checkbox" checked> ' + legend + '</label>');
+            });
+
+            // transform data to something Dygraph understands
+            if (dygraph_did_zoom !== true) {
+                // reset dygraph data to get a fresh load
+                dygraph_data = [];
+            } else {
+                // delete values to replace
+                for (var i = 0; i < dygraph_data.length; i++) {
+                    if (dygraph_data[i][0].getTime() >= dygraph_daterange[0].getTime() && dygraph_data[i][0].getTime() <= dygraph_daterange[1].getTime()) {
+                        // set start index for the new values
+                        if (index_to_insert === false) index_to_insert = i;
+
+                        // delete current element from array
+                        dygraph_data.splice(i, 1);
+
+                        // decrease current index, as all array elements moved left on deletion
+                        i--;
+                    }
+                }
+            }
+
+            // iterate over API result
+            $.each(data.data, function (datetime, series) {
+                var position = [new Date(datetime * 1000)];
+
+                // add all serie values to position array
+                $.each(series, function (y, val) {
+                    position.push(val);
                 });
 
-                // transform data to something Dygraph understands
+                // push position array to dygraph data
                 if (dygraph_did_zoom !== true) {
-                    // reset dygraph data to get a fresh load
-                    dygraph_data = [];
+                    dygraph_data.push(position);
                 } else {
-                    // delete values to replace
-                    for (var i = 0; i < dygraph_data.length; i++) {
-                        if (dygraph_data[i][0].getTime() >= dygraph_daterange[0].getTime() && dygraph_data[i][0].getTime() <= dygraph_daterange[1].getTime()) {
-                            // set start index for the new values
-                            if (index_to_insert === false) index_to_insert = i;
-
-                            // delete current element from array
-                            dygraph_data.splice(i, 1);
-
-                            // decrease current index, as all array elements moved left on deletion
-                            i--;
-                        }
-                    }
+                    // when zoomed in, insert position array at the start index of replacement data
+                    dygraph_data.splice(index_to_insert, 0, position);
+                    index_to_insert++; // increase index, or data will get inserted backwards
                 }
+            });
 
-                // iterate over API result
-                $.each(data.data, function (datetime, series) {
-                    var position = [new Date(datetime * 1000)];
-
-                    // add all serie values to position array
-                    $.each(series, function (y, val) {
-                        position.push(val);
-                    });
-
-                    // push position array to dygraph data
-                    if (dygraph_did_zoom !== true) {
-                        dygraph_data.push(position);
-                    } else {
-                        // when zoomed in, insert position array at the start index of replacement data
-                        dygraph_data.splice(index_to_insert, 0, position);
-                        index_to_insert++; // increase index, or data will get inserted backwards
-                    }
-                });
-
-                if (typeof dygraph === 'undefined') {
-                    // initial dygraph config:
-                    dygraph_config = {
-                        title: title,
-                        labels: labels,
-                        ylabel: type.toUpperCase() + '/s',
-                        xlabel: 'TIME',
-                        labelsKMG2: true,
-                        labelsDiv: $('#legend')[0],
-                        labelsSeparateLines: true,
-                        legend: 'always',
-                        stepPlot: true,
-                        showRangeSelector: true,
-                        dateWindow: [dygraph_data[0][0], dygraph_data[dygraph_data.length - 1][0]],
-                        zoomCallback: dygraph_zoom,
-                        clickCallback: dygraph_click,
-                        highlightSeriesOpts: {
-                            strokeWidth: 2,
-                            strokeBorderWidth: 1,
-                            highlightCircleSize: 5
-                        },
-                        rangeSelectorPlotStrokeColor: '#888888',
-                        rangeSelectorPlotFillColor: '#cccccc',
-                        stackedGraph: true,
-                        fillGraph: true,
-                    };
-                    dygraph = new Dygraph($('#flowDiv')[0], dygraph_data, dygraph_config);
-                    init_dygraph_mods();
-
-                } else {
-                    // update dygraph config
-                    dygraph_config = {
-                        // series: series,
-                        // axes: axes,
-                        ylabel: type.toUpperCase() + '/s',
-                        title: title,
-                        labels: labels,
-                        file: dygraph_data,
-                    };
-
-                    if (dygraph_did_zoom === true) {
-                        dygraph_config.dateWindow = dygraph_daterange;
-                    } else {
-                        // reset date window if we want to show entirely new data
-                        dygraph_config.dateWindow = null;
-                    }
-
-                    dygraph.updateOptions(dygraph_config);
-                }
-                dygraph_did_zoom = false;
+            if (typeof dygraph === 'undefined') {
+                // initial dygraph config:
+                dygraph_config = {
+                    title: title,
+                    labels: labels,
+                    ylabel: type.toUpperCase() + '/s',
+                    xlabel: 'TIME',
+                    labelsKMG2: true,
+                    labelsDiv: $('#legend')[0],
+                    labelsSeparateLines: true,
+                    legend: 'always',
+                    stepPlot: true,
+                    showRangeSelector: true,
+                    dateWindow: [dygraph_data[0][0], dygraph_data[dygraph_data.length - 1][0]],
+                    zoomCallback: dygraph_zoom,
+                    clickCallback: dygraph_click,
+                    highlightSeriesOpts: {
+                        strokeWidth: 2,
+                        strokeBorderWidth: 1,
+                        highlightCircleSize: 5
+                    },
+                    rangeSelectorPlotStrokeColor: '#888888',
+                    rangeSelectorPlotFillColor: '#cccccc',
+                    stackedGraph: true,
+                    fillGraph: true,
+                };
+                dygraph = new Dygraph($('#flowDiv')[0], dygraph_data, dygraph_config);
+                init_dygraph_mods();
 
             } else {
-                display_message('warning', 'There somehow was a problem getting data, please check your form values.');
+                // update dygraph config
+                dygraph_config = {
+                    // series: series,
+                    // axes: axes,
+                    ylabel: type.toUpperCase() + '/s',
+                    title: title,
+                    labels: labels,
+                    file: dygraph_data,
+                };
+
+                if (dygraph_did_zoom === true) {
+                    dygraph_config.dateWindow = dygraph_daterange;
+                } else {
+                    // reset date window if we want to show entirely new data
+                    dygraph_config.dateWindow = null;
+                }
+
+                dygraph.updateOptions(dygraph_config);
             }
+            dygraph_did_zoom = false;
         });
     }
 

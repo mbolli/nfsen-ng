@@ -108,13 +108,13 @@ class Nfdump implements Processor {
 
         switch ($return) {
             case 127:
-                throw new \Exception('NfDump: Failed to start process. Is nfdump installed? ' . implode(' ', $output));
+                throw new \Exception('NfDump: Failed to start process. Is nfdump installed? ' . '<br><b>Output:</b> ' . implode(' ', $output));
             case 255:
-                throw new \Exception('NfDump: Initialization failed. ' . $command);
+                throw new \Exception('NfDump: Initialization failed. ' . $command . '<br><b>Output:</b> ' . implode(' ', $output));
             case 254:
-                throw new \Exception('NfDump: Error in filter syntax. ' . implode(' ', $output));
+                throw new \Exception('NfDump: Error in filter syntax. ' . '<br><b>Output:</b> ' . implode(' ', $output));
             case 250:
-                throw new \Exception('NfDump: Internal error. ' . implode(' ', $output));
+                throw new \Exception('NfDump: Internal error. ' . '<br><b>Output:</b> ' . implode(' ', $output));
         }
 
         // add command to output

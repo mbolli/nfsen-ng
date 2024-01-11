@@ -82,7 +82,7 @@
                         </div>
                     </div>
 
-                    <div id="filterProtocols" class="hidden col-xs-12 col-sm-6 col-md-4" data-view="graphs" data-display="sources protocols ports">
+                    <div id="filterProtocols" class="hidden col-xs-12 col-sm-6 col-md-4 col-lg-3" data-view="graphs" data-display="sources protocols ports">
                         <h3>Protocols</h3>
 
                         <div id="filterProtocolButtons" class="btn-group btn-group-md" data-toggle="buttons">
@@ -94,13 +94,22 @@
                         </div>
                     </div>
 
-                    <div id="filterTypes" class="hidden col-xs-12 col-sm-6 col-md-3" data-view="graphs" data-display="sources protocols ports">
+                    <div id="filterTypes" class="hidden col-xs-12 col-sm-6 col-md-3 col-lg-2" data-view="graphs" data-display="sources protocols ports">
                         <h3>Data Type</h3>
 
                         <div class="btn-group btn-group-md" data-toggle="buttons">
-                            <label class="btn btn-default active"><input type="radio" name="datatype"  value="flows" checked>Flows</label>
-                            <label class="btn btn-default"><input type="radio" name="datatype"  value="packets">Packets</label>
-                            <label class="btn btn-default"><input type="radio" name="datatype"  value="bytes">Traffic</label>
+                            <label class="btn btn-default active"><input type="radio" name="datatype" value="flows" checked>Flows</label>
+                            <label class="btn btn-default"><input type="radio" name="datatype" value="packets">Packets</label>
+                            <label class="btn btn-default"><input type="radio" name="datatype" value="traffic">Traffic</label>
+                        </div>
+                    </div>
+
+                    <div id="trafficUnit" class="hidden col-xs-6 col-sm-3 col-md-2 col-lg-2" data-view="graphs" data-display="sources protocols ports">
+                        <h3>Traffic unit</h3>
+
+                        <div class="btn-group btn-group-md" data-toggle="buttons">
+                            <label class="btn btn-default active"><input type="radio" name="trafficUnit" value="bits" checked>Bits</label>
+                            <label class="btn btn-default"><input type="radio" name="trafficUnit" value="bytes">Bytes</label>
                         </div>
                     </div>
 

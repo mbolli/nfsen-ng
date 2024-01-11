@@ -229,11 +229,11 @@ $(document).ready(function() {
     });
 
     /**
-     * datatype filter (flows/packets/bytes)
+     * datatype filter (flows/packets/traffic)
      * reload the graph... you get it by now
      */
     $(document).on('change', '#filterTypes input', updateGraph);
-
+    $(document).on('change', '#trafficUnit input', updateGraph);
     $(document).on('change', '#filterPortsSelect', updateGraph);
 
     /**
@@ -612,6 +612,7 @@ $(document).ready(function() {
         }
         if ($('#flowDiv:visible').length === 0) return;
         if (ports.length === 0) ports = [0];
+        if (type === 'traffic') type = $('#trafficUnit input:checked').val();
 
         // set options
         api_graph_options = {

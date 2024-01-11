@@ -24,7 +24,7 @@ $nfsen_config = [
             'view' => 'graphs', // graphs, flows, statistics
             'graphs' => [
                 'display' => 'sources', // sources, protocols, ports
-                'datatype' => 'flows', // flows, packets, bytes
+                'datatype' => 'flows', // flows, packets, traffic
                 'protocols' => ['any'], // any, tcp, udp, icmp, others (multiple possible if display=protocols)
             ],
             'flows' => [

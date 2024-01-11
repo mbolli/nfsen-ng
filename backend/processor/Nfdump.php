@@ -108,20 +108,20 @@ class Nfdump implements Processor {
 
         switch ($return) {
             case 127:
-                throw new \Exception('NfDump: Failed to start process. Is nfdump installed? ' . '<br><b>Output:</b> ' . implode(' ', $output));
+                throw new \Exception('NfDump: Failed to start process. Is nfdump installed? <br><b>Output:</b> ' . implode(' ', $output));
             case 255:
                 throw new \Exception('NfDump: Initialization failed. ' . $command . '<br><b>Output:</b> ' . implode(' ', $output));
             case 254:
-                throw new \Exception('NfDump: Error in filter syntax. ' . '<br><b>Output:</b> ' . implode(' ', $output));
+                throw new \Exception('NfDump: Error in filter syntax. <br><b>Output:</b> ' . implode(' ', $output));
             case 250:
-                throw new \Exception('NfDump: Internal error. ' . '<br><b>Output:</b> ' . implode(' ', $output));
+                throw new \Exception('NfDump: Internal error. <br><b>Output:</b> ' . implode(' ', $output));
         }
 
         // add command to output
         array_unshift($output, $command);
 
-        // if last element contains a colon, it's not a csv - todo better check?
-        if (preg_match('/:/', $output[\count($output) - 1])) {
+        // if last element contains a colon, it's not a csv
+        if (str_contains($output[\count($output) - 1], ':')) {
             return $output; // return output if it is a flows/packets/bytes dump
         }
 

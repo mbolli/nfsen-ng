@@ -87,6 +87,7 @@ class Nfdump implements Processor {
         $output = [];
         $processes = [];
         $return = '';
+        $timer = microtime(true);
         $filter = (empty($this->cfg['filter'])) ? '' : ' ' . escapeshellarg((string) $this->cfg['filter']);
         $command = $this->cfg['env']['bin'] . ' ' . $this->flatten($this->cfg['option']) . $filter . ' 2>&1';
         $this->d->log('Trying to execute ' . $command, \LOG_DEBUG);
@@ -169,6 +170,9 @@ class Nfdump implements Processor {
             ksort($temp_line);
             $line = array_values($temp_line);
         }
+
+        // add execution time to output
+        $output[0] .= '<br><b>Execution time:</b> ' . round(microtime(true) - $timer, 3) . ' seconds';
 
         return array_values($output);
     }

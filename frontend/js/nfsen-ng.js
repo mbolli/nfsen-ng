@@ -77,12 +77,12 @@ $(document).ready(function() {
         var $filter = $('#filter').find('[data-view]');
         var $content = $('#contentDiv').find('div.content');
 
-        $('header li').removeClass('active');
-        $(this).parent().addClass('active');
+        $('header li a').removeClass('active');
+        $(this).addClass('active');
 
         var showDivs = function(id, el) {
-            if ($(el).attr('data-view').indexOf(view) !== -1) $(el).removeClass('hidden');
-            else $(el).addClass('hidden');
+            if ($(el).attr('data-view').indexOf(view) !== -1) $(el).removeClass('d-none');
+            else $(el).addClass('d-none');
         };
 
         // show the right divs
@@ -177,10 +177,10 @@ $(document).ready(function() {
      */
     $(document).on('change', '#filterDisplaySelect', function() {
         var display = $(this).val(), displayId;
-        var $filters = $('#filter').find('[data-display]').addClass('hidden');
+        var $filters = $('#filter').find('[data-display]').addClass('d-none');
 
         // show only wanted filters
-        $filters.filter('[data-display*=' + display + ']').removeClass('hidden');
+        $filters.filter('[data-display*=' + display + ']').removeClass('d-none');
 
         switch (display) {
             case 'sources':
@@ -198,7 +198,8 @@ $(document).ready(function() {
         }
 
         // initialize tooltips
-        $('[data-toggle="tooltip"]').tooltip();
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
+        const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
 
         // try to update graph
         updateGraph();
@@ -290,11 +291,21 @@ $(document).ready(function() {
         $('#filterOutputSelection').prop('disabled', disabled).toggleClass('disabled', disabled);
     });
 
+    var setButtonLoading = function($button, setTo = true) {
+        $button.toggleClass('disabled', setTo);
+        if (setTo === false || $button.data('old-text')) {
+            $button.html($button.data('old-text'));
+        } else {
+            $button.data('old-text', $button.html());
+            $button.html('<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span role="status">&nbsp;Loading...</span>');
+        }
+    }
+
     /**
      * Process flows/statistics form submission
      */
-    $(document).on('click', '#filterCommands .submit', function() {
-        var current_view = $(this).attr('data-view'),
+    $(document).on('click', '#filterCommands .submit', function () {
+        var current_view = $('.nav-link.active').attr('data-view'),
             do_continue = true,
             date_diff = date_range.options.to-date_range.options.from,
             count_sources = $('#filterSourcesSelect').val().length;
@@ -315,8 +326,8 @@ $(document).ready(function() {
             $(this).remove();
         });
 
-        $(this).button('loading');
-
+        // set button to loading state
+        setButtonLoading($(this));
     });
 
     /**
@@ -362,7 +373,7 @@ $(document).ready(function() {
         }
 
         // show graph for one year by default
-        $('#date_slot').find('[data-unit="y"]').parent().trigger('click');
+        $('#date_slot').find('[data-unit="y"]').trigger('click');
     }
 
     /**
@@ -694,7 +705,7 @@ $(document).ready(function() {
                         labels: labels,
                         ylabel: type.toUpperCase() + '/s',
                         xlabel: 'TIME',
-                        labelsKMB: true,
+                        labelsKMG2: true,
                         labelsDiv: $('#legend')[0],
                         labelsSeparateLines: true,
                         legend: 'always',
@@ -752,25 +763,34 @@ $(document).ready(function() {
     function display_message(severity, message) {
         var current_view = $('header').find('li.active a').attr('data-view'),
             $error = $('#error'),
-            $buttons = $('button[data-loading-text][data-view=' + current_view +']'),
+            $buttons = $('button.submit'),
             icon;
 
         switch (severity) {
-            case 'success': icon = 'ok'; break;
-            case 'info': icon = 'certificate'; break;
-            case 'warning': icon = 'warning-sign'; break;
-            case 'danger': icon = 'alert'; break;
+            case 'success': icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill" viewBox="0 0 16 16">\n' +
+                '  <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>\n' +
+                '</svg>&nbsp;'; break;
+            case 'info': icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle-fill" viewBox="0 0 16 16">\n' +
+                '  <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2"/>\n' +
+                '</svg>&nbsp;'; break;
+            case 'warning': icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-triangle" viewBox="0 0 16 16">\n' +
+                '  <path d="M7.938 2.016A.13.13 0 0 1 8.002 2a.13.13 0 0 1 .063.016.15.15 0 0 1 .054.057l6.857 11.667c.036.06.035.124.002.183a.2.2 0 0 1-.054.06.1.1 0 0 1-.066.017H1.146a.1.1 0 0 1-.066-.017.2.2 0 0 1-.054-.06.18.18 0 0 1 .002-.183L7.884 2.073a.15.15 0 0 1 .054-.057m1.044-.45a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767z"/>\n' +
+                '  <path d="M7.002 12a1 1 0 1 1 2 0 1 1 0 0 1-2 0M7.1 5.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0z"/>\n' +
+                '</svg>&nbsp;'; break;
+            case 'danger': icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-triangle-fill" viewBox="0 0 16 16">\n' +
+                '  <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/>\n' +
+                '</svg>&nbsp;'; break;
         }
 
         // create new error element
-        $error.append('<div class="alert alert-dismissible" role="alert"><button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
+        $error.append('<div class="alert alert-dismissible mt-2" role="alert"><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>');
 
         // fill
-        $error.find('div.alert').last().addClass('alert-' + severity).append('<span class="glyphicon glyphicon-' + icon + '" aria-hidden="true"></span> ' + message);
+        $error.find('div.alert').last().addClass('alert-' + severity).prepend(icon + message);
 
         // set default text to buttons, if needed
         $buttons.each(function() {
-           $(this).button('reset');
+           setButtonLoading($(this), false);
         });
 
         // empty data table
@@ -990,7 +1010,7 @@ $(document).ready(function() {
         }
 
         // reset button label
-        $('#filterCommands').find('.submit').button('reset');
+        setButtonLoading($('#filterCommands').find('.submit'), false);
     }
 
 
@@ -1000,8 +1020,8 @@ $(document).ready(function() {
     $(document).on('change', '#filterOutputSelection', function() {
 
         // if "custom" is selected, show "customFlowListOutputFormat" otherwise hide it
-        if ($(this).val() === 'custom') $('#customListOutputFormat').removeClass('hidden');
-        else $('#customListOutputFormat').addClass('hidden');
+        if ($(this).val() === 'custom') $('#customListOutputFormat').removeClass('d-none');
+        else $('#customListOutputFormat').addClass('d-none');
     });
 
     /**
@@ -1042,16 +1062,16 @@ $(document).ready(function() {
             case 'none':
             case 'srcip':
             case 'dstip':
-                $prefixDiv.addClass('hidden');
+                $prefixDiv.addClass('d-none');
                 break;
             case 'srcip4':
             case 'dstip4':
-                $prefixDiv.removeClass('hidden');
+                $prefixDiv.removeClass('d-none');
                 $prefixDiv.find('input').attr('maxlength', 2).val('24');
                 break;
             case 'srcip6':
             case 'dstip6':
-                $prefixDiv.removeClass('hidden');
+                $prefixDiv.removeClass('d-none');
                 $prefixDiv.find('input').attr('maxlength', 3).val('128');
                 break;
         }
@@ -1075,10 +1095,10 @@ $(document).ready(function() {
 
         // uncheck protocol buttons and transform to radio buttons
         $protocolButtons.find('label').removeClass('active');
-        $protocolButtons.find('label input').prop('checked', false).attr('type', 'radio');
+        $protocolButtons.find('input').prop('checked', false).attr('type', 'radio');
 
-        // select TCP proto as default
-        $protocolButtons.find('label:first').addClass('active').find('input').prop('checked',true);
+        // select Any proto as default
+        $protocolButtons.find('[for="filterProtocolAny"]').click();
     }
 
     /**
@@ -1097,8 +1117,8 @@ $(document).ready(function() {
         $sourceSelect.find('option:not([disabled]):first').prop('selected', true);
 
         // protocol buttons become checkboxes and get checked by default
-        $protocolButtons.find('label').removeClass('active').filter(function() { return $(this).find('input').val() !== 'any'}).addClass('active');
-        $protocolButtons.find('label input').attr('type', 'checkbox').prop('checked', false).filter('[value!="any"]').prop('checked', true);
+        $protocolButtons.find('label').removeClass('active').filter(() => $(this).find('input').val() !== 'any').click();
+        $protocolButtons.find('input').attr('type', 'checkbox').prop('checked', false).filter('[value!="any"]').click();
     }
 
     /**

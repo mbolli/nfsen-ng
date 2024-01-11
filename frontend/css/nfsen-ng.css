@@ -1,11 +1,6 @@
 /* general */
-
-header {
-    margin-top: 1vw;
-}
-
-header .reload {
-    padding: 10px 15px;
+.btn.disabled, .btn:disabled, fieldset:disabled .btn {
+    opacity: .3;
 }
 
 textarea {
@@ -16,18 +11,9 @@ code, pre, .code {
     font-family: Menlo, Monaco, Consolas, "Courier New", monospace
 }
 
-h3, h4 {
+.h5, .h6 {
     text-transform: uppercase;
     font-weight: bold;
-    font-size: 1.5rem;
-}
-
-ul.nav-tabs {
-    border: none;
-}
-
-#contentDiv {
-    overflow-x: auto;
 }
 
 /* graph */
@@ -60,13 +46,12 @@ ul.nav-tabs {
 /* graph options */
 
 .accordion h4:after {
-    font-family: "Glyphicons Halflings";
-    content: "\e114";
+    content: "\25B2";
     float: right;
 }
 
 .accordion h4.collapsed:after {
-    content: "\e080";
+    content: "\25BC";
 }
 
 /* flows */

@@ -1,4 +1,5 @@
-var config,
+var enable_graph = false,
+    config,
     dygraph,
     dygraph_config,
     dygraph_data,
@@ -372,6 +373,7 @@ $(document).ready(function() {
             $('header li a').eq(0).trigger('click');
         }
 
+        enable_graph = true;
         // show graph for one year by default
         $('#date_slot').find('[data-unit="y"]').trigger('click');
     }
@@ -607,6 +609,7 @@ $(document).ready(function() {
      * and tries to display the received data in the dygraph.
      */
     function updateGraph() {
+        if (enable_graph === false) return false;
         var sources = $('#filterSourcesSelect').val(),
             type = $('#filterTypes input:checked').val(),
             ports = $('#filterPortsSelect').val(),

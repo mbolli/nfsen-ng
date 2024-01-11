@@ -10,7 +10,7 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 **Used components**
 
  * Front end: [jQuery](https://jquery.com), [dygraphs](http://dygraphs.com), [FooTable](http://fooplugins.github.io/FooTable/), [ion.rangeSlider](http://ionden.com/a/plugins/ion.rangeSlider/en.html)
- * Back end:  [RRDtool](http://oss.oetiker.ch/rrdtool/), [nfdump tools](https://github.com/phaag/nfdump) 
+ * Back end: [RRDtool](http://oss.oetiker.ch/rrdtool/), [nfdump tools](https://github.com/phaag/nfdump)
 
 ## TOC
 
@@ -29,7 +29,7 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 We try to support a decent range of Linux distributions. Additional installation instructions are available in [INSTALL.md](./INSTALL.md). Pull requests for additional distributions are welcome.
 
  Ubuntu 22.04 LTS:
- 
+
  ```bash
  # run following commands as root
  # install packages
@@ -53,7 +53,7 @@ We try to support a decent range of Linux distributions. Additional installation
  chmod +x nfsen-ng/backend/cli.php
  # next step: configuration
  ```
- 
+
 ## Configuration
 
 > *Note:* nfsen-ng expects the profiles-data folder structure to be `PROFILES_DATA_PATH/PROFILE/SOURCE/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`, e.g. `/var/nfdump/profiles_data/live/source1/2018/12/01/nfcapd.201812010225`.
@@ -62,10 +62,10 @@ The default settings file is `backend/settings/settings.php.dist`. Copy it to `b
 
  * **general**
     * **ports:** (_array(80, 23, 22, ...)_) The ports to examine. _Note:_ If you use RRD as datasource and want to import existing data, you might keep the number of ports to a minimum, or the import time will be measured in moon cycles...
-    * **sources:** (_array('source1', ...)_) The sources to scan. 
+    * **sources:** (_array('source1', ...)_) The sources to scan.
     * **db:** (_RRD_) The name of the datasource class (case-sensitive).
  * **frontend**
-    * **reload_interval:** Interval in seconds between graph reloads. 
+    * **reload_interval:** Interval in seconds between graph reloads.
  * **nfdump**
     * **binary:** (_/usr/bin/nfdump_) The location of your nfdump executable
     * **profiles-data:** (_/var/nfdump/profiles_data_) The location of your nfcapd files
@@ -74,15 +74,15 @@ The default settings file is `backend/settings/settings.php.dist`. Copy it to `b
  * **db** If the used data source needs additional configuration, you can specify it here, e.g. host and port.
  * **log**
     * **priority:** (_LOG_INFO_) see other possible values at [http://php.net/manual/en/function.syslog.php]
-    
+
 ## CLI
 
 The command line interface is used to initially scan existing nfcapd.* files, or to administer the daemon.
 
-Usage: 
-  
+Usage:
+
   `./cli.php [ options ] import`
-  
+
 or for the daemon
 
   `./cli.php start|stop|status`
@@ -99,7 +99,7 @@ or for the daemon
      * **start** Start the daemon for continuous reading of new data
      * **stop** Stop the daemon
      * **status** Get the daemon's status
-        
+
  * **Examples:**
      * `./cli.php -f import`
         Imports fresh data for sources
@@ -109,7 +109,7 @@ or for the daemon
 
      * `./cli.php start`
         Starts the daemon
-        
-        
+
+
 ## API
 The API is used by the frontend to retrieve data. The API endpoints are documented in [API_ENDPOINTS.md](./API_ENDPOINTS.md).

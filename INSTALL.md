@@ -1,7 +1,7 @@
 # nfsen-ng installation
 
 Ubuntu 20.04 LTS:
- 
+
  ```bash
  # run following commands as root
  # install packages
@@ -9,7 +9,7 @@ Ubuntu 20.04 LTS:
  # enable apache modules
  a2enmod rewrite deflate headers expires
  # install rrd library for php
- pecl install rrd 
+ pecl install rrd
  # create rrd library mod entry for php
  echo "extension=rrd.so" > /etc/php/7.4/mods-available/rrd.ini
  # enable php mod
@@ -25,9 +25,9 @@ Ubuntu 20.04 LTS:
  chmod +x nfsen-ng/backend/cli.php
  # next step: configuration
  ```
- 
+
  Ubuntu 22.04 LTS:
- 
+
  ```bash
  # run following commands as root
  # install packages
@@ -52,7 +52,7 @@ Ubuntu 20.04 LTS:
  # next step: configuration
  ```
  Debian 11 :
- 
+
  ```bash
 # run following commands as root
 # install packages
@@ -77,7 +77,7 @@ chmod +x nfsen-ng/backend/cli.php
 # next step: configuration
  ```
 
- 
+
  CentOS 7:
 
  ```bash

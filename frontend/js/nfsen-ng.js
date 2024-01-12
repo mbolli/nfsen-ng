@@ -14,7 +14,54 @@ var enable_graph = false,
     api_flows_options,
     api_statistics_options,
     nfdump_translation = {ff: 'flow record flags in hex', ts: 'Start Time - first seen', te: 'End Time - last seen', tr: 'Time the flow was received by the collector', td: 'Duration', pr: 'Protocol', exp: 'Exporter ID', eng: 'Engine Type/ID', sa: 'Source Address', da: 'Destination Address', sap: 'Source Address:Port', dap: 'Destination Address:Port', sp: 'Source Port', dp: 'Destination Port', sn: 'Source Network (mask applied)', dn: 'Destination Network (mask applied)', nh: 'Next-hop IP Address', nhb: 'BGP Next-hop IP Address', ra: 'Router IP Address', sas: 'Source AS', das: 'Destination AS', nas: 'Next AS', pas: 'Previous AS', in: 'Input Interface num', out: 'Output Interface num', pkt: 'Packets - default input', ipkt: 'Input Packets', opkt: 'Output Packets', byt: 'Bytes - default input', ibyt: 'Input Bytes', obyt: 'Output Bytes', fl: 'Flows', flg: 'TCP Flags', tos: 'Tos - default src', stos: 'Src Tos', dtos: 'Dst Tos', dir: 'Direction: ingress, egress', smk: 'Src mask', dmk: 'Dst mask', fwd: 'Forwarding Status', svln: 'Src vlan label', dvln: 'Dst vlan label', ismc: 'Input Src Mac Addr', odmc: 'Output Dst Mac Addr', idmc: 'Input Dst Mac Addr', osmc: 'Output Src Mac Addr', pps: 'Packets per second', bps: 'Bytes per second', bpp: 'Bytes per packet', flP: 'Flows (%)', ipktP: 'Input Packets (%)', opktP: 'Output Packets (%)', ibytP: 'Input Bytes (%)', obytP: 'Output Bytes (%)', ipps: 'Input Packets/s', ibps: 'Input Bytes/s', ibpp: 'Input Bytes/Packet', pktP: 'Packets (%)', bytP: 'Bytes (%)'},
-    views_view_status = {graphs: false, flows: false, statistics: false};
+    views_view_status = {graphs: false, flows: false, statistics: false},
+    ip_link_handler = (a) => {
+        const ip = a.innerHTML;
+        const ignoredFields = ['country_', 'timezone_', 'currency_'];
+        const checkIp = async (ip) => {
+            const ipWhoisResponse = await fetch('https://ipwhois.app/json/' + ip);
+            const ipWhoisData = await ipWhoisResponse.json();
+
+            const hostResponse = await fetch('../api/host/?ip=' + ip);
+            const hostData = (!hostResponse.ok) ? 'IP could not be resolved' : await hostResponse.json();
+
+            return {
+                ipWhoisData: ipWhoisData,
+                hostData: hostData
+            }
+        }
+
+        const modal = new bootstrap.Modal('#modal', {});
+        const modalTitle = document.querySelector('#modal .modal-title');
+        const modalBody = document.querySelector('#modal .modal-body');
+        const modalLoader = document.querySelector('#modal .modal-loader');
+        modalBody.innerHTML = modalLoader.outerHTML;
+        modalBody.querySelector('.modal-loader').classList.remove('d-none');
+        modalTitle.innerHTML = 'Info for IP: ' + ip;
+        modal.show();
+
+        // make request and display data
+        checkIp(ip).then((data) => {
+            console.log(data);
+
+            // create table
+            let markup = '<table class="table table-striped">';
+            for (const [key, value] of Object.entries(data.ipWhoisData)) {
+                // if key starts with any of ignoredFields values, skip it
+                if (ignoredFields.some(field => key.startsWith(field))) continue;
+                markup += '<tr><th>' + key + '</th><td>' + value + '</td></tr>';
+            }
+            markup += '</table>';
+
+            // add heading and flag
+            let flag = data.ipWhoisData.country_flag ? '<img src="' + data.ipWhoisData.country_flag + '" alt="' + data.ipWhoisData.country + '" title="' + data.ipWhoisData.country + '" style="width: 3rem" />' : '';
+            let heading = '<h3>' + ip + ' ' + flag + '</h3>';
+            heading += '<h4>Host: ' + data.hostData + '</h4>';
+
+            // replace loader with content
+            modalBody.innerHTML = heading + markup;
+        });
+    };
 
 $(document).ready(function() {
 
@@ -981,6 +1028,12 @@ $(document).ready(function() {
                         type: 'text',
                         breakpoints: 'xs sm',
                     };
+
+                // add formatter for ip addresses
+                if (['sa', 'da'].indexOf(val) !== -1 || val.match(/ip$/i)) {
+                    column['formatter'] = (ip) => "<a href='#' onclick='return ip_link_handler(this)'>" + ip + "</a>";
+                }
+
                 // todo add date formatter for timestamps?
                 if (['ts', 'te', 'tr'].indexOf(val) !== -1) {
                     column['breakpoints'] = '';

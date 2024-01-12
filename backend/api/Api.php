@@ -113,9 +113,9 @@ class Api {
     /**
      * Helper function, returns the http status and exits the application.
      *
-     * @return never-returns
+     * @throws \JsonException
      */
-    public function error(int $code, string $msg = ''): void {
+    public function error(int $code, string $msg = ''): never {
         http_response_code($code);
         $debug = Debug::getInstance();
 
@@ -296,5 +296,31 @@ class Api {
             'daemon_running' => $daemon_running,
             'frontend' => $frontend,
         ];
+    }
+
+    /**
+     * executes the host command with a timeout of 5 seconds.
+     */
+    public function host(string $ip): string {
+        try {
+            // check ip format
+            if (!filter_var($ip, \FILTER_VALIDATE_IP)) {
+                $this->error(400, 'Invalid IP address');
+            }
+
+            exec('host -W 5 ' . $ip, $output, $return_var);
+            if ($return_var !== 0) {
+                $this->error(404, 'Host command failed');
+            }
+
+            $output = implode(' ', $output);
+            if (!preg_match('/domain name pointer (.*)\./', $output, $matches)) {
+                $this->error(500, "Could not parse host output: {$output}");
+            }
+
+            return $matches[1];
+        } catch (\Exception $e) {
+            $this->error(500, $e->getMessage());
+        }
     }
 }

@@ -971,6 +971,7 @@ $(document).ready(function() {
             var tempcolumns = data[1],
                 columns = [];
 
+            // generate column definitions
             $.each(tempcolumns, function (i, val) {
                 // todo optimize breakpoints
                 var title = (val === 'val') ? api_statistics_options.title : nfdump_translation[val],
@@ -980,29 +981,43 @@ $(document).ready(function() {
                         type: 'text',
                         breakpoints: 'xs sm',
                     };
+                // todo add date formatter for timestamps?
                 if (['ts', 'te', 'tr'].indexOf(val) !== -1) {
                     column['breakpoints'] = '';
                     column['type'] = 'text'; // 'date' needs moment.js library...
-                } else if (['ibyt', 'obyt', 'bpp', 'bps', 'byt', 'ibps', 'obps', 'ibpp', 'obpp'].indexOf(val) !== -1) {
+                }
+
+                // add formatter for bytes
+                if (['ibyt', 'obyt', 'bpp', 'bps', 'byt', 'ibps', 'obps', 'ibpp', 'obpp'].indexOf(val) !== -1) {
                     column['type'] = 'number';
                     column['formatter'] = (x) => filesize(x, {
                         base: 10, // todo make configurable
                     });
-                } else if (['sp', 'dp', 'td', 'fl', 'flP', 'pkt', 'ipkt', 'opkt', 'ipktP', 'opktP', 'ibytP', 'obytP', 'ipps', 'opps', 'pktP', 'bytP'].indexOf(val) !== -1) {
+                }
+
+                // add formatter for big numbers
+                if (['td', 'fl', 'pkt', 'ipkt', 'opkt', 'ipps', 'opps'].indexOf(val) !== -1) {
                     column['type'] = 'number';
                     column['formatter'] = numberWithCommas
-                } else if (['sa', 'da', 'pr', 'val'].indexOf(val) !== -1) {
+                }
+
+                // define rest of numbers
+                if (['sp', 'dp', 'flP', 'ipktP', 'opktP', 'ibytP', 'obytP', 'pktP', 'bytP'].indexOf(val) !== -1) {
+                    column['type'] = 'number';
+                }
+
+                // ip addresses, protocol, value should not be hidden on small screens
+                if (['sa', 'da', 'pr', 'val'].indexOf(val) !== -1) {
                     column['breakpoints'] = '';
-                    column['type'] = 'text';
-                } else if (['dtos', 'stos', 'tos', 'ipkt', 'opkt', 'ibyt', 'obyt', 'fl'].indexOf(val) !== -1) {
-                    column['breakpoints'] = 'xs sm md';
-                } else if (['flg', 'fwd', 'in', 'out', 'sas', 'das'].indexOf(val) !== -1) {
+                }
+
+                // least important columns should be hidden on small screens
+                if (['flg', 'fwd', 'in', 'out', 'sas', 'das'].indexOf(val) !== -1) {
                     column['breakpoints'] = 'all';
                     column['type'] = 'text';
-                } else {
-                    column['breakpoints'] = '';
-                    column['type'] = 'text';
                 }
+
+                // add column to columns array
                 columns.push(column);
             });
 

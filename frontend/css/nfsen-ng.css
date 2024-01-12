@@ -1,4 +1,12 @@
 /* general */
+
+/* light grey background for active nav links */
+.nav-tabs .nav-link.active {
+    --bs-nav-tabs-link-active-bg: rgba(var(--bs-light-rgb),1);
+    border-bottom: 1px solid rgb(var(--bs-light-rgb));
+    font-weight: bold;
+}
+
 .btn.disabled, .btn:disabled, fieldset:disabled .btn {
     opacity: .3;
 }

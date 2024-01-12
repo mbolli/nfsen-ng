@@ -51,6 +51,8 @@ We try to support a decent range of Linux distributions. Additional installation
  git clone https://github.com/mbolli/nfsen-ng
  chown -R www-data:www-data .
  chmod +x nfsen-ng/backend/cli.php
+ # install composer via https://getcomposer.org/download/
+ composer install --no-dev # bootstrap autoloading
  # next step: configuration
  ```
 

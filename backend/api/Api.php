@@ -183,9 +183,6 @@ class Api {
         if (!empty($limit)) {
             $processor->setOption('-l', $limit);
         } // todo -L for traffic, -l for packets
-        if ($output['ipv6'] === true) {
-            $processor->setOption('-6', null);
-        }
 
         $processor->setFilter($filter);
 
@@ -229,9 +226,6 @@ class Api {
 
         if (!empty($sort)) {
             $processor->setOption('-O', 'tstart');
-        }
-        if ($output['ipv6'] === true) {
-            $processor->setOption('-6', null);
         }
         if (!empty($aggregate_command)) {
             $processor->setOption('-a', $aggregate_command);

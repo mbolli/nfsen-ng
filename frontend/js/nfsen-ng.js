@@ -407,6 +407,8 @@ $(document).ready(function() {
      * - select default view if set in the config
      */
     function init() {
+        // set version
+        $('#version').html(config.version);
 
         // load values for form
         updateDropdown('sources', config['sources']);

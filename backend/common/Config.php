@@ -6,6 +6,7 @@ use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\Processor;
 
 abstract class Config {
+    public const VERSION = 'v0.3';
     /**
      * @var array{
      *     general: array{ports: int[], sources: string[], db: string, processor: string},

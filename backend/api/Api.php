@@ -295,6 +295,7 @@ class Api {
             'stored_filters' => $stored_filters,
             'daemon_running' => $daemon_running,
             'frontend' => $frontend,
+            'version' => Config::VERSION,
         ];
     }
 

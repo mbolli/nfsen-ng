@@ -1,4 +1,26 @@
 /* general */
+:root {
+    --bs-primary: #ccc;
+}
+
+.nav {
+    --bs-nav-link-color: #000;
+    --bs-link-color-rgb: 0,0,0;
+}
+
+.btn-outline-primary {
+    --bs-btn-bg: #fff;
+    --bs-btn-color: #000;
+    --bs-btn-border-color: #ccc;
+    --bs-btn-hover-bg: #ccc;
+    --bs-btn-hover-border-color: #ccc;
+    --bs-btn-active-bg: #ccc;
+    --bs-btn-active-border-color: #ccc;
+    --bs-btn-active-color: #000;
+    --bs-gradient: linear-gradient(#000 0%, #fff 100%);
+    --bs-btn-disabled-color: #000;
+    --bs-btn-disabled-border-color: #000;
+}
 
 /* light grey background for active nav links */
 .nav-tabs .nav-link.active {

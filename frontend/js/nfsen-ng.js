@@ -738,9 +738,14 @@ $(document).ready(function() {
                 }
             }
 
+            // Calculate the difference between the server and local timezone offsets
+            var serverTimezoneOffset = config.tz_offset * 60 * 60;
+            var localTimezoneOffset = new Date().getTimezoneOffset() * -60;
+            var timezoneOffset = serverTimezoneOffset - localTimezoneOffset;
+
             // iterate over API result
             $.each(data.data, function (datetime, series) {
-                var position = [new Date(datetime * 1000)];
+                var position = [new Date((parseInt(datetime) + timezoneOffset) * 1000)] ;
 
                 // add all serie values to position array
                 $.each(series, function (y, val) {

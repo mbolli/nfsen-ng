@@ -284,6 +284,13 @@ class Api {
         $pidfile = $folder . '/nfsen-ng.pid';
         $daemon_running = file_exists($pidfile);
 
+        // get date of first data point
+        $firstDataPoint = PHP_INT_MAX;
+        foreach ($sources as $source) {
+            $firstDataPoint = min($firstDataPoint, Config::$db->date_boundaries($source)[0]);
+        }
+        $frontend['data_start'] = $firstDataPoint;
+
         return [
             'sources' => $sources,
             'ports' => $ports,

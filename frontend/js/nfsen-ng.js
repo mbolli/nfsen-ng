@@ -507,8 +507,7 @@ $(document).ready(function() {
     function init_rangeslider() {
         // set default date range
         var to = new Date();
-        var from = new Date();
-        from.setFullYear(to.getFullYear()-3);
+        var from = new Date(config.frontend.data_start * 1000 || to.getTime() - 1000*60*60*24*365*3);
         dygraph_daterange = [from, to];
 
         // initialize date range slider

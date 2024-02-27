@@ -1,140 +1,116 @@
 # nfsen-ng installation
 
-Ubuntu 20.04 LTS:
+These instructions install nfsen-ng on a fresh Ubuntu 20.04/22.04 LTS or Debian 11/12 system.
 
- ```bash
- # run following commands as root
- # install packages
- apt install apache2 git nfdump pkg-config php7.4 php7.4-dev libapache2-mod-php7.4 rrdtool librrd-dev
- # enable apache modules
- a2enmod rewrite deflate headers expires
- # install rrd library for php
- pecl install rrd
- # create rrd library mod entry for php
- echo "extension=rrd.so" > /etc/php/7.4/mods-available/rrd.ini
- # enable php mod
- phpenmod rrd
- # configure virtual host to read .htaccess files
- vi /etc/apache2/apache2.conf # set AllowOverride All for /var/www
- # restart apache web server
- systemctl restart apache2
- # install nfsen-ng
- cd /var/www/html # or wherever
- git clone https://github.com/mbolli/nfsen-ng
- chown -R www-data:www-data .
- chmod +x nfsen-ng/backend/cli.php
- # next step: configuration
- ```
+**Note that setup of nfcapd is not covered here, but nfsen-ng requires data captured by nfcapd to work.**
 
- Ubuntu 22.04 LTS:
 
- ```bash
- # run following commands as root
- # install packages
- apt install apache2 git nfdump pkg-config php8.1 php8.1-dev libapache2-mod-php8.1 rrdtool librrd-dev
- # enable apache modules
- a2enmod rewrite deflate headers expires
- # install rrd library for php
- pecl install rrd
- # create rrd library mod entry for php
- echo "extension=rrd.so" > /etc/php/8.1/mods-available/rrd.ini
- # enable php mod
- phpenmod rrd
- # configure virtual host to read .htaccess files
- vi /etc/apache2/apache2.conf # set AllowOverride All for /var/www
- # restart apache web server
- systemctl restart apache2
- # install nfsen-ng
- cd /var/www/html # or wherever
- git clone https://github.com/mbolli/nfsen-ng
- chown -R www-data:www-data .
- chmod +x nfsen-ng/backend/cli.php
- # next step: configuration
- ```
- Debian 11 :
+## Ubuntu 20.04/22.04 LTS
 
  ```bash
 # run following commands as root
+
+# add php repository
+add-apt-repository -y ppa:ondrej/php
+
 # install packages
-apt install apache2 git nfdump pkg-config php php-dev libapache2-mod-php rrdtool librrd-dev
+apt install apache2 git pkg-config php8.3 php8.3-dev php8.3-mbstring libapache2-mod-php8.3 rrdtool librrd-dev
+
+# compile nfdump (optional, if you want to use the most recent version)
+apt install flex libbz2-dev yacc unzip
+wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.4.zip
+unzip v1.7.4.zip
+cd nfdump-1.7.4/
+./autogen.sh
+./configure
+make
+make install
+ldconfig
+nfdump -V
+
 # enable apache modules
 a2enmod rewrite deflate headers expires
+
 # install rrd library for php
 pecl install rrd
+
 # create rrd library mod entry for php
-echo "extension=rrd.so" > /etc/php/7.4/mods-available/rrd.ini
-# enable php mod
-phpenmod rrd
+echo "extension=rrd.so" > /etc/php/8.3/mods-available/rrd.ini
+
+# enable php mods
+phpenmod rrd mbstring
+
 # configure virtual host to read .htaccess files
-vi /etc/apache2/apache2.conf # set AllowOverride All for /var/www
+vi /etc/apache2/apache2.conf # set AllowOverride All for /var/www directory
+
 # restart apache web server
 systemctl restart apache2
+
 # install nfsen-ng
-cd /var/www/html # or wherever
+cd /var/www # or wherever, needs to be in the web root
 git clone https://github.com/mbolli/nfsen-ng
 chown -R www-data:www-data .
 chmod +x nfsen-ng/backend/cli.php
-# next step: configuration
- ```
 
+cd nfsen-ng
+# install composer with instructions from https://getcomposer.org/download/
+php composer.phar install --no-dev
 
- CentOS 7:
+# next step: create configuration file from backend/settings/settings.php.dist
+```
 
- ```bash
- # run following commands as root
- # update packages
- yum update
- # enable EPEL repo
- yum -y install epel-release
- # install yum utils
- yum install yum-utils
- # install remi release
- yum install http://rpms.remirepo.net/enterprise/remi-release-7.rpm
- # enable the repository for PHP 7.2
- yum-config-manager --enable remi-php72
- # install packages
- yum install git httpd mod_php nfdump php72 php72-php-devel php-devel php-pear php-pecl-rrd rrdtool rrdtool-devel
- # configure virtual host to read .htaccess files
- vim /etc/httpd/conf/httpd.conf # set AllowOverride All for /var/www/html
- # start httpd service
- systemctl start httpd
- # enable httpd service
- systemctl enable httpd
- # install nfsen-ng
- cd /var/www/html # or wherever
- git clone https://github.com/mbolli/nfsen-ng
- chown -R apache:apache .
- chmod +x nfsen-ng/backend/cli.php
- # next step: configuration
- ```
-  CentOS 8:
+## Debian 11/12
 
- ```bash
- # run following commands as root
- # update packages
- dnf update
- # enable EPEL repo and update epel-release package
- dnf -y install epel-release && dnf -y update epel-release
- # install dnf-utils
- dnf -y install dnf-utils
- # enable PowerTools repo
- dnf config-manager --set-enabled PowerTools
- # install packages
- dnf -y install git httpd make mod_php nfdump php php-devel php-json php-pear rrdtool rrdtool-devel
- # install rrd library for php
- pecl install rrd
- # create rrd library mod entry for php
- echo "extension=rrd.so" > /etc/php.d/rrd.ini
- # configure virtual host to read .htaccess files
- vim /etc/httpd/conf/httpd.conf # set AllowOverride All for /var/www/html
- # start httpd service
- systemctl start httpd
- # enable httpd service
- systemctl enable httpd
- # install nfsen-ng
- cd /var/www/html # or wherever
- git clone https://github.com/mbolli/nfsen-ng
- chown -R apache:apache .
- chmod +x nfsen-ng/backend/cli.php
- # next step: configuration
- ```
+```bash
+# run following commands as root
+
+# add php repository
+apt install -y apt-transport-https lsb-release ca-certificates wget
+echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/php.list
+apt update
+
+# install packages
+apt install apache2 git pkg-config php8.3 php8.3-dev php8.3-mbstring libapache2-mod-php8.3 rrdtool librrd-dev
+
+# compile nfdump (optional, if you want to use the most recent version)
+apt install flex libbz2-dev yacc unzip
+wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.4.zip
+unzip v1.7.4.zip
+cd nfdump-1.7.4/
+./autogen.sh
+./configure
+make
+make install
+ldconfig
+nfdump -V
+
+# enable apache modules
+a2enmod rewrite deflate headers expires
+
+# install rrd library for php
+pecl install rrd
+
+# create rrd library mod entry for php
+echo "extension=rrd.so" > /etc/php/8.3/mods-available/rrd.ini
+
+# enable php mods
+phpenmod rrd mbstring
+
+# configure virtual host to read .htaccess files
+vi /etc/apache2/apache2.conf # set AllowOverride All for /var/www
+
+# restart apache web server
+systemctl restart apache2
+
+# install nfsen-ng
+cd /var/www # or wherever
+git clone https://github.com/mbolli/nfsen-ng
+chown -R www-data:www-data .
+chmod +x nfsen-ng/backend/cli.php
+cd nfsen-ng
+
+# install composer with instructions from https://getcomposer.org/download/
+php composer.phar install --no-dev
+
+# next step: create configuration file from backend/settings/settings.php.dist
+```

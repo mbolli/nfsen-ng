@@ -5,7 +5,7 @@
 
 nfsen-ng is an in-place replacement for the ageing nfsen.
 
-<div><img src="https://github.com/mbolli/nfsen-ng/assets/722725/b3e6e8a5-185c-4347-9d43-d4aa9b09f35e" style="width: 100%" /></div>
+<div><img src="https://github.com/mbolli/nfsen-ng/assets/722725/c3df942e-3d3c-4ef9-86ad-4e5780c7b6d8" style="width: 100%" /></div>
 
 **Used components**
 

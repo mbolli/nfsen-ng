@@ -75,7 +75,7 @@ class Rrd implements Datasource {
 
         // check if folder exists
         if (!file_exists(\dirname($rrdFile))) {
-            mkdir(\dirname($rrdFile));
+            mkdir(\dirname($rrdFile), 0o755, true);
         }
 
         // check if folder has correct access rights

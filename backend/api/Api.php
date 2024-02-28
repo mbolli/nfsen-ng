@@ -2,8 +2,6 @@
 
 namespace mbolli\nfsen_ng\api;
 
-use DateTime;
-use DateTimeZone;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 
@@ -285,7 +283,7 @@ class Api {
         $daemon_running = file_exists($pidfile);
 
         // get date of first data point
-        $firstDataPoint = PHP_INT_MAX;
+        $firstDataPoint = \PHP_INT_MAX;
         foreach ($sources as $source) {
             $firstDataPoint = min($firstDataPoint, Config::$db->date_boundaries($source)[0]);
         }
@@ -299,7 +297,7 @@ class Api {
             'daemon_running' => $daemon_running,
             'frontend' => $frontend,
             'version' => Config::VERSION,
-            'tz_offset' => (new DateTimeZone(date_default_timezone_get()))->getOffset(new DateTime('now', new DateTimeZone('UTC'))),
+            'tz_offset' => (new \DateTimeZone(date_default_timezone_get()))->getOffset(new \DateTime('now', new \DateTimeZone('UTC'))),
         ];
     }
 

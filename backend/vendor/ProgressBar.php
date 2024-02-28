@@ -18,25 +18,20 @@
  * Static wrapper class for generating progress bars for cli tasks
  *
  */
-namespace vendor;
+namespace mbolli\nfsen_ng\vendor;
 
-class progressbar
+class ProgressBar
 {
 
     /**
      * Merged with options passed in start function
      */
-    protected static $defaults = array(
-        'format' => "\r:message::padding:%.01f%% %2\$d/%3\$d ETC: %4\$s. Elapsed: %5\$s [%6\$s]",
-        'message' => 'Running',
-        'size' => 30,
-        'width' => null
-    );
+    protected static $defaults = ['format' => "\r:message::padding:%.01f%% %2\$d/%3\$d ETC: %4\$s. Elapsed: %5\$s [%6\$s]", 'message' => 'Running', 'size' => 30, 'width' => null];
 
     /**
      * Runtime options
      */
-    protected static $options = array();
+    protected static $options = [];
 
     /**
      * How much have we done already
@@ -140,12 +135,12 @@ class progressbar
 
         $width = strlen(preg_replace('@(?:\r|:\w+:)@', '', $return));
 
-        if (strlen(self::$message) > ((int)self::$width - (int)$width - 3)) {
-            $message = substr(self::$message, 0, ((int)self::$width - (int)$width - 4)) . '...';
+        if (strlen((string) self::$message) > ((int)self::$width - (int)$width - 3)) {
+            $message = substr((string) self::$message, 0, ((int)self::$width - (int)$width - 4)) . '...';
             $padding = '';
         } else {
             $message = self::$message;
-            $width += strlen($message);
+            $width += strlen((string) $message);
             $padding = str_repeat(' ', ((int)self::$width - (int)$width));
         }
 
@@ -195,7 +190,7 @@ class progressbar
      * @static
      * @return void
      */
-    public static function reset($options = array())
+    public static function reset(array $options = [])
     {
         $options = array_merge(self::$defaults, $options);
 
@@ -234,7 +229,7 @@ class progressbar
     /**
      * change the total on a running progress bar
      *
-     * @param int $total the new number of times we're expecting to run for
+     * @param int|string $total the new number of times we're expecting to run for
      *
      * @static
      * @return void
@@ -247,14 +242,14 @@ class progressbar
     /**
      * Initialize a progress bar
      *
-     * @param mixed $total   number of times we're going to call set
-     * @param int   $message message to prefix the bar with
-     * @param int   $options overrides for default options
+     * @param int|null $total   number of times we're going to call set
+     * @param string   $message message to prefix the bar with
+     * @param array    $options overrides for default options
      *
      * @static
      * @return string - the progress bar string with 0 progress
      */
-    public static function start($total = null, $message = '', $options = array())
+    public static function start(?int $total = null, string $message = '', array $options = [])
     {
         if ($message) {
             $options['message'] = $message;
@@ -269,13 +264,13 @@ class progressbar
     /**
      * Convert a number of seconds into something human readable like "2 days, 4 hrs"
      *
-     * @param int    $seconds how far in the future/past to display
-     * @param string $nowText if there are no seconds, what text to display
+     * @param int|float $seconds how far in the future/past to display
+     * @param string    $nowText if there are no seconds, what text to display
      *
      * @static
      * @return string representation of the time
      */
-    protected static function humanTime($seconds, $nowText = '< 1 sec')
+    protected static function humanTime($seconds, string $nowText = '< 1 sec')
     {
         $prefix = '';
         if ($seconds < 0) {
@@ -299,7 +294,7 @@ class progressbar
         }
         $seconds = (int) $seconds;
 
-        $return = array();
+        $return = [];
 
         if ($days) {
             $return[] = "$days days";

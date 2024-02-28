@@ -1,4 +1,5 @@
-var config,
+var enable_graph = false,
+    config,
     dygraph,
     dygraph_config,
     dygraph_data,
@@ -13,7 +14,54 @@ var config,
     api_flows_options,
     api_statistics_options,
     nfdump_translation = {ff: 'flow record flags in hex', ts: 'Start Time - first seen', te: 'End Time - last seen', tr: 'Time the flow was received by the collector', td: 'Duration', pr: 'Protocol', exp: 'Exporter ID', eng: 'Engine Type/ID', sa: 'Source Address', da: 'Destination Address', sap: 'Source Address:Port', dap: 'Destination Address:Port', sp: 'Source Port', dp: 'Destination Port', sn: 'Source Network (mask applied)', dn: 'Destination Network (mask applied)', nh: 'Next-hop IP Address', nhb: 'BGP Next-hop IP Address', ra: 'Router IP Address', sas: 'Source AS', das: 'Destination AS', nas: 'Next AS', pas: 'Previous AS', in: 'Input Interface num', out: 'Output Interface num', pkt: 'Packets - default input', ipkt: 'Input Packets', opkt: 'Output Packets', byt: 'Bytes - default input', ibyt: 'Input Bytes', obyt: 'Output Bytes', fl: 'Flows', flg: 'TCP Flags', tos: 'Tos - default src', stos: 'Src Tos', dtos: 'Dst Tos', dir: 'Direction: ingress, egress', smk: 'Src mask', dmk: 'Dst mask', fwd: 'Forwarding Status', svln: 'Src vlan label', dvln: 'Dst vlan label', ismc: 'Input Src Mac Addr', odmc: 'Output Dst Mac Addr', idmc: 'Input Dst Mac Addr', osmc: 'Output Src Mac Addr', pps: 'Packets per second', bps: 'Bytes per second', bpp: 'Bytes per packet', flP: 'Flows (%)', ipktP: 'Input Packets (%)', opktP: 'Output Packets (%)', ibytP: 'Input Bytes (%)', obytP: 'Output Bytes (%)', ipps: 'Input Packets/s', ibps: 'Input Bytes/s', ibpp: 'Input Bytes/Packet', pktP: 'Packets (%)', bytP: 'Bytes (%)'},
-    views_view_status = {graphs: false, flows: false, statistics: false};
+    views_view_status = {graphs: false, flows: false, statistics: false},
+    ip_link_handler = (a) => {
+        const ip = a.innerHTML;
+        const ignoredFields = ['country_', 'timezone_', 'currency_'];
+        const checkIp = async (ip) => {
+            const ipWhoisResponse = await fetch('https://ipwhois.app/json/' + ip);
+            const ipWhoisData = await ipWhoisResponse.json();
+
+            const hostResponse = await fetch('../api/host/?ip=' + ip);
+            const hostData = (!hostResponse.ok) ? 'IP could not be resolved' : await hostResponse.json();
+
+            return {
+                ipWhoisData: ipWhoisData,
+                hostData: hostData
+            }
+        }
+
+        const modal = new bootstrap.Modal('#modal', {});
+        const modalTitle = document.querySelector('#modal .modal-title');
+        const modalBody = document.querySelector('#modal .modal-body');
+        const modalLoader = document.querySelector('#modal .modal-loader');
+        modalBody.innerHTML = modalLoader.outerHTML;
+        modalBody.querySelector('.modal-loader').classList.remove('d-none');
+        modalTitle.innerHTML = 'Info for IP: ' + ip;
+        modal.show();
+
+        // make request and display data
+        checkIp(ip).then((data) => {
+            console.log(data);
+
+            // create table
+            let markup = '<table class="table table-striped">';
+            for (const [key, value] of Object.entries(data.ipWhoisData)) {
+                // if key starts with any of ignoredFields values, skip it
+                if (ignoredFields.some(field => key.startsWith(field))) continue;
+                markup += '<tr><th>' + key + '</th><td>' + value + '</td></tr>';
+            }
+            markup += '</table>';
+
+            // add heading and flag
+            let flag = data.ipWhoisData.country_flag ? '<img src="' + data.ipWhoisData.country_flag + '" alt="' + data.ipWhoisData.country + '" title="' + data.ipWhoisData.country + '" style="width: 3rem" />' : '';
+            let heading = '<h3>' + ip + ' ' + flag + '</h3>';
+            heading += '<h4>Host: ' + data.hostData + '</h4>';
+
+            // replace loader with content
+            modalBody.innerHTML = heading + markup;
+        });
+    };
 
 $(document).ready(function() {
 
@@ -77,12 +125,12 @@ $(document).ready(function() {
         var $filter = $('#filter').find('[data-view]');
         var $content = $('#contentDiv').find('div.content');
 
-        $('header li').removeClass('active');
-        $(this).parent().addClass('active');
+        $('header li a').removeClass('active');
+        $(this).addClass('active');
 
         var showDivs = function(id, el) {
-            if ($(el).attr('data-view').indexOf(view) !== -1) $(el).removeClass('hidden');
-            else $(el).addClass('hidden');
+            if ($(el).attr('data-view').indexOf(view) !== -1) $(el).removeClass('d-none');
+            else $(el).addClass('d-none');
         };
 
         // show the right divs
@@ -177,10 +225,10 @@ $(document).ready(function() {
      */
     $(document).on('change', '#filterDisplaySelect', function() {
         var display = $(this).val(), displayId;
-        var $filters = $('#filter').find('[data-display]').addClass('hidden');
+        var $filters = $('#filter').find('[data-display]').addClass('d-none');
 
         // show only wanted filters
-        $filters.filter('[data-display*=' + display + ']').removeClass('hidden');
+        $filters.filter('[data-display*=' + display + ']').removeClass('d-none');
 
         switch (display) {
             case 'sources':
@@ -198,7 +246,8 @@ $(document).ready(function() {
         }
 
         // initialize tooltips
-        $('[data-toggle="tooltip"]').tooltip();
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
+        const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
 
         // try to update graph
         updateGraph();
@@ -229,11 +278,11 @@ $(document).ready(function() {
     });
 
     /**
-     * datatype filter (flows/packets/bytes)
+     * datatype filter (flows/packets/traffic)
      * reload the graph... you get it by now
      */
     $(document).on('change', '#filterTypes input', updateGraph);
-
+    $(document).on('change', '#trafficUnit input', updateGraph);
     $(document).on('change', '#filterPortsSelect', updateGraph);
 
     /**
@@ -290,18 +339,29 @@ $(document).ready(function() {
         $('#filterOutputSelection').prop('disabled', disabled).toggleClass('disabled', disabled);
     });
 
+    var setButtonLoading = function($button, setTo = true) {
+        $button.toggleClass('disabled', setTo);
+        if (setTo === false && $button.data('old-text') !== undefined) {
+            $button.html($button.data('old-text'));
+            $button.data('old-text', undefined);
+        } else {
+            $button.data('old-text', $button.html());
+            $button.html('<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span role="status">&nbsp;Loading&#133;</span>');
+        }
+    }
+
     /**
      * Process flows/statistics form submission
      */
-    $(document).on('click', '#filterCommands .submit', function() {
-        var current_view = $(this).attr('data-view'),
+    $(document).on('click', '#filterCommands .submit', function () {
+        var current_view = $('.nav-link.active').attr('data-view'),
             do_continue = true,
             date_diff = date_range.options.to-date_range.options.from,
             count_sources = $('#filterSourcesSelect').val().length;
 
         // warn user of long-running query
         if (date_diff*count_sources > 1000*24*60*60*12) {
-            var count_days = parseInt(date_diff/1000/24/60/60),
+            var count_days = Number(date_diff/1000/24/60/60),
                 calc_info = count_days + ' days and ' + count_sources + ' sources';
             do_continue = confirm('Be aware that nfdump will scan 288 capture files per day and source. You selected ' + calc_info + '. This might take a long time and lots of server resources. Are you sure you want to submit this query?');
         }
@@ -315,8 +375,8 @@ $(document).ready(function() {
             $(this).remove();
         });
 
-        $(this).button('loading');
-
+        // set button to loading state
+        setButtonLoading($(this));
     });
 
     /**
@@ -347,6 +407,8 @@ $(document).ready(function() {
      * - select default view if set in the config
      */
     function init() {
+        // set version
+        $('#version').html(config.version);
 
         // load values for form
         updateDropdown('sources', config['sources']);
@@ -361,8 +423,9 @@ $(document).ready(function() {
             $('header li a').eq(0).trigger('click');
         }
 
+        enable_graph = true;
         // show graph for one year by default
-        $('#date_slot').find('[data-unit="y"]').parent().trigger('click');
+        $('#date_slot').find('[data-unit="y"]').trigger('click');
     }
 
     /**
@@ -444,8 +507,7 @@ $(document).ready(function() {
     function init_rangeslider() {
         // set default date range
         var to = new Date();
-        var from = new Date();
-        from.setFullYear(to.getFullYear()-3);
+        var from = new Date(config.frontend.data_start * 1000 || to.getTime() - 1000*60*60*24*365*3);
         dygraph_daterange = [from, to];
 
         // initialize date range slider
@@ -596,6 +658,7 @@ $(document).ready(function() {
      * and tries to display the received data in the dygraph.
      */
     function updateGraph() {
+        if (enable_graph === false) return false;
         var sources = $('#filterSourcesSelect').val(),
             type = $('#filterTypes input:checked').val(),
             ports = $('#filterPortsSelect').val(),
@@ -612,6 +675,7 @@ $(document).ready(function() {
         }
         if ($('#flowDiv:visible').length === 0) return;
         if (ports.length === 0) ports = [0];
+        if (type === 'traffic') type = $('#trafficUnit input:checked').val();
 
         // set options
         api_graph_options = {
@@ -634,112 +698,122 @@ $(document).ready(function() {
 
         // make actual request
         $.get('../api/graph', api_graph_options, function (data, status) {
-            if (status === 'success') {
-                if (data.data.length === 0) return false;
+            if (status !== 'success') {
+                display_message('warning', 'There somehow was a problem getting data, please check your form values.');
+                return false;
+            }
 
-                var labels = ['Date'], index_to_insert = false;
+            if (data.data.length === 0) {
+                return false;
+            }
 
-                // iterate over labels
-                $('#series').empty();
-                $.each(data.legend, function (id, legend) {
-                    labels.push(legend);
+            var labels = ['Date'], index_to_insert = false;
 
-                    $('#series').append('<label><input type="checkbox" checked> ' + legend + '</label>');
+            // iterate over labels
+            $('#series').empty();
+            $.each(data.legend, function (id, legend) {
+                labels.push(legend);
+
+                $('#series').append('<label><input type="checkbox" checked> ' + legend + '</label>');
+            });
+
+            // transform data to something Dygraph understands
+            if (dygraph_did_zoom !== true) {
+                // reset dygraph data to get a fresh load
+                dygraph_data = [];
+            } else {
+                // delete values to replace
+                for (var i = 0; i < dygraph_data.length; i++) {
+                    if (dygraph_data[i][0].getTime() >= dygraph_daterange[0].getTime() && dygraph_data[i][0].getTime() <= dygraph_daterange[1].getTime()) {
+                        // set start index for the new values
+                        if (index_to_insert === false) index_to_insert = i;
+
+                        // delete current element from array
+                        dygraph_data.splice(i, 1);
+
+                        // decrease current index, as all array elements moved left on deletion
+                        i--;
+                    }
+                }
+            }
+
+            // Calculate the difference between the server and local timezone offsets
+            var serverTimezoneOffset = config.tz_offset * 60 * 60;
+            var localTimezoneOffset = new Date().getTimezoneOffset() * -60;
+            var timezoneOffset = serverTimezoneOffset - localTimezoneOffset;
+
+            // iterate over API result
+            $.each(data.data, function (datetime, series) {
+                var position = [new Date((parseInt(datetime) + timezoneOffset) * 1000)] ;
+
+                // add all serie values to position array
+                $.each(series, function (y, val) {
+                    position.push(val);
                 });
 
-                // transform data to something Dygraph understands
+                // push position array to dygraph data
                 if (dygraph_did_zoom !== true) {
-                    // reset dygraph data to get a fresh load
-                    dygraph_data = [];
+                    dygraph_data.push(position);
                 } else {
-                    // delete values to replace
-                    for (var i = 0; i < dygraph_data.length; i++) {
-                        if (dygraph_data[i][0].getTime() >= dygraph_daterange[0].getTime() && dygraph_data[i][0].getTime() <= dygraph_daterange[1].getTime()) {
-                            // set start index for the new values
-                            if (index_to_insert === false) index_to_insert = i;
-
-                            // delete current element from array
-                            dygraph_data.splice(i, 1);
-
-                            // decrease current index, as all array elements moved left on deletion
-                            i--;
-                        }
-                    }
+                    // when zoomed in, insert position array at the start index of replacement data
+                    dygraph_data.splice(index_to_insert, 0, position);
+                    index_to_insert++; // increase index, or data will get inserted backwards
                 }
+            });
 
-                // iterate over API result
-                $.each(data.data, function (datetime, series) {
-                    var position = [new Date(datetime * 1000)];
-
-                    // add all serie values to position array
-                    $.each(series, function (y, val) {
-                        position.push(val);
-                    });
-
-                    // push position array to dygraph data
-                    if (dygraph_did_zoom !== true) {
-                        dygraph_data.push(position);
-                    } else {
-                        // when zoomed in, insert position array at the start index of replacement data
-                        dygraph_data.splice(index_to_insert, 0, position);
-                        index_to_insert++; // increase index, or data will get inserted backwards
-                    }
-                });
-
-                if (typeof dygraph === 'undefined') {
-                    // initial dygraph config:
-                    dygraph_config = {
-                        title: title,
-                        labels: labels,
-                        ylabel: type.toUpperCase() + '/s',
-                        xlabel: 'TIME',
-                        labelsKMB: true,
-                        labelsDiv: $('#legend')[0],
-                        labelsSeparateLines: true,
-                        legend: 'always',
-                        stepPlot: true,
-                        showRangeSelector: true,
-                        dateWindow: [dygraph_data[0][0], dygraph_data[dygraph_data.length - 1][0]],
-                        zoomCallback: dygraph_zoom,
-                        clickCallback: dygraph_click,
-                        highlightSeriesOpts: {
-                            strokeWidth: 2,
-                            strokeBorderWidth: 1,
-                            highlightCircleSize: 5
-                        },
-                        rangeSelectorPlotStrokeColor: '#888888',
-                        rangeSelectorPlotFillColor: '#cccccc',
-                        stackedGraph: true,
-                        fillGraph: true,
-                    };
-                    dygraph = new Dygraph($('#flowDiv')[0], dygraph_data, dygraph_config);
-                    init_dygraph_mods();
-
-                } else {
-                    // update dygraph config
-                    dygraph_config = {
-                        // series: series,
-                        // axes: axes,
-                        ylabel: type.toUpperCase() + '/s',
-                        title: title,
-                        labels: labels,
-                        file: dygraph_data,
-                    };
-
-                    if (dygraph_did_zoom === true) {
-                        dygraph_config.dateWindow = dygraph_daterange;
-                    } else {
-                        // reset date window if we want to show entirely new data
-                        dygraph_config.dateWindow = null;
-                    }
-
-                    dygraph.updateOptions(dygraph_config);
-                }
-                dygraph_did_zoom = false;
+            if (typeof dygraph === 'undefined') {
+                // initial dygraph config:
+                dygraph_config = {
+                    title: title,
+                    labels: labels,
+                    ylabel: type.toUpperCase() + '/s',
+                    xlabel: 'TIME',
+                    labelsKMB: type === 'flows' || type === 'packets',
+                    labelsKMG2: type === 'bits' || type === 'bytes', // only show KMG for traffic, not for packets or flows
+                    labelsDiv: $('#legend')[0],
+                    labelsSeparateLines: true,
+                    legend: 'always',
+                    stepPlot: true,
+                    showRangeSelector: true,
+                    dateWindow: [dygraph_data[0][0], dygraph_data[dygraph_data.length - 1][0]],
+                    zoomCallback: dygraph_zoom,
+                    clickCallback: dygraph_click,
+                    highlightSeriesOpts: {
+                        strokeWidth: 2,
+                        strokeBorderWidth: 1,
+                        highlightCircleSize: 5
+                    },
+                    rangeSelectorPlotStrokeColor: '#888888',
+                    rangeSelectorPlotFillColor: '#cccccc',
+                    stackedGraph: true,
+                    fillGraph: true,
+                };
+                dygraph = new Dygraph($('#flowDiv')[0], dygraph_data, dygraph_config);
+                init_dygraph_mods();
 
             } else {
-                display_message('warning', 'There somehow was a problem getting data, please check your form values.');
+                // update dygraph config
+                dygraph_config = {
+                    // series: series,
+                    // axes: axes,
+                    ylabel: type.toUpperCase() + '/s',
+                    labelsKMB: type === 'flows' || type === 'packets',
+                    labelsKMG2: type === 'bits' || type === 'bytes', // only show KMG for traffic, not for packets or flows
+                    title: title,
+                    labels: labels,
+                    file: dygraph_data,
+                };
+
+                if (dygraph_did_zoom === true) {
+                    dygraph_config.dateWindow = dygraph_daterange;
+                } else {
+                    // reset date window if we want to show entirely new data
+                    dygraph_config.dateWindow = null;
+                }
+
+                dygraph.updateOptions(dygraph_config);
             }
+            dygraph_did_zoom = false;
         });
     }
 
@@ -751,25 +825,34 @@ $(document).ready(function() {
     function display_message(severity, message) {
         var current_view = $('header').find('li.active a').attr('data-view'),
             $error = $('#error'),
-            $buttons = $('button[data-loading-text][data-view=' + current_view +']'),
+            $buttons = $('button.submit'),
             icon;
 
         switch (severity) {
-            case 'success': icon = 'ok'; break;
-            case 'info': icon = 'certificate'; break;
-            case 'warning': icon = 'warning-sign'; break;
-            case 'danger': icon = 'alert'; break;
+            case 'success': icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill" viewBox="0 0 16 16">\n' +
+                '  <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>\n' +
+                '</svg>&nbsp;'; break;
+            case 'info': icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle-fill" viewBox="0 0 16 16">\n' +
+                '  <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2"/>\n' +
+                '</svg>&nbsp;'; break;
+            case 'warning': icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-triangle" viewBox="0 0 16 16">\n' +
+                '  <path d="M7.938 2.016A.13.13 0 0 1 8.002 2a.13.13 0 0 1 .063.016.15.15 0 0 1 .054.057l6.857 11.667c.036.06.035.124.002.183a.2.2 0 0 1-.054.06.1.1 0 0 1-.066.017H1.146a.1.1 0 0 1-.066-.017.2.2 0 0 1-.054-.06.18.18 0 0 1 .002-.183L7.884 2.073a.15.15 0 0 1 .054-.057m1.044-.45a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767z"/>\n' +
+                '  <path d="M7.002 12a1 1 0 1 1 2 0 1 1 0 0 1-2 0M7.1 5.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0z"/>\n' +
+                '</svg>&nbsp;'; break;
+            case 'danger': icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-triangle-fill" viewBox="0 0 16 16">\n' +
+                '  <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/>\n' +
+                '</svg>&nbsp;'; break;
         }
 
         // create new error element
-        $error.append('<div class="alert alert-dismissible" role="alert"><button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
+        $error.append('<div class="alert alert-dismissible mt-2" role="alert"><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>');
 
         // fill
-        $error.find('div.alert').last().addClass('alert-' + severity).append('<span class="glyphicon glyphicon-' + icon + '" aria-hidden="true"></span> ' + message);
+        $error.find('div.alert').last().addClass('alert-' + severity).prepend(icon + message);
 
         // set default text to buttons, if needed
         $buttons.each(function() {
-           $(this).button('reset');
+           setButtonLoading($(this), false);
         });
 
         // empty data table
@@ -802,7 +885,6 @@ $(document).ready(function() {
             output = {
                 format: $('#filterOutputSelection').val(),
                 custom: $('#customListOutputFormatValue').val(),
-                ipv6: $('#flowsFilterOther input[name="ipv6"]').prop('checked') | 0
             };
 
         // parse form values to generate a proper API request
@@ -843,9 +925,7 @@ $(document).ready(function() {
             title = $('#statsFilterForSelection :selected').text(),
             sort = $('#statsFilterOrderBySelection').val(),
             fmt = $('#filterOutputSelection'),
-            output = {
-                ipv6: $('#flowsFilterOther input[name="ipv6"]').prop('checked') | 0,
-            };
+            output = {};
 
         if (!fmt.prop('disabled')) {
             output.format = fmt.val();
@@ -906,6 +986,17 @@ $(document).ready(function() {
     }
 
     /**
+     * @see https://stackoverflow.com/a/2901298/710921
+     * @param {number} x
+     * @returns {string}
+     */
+    function numberWithCommas(x) {
+        var parts = x.toString().split(".");
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        return parts.join(".");
+    }
+
+    /**
      * parses the provided data, converts it into a better suitable format and populates a html table
      * @param data
      * @param status
@@ -917,12 +1008,12 @@ $(document).ready(function() {
 
             // print nfdump command
             if (typeof data[0] === 'string') {
-                display_message('success', 'nfdump command: ' + data[0].toString())
+                display_message('success', '<b>nfdump command:</b> ' + data[0].toString())
             }
 
             // return if invalid data got returned
             if (typeof data[1] !== 'object') {
-                display_message('warning', 'something went wrong. ' + data[1].toString());
+                display_message('warning', '<b>something went wrong.</b> ' + data[1].toString());
                 return false;
             }
 
@@ -930,33 +1021,59 @@ $(document).ready(function() {
             var tempcolumns = data[1],
                 columns = [];
 
+            // generate column definitions
             $.each(tempcolumns, function (i, val) {
                 // todo optimize breakpoints
                 var title = (val === 'val') ? api_statistics_options.title : nfdump_translation[val],
                     column = {
                         name: val,
                         title: title,
-                        type: 'number',
+                        type: 'text',
                         breakpoints: 'xs sm',
                     };
+
+                // add formatter for ip addresses
+                if (['sa', 'da'].indexOf(val) !== -1 || val.match(/ip$/i)) {
+                    column['formatter'] = (ip) => "<a href='#' onclick='return ip_link_handler(this)'>" + ip + "</a>";
+                }
+
+                // todo add date formatter for timestamps?
                 if (['ts', 'te', 'tr'].indexOf(val) !== -1) {
                     column['breakpoints'] = '';
                     column['type'] = 'text'; // 'date' needs moment.js library...
-                } else if (['sp', 'dp', 'td', 'fl', 'flP', 'ipktP', 'opktP', 'ibytP', 'obytP', 'ipps', 'opps', 'ibps', 'obps', 'ibpp', 'obpp', 'pktP', 'bytP'].indexOf(val) !== -1) {
+                }
+
+                // add formatter for bytes
+                if (['ibyt', 'obyt', 'bpp', 'bps', 'byt', 'ibps', 'obps', 'ibpp', 'obpp'].indexOf(val) !== -1) {
                     column['type'] = 'number';
-                    column['thousandSeparator'] = '\'';
-                } else if (['sa', 'da', 'pr', 'val'].indexOf(val) !== -1) {
+                    column['formatter'] = (x) => filesize(x, {
+                        base: 10, // todo make configurable
+                    });
+                }
+
+                // add formatter for big numbers
+                if (['td', 'fl', 'pkt', 'ipkt', 'opkt', 'ipps', 'opps'].indexOf(val) !== -1) {
+                    column['type'] = 'number';
+                    column['formatter'] = numberWithCommas
+                }
+
+                // define rest of numbers
+                if (['sp', 'dp', 'flP', 'ipktP', 'opktP', 'ibytP', 'obytP', 'pktP', 'bytP'].indexOf(val) !== -1) {
+                    column['type'] = 'number';
+                }
+
+                // ip addresses, protocol, value should not be hidden on small screens
+                if (['sa', 'da', 'pr', 'val'].indexOf(val) !== -1) {
                     column['breakpoints'] = '';
-                    column['type'] = 'text';
-                } else if (['dtos', 'stos', 'tos', 'ipkt', 'opkt', 'ibyt', 'obyt', 'fl'].indexOf(val) !== -1) {
-                    column['breakpoints'] = 'xs sm md';
-                } else if (['flg', 'fwd', 'in', 'out', 'sas', 'das'].indexOf(val) !== -1) {
+                }
+
+                // least important columns should be hidden on small screens
+                if (['flg', 'fwd', 'in', 'out', 'sas', 'das'].indexOf(val) !== -1) {
                     column['breakpoints'] = 'all';
                     column['type'] = 'text';
-                } else {
-                    column['breakpoints'] = '';
-                    column['type'] = 'text';
                 }
+
+                // add column to columns array
                 columns.push(column);
             });
 
@@ -989,7 +1106,7 @@ $(document).ready(function() {
         }
 
         // reset button label
-        $('#filterCommands').find('.submit').button('reset');
+        setButtonLoading($('#filterCommands').find('.submit'), false);
     }
 
 
@@ -999,8 +1116,8 @@ $(document).ready(function() {
     $(document).on('change', '#filterOutputSelection', function() {
 
         // if "custom" is selected, show "customFlowListOutputFormat" otherwise hide it
-        if ($(this).val() === 'custom') $('#customListOutputFormat').removeClass('hidden');
-        else $('#customListOutputFormat').addClass('hidden');
+        if ($(this).val() === 'custom') $('#customListOutputFormat').removeClass('d-none');
+        else $('#customListOutputFormat').addClass('d-none');
     });
 
     /**
@@ -1041,16 +1158,16 @@ $(document).ready(function() {
             case 'none':
             case 'srcip':
             case 'dstip':
-                $prefixDiv.addClass('hidden');
+                $prefixDiv.addClass('d-none');
                 break;
             case 'srcip4':
             case 'dstip4':
-                $prefixDiv.removeClass('hidden');
+                $prefixDiv.removeClass('d-none');
                 $prefixDiv.find('input').attr('maxlength', 2).val('24');
                 break;
             case 'srcip6':
             case 'dstip6':
-                $prefixDiv.removeClass('hidden');
+                $prefixDiv.removeClass('d-none');
                 $prefixDiv.find('input').attr('maxlength', 3).val('128');
                 break;
         }
@@ -1074,10 +1191,10 @@ $(document).ready(function() {
 
         // uncheck protocol buttons and transform to radio buttons
         $protocolButtons.find('label').removeClass('active');
-        $protocolButtons.find('label input').prop('checked', false).attr('type', 'radio');
+        $protocolButtons.find('input').prop('checked', false).attr('type', 'radio');
 
-        // select TCP proto as default
-        $protocolButtons.find('label:first').addClass('active').find('input').prop('checked',true);
+        // select Any proto as default
+        $protocolButtons.find('[for="filterProtocolAny"]').click();
     }
 
     /**
@@ -1096,8 +1213,8 @@ $(document).ready(function() {
         $sourceSelect.find('option:not([disabled]):first').prop('selected', true);
 
         // protocol buttons become checkboxes and get checked by default
-        $protocolButtons.find('label').removeClass('active').filter(function() { return $(this).find('input').val() !== 'any'}).addClass('active');
-        $protocolButtons.find('label input').attr('type', 'checkbox').prop('checked', false).filter('[value!="any"]').prop('checked', true);
+        $protocolButtons.find('label').removeClass('active').filter(() => $(this).find('input').val() !== 'any').click();
+        $protocolButtons.find('input').attr('type', 'checkbox').prop('checked', false).filter('[value!="any"]').click();
     }
 
     /**
@@ -1140,3 +1257,11 @@ $(document).ready(function() {
         });
     }
 });
+
+/*!
+ Filesize.js
+ 2022 Jason Mulligan <jason.mulligan@avoidwork.com>
+ @version 9.0.11
+*/
+!function(i,t){"object"==typeof exports&&"undefined"!=typeof module?module.exports=t():"function"==typeof define&&define.amd?define(t):(i="undefined"!=typeof globalThis?globalThis:i||self).filesize=t()}(this,(function(){"use strict";function i(t){return i="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(i){return typeof i}:function(i){return i&&"function"==typeof Symbol&&i.constructor===Symbol&&i!==Symbol.prototype?"symbol":typeof i},i(t)}var t="array",o="bits",e="byte",n="bytes",r="",b="exponent",l="function",a="iec",d="Invalid number",f="Invalid rounding method",u="jedec",s="object",c=".",p="round",y="kbit",m="string",v={symbol:{iec:{bits:["bit","Kibit","Mibit","Gibit","Tibit","Pibit","Eibit","Zibit","Yibit"],bytes:["B","KiB","MiB","GiB","TiB","PiB","EiB","ZiB","YiB"]},jedec:{bits:["bit","Kbit","Mbit","Gbit","Tbit","Pbit","Ebit","Zbit","Ybit"],bytes:["B","KB","MB","GB","TB","PB","EB","ZB","YB"]}},fullform:{iec:["","kibi","mebi","gibi","tebi","pebi","exbi","zebi","yobi"],jedec:["","kilo","mega","giga","tera","peta","exa","zetta","yotta"]}};function g(g){var h=arguments.length>1&&void 0!==arguments[1]?arguments[1]:{},B=h.bits,M=void 0!==B&&B,S=h.pad,T=void 0!==S&&S,w=h.base,x=void 0===w?-1:w,E=h.round,j=void 0===E?2:E,N=h.locale,P=void 0===N?r:N,k=h.localeOptions,G=void 0===k?{}:k,K=h.separator,Y=void 0===K?r:K,Z=h.spacer,z=void 0===Z?" ":Z,I=h.symbols,L=void 0===I?{}:I,O=h.standard,q=void 0===O?r:O,A=h.output,C=void 0===A?m:A,D=h.fullform,F=void 0!==D&&D,H=h.fullforms,J=void 0===H?[]:H,Q=h.exponent,R=void 0===Q?-1:Q,U=h.roundingMethod,V=void 0===U?p:U,W=h.precision,X=void 0===W?0:W,$=R,_=Number(g),ii=[],ti=0,oi=r;-1===x&&0===q.length?(x=10,q=u):-1===x&&q.length>0?x=(q=q===a?a:u)===a?2:10:q=10===(x=2===x?2:10)||q===u?u:a;var ei=10===x?1e3:1024,ni=!0===F,ri=_<0,bi=Math[V];if(isNaN(g))throw new TypeError(d);if(i(bi)!==l)throw new TypeError(f);if(ri&&(_=-_),(-1===$||isNaN($))&&($=Math.floor(Math.log(_)/Math.log(ei)))<0&&($=0),$>8&&(X>0&&(X+=8-$),$=8),C===b)return $;if(0===_)ii[0]=0,oi=ii[1]=v.symbol[q][M?o:n][$];else{ti=_/(2===x?Math.pow(2,10*$):Math.pow(1e3,$)),M&&(ti*=8)>=ei&&$<8&&(ti/=ei,$++);var li=Math.pow(10,$>0?j:0);ii[0]=bi(ti*li)/li,ii[0]===ei&&$<8&&-1===R&&(ii[0]=1,$++),oi=ii[1]=10===x&&1===$?M?y:"kB":v.symbol[q][M?o:n][$]}if(ri&&(ii[0]=-ii[0]),X>0&&(ii[0]=ii[0].toPrecision(X)),ii[1]=L[ii[1]]||ii[1],!0===P?ii[0]=ii[0].toLocaleString():P.length>0?ii[0]=ii[0].toLocaleString(P,G):Y.length>0&&(ii[0]=ii[0].toString().replace(c,Y)),T&&!1===Number.isInteger(ii[0])&&j>0){var ai=Y||c,di=ii[0].toString().split(ai),fi=di[1]||r,ui=fi.length,si=j-ui;ii[0]="".concat(di[0]).concat(ai).concat(fi.padEnd(ui+si,"0"))}return ni&&(ii[1]=J[$]?J[$]:v.fullform[q][$]+(M?"bit":e)+(1===ii[0]?r:"s")),C===t?ii:C===s?{value:ii[0],symbol:ii[1],exponent:$,unit:oi}:ii.join(z)}return g.partial=function(i){return function(t){return g(t,i)}},g}));
+//# sourceMappingURL=filesize.min.js.map

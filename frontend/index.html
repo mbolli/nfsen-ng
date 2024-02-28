@@ -6,57 +6,97 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>nfsen-ng</title>
         <script src="js/jquery.min.js"></script>
+        <script src="js/popper.min.js"></script>
         <script src="js/bootstrap.min.js"></script>
         <script src="js/ion.rangeSlider.min.js"></script>
         <script src="js/dygraph.min.js"></script>
         <script src="js/footable.min.js"></script>
         <link rel="stylesheet" type="text/css" href="css/dygraph.css" />
         <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css" />
-        <link rel="stylesheet" type="text/css" href="css/bootstrap-theme.min.css" />
         <link rel="stylesheet" type="text/css" href="css/ion.rangeSlider.css" />
         <link rel="stylesheet" type="text/css" href="css/footable.bootstrap.min.css" />
         <link rel="stylesheet" type="text/css" href="css/nfsen-ng.css" />
     </head>
 
-    <body>
-        <header class="clearfix">
-            <ul id="viewList" class="nav nav-tabs pull-right" role="tablist">
-                <li role="presentation" class="active"><a data-view="graphs" href="#">Graphs <span class="glyphicon glyphicon-stats" aria-hidden="true"></span></a></li>
-                <li role="presentation"><a data-view="flows" href="#">Flows <span class="glyphicon glyphicon-zoom-in" aria-hidden="true"></span></a></li>
-                <li role="presentation"><a data-view="statistics" href="#">Statistics <span class="glyphicon glyphicon-list-alt" aria-hidden="true"></span></a></li>
+    <body class="p-2">
+        <header>
+            <a class="position-absolute link-secondary" style="text-decoration: none;" href="https://github.com/mbolli/nfsen-ng" target="_blank">
+                nfsen-ng <span id="version"></span>
+            </a>
+            <ul id="viewList" class="nav nav-tabs justify-content-end" role="tablist">
+                <li role="presentation" class="nav-item align-self-center">
+                    <a href="#" class="reload px-3"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-house-door-fill" viewBox="0 0 16 16">
+                        <path d="M6.5 14.5v-3.505c0-.245.25-.495.5-.495h2c.25 0 .5.25.5.5v3.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5"/>
+                    </svg></a>
+                </li>
+                <li role="presentation" class="nav-item">
+                    <a class="nav-link active" data-view="graphs" href="#">Graphs <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07"/>
+                    </svg>
+                    </a>
+                </li>
+                <li role="presentation" class="nav-item">
+                    <a class="nav-link" data-view="flows" href="#">Flows <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-zoom-in" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/>
+                        <path d="M10.344 11.742q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1 6.5 6.5 0 0 1-1.398 1.4z"/>
+                        <path fill-rule="evenodd" d="M6.5 3a.5.5 0 0 1 .5.5V6h2.5a.5.5 0 0 1 0 1H7v2.5a.5.5 0 0 1-1 0V7H3.5a.5.5 0 0 1 0-1H6V3.5a.5.5 0 0 1 .5-.5"/>
+                    </svg>
+                    </a>
+                </li>
+                <li role="presentation" class="nav-item">
+                    <a class="nav-link" data-view="statistics" href="#">Statistics <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-list-columns" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M0 .5A.5.5 0 0 1 .5 0h9a.5.5 0 0 1 0 1h-9A.5.5 0 0 1 0 .5m13 0a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m-13 2A.5.5 0 0 1 .5 2h8a.5.5 0 0 1 0 1h-8a.5.5 0 0 1-.5-.5m13 0a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m-13 2A.5.5 0 0 1 .5 4h10a.5.5 0 0 1 0 1H.5a.5.5 0 0 1-.5-.5m13 0a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m-13 2A.5.5 0 0 1 .5 6h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m13 0a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m-13 2A.5.5 0 0 1 .5 8h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m13 0a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m-13 2a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5m13 0a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m-13 2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5m13 0a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m-13 2a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H.5a.5.5 0 0 1-.5-.5m13 0a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5"/>
+                    </svg>
+                    </a>
+                </li>
             </ul>
-            <a href="#" class="reload pull-right"><span class="glyphicon glyphicon-home" aria-hidden="true"></span></a>
         </header>
         <div id="filterContainer" class="container-fluid tab-content">
             <form autocomplete="off">
-                <div id="filter" class="filter row well well-sm">
-                    <div class="date_selection">
-                        <input type="text" name="date_range" id="date_range"/>
+                <div id="filter" class="filter row align-items-start bg-light border-bottom py-3" style="flex-direction: row">
+                    <div class="date_selection col-12 p-3 mb-4 border-bottom">
+                        <div class="mb-3">
+                            <input type="text" name="date_range" id="date_range"/>
+                        </div>
 
-                        <div class="btn-group" id="date_slot" data-toggle="buttons">
-                            <label class="btn btn-default"><input type="radio" name="range" data-unit="h" value="3600000">1 hour</label>
-                            <label class="btn btn-default"><input type="radio" name="range" data-unit="d" value="86400000">24 hours</label>
-                            <label class="btn btn-default"><input type="radio" name="range" data-unit="w" value="604800000">Week</label>
-                            <label class="btn btn-default"><input type="radio" name="range" data-unit="m" value="2592000000">Month</label>
-                            <label class="btn btn-default"><input type="radio" name="range" data-unit="y" value="31536000000">Year</label>
+                        <div class="float-end">
+                        <div class="btn-group" id="date_slot" data-bs-toggle="buttons">
+                            <input type="radio" class="btn-check" name="range" data-unit="h" id="dateSlotH" value="3600000">
+                            <label class="btn btn-outline-primary" for="dateSlotH">1 hour</label>
+                            <input type="radio" class="btn-check" name="range" data-unit="d" id="dateSlotD" value="86400000">
+                            <label class="btn btn-outline-primary" for="dateSlotD">24 hours</label>
+                            <input type="radio" class="btn-check" name="range" data-unit="w" id="dateSlotW" value="604800000">
+                            <label class="btn btn-outline-primary" for="dateSlotW">Week</label>
+                            <input type="radio" class="btn-check" name="range" data-unit="m" id="dateSlotM" value="2592000000">
+                            <label class="btn btn-outline-primary" for="dateSlotM">Month</label>
+                            <input type="radio" class="btn-check" name="range" data-unit="y" id="dateSlotY" value="31536000000">
+                            <label class="btn btn-outline-primary" for="dateSlotY">Year</label>
                         </div>
 
                         <div class="btn-group" id="date_slot_nav">
-                            <button type="button" class="btn btn-default prev" disabled><span class="glyphicon glyphicon-arrow-left" aria-hidden="true"></span></button>
-                            <button type="button" class="btn btn-default next" disabled><span class="glyphicon glyphicon-arrow-right" aria-hidden="true"></span></button>
+                            <button type="button" class="btn btn-outline-primary prev" disabled><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-left" viewBox="0 0 16 16">
+                                <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8"/>
+                            </svg></button>
+                            <button type="button" class="btn btn-outline-primary next" disabled><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-right" viewBox="0 0 16 16">
+                                <path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h11.793l-3.147-3.146a.5.5 0 0 1 .708-.708l4 4a.5.5 0 0 1 0 .708l-4 4a.5.5 0 0 1-.708-.708L13.293 8.5H1.5A.5.5 0 0 1 1 8"/>
+                            </svg></button>
                         </div>
 
                         <div class="btn-group" id="date_syncing" data-view="graphs">
-                            <button type="button" class="btn btn-default sync-date" disabled>Copy from graph <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span></button>
+                            <button type="button" class="btn btn-outline-primary sync-date" disabled>Copy from graph <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-repeat" viewBox="0 0 16 16">
+                                <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9"/>
+                                <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z"/>
+                            </svg></button>
+                        </div>
                         </div>
                     </div>
 
 
-                    <div id="filterDisplay" class="hidden col-xs-6 col-sm-2" data-view="graphs">
-                        <h3>Display</h3>
+                    <div id="filterDisplay" class="d-none col-xs-6 col-sm-2" data-view="graphs">
+                        <p class="h6">Display</p>
 
                         <div class="form-group">
-                            <select id="filterDisplaySelect" class="form-control">
+                            <select id="filterDisplaySelect" class="form-control form-select">
                                 <option value="sources">Sources</option>
                                 <option value="protocols">Protocols</option>
                                 <option value="ports">Ports</option>
@@ -64,51 +104,70 @@
                         </div>
                     </div>
 
-                    <div id="filterPorts" class="hidden col-xs-6 col-sm-2 col-md-1" data-view="graphs" data-display="ports">
-                        <h3>Ports</h3>
+                    <div id="filterPorts" class="d-none col-xs-6 col-sm-2 col-md-1" data-view="graphs" data-display="ports">
+                        <p class="h6">Ports</p>
 
                         <div class="form-group">
-                            <select id="filterPortsSelect" multiple class="form-control"></select>
+                            <select id="filterPortsSelect" multiple class="form-control form-select"></select>
                         </div>
                     </div>
 
-                    <div id="filterSources" class="hidden col-xs-6 col-sm-3 col-md-2" data-view="graphs flows statistics" data-display="sources protocols ports">
-                        <h3>Sources</h3>
+                    <div id="filterSources" class="d-none col-xs-6 col-sm-3 col-md-2" data-view="graphs flows statistics" data-display="sources protocols ports">
+                        <p class="h6">Sources</p>
 
                         <div class="form-group">
-                            <select  id="filterSourcesSelect" multiple class="form-control">
+                            <select  id="filterSourcesSelect" multiple class="form-control form-select">
                                 <option value="any">Any</option>
                             </select>
                         </div>
                     </div>
 
-                    <div id="filterProtocols" class="hidden col-xs-12 col-sm-6 col-md-4" data-view="graphs" data-display="sources protocols ports">
-                        <h3>Protocols</h3>
+                    <div id="filterProtocols" class="d-none col-xs-12 col-sm-6 col-md-4 col-lg-3" data-view="graphs" data-display="sources protocols ports">
+                        <p class="h6">Protocols</p>
 
-                        <div id="filterProtocolButtons" class="btn-group btn-group-md" data-toggle="buttons">
-                            <label class="btn btn-default"><input type="radio" name="protocol[]" value="any">Any</label>
-                            <label class="btn btn-default"><input type="radio" name="protocol[]" value="tcp">TCP</label>
-                            <label class="btn btn-default"><input type="radio" name="protocol[]" value="udp">UDP</label>
-                            <label class="btn btn-default"><input type="radio" name="protocol[]" value="icmp">ICMP</label>
-                            <label class="btn btn-default"><input type="radio" name="protocol[]" value="other">Others</label>
+                        <div id="filterProtocolButtons" class="btn-group btn-group-md" data-bs-toggle="buttons">
+                            <input type="radio" class="btn-check" name="protocol[]" value="any" id="filterProtocolAny">
+                            <label class="btn btn-outline-primary" for="filterProtocolAny">Any</label>
+                            <input type="radio" class="btn-check" name="protocol[]" value="tcp" id="filterProtocolTcp">
+                            <label class="btn btn-outline-primary" for="filterProtocolTcp">TCP</label>
+                            <input type="radio" class="btn-check" name="protocol[]" value="udp" id="filterProtocolUdp">
+                            <label class="btn btn-outline-primary" for="filterProtocolUdp">UDP</label>
+                            <input type="radio" class="btn-check" name="protocol[]" value="icmp" id="filterProtocolIcmp">
+                            <label class="btn btn-outline-primary" for="filterProtocolIcmp">ICMP</label>
+                            <input type="radio" class="btn-check" name="protocol[]" value="other" id="filterProtocolOther">
+                            <label class="btn btn-outline-primary" for="filterProtocolOther">Others</label>
                         </div>
                     </div>
 
-                    <div id="filterTypes" class="hidden col-xs-12 col-sm-6 col-md-3" data-view="graphs" data-display="sources protocols ports">
-                        <h3>Data Type</h3>
+                    <div id="filterTypes" class="d-none col-xs-12 col-sm-6 col-md-3 col-lg-2" data-view="graphs" data-display="sources protocols ports">
+                        <p class="h6">Data Type</p>
 
-                        <div class="btn-group btn-group-md" data-toggle="buttons">
-                            <label class="btn btn-default active"><input type="radio" name="datatype"  value="flows" checked>Flows</label>
-                            <label class="btn btn-default"><input type="radio" name="datatype"  value="packets">Packets</label>
-                            <label class="btn btn-default"><input type="radio" name="datatype"  value="bytes">Traffic</label>
+                        <div class="btn-group btn-group-md" data-bs-toggle="buttons">
+                            <input type="radio" class="btn-check" name="datatype" value="traffic" id="dataTypeTraffic" checked>
+                            <label class="btn btn-outline-primary" for="dataTypeTraffic">Traffic</label>
+                            <input type="radio" class="btn-check" name="datatype" value="packets" id="dataTypePackets">
+                            <label class="btn btn-outline-primary" for="dataTypePackets">Packets</label>
+                            <input type="radio" class="btn-check" name="datatype" value="flows" id="dataTypeFlows">
+                            <label class="btn btn-outline-primary" for="dataTypeFlows">Flows</label>
                         </div>
                     </div>
 
-                    <div id="filterFlowsLimit" class="hidden col-xs-6 col-sm-2 col-md-2 col-lg-1" data-view="flows">
-                        <h3>Limit Flows</h3>
+                    <div id="trafficUnit" class="d-none col-xs-6 col-sm-3 col-md-2 col-lg-2" data-view="graphs" data-display="sources protocols ports">
+                        <p class="h6">Traffic unit</p>
+
+                        <div class="btn-group btn-group-md" data-bs-toggle="buttons">
+                            <input type="radio" class="btn-check" name="trafficUnit" value="bits" id="trafficUnitBits" checked>
+                            <label class="btn btn-outline-primary" for="trafficUnitBits">Bits</label>
+                            <input type="radio" class="btn-check" name="trafficUnit" value="bytes" id="trafficUnitBytes">
+                            <label class="btn btn-outline-primary" for="trafficUnitBytes">Bytes</label>
+                        </div>
+                    </div>
+
+                    <div id="filterFlowsLimit" class="d-none col-xs-6 col-sm-2 col-md-2 col-lg-1" data-view="flows">
+                        <p class="h6">Limit Flows</p>
 
                         <div class="form-group">
-                            <select id="flowsFilterLimitSelection" class="form-control">
+                            <select id="flowsFilterLimitSelection" class="form-control form-select">
                                 <option value="20">20</option>
                                 <option value="50" >50</option>
                                 <option value="100" >100</option>
@@ -119,10 +178,10 @@
                         </div>
                     </div>
 
-                    <div id="filterStatisticsTop" class="hidden col-xs-6 col-sm-2 col-md-2 col-lg-1" data-view="statistics">
-                        <h3>Top records</h3>
+                    <div id="filterStatisticsTop" class="d-none col-xs-6 col-sm-2 col-md-2 col-lg-1" data-view="statistics">
+                        <p class="h6">Top records</p>
                         <div class="form-group">
-                            <select id="statsFilterTopSelection" class="form-control">
+                            <select id="statsFilterTopSelection" class="form-control form-select">
                                 <option value="10" selected>10</option>
                                 <option value="20">20</option>
                                 <option value="50">50</option>
@@ -134,9 +193,11 @@
                     </div>
 
 
-                    <div id="filterNfdump" class="hidden col-xs-12 col-sm-7 col-md-5" data-view="flows statistics">
+                    <div id="filterNfdump" class="d-none col-xs-12 col-sm-7 col-md-5" data-view="flows statistics">
 
-                        <h3>NFDUMP filter <span class="glyphicon glyphicon-info-sign" aria-hidden="true" data-toggle="tooltip" data-placement="right" title="The filter syntax is similar to the well known pcap library used by tcpdump. All keywords are case-independent. Example: dst port 80"></span></h3>
+                        <p class="h6">NFDUMP filter <span aria-hidden="true" data-bs-toggle="tooltip" data-bs-placement="right" title="The filter syntax is similar to the well known pcap library used by tcpdump. All keywords are case-independent. Example: dst port 80"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle-fill" viewBox="0 0 16 16">
+                            <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2"/>
+                        </svg></span></p>
 
                         <div class="form-group">
                             <textarea class="form-control" id="filterNfdumpTextarea" rows="3"></textarea>
@@ -145,7 +206,7 @@
                         <div class="btn-group">
                             <div class="btn-group">
 
-                                <button type="button" class="btn btn-default dropdown-toggle disabled" data-toggle="dropdown">
+                                <button type="button" class="btn btn-outline-primary dropdown-toggle disabled" data-bs-toggle="dropdown">
                                     Filters
                                     <span class="caret"></span>
                                 </button>
@@ -156,43 +217,49 @@
                                 </ul>
                             </div>
 
-                            <button type="button" class="btn btn-default disabled">Delete filter (server)</button>
-                            <button type="button" class="btn btn-default disabled">Save filter (server)</button>
+                            <button type="button" class="btn btn-outline-primary disabled">Delete filter (server)</button>
+                            <button type="button" class="btn btn-outline-primary disabled">Save filter (server)</button>
                         </div>
 
                     </div>
 
-                    <div id="filterFlowAggregation">
-                        <div class="hidden col-xs-6 col-sm-6 col-md-3 col-lg-2" data-view="flows">
+                    <div id="filterFlowAggregation" class="col">
+                        <div class="d-none" data-view="flows">
 
-                            <h3>Global Aggregation</h3>
-                            <div class="btn-group btn-group-md" data-toggle="buttons" id="filterFlowAggregationGlobal">
-                                <label class="btn btn-default"><input type="checkbox" name="bidirectional">Bi-directional</label>
-                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="proto">Protocol</label>
+                            <p class="h6">Global Aggregation</p>
+                            <div class="btn-group btn-group-md" data-bs-toggle="buttons" id="filterFlowAggregationGlobal">
+                                <input type="checkbox" class="btn-check" name="bidirectional" id="filterFlowAggregationGlobalBi">
+                                <label class="btn btn-outline-primary" for="filterFlowAggregationGlobalBi">Bi-directional</label>
+
+                                <input data-disable-on="bi-directional" type="checkbox" class="btn-check" name="proto" id="filterFlowAggregationGlobalProto">
+                                <label class="btn btn-outline-primary" for="filterFlowAggregationGlobalProto">Protocol</label>
                             </div>
 
                         </div>
-                        <div class="hidden col-xs-6 col-sm-6 col-md-3 col-lg-2" data-view="flows">
-                            <h3>Port Aggregation</h3>
-                            <div class="btn-group btn-group-md" data-toggle="buttons" id="filterFlowAggregationPort">
-                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="srcport">Source port</label>
-                                <label class="btn btn-default"><input data-disable-on="bi-directional" type="checkbox" name="dstport">Destination port</label>
+                        <div class="d-none" data-view="flows">
+                            <p class="h6">Port Aggregation</p>
+                            <div class="btn-group btn-group-md" data-bs-toggle="buttons" id="filterFlowAggregationPort">
+                                <input data-disable-on="bi-directional" type="checkbox" class="btn-check" name="srcport" id="filterFlowAggregationPortSrc">
+                                <label class="btn btn-outline-primary" for="filterFlowAggregationPortSrc">Source port</label>
+
+                                <input data-disable-on="bi-directional" type="checkbox" class="btn-check" name="dstport" id="filterFlowAggregationPortDst">
+                                <label class="btn btn-outline-primary" for="filterFlowAggregationPortDst">Destination port</label>
                             </div>
                         </div>
 
-                        <div class="hidden col-xs-12 col-sm-12 col-md-5 col-lg-4" data-view="flows">
-                            <h3>IP Aggregation</h3>
+                        <div class="d-none" data-view="flows">
+                            <p class="h6">IP Aggregation</p>
                             <div class="row">
                                 <div class="col-xs-6 col-sm-6">
                                     <label>Source</label><br>
                                     <div class="form-group">
-                                        <select data-disable-on="bi-directional" data-kind="source" name="srcip" id="filterFlowAggregationSourceAddressSelect" class="form-control pull-left" style="width: 70%">
+                                        <select data-disable-on="bi-directional" data-kind="source" name="srcip" id="filterFlowAggregationSourceAddressSelect" class="form-control form-select float-start" style="width: 70%">
                                             <option value="none">No aggregation</option>
                                             <option value="srcip">IP</option>
                                             <option value="srcip4">IPv4 subnets</option>
                                             <option value="srcip6">IPv6 subnets</option>
                                         </select>
-                                        <div id="sourceCIDRPrefixDiv" class="hidden pull-left" style="width:30%">
+                                        <div id="sourceCIDRPrefixDiv" class="d-none float-start" style="width:30%">
                                             <input data-disable-on="bi-directional" id="sourceCIDRPrefix" placeholder="24" name="srcipprefix" type="text" class="form-control">
                                         </div>
                                     </div>
@@ -201,13 +268,13 @@
                                 <div class="col-xs-6 col-sm-6">
                                     <label>Destination</label>
                                     <div class="form-group">
-                                        <select data-disable-on="bi-directional" data-kind="destination" name="dstip" id="filterFlowAggregationDestinationAddressSelect" class="form-control pull-left" style="width: 70%">
+                                        <select data-disable-on="bi-directional" data-kind="destination" name="dstip" id="filterFlowAggregationDestinationAddressSelect" class="form-control form-select float-start" style="width: 70%">
                                             <option value="none">No aggregation</option>
                                             <option value="dstip">IP</option>
                                             <option value="dstip4">IPv4 subnets</option>
                                             <option value="dstip6">IPv6 subnets</option>
                                         </select>
-                                        <div id="destinationCIDRPrefixDiv" class="hidden pull-left" style="width:30%">
+                                        <div id="destinationCIDRPrefixDiv" class="d-none float-start" style="width:30%">
                                             <input data-disable-on="bi-directional" id="destinationCIDRPrefix" placeholder="24" name="dstipprefix" type="text" class="form-control">
                                         </div>
                                     </div>
@@ -216,10 +283,10 @@
                         </div><!-- flowsFilterAggregationDiv  -->
                     </div>
 
-                    <div id="statsLimitDiv" class="hidden col-xs-6 col-sm-6 col-md-2" data-view="statistics">
-                        <h3>Data Limit</h3>
+                    <div id="statsLimitDiv" class="d-none col-xs-6 col-sm-6 col-md-2" data-view="statistics">
+                        <p class="h6">Data Limit</p>
                         <div class="form-group">
-                            <select id="statsLimitSelect" class="form-control" data-view="statistics" disabled>
+                            <select id="statsLimitSelect" class="form-control form-select" data-view="statistics" disabled>
                                 <option value="none">No limit</option>
                                 <option value="">Packets</option>
                                 <option value="">Bytes</option>
@@ -227,13 +294,13 @@
                         </div>
                     </div>
 
-                    <div id="filterStatsProperties" class="hidden col-xs-6 col-sm-6 col-md-4 col-lg-2" data-view="statistics">
+                    <div id="filterStatsProperties" class="d-none col-xs-6 col-sm-6 col-md-4 col-lg-2" data-view="statistics">
 
-                        <h3>Statistic properties</h3>
+                        <p class="h6">Statistic properties</p>
 
                         <div class="form-group">
                             <label for="statsFilterForSelection">Statistic for</label>
-                            <select id="statsFilterForSelection" class="form-control">
+                            <select id="statsFilterForSelection" class="form-control form-select">
                                 <option value="record" selected>Flow Records</option>
                                 <option value="ip">Any IP address</option>
                                 <option value="srcip">Src IP address</option>
@@ -284,7 +351,7 @@
 
                         <div class="form-group">
                             <label for="statsFilterOrderBySelection">Order by</label>
-                            <select id="statsFilterOrderBySelection" class="form-control">
+                            <select id="statsFilterOrderBySelection" class="form-control form-select">
                                 <option value="flows" selected>Flows</option>
                                 <option value="packets">Packets</option>
                                 <option value="bytes">Bytes</option>
@@ -296,13 +363,13 @@
 
                     </div><!-- statsFilterPropertiesDiv  -->
 
-                    <div id="filterOutput" class="hidden col-xs-12 col-sm-6 col-md-4 col-lg-3" data-view="flows statistics">
+                    <div id="filterOutput" class="hidden col-xs-12 col-sm-6 col-md-4 col-lg-4" data-view="flows statistics">
 
-                        <h3>Output</h3>
+                        <p class="h6">Output</p>
                         <div class="row">
                             <div class="form-group col-xs-6 col-sm-6">
                                 <label for="filterOutputSelection">Output type</label>
-                                <select id="filterOutputSelection" name="filterOutputSelection" class="form-control">
+                                <select id="filterOutputSelection" name="filterOutputSelection" class="form-control form-select">
                                     <option value="line">Line</option>
                                     <option value="long">Long</option>
                                     <option value="extended">Extended</option>
@@ -314,28 +381,28 @@
                             <div class="form-group col-xs-6 col-sm-6">
                                 <label>Other options</label>
                                 <br>
-                                <div class="btn-group btn-group-md" id="flowsFilterOther" data-toggle="buttons">
-                                    <label class="btn btn-default" data-view="flows"><input type="checkbox" name="ordertstart" value="true">Order by tstart</label>
-                                    <label class="btn btn-default"><input type="checkbox" name="ipv6" value="true">Full IPv6 address</label>
+                                <div class="" id="flowsFilterOther" data-bs-toggle="buttons">
+                                    <input type="checkbox" class="btn-check" name="ordertstart" value="true" id="flowsFilterOtherOrderTstart">
+                                    <label class="btn btn-outline-primary" data-view="flows" for="flowsFilterOtherOrderTstart">Order by tstart</label>
                                 </div>
                             </div>
                         </div>
 
                         <div id="customListOutputFormat" class="form-group hidden">
-                            <label for="customListOutputFormatValue">Custom output format <span class="glyphicon glyphicon-info-sign" aria-hidden="true" data-toggle="tooltip" data-placement="right" title="Specify output format in nfdump-style. E.g. %ts %tr %pr"></span></label>
+                            <label for="customListOutputFormatValue">Custom output format
+                                <span aria-hidden="true" data-bs-toggle="tooltip" data-bs-placement="right" title="Specify output format in nfdump-style. E.g. %ts %tr %pr"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-info-circle-fill" viewBox="0 0 16 16">
+  <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2"/>
+</svg></span></label>
                             <input id="customListOutputFormatValue" type="text" class="form-control">
                         </div>
                     </div>
 
                     <div id="filterCommands" class="hidden col-xs-12 col-sm-6 col-md-3" data-view="flows statistics">
-                        <h3>Commands</h3>
-                        <div class="btn-group btn-group-md" data-toggle="buttons">
-                            <button type="button" class="btn btn-primary submit" data-view="flows" data-loading-text="Loading...">Process data</button>
-                            <button type="button" class="btn btn-primary submit" data-view="statistics" data-loading-text="Loading...">Process data</button>
-
+                        <p class="h6">Commands</p>
+                        <div class="btn-group btn-group-md" data-bs-toggle="buttons">
+                            <button type="button" class="btn btn-outline-primary submit">Process data</button>
                             <button type="button" class="btn btn-success csv">Get CSV</button>
-
-                            <button type="button" class="btn btn-default reset">Reset filters</button>
+                            <button type="button" class="btn btn-outline-primary reset">Reset filters</button>
                         </div>
                     </div>
                 </div><!-- statsFilterDiv  -->
@@ -349,48 +416,49 @@
 
             <div id="graphsContentDiv" data-view="graphs" class="content container-fluid">
 
-                <div class="col-sm-12">
+                <div class="col-sm-12 my-4">
                     <div id="flowDiv" style="width: 100%;"></div>
                 </div>
 
-                <div id="graphOptions">
+                <div id="graphOptions" class="row">
                     <div class="col-xs-6 col-sm-3">
-                        <h4>Graph Scale</h4>
-                        <div class="btn-group" data-toggle="buttons" id="graph_linlog">
-                            <label class="btn btn-default active">
-                                <input type="radio" name="scale" autocomplete="off" value="linear" checked>Linear</label>
-                            <label class="btn btn-default">
-                                <input id="logarithmicScaleBtn" type="radio" name="scale" autocomplete="off" value="logarithmic">Logarithmic</label>
+                        <p class="h6">Graph Scale</p>
+                        <div class="btn-group" role="group" id="graph_linlog">
+                            <input type="radio" class="btn-check" name="scale" autocomplete="off" value="linear" checked id="graph_linlog_linear">
+                            <label for="graph_linlog_linear" class="btn btn-outline-primary">Linear</label>
+
+                            <input id="graph_linlog_log" type="radio" class="btn-check" name="scale" autocomplete="off" value="logarithmic">
+                            <label for="graph_linlog_log" class="btn btn-outline-primary">Logarithmic</label>
                         </div>
                     </div>
 
                     <div class="col-xs-6 col-sm-3">
-                        <h4>Series display</h4>
-                        <div class="btn-group" data-toggle="buttons" id="graph_linestacked">
-                            <label class="btn btn-default active">
-                                <input type="radio" name="type" autocomplete="off" value="stacked" checked>Stacked</label>
-                            <label class="btn btn-default">
-                                <input type="radio" name="type" autocomplete="off" value="line">Line</label>
+                        <p class="h6">Series display</p>
+                        <div class="btn-group" data-bs-toggle="buttons" id="graph_linestacked">
+                            <input type="radio" class="btn-check" name="type" autocomplete="off" value="stacked" checked id="graph_linestacked_stacked">
+                            <label class="btn btn-outline-primary" for="graph_linestacked_stacked">Stacked</label>
+
+                            <input type="radio" class="btn-check" name="type" autocomplete="off" value="line" id="graph_linestacked_line">
+                            <label class="btn btn-outline-primary" for="graph_linestacked_line">Line</label>
                         </div>
 
-                        <div class="btn-group" data-toggle="buttons" id="graph_lineplot">
-                            <label class="btn btn-default active">
-                                <input type="radio" name="lineplot" autocomplete="off" value="step" checked>Step plot
-                            </label>
-                            <label class="btn btn-default">
-                                <input type="radio" name="lineplot" autocomplete="off" value="curve">Curve plot
-                            </label>
+                        <div class="btn-group" data-bs-toggle="buttons" id="graph_lineplot">
+                            <input type="radio" class="btn-check" name="lineplot" autocomplete="off" value="step" id="graph_lineplot_step" checked>
+                            <label class="btn btn-outline-primary" for="graph_lineplot_step">Step plot</label>
+
+                            <input type="radio" class="btn-check" name="lineplot" autocomplete="off" value="curve" id="graph_lineplot_curve">
+                            <label class="btn btn-outline-primary" for="graph_lineplot_curve">Curve plot</label>
                         </div>
                     </div>
 
                     <div class="col-xs-6 col-sm-3 accordion">
-                        <h4 data-toggle="collapse" data-target="#series" role="button" aria-expanded="true">Series</h4>
-                        <div class="collapse in" id="series"></div>
+                        <p class="h6" data-bs-toggle="collapse" data-bs-target="#series" role="button" aria-expanded="true">Series</p>
+                        <div class="collapse show" id="series"></div>
                     </div>
 
                     <div class="col-xs-6 col-sm-3 accordion">
-                        <h4 data-toggle="collapse" data-target="#legend" role="button" aria-expanded="true">Values</h4>
-                        <div class="collapse in" id="legend"></div>
+                        <p class="h6" data-bs-toggle="collapse" data-bs-target="#legend" role="button" aria-expanded="true">Values</p>
+                        <div class="collapse show" id="legend"></div>
                     </div>
                 </div>
             </div>
@@ -404,6 +472,25 @@
 
         </div><!-- contentDiv  -->
 
+        <div class="modal fade" id="modal" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="modalLabel">Modal title</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body"></div>
+                    <div class="modal-loader d-none text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading</span>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
         <script src="js/nfsen-ng.js"></script>
     </body>
 </html>

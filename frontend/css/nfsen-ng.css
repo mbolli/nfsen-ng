@@ -1,11 +1,36 @@
 /* general */
-
-header {
-    margin-top: 1vw;
+:root {
+    --bs-primary: #ccc;
 }
 
-header .reload {
-    padding: 10px 15px;
+.nav {
+    --bs-nav-link-color: #000;
+    --bs-link-color-rgb: 0,0,0;
+}
+
+.btn-outline-primary {
+    --bs-btn-bg: #fff;
+    --bs-btn-color: #000;
+    --bs-btn-border-color: #ccc;
+    --bs-btn-hover-bg: #ccc;
+    --bs-btn-hover-border-color: #ccc;
+    --bs-btn-active-bg: #ccc;
+    --bs-btn-active-border-color: #ccc;
+    --bs-btn-active-color: #000;
+    --bs-gradient: linear-gradient(#000 0%, #fff 100%);
+    --bs-btn-disabled-color: #000;
+    --bs-btn-disabled-border-color: #000;
+}
+
+/* light grey background for active nav links */
+.nav-tabs .nav-link.active {
+    --bs-nav-tabs-link-active-bg: rgba(var(--bs-light-rgb),1);
+    border-bottom: 1px solid rgb(var(--bs-light-rgb));
+    font-weight: bold;
+}
+
+.btn.disabled, .btn:disabled, fieldset:disabled .btn {
+    opacity: .3;
 }
 
 textarea {
@@ -16,18 +41,9 @@ code, pre, .code {
     font-family: Menlo, Monaco, Consolas, "Courier New", monospace
 }
 
-h3, h4 {
+.h5, .h6 {
     text-transform: uppercase;
     font-weight: bold;
-    font-size: 1.5rem;
-}
-
-ul.nav-tabs {
-    border: none;
-}
-
-#contentDiv {
-    overflow-x: auto;
 }
 
 /* graph */
@@ -38,7 +54,7 @@ ul.nav-tabs {
 }
 
 #flowDiv .dygraph-ylabel {
-    font-size: 1.5rem;
+    font-size: 1rem;
 }
 
 #legend span {
@@ -60,13 +76,12 @@ ul.nav-tabs {
 /* graph options */
 
 .accordion h4:after {
-    font-family: "Glyphicons Halflings";
-    content: "\e114";
+    content: "\25B2";
     float: right;
 }
 
 .accordion h4.collapsed:after {
-    content: "\e080";
+    content: "\25BC";
 }
 
 /* flows */

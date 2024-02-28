@@ -1,9 +1,8 @@
 <?php
 
-namespace nfsen_ng\datasources;
+namespace mbolli\nfsen_ng\datasources;
 
 interface Datasource {
-    
     /**
      * Writes a new record to the datasource.
      * Expects an array in the following format:
@@ -12,43 +11,41 @@ interface Datasource {
      *  'date_timestamp' => 000000000,
      *  'date_iso' =>       'Ymd\THis',
      *  'fields' =>         array(
-     "      'flows',
-     "      'flows_tcp',
-     "      'flows_udp',
-     "      'flows_icmp',
-     "      'flows_other',
-     "      'packets',
-     "      'packets_tcp',
-     "      'packets_udp',
-     "      'packets_icmp',
-     "      'packets_other',
-     "      'bytes',
-     "      'bytes_tcp',
-     "      'bytes_udp',
-     "      'bytes_icmp',
-     "      'bytes_other')
-     *  );
+     *      'flows',
+     *      'flows_tcp',
+     *      'flows_udp',
+     *      'flows_icmp',
+     *      'flows_other',
+     *      'packets',
+     *      'packets_tcp',
+     *      'packets_udp',
+     *      'packets_icmp',
+     *      'packets_other',
+     *      'bytes',
+     *      'bytes_tcp',
+     *      'bytes_udp',
+     *      'bytes_icmp',
+     *      'bytes_other')
+     *  );.
      *
-     * @param array $data
+     * @return bool TRUE on success or FALSE on failure
      *
-     * @return bool TRUE on success or FALSE on failure.
      * @throws \Exception on error
      */
-    public function write(array $data);
-    
+    public function write(array $data): bool;
+
     /**
      * Gets data for plotting the graph in the frontend.
      * Each row in $return['data'] will be a time point in the graph.
      * The lines can be
      *   * protocols - $sources must not contain more than one source (legend e.g. gateway_flows_udp, gateway_flows_tcp)
      *   * sources - $protocols must not contain more than one protocol (legend e.g. gateway_traffic_icmp, othersource_traffic_icmp)
-     *   * ports
+     *   * ports.
      *
      * @param int    $start     timestamp
      * @param int    $end       timestamp
      * @param array  $sources   subset of sources specified in settings
      * @param array  $protocols UDP/TCP/ICMP/other
-     * @param array  $ports
      * @param string $type      flows/packets/traffic
      * @param string $display   protocols/sources/ports
      *
@@ -74,40 +71,28 @@ interface Datasource {
         array $ports,
         string $type = 'flows',
         string $display = 'sources'
-    );
-    
+    ): array|string;
+
     /**
      * Removes all existing data for every source in $sources.
      * If $sources is empty, remove all existing data.
-     *
-     * @param array $sources
-     *
-     * @return bool
      */
-    public function reset(array $sources);
-    
+    public function reset(array $sources): bool;
+
     /**
-     * Gets the timestamps of the first and last entry in the datasource (for this specific source)
-     *
-     * @param string $source
+     * Gets the timestamps of the first and last entry in the datasource (for this specific source).
      *
      * @return array (timestampfirst, timestamplast)
      */
     public function date_boundaries(string $source): array;
-    
+
     /**
-     * Gets the timestamp of the last update of the datasource (for this specific source)
-     *
-     * @param string $source
-     *
-     * @return int
+     * Gets the timestamp of the last update of the datasource (for this specific source).
      */
-    public function last_update(string $source): int;
-    
+    public function last_update(string $source, int $port = 0): int;
+
     /**
-     * Gets the path where the datasource's data is stored
-     * @return string
+     * Gets the path where the datasource's data is stored.
      */
-    public function get_data_path();
-    
+    public function get_data_path(): string;
 }

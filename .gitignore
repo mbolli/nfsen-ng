@@ -4,3 +4,5 @@ backend/datasources/data/
 backend/cli/nfsen-ng.log
 backend/cli/nfsen-ng.pid
 profiles-data/
+vendor/
+*.cache

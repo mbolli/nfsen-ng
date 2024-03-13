@@ -421,8 +421,6 @@ $(document).ready(function() {
         // load default view
         if (typeof config.frontend.defaults !== 'undefined') {
             $('header li a[data-view="' + config.frontend.defaults.view + '"]').trigger('click');
-        } else {
-            $('header li a').eq(0).trigger('click');
         }
 
         enable_graph = true;

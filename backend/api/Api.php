@@ -297,7 +297,7 @@ class Api {
             'daemon_running' => $daemon_running,
             'frontend' => $frontend,
             'version' => Config::VERSION,
-            'tz_offset' => (new \DateTimeZone(date_default_timezone_get()))->getOffset(new \DateTime('now', new \DateTimeZone('UTC'))),
+            'tz_offset' => (new \DateTimeZone(date_default_timezone_get()))->getOffset(new \DateTime('now', new \DateTimeZone('UTC'))) / 3600,
         ];
     }
 

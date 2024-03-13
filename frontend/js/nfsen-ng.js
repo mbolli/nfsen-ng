@@ -341,9 +341,11 @@ $(document).ready(function() {
 
     var setButtonLoading = function($button, setTo = true) {
         $button.toggleClass('disabled', setTo);
-        if (setTo === false && $button.data('old-text') !== undefined) {
-            $button.html($button.data('old-text'));
-            $button.data('old-text', undefined);
+        if (setTo === false) {
+            if ($button.data('old-text') !== undefined) {
+                $button.html($button.data('old-text'));
+                $button.data('old-text', undefined);
+            }
         } else {
             $button.data('old-text', $button.html());
             $button.html('<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span role="status">&nbsp;Loading&#133;</span>');

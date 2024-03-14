@@ -73,6 +73,51 @@ The default settings file is `backend/settings/settings.php.dist`. Copy it to `b
   * **log**
     * **priority:** (*LOG_INFO*) see other possible values at [http://php.net/manual/en/function.syslog.php]
 
+### Nfdump
+
+Nfsen-ng uses nfdump to read the nfcapd files. You can specify the location of the nfdump binary in `backend/settings/settings.php`. The default location is `/usr/bin/nfdump`.
+
+you should also have a look at the nfdump configuration file `/etc/nfdump.conf` and make sure that the `nfcapd` files are written to the correct location. The default location is `/var/nfdump/profiles_data`.
+
+here is an example of the nfdump configuration file:
+
+```ini
+options='-z -S 1 -T all -l /var/nfdump/profiles-data/live/<source> -p <port>'
+```
+
+where
+
+* `-z` is used to compress the nfcapd files
+* `-S 1` is used to specify the nfcapd directory structure
+* `-T all` is used to specify the extension of the nfcapd files
+* `-l` is used to specify the destination location of the nfcapd files
+* `-p` is used to specify the port of the nfcapd files.
+
+#### Nfcapd x Sfcapd
+
+One might use sfcapd instead of nfcapd. In this case, you should change the `nfdump` configuration file to use `sfcapd` instead of `nfcapd`.
+
+In this case, you should change `/lib/systemd/system/nfdump@.service` to use `sfcapd` instead of `nfcapd`:
+
+```ini
+[Unit]
+Description=netflow capture daemon, %I instance
+Documentation=man:sfcapd(1)
+After=network.target auditd.service
+PartOf=nfdump.service
+
+[Service]
+Type=forking
+EnvironmentFile=/etc/nfdump/%I.conf
+ExecStart=/usr/bin/sfcapd -D -P /run/sfcapd.%I.pid $options
+PIDFile=/run/sfcapd.%I.pid
+KillMode=process
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+```
+
 ## CLI
 
 The command line interface is used to initially scan existing nfcapd.* files, or to administer the daemon.

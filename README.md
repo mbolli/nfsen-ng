@@ -18,14 +18,11 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 * [nfsen-ng](#nfsen-ng)
   * [Installation](#installation)
   * [Configuration](#configuration)
-  * [CLI](#cli)
-    * [CLI as a service](#cli-as-a-service)
+    * [Nfdump](#nfdump)
+  * [CLI/Daemon](#cli--daemon)
+    * [Daemon as a systemd service](#daemon-as-a-systemd-service)
   * [Logs](#logs)
   * [API](#api)
-    * [/api/config](./API_ENDPOINTS.md#apiconfig)
-    * [/api/graph](./API_ENDPOINTS.md#apigraph)
-    * [/api/flows](./API_ENDPOINTS.md#apiflows)
-    * [/api/stats](./API_ENDPOINTS.md#apistats)
 
 ## Installation
 
@@ -77,9 +74,9 @@ The default settings file is `backend/settings/settings.php.dist`. Copy it to `b
 
 Nfsen-ng uses nfdump to read the nfcapd files. You can specify the location of the nfdump binary in `backend/settings/settings.php`. The default location is `/usr/bin/nfdump`.
 
-you should also have a look at the nfdump configuration file `/etc/nfdump.conf` and make sure that the `nfcapd` files are written to the correct location. The default location is `/var/nfdump/profiles_data`.
+You should also have a look at the nfdump configuration file `/etc/nfdump.conf` and make sure that the `nfcapd` files are written to the correct location. The default location is `/var/nfdump/profiles_data`.
 
-here is an example of the nfdump configuration file:
+Hhere is an example of an nfdump configuration:
 
 ```ini
 options='-z -S 1 -T all -l /var/nfdump/profiles-data/live/<source> -p <port>'
@@ -95,9 +92,7 @@ where
 
 #### Nfcapd x Sfcapd
 
-One might use sfcapd instead of nfcapd. In this case, you should change the `nfdump` configuration file to use `sfcapd` instead of `nfcapd`.
-
-In this case, you should change `/lib/systemd/system/nfdump@.service` to use `sfcapd` instead of `nfcapd`:
+To use sfcapd instead of nfcapd, you have to change the `nfdump` configuration file `/lib/systemd/system/nfdump@.service` to use `sfcapd` instead of `nfcapd`:
 
 ```ini
 [Unit]
@@ -118,7 +113,7 @@ Restart=no
 WantedBy=multi-user.target
 ```
 
-## CLI
+## CLI + Daemon
 
 The command line interface is used to initially scan existing nfcapd.* files, or to administer the daemon.
 
@@ -137,7 +132,7 @@ or for the daemon
   * **-f**  Force overwriting database and start fresh
 
   * **Commands:**
-    * **import** Import existing nfdump data to nfsen-ng. *Note:* If you have existing nfcapd files, better do this overnight.
+    * **import** Import existing nfdump data to nfsen-ng. *Note:* If you have existing nfcapd files, better do this overnight or over a week-end.
     * **start** Start the daemon for continuous reading of new data
     * **stop** Stop the daemon
     * **status** Get the daemon's status
@@ -152,9 +147,9 @@ or for the daemon
     * `./cli.php start`
         Starts the daemon
 
-### CLI as a service
+### Daemon as a systemd service
 
-You can use the CLI as a service. To do so, you can use the provided systemd service file below. You can copy it to `/etc/systemd/system/nfsen-ng.service` and then start it with `systemctl start nfsen-ng`.
+You can use the daemon as a service. To do so, you can use the provided systemd service file below. You can copy it to `/etc/systemd/system/nfsen-ng.service` and then start it with `systemctl start nfsen-ng`.
 
 ```ini
 [Unit]
@@ -178,7 +173,7 @@ Now, you should reload and enable the service to start on boot with `systemctl d
 
 ## Logs
 
-Nfsen-ng logs to syslog. You can find the logs in `/var/log/syslog` or `/var/log/messages` depending on your system. Some distribuitions might register it in `journalctl`. To access the logs, you can use `tail -f /var/log/syslog` or `journalctl -u nfsen-ng`
+Nfsen-ng logs to syslog. You can find the logs in `/var/log/syslog` or `/var/log/messages` depending on your system. Some distributions might register it in `journalctl`. To access the logs, you can use `tail -f /var/log/syslog` or `journalctl -u nfsen-ng`
 
 You can change the log priority in `backend/settings/settings.php`.
 

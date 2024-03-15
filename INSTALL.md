@@ -4,7 +4,6 @@ These instructions install nfsen-ng on a fresh Ubuntu 20.04/22.04 LTS or Debian 
 
 **Note that setup of nfcapd is not covered here, but nfsen-ng requires data captured by nfcapd to work.**
 
-
 ## Ubuntu 20.04/22.04 LTS
 
  ```bash

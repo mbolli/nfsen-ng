@@ -14,8 +14,7 @@
         "jetbrains/phpstorm-attributes": "^1.0",
         "phpstan/phpstan": "^1.9",
         "rector/rector": "^0.19.0",
-        "vimeo/psalm": "^5.4",
-        "vincentlanglet/twig-cs-fixer": "^2.0"
+        "vimeo/psalm": "^5.4"
     },
     "autoload": {
         "psr-4": {

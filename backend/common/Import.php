@@ -183,7 +183,7 @@ class Import {
             'fields' => [],
             'source' => $source,
             'port' => 0,
-            'date_iso' => $date->format('Ymd\\THis'),
+            'date_iso' => $date->format('Ymd\THis'),
             'date_timestamp' => $date->getTimestamp(),
         ];
         // $input data is an array of lines looking like this:
@@ -273,7 +273,7 @@ class Import {
             ],
             'source' => $source,
             'port' => $port,
-            'date_iso' => $date->format('Ymd\\THis'),
+            'date_iso' => $date->format('Ymd\THis'),
             'date_timestamp' => $date->getTimestamp(),
         ];
 

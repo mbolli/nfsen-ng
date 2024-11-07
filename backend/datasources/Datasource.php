@@ -70,7 +70,7 @@ interface Datasource {
         array $protocols,
         array $ports,
         string $type = 'flows',
-        string $display = 'sources'
+        string $display = 'sources',
     ): array|string;
 
     /**

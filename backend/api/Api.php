@@ -163,7 +163,7 @@ class Api {
         int $top,
         string $for,
         string $limit,
-        array $output = []
+        array $output = [],
     ) {
         $sources = implode(':', $sources);
 
@@ -206,7 +206,7 @@ class Api {
         int $limit,
         string $aggregate,
         string $sort,
-        array $output
+        array $output,
     ) {
         $aggregate_command = '';
         // nfdump -M /srv/nfsen/profiles-data/live/tiber:n048:gate:swibi:n055:swi6  -T  -r 2017/04/10/nfcapd.201704101150 -c 20
@@ -253,7 +253,7 @@ class Api {
         array $protocols,
         array $ports,
         string $type,
-        string $display
+        string $display,
     ) {
         $graph = Config::$db->get_graph_data($datestart, $dateend, $sources, $protocols, $ports, $type, $display);
         if (!\is_array($graph)) {

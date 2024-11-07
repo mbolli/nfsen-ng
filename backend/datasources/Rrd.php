@@ -148,7 +148,7 @@ class Rrd implements Datasource {
         #[ExpectedValues(['flows', 'packets', 'bytes', 'bits'])]
         string $type = 'flows',
         #[ExpectedValues(['protocols', 'sources', 'ports'])]
-        string $display = 'sources'
+        string $display = 'sources',
     ): array|string {
         $options = [
             '--start',

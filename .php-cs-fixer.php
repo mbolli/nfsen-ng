@@ -18,9 +18,11 @@ return (new PhpCsFixer\Config())
         'curly_braces_position' => ['classes_opening_brace' => 'same_line', 'functions_opening_brace' => 'same_line'],
         'declare_strict_types' => false,
         'mb_str_functions' => true,
+        'nullable_type_declaration_for_default_null_value' => true,
         'operator_linebreak' => true,
-        'phpdoc_to_comment' => ['ignored_tags' => ['var']],
+        'phpdoc_to_comment' => ['ignored_tags' => ['var'], 'allow_before_return_statement' => true],
         'single_line_empty_body' => true,
+        'string_implicit_backslashes' => ['double_quoted' => 'escape', 'single_quoted' => 'ignore', 'heredoc' => 'escape'],
         'yoda_style' => ['equal' => false, 'identical' => false, 'less_and_greater' => false],
     ])
     ->setFinder(PhpCsFixer\Finder::create()->exclude('vendor')->in(__DIR__))

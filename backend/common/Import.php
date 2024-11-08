@@ -250,7 +250,7 @@ class Import {
             }
         }
 
-        $nfdump->setFilter('dst port=' . $port);
+        $nfdump->setFilter('dst port ' . $port);
         $nfdump->setOption('-s', 'dstport:p');
         $nfdump->setOption('-r', $statsPath);
 

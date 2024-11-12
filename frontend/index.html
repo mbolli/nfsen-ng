@@ -49,6 +49,10 @@
                     </svg>
                     </a>
                 </li>
+                <li role="presentation" class="nav-item">
+                    <a class="nav-link" data-view="config" href="#">Config ⚙️
+                    </a>
+                </li>
             </ul>
         </header>
         <div id="filterContainer" class="container-fluid tab-content">
@@ -91,6 +95,28 @@
                         </div>
                     </div>
 
+                    <div class="d-none col-xs-6 col-sm-2" data-view="config">
+                    <ul>
+                    <li>
+                    Config <a href="../api/config">/api/config</a>
+                    </li>
+                    <li>
+                        Theme
+                        <a href="javascript:window.localStorage.setItem('theme', 'light')">Light</a>
+                        <a href="javascript:window.localStorage.setItem('theme', 'dark')">Dark</a>
+                    </li>
+
+                    <script>
+                    var theme = window.localStorage.getItem("theme");
+                    var styleId = document.styleSheets.length - 1;
+                    var ruleId = 2;
+                    switch (theme)
+                    {
+                        case "light": document.styleSheets[styleId].rules[ruleId].style.filter="invert(0.0)"; break;;
+                        case "dark": document.styleSheets[styleId].rules[ruleId].style.filter="invert(0.9)"; break;;
+                    }
+                    </script>
+                    </div>
 
                     <div id="filterDisplay" class="d-none col-xs-6 col-sm-2" data-view="graphs">
                         <p class="h6">Display</p>

@@ -1,4 +1,8 @@
 /* general */
+@media (prefers-color-scheme: light) { html { filter: invert(0.0);  } :root { } }
+@media (prefers-color-scheme: dark)  { html { filter: invert(0.85); } :root { } }
+html { filter: none; }
+
 :root {
     --bs-primary: #ccc;
 }

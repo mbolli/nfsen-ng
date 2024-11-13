@@ -359,12 +359,12 @@ $(document).ready(function() {
         var current_view = $('.nav-link.active').attr('data-view'),
             do_continue = true,
             date_diff = date_range.options.to-date_range.options.from,
-            count_sources = $('#filterSourcesSelect').val().length;
+            count_sources = $('#filterSourcesSelect').val().length,
+            count_days = Math.round(Number(date_diff/1000/24/60/60));
 
         // warn user of long-running query
-        if (date_diff*count_sources > 1000*24*60*60*12) {
-            var count_days = Number(date_diff/1000/24/60/60),
-                calc_info = count_days + ' days and ' + count_sources + ' sources';
+        if (count_days > 7 && date_diff*count_sources > 1000*24*60*60*12) {
+            var calc_info = count_days + ' days and ' + count_sources + ' sources';
             do_continue = confirm('Be aware that nfdump will scan 288 capture files per day and source. You selected ' + calc_info + '. This might take a long time and lots of server resources. Are you sure you want to submit this query?');
         }
 
@@ -412,9 +412,16 @@ $(document).ready(function() {
         // set version
         $('#version').html(config.version);
 
+	var stored_filters = config['stored_filters'];
+	var local_filters = window.localStorage.getItem('stored_filters');
+	stored_filters = stored_filters.concat(JSON.parse( local_filters ));
+	stored_filters = Array.from(new Set(stored_filters));
+	window.localStorage.setItem('stored_filters', JSON.stringify(stored_filters) )
+
         // load values for form
         updateDropdown('sources', config['sources']);
         updateDropdown('ports', config['ports']);
+        updateDropdown('filters', stored_filters);
 
         init_rangeslider();
 
@@ -1171,6 +1178,37 @@ $(document).ready(function() {
                 $prefixDiv.find('input').attr('maxlength', 3).val('128');
                 break;
         }
+    });
+
+    /**
+     * handle "onchange/onclick" for filter Filters controls
+     */
+    $(document).on('change', '#filterFiltersSelect', function() {
+	document.getElementById('filterNfdumpTextarea').value = event.target.value;
+    });
+
+    $(document).on('click', '#filterFiltersButtonRemove', function() {
+	var filter = [document.getElementById('filterNfdumpTextarea').value];
+	var select = document.getElementById('filterFiltersSelect');
+        var stored_filters = JSON.parse(window.localStorage.getItem('stored_filters'));
+	stored_filters = stored_filters.filter(element => { return !filter.includes(element); });
+	stored_filters = JSON.stringify(stored_filters);
+	window.localStorage.setItem('stored_filters', stored_filters);
+
+        select.innerHTML = '';
+        updateDropdown('filters', JSON.parse(stored_filters));
+    });
+
+    $(document).on('click', '#filterFiltersButtonSave', function() {
+        var stored_filters = JSON.parse(window.localStorage.getItem('stored_filters'));
+	var filter = [document.getElementById('filterNfdumpTextarea').value];
+
+	if (!stored_filters.includes(filter[0]))
+	{
+	    stored_filters = JSON.stringify( filter.concat(stored_filters));
+	    window.localStorage.setItem('stored_filters', stored_filters);
+            updateDropdown('filters', filter);
+	}
     });
 
 

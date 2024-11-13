@@ -276,7 +276,7 @@ class Api {
         $frontend = Config::$cfg['frontend'];
 
         $stored_output_formats = []; // todo implement
-        $stored_filters = []; // todo implement
+        $stored_filters =  Config::$cfg['general']['filters'];
 
         $folder = \dirname(__FILE__, 2);
         $pidfile = $folder . '/nfsen-ng.pid';

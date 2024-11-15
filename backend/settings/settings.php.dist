@@ -16,7 +16,6 @@ $nfsen_config = [
             'source1', 'source2',
         ],
         'filters' => [
-            'Filters',
             'proto udp',
             'proto tcp',
         ],

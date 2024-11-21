@@ -1040,7 +1040,7 @@ $(document).ready(function() {
                     };
 
                 // add formatter for ip addresses
-                if (['sa', 'da'].indexOf(val) !== -1 || val.match(/ip$/i) || title.match(/IP address$/)) {
+                if (['sa', 'da'].indexOf(val) !== -1 || val.match(/ip$/i) || title && title.match(/IP address$/)) {
                     column['formatter'] = (ip) => "<a href='#' onclick='return ip_link_handler(this)'>" + ip + "</a>";
                 }
 

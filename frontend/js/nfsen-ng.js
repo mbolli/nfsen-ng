@@ -1221,7 +1221,7 @@ $(document).ready(function() {
         {
             stored_filters = JSON.stringify( filter.concat(stored_filters));
             window.localStorage.setItem('stored_filters', stored_filters);
-                updateDropdown('filters', filter);
+            updateDropdown('filters', filter);
         }
     });
 
@@ -1249,12 +1249,12 @@ $(document).ready(function() {
 
 
     $(document).on('click', '#customListOutputFormatAdd', function() {
-        default_format_name = new Date().toString().split(" (")[0]
+        var default_format_name = new Date().toString().split(" (")[0];
         var new_output_format_name = window.prompt("How do you wish to name your new output format?", default_format_name);
         var stored_output_formats = JSON.parse(window.localStorage.getItem('stored_output_formats'));
         var output_format = document.getElementById('customListOutputFormatValue').value;
 
-        if (stored_output_formats[new_output_format_name]===undefined)
+        if (stored_output_formats[new_output_format_name] === undefined)
         {
             stored_output_formats[new_output_format_name] = output_format;
             window.localStorage.setItem('stored_output_formats', JSON.stringify(stored_output_formats) );

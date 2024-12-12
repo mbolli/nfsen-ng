@@ -1352,7 +1352,7 @@ $(document).ready(function() {
 
     /**
      * Resets the dropdown by deleting appended options after index 
-     * @param displaytype string: sources/ports/protocols/outputSelection
+     * @param displaytype string: sources/ports/protocols/output
      * @param maxindex int: sequential id of first option to remove, i.e. displaytype[maxindex:]
      */
     function resetDropdown(displaytype, maxindex) {

@@ -412,19 +412,19 @@ $(document).ready(function() {
         // set version
         $('#version').html(config.version);
 
-	var stored_filters = config['stored_filters'];
+    var stored_filters = config['stored_filters'];
     var local_filters = window.localStorage.getItem('stored_filters');
-	stored_filters = stored_filters.concat(JSON.parse( local_filters ));
-	stored_filters = Array.from(new Set(stored_filters));
-	window.localStorage.setItem('stored_filters', JSON.stringify(stored_filters) )
+    stored_filters = stored_filters.concat(JSON.parse( local_filters ));
+    stored_filters = Array.from(new Set(stored_filters));
+    window.localStorage.setItem('stored_filters', JSON.stringify(stored_filters) )
 
     var stored_output_formats = config['stored_output_formats'];
     var local_output_formats = JSON.parse(window.localStorage.getItem('stored_output_formats'));
-	local_output_formats  = local_output_formats == null ? {} : local_output_formats 
-	for (var attrname in stored_output_formats){
-			local_output_formats[attrname] = stored_output_formats[attrname]
-	}
-	window.localStorage.setItem('stored_output_formats', JSON.stringify(local_output_formats))
+    local_output_formats  = local_output_formats == null ? {} : local_output_formats 
+    for (var attrname in stored_output_formats){
+            local_output_formats[attrname] = stored_output_formats[attrname]
+    }
+    window.localStorage.setItem('stored_output_formats', JSON.stringify(local_output_formats))
 
         // load values for form
         updateDropdown('sources', config['sources']);
@@ -1133,9 +1133,9 @@ $(document).ready(function() {
 
         // if "custom" is selected, show "customFlowListOutputFormat" otherwise hide it
         if (!['line','long', 'extended','full'].includes($(this).val())){
-	    $('#customListOutputFormat').removeClass('d-none');
-	    if ($(this).val() != 'custom'){
-	        $('#customListOutputFormatValue').val($(this).val());
+        $('#customListOutputFormat').removeClass('d-none');
+        if ($(this).val() != 'custom'){
+            $('#customListOutputFormatValue').val($(this).val());
             } else { $('#customListOutputFormatValue').val('') }
         }
         else { $('#customListOutputFormat').addClass('d-none'); }
@@ -1198,16 +1198,16 @@ $(document).ready(function() {
      * handle "onchange/onclick" for filter Filters controls
      */
     $(document).on('change', '#filterFiltersSelect', function() {
-	document.getElementById('filterNfdumpTextarea').value = event.target.value;
+    document.getElementById('filterNfdumpTextarea').value = event.target.value;
     });
 
     $(document).on('click', '#filterFiltersButtonRemove', function() {
-	var filter = [document.getElementById('filterNfdumpTextarea').value];
-	var select = document.getElementById('filterFiltersSelect');
+    var filter = [document.getElementById('filterNfdumpTextarea').value];
+    var select = document.getElementById('filterFiltersSelect');
         var stored_filters = JSON.parse(window.localStorage.getItem('stored_filters'));
-	stored_filters = stored_filters.filter(element => { return !filter.includes(element); });
-	stored_filters = JSON.stringify(stored_filters);
-	window.localStorage.setItem('stored_filters', stored_filters);
+    stored_filters = stored_filters.filter(element => { return !filter.includes(element); });
+    stored_filters = JSON.stringify(stored_filters);
+    window.localStorage.setItem('stored_filters', stored_filters);
 
         select.innerHTML = '';
         updateDropdown('filters', JSON.parse(stored_filters));
@@ -1215,21 +1215,21 @@ $(document).ready(function() {
 
     $(document).on('click', '#filterFiltersButtonSave', function() {
         var stored_filters = JSON.parse(window.localStorage.getItem('stored_filters'));
-	var filter = [document.getElementById('filterNfdumpTextarea').value];
+    var filter = [document.getElementById('filterNfdumpTextarea').value];
 
-	if (!stored_filters.includes(filter[0]))
-	{
-	    stored_filters = JSON.stringify( filter.concat(stored_filters));
-	    window.localStorage.setItem('stored_filters', stored_filters);
+    if (!stored_filters.includes(filter[0]))
+    {
+        stored_filters = JSON.stringify( filter.concat(stored_filters));
+        window.localStorage.setItem('stored_filters', stored_filters);
             updateDropdown('filters', filter);
-	}
+    }
     });
 
     /**
      * handle "onchange/onclick" for Custom output format controls
      */
     $(document).on('click', '#customListOutputFormatUpdate', function() {
-	var selected_output_format = document.getElementById('filterOutputSelection').selectedOptions[0].text;
+        var selected_output_format = document.getElementById('filterOutputSelection').selectedOptions[0].text;
         var selected_output_format_val = document.getElementById('customListOutputFormatValue').value;
         
         var stored_output_formats = JSON.parse(window.localStorage.getItem('stored_output_formats'));

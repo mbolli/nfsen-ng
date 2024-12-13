@@ -412,19 +412,19 @@ $(document).ready(function() {
         // set version
         $('#version').html(config.version);
 
-	var stored_filters = config['stored_filters'];
-    var local_filters = window.localStorage.getItem('stored_filters');
-	stored_filters = stored_filters.concat(JSON.parse( local_filters ));
-	stored_filters = Array.from(new Set(stored_filters));
-	window.localStorage.setItem('stored_filters', JSON.stringify(stored_filters) )
+        var stored_filters = config['stored_filters'];
+        var local_filters = window.localStorage.getItem('stored_filters');
+        stored_filters = stored_filters.concat(JSON.parse( local_filters ));
+        stored_filters = Array.from(new Set(stored_filters));
+        window.localStorage.setItem('stored_filters', JSON.stringify(stored_filters) )
 
-    var stored_output_formats = config['stored_output_formats'];
-    var local_output_formats = window.localStorage.getItem('stored_output_formats');
-	local_output_formats  = local_output_formats == null ? {} : local_output_formats 
-	for (var attrname in stored_output_formats){
-			local_output_formats[attrname] = stored_output_formats[attrname]
-	}
-	window.localStorage.setItem('stored_output_formats', JSON.stringify(stored_output_formats) )
+        var stored_output_formats = config['stored_output_formats'];
+        var local_output_formats = window.localStorage.getItem('stored_output_formats');
+        local_output_formats  = local_output_formats == null ? {} : local_output_formats 
+        for (var attrname in stored_output_formats){
+            local_output_formats[attrname] = stored_output_formats[attrname]
+        }
+        window.localStorage.setItem('stored_output_formats', JSON.stringify(stored_output_formats) )
 
         // load values for form
         updateDropdown('sources', config['sources']);

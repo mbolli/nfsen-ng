@@ -420,7 +420,7 @@ $(document).ready(function() {
 
     var stored_output_formats = config['stored_output_formats'];
     var local_output_formats = JSON.parse(window.localStorage.getItem('stored_output_formats'));
-    local_output_formats  = local_output_formats == null ? {} : local_output_formats 
+    local_output_formats = local_output_formats == null ? {} : local_output_formats 
     for (var attrname in stored_output_formats){
             local_output_formats[attrname] = stored_output_formats[attrname]
     }
@@ -430,7 +430,7 @@ $(document).ready(function() {
         updateDropdown('sources', config['sources']);
         updateDropdown('ports', config['ports']);
         updateDropdown('filters', stored_filters);
-        updateDropdown('output', stored_output_formats);
+        updateDropdown('output', local_output_formats);
 
         init_rangeslider();
 

@@ -1198,16 +1198,16 @@ $(document).ready(function() {
      * handle "onchange/onclick" for filter Filters controls
      */
     $(document).on('change', '#filterFiltersSelect', function() {
-    document.getElementById('filterNfdumpTextarea').value = event.target.value;
+        document.getElementById('filterNfdumpTextarea').value = event.target.value;
     });
 
     $(document).on('click', '#filterFiltersButtonRemove', function() {
-    var filter = [document.getElementById('filterNfdumpTextarea').value];
-    var select = document.getElementById('filterFiltersSelect');
+        var filter = [document.getElementById('filterNfdumpTextarea').value];
+        var select = document.getElementById('filterFiltersSelect');
         var stored_filters = JSON.parse(window.localStorage.getItem('stored_filters'));
-    stored_filters = stored_filters.filter(element => { return !filter.includes(element); });
-    stored_filters = JSON.stringify(stored_filters);
-    window.localStorage.setItem('stored_filters', stored_filters);
+        stored_filters = stored_filters.filter(element => { return !filter.includes(element); });
+        stored_filters = JSON.stringify(stored_filters);
+        window.localStorage.setItem('stored_filters', stored_filters);
 
         select.innerHTML = '';
         updateDropdown('filters', JSON.parse(stored_filters));
@@ -1215,14 +1215,14 @@ $(document).ready(function() {
 
     $(document).on('click', '#filterFiltersButtonSave', function() {
         var stored_filters = JSON.parse(window.localStorage.getItem('stored_filters'));
-    var filter = [document.getElementById('filterNfdumpTextarea').value];
+        var filter = [document.getElementById('filterNfdumpTextarea').value];
 
-    if (!stored_filters.includes(filter[0]))
-    {
-        stored_filters = JSON.stringify( filter.concat(stored_filters));
-        window.localStorage.setItem('stored_filters', stored_filters);
-            updateDropdown('filters', filter);
-    }
+        if (!stored_filters.includes(filter[0]))
+        {
+            stored_filters = JSON.stringify( filter.concat(stored_filters));
+            window.localStorage.setItem('stored_filters', stored_filters);
+                updateDropdown('filters', filter);
+        }
     });
 
     /**
@@ -1240,8 +1240,8 @@ $(document).ready(function() {
         } else {
             stored_output_formats[selected_output_format] = selected_output_format_val;
         }
-        window.localStorage.setItem('stored_output_formats', JSON.stringify(stored_output_formats) )
-        document.getElementById('filterOutputSelection').value = "line" 
+        window.localStorage.setItem('stored_output_formats', JSON.stringify(stored_output_formats) );
+        document.getElementById('filterOutputSelection').value = "line";
         $('#customListOutputFormat').addClass('d-none');
         resetDropdown('output',5);
         updateDropdown('output', stored_output_formats);
@@ -1257,8 +1257,8 @@ $(document).ready(function() {
         if (stored_output_formats[new_output_format_name]===undefined)
         {
             stored_output_formats[new_output_format_name] = output_format;
-            window.localStorage.setItem('stored_output_formats', JSON.stringify(stored_output_formats) )
-            document.getElementById('filterOutputSelection').value = "line" 
+            window.localStorage.setItem('stored_output_formats', JSON.stringify(stored_output_formats) );
+            document.getElementById('filterOutputSelection').value = "line";
             $('#customListOutputFormat').addClass('d-none');
             resetDropdown('output',5);
             updateDropdown('output', stored_output_formats);

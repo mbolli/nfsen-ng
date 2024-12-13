@@ -413,15 +413,24 @@ $(document).ready(function() {
         $('#version').html(config.version);
 
 	var stored_filters = config['stored_filters'];
-	var local_filters = window.localStorage.getItem('stored_filters');
+    var local_filters = window.localStorage.getItem('stored_filters');
 	stored_filters = stored_filters.concat(JSON.parse( local_filters ));
 	stored_filters = Array.from(new Set(stored_filters));
 	window.localStorage.setItem('stored_filters', JSON.stringify(stored_filters) )
+
+    var stored_output_formats = config['stored_output_formats'];
+    var local_output_formats = window.localStorage.getItem('stored_output_formats');
+	local_output_formats  = local_output_formats == null ? {} : local_output_formats 
+	for (var attrname in stored_output_formats){
+			local_output_formats[attrname] = stored_output_formats[attrname]
+	}
+	window.localStorage.setItem('stored_output_formats', JSON.stringify(stored_output_formats) )
 
         // load values for form
         updateDropdown('sources', config['sources']);
         updateDropdown('ports', config['ports']);
         updateDropdown('filters', stored_filters);
+        updateDropdown('output', stored_output_formats);
 
         init_rangeslider();
 
@@ -1281,17 +1290,17 @@ $(document).ready(function() {
 
     /**
      * updates the filter dropdowns with data
-     * @param displaytype string: sources/ports/protocols
-     * @param array array: the values to add
+     * @param displaytype string: sources/ports/protocols/outputSelection
+     * @param array array: the values to add; adds value if key is numeric ("list") else key ("dict")
      */
     function updateDropdown(displaytype, array) {
         var id = '#filter' + displaytype.charAt(0).toUpperCase() + displaytype.slice(1);
         var $select = $(id).find('select');
-
         $.each(array, function(key, value) {
+            text_value = typeof(key)=="string" ? key : value
             $select
                 .append($('<option></option>')
-                .attr('value',value).text(value));
+                .attr('value',value).text(text_value));
         });
     }
 });

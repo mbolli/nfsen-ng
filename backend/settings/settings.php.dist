@@ -19,6 +19,9 @@ $nfsen_config = [
             'proto udp',
             'proto tcp',
         ],
+        'formats' => [Array(
+            'external_interfaces' => '%ts %td %pr %in %out %sa %sp %da %dp %ipkt %ibyt %opkt %obyt %flg',
+        )],
         'db' => 'RRD',
         'processor' => 'NfDump',
     ],

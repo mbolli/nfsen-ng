@@ -1132,8 +1132,14 @@ $(document).ready(function() {
     $(document).on('change', '#filterOutputSelection', function() {
 
         // if "custom" is selected, show "customFlowListOutputFormat" otherwise hide it
-        if ($(this).val() === 'custom') $('#customListOutputFormat').removeClass('d-none');
-        else $('#customListOutputFormat').addClass('d-none');
+        if (!['line','long', 'extended','full'].includes($(this).val())){
+            $('#customListOutputFormat').removeClass('d-none');
+            if ($(this).val() != 'custom'){
+               $('#customListOutputFormatValue').val($(this).val());
+            } else { $('#customListOutputFormatValue').val(''); }
+        }
+        else { $('#customListOutputFormat').addClass('d-none'); }
+        
     });
 
     /**

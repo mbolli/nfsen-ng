@@ -427,10 +427,9 @@ $(document).ready(function() {
         window.localStorage.setItem('stored_output_formats', JSON.stringify(local_output_formats))
 
         // load table preferences data into UI
+        var ui_table_hidden_fields = ['flg', 'fwd', 'in', 'out', 'sas', 'das'];
         if ('table' in config['frontend']['defaults']['table']){
-            var ui_table_hidden_fields = config['frontend']['defaults']['table']['hidden_fields'];
-        } else {
-            var ui_table_hidden_fields = ['flg', 'fwd', 'in', 'out', 'sas', 'das'];
+            ui_table_hidden_fields = config['frontend']['defaults']['table']['hidden_fields'];
         }
         window.localStorage.setItem('table_hidden_fields', JSON.stringify(ui_table_hidden_fields) )
 
@@ -907,12 +906,12 @@ $(document).ready(function() {
             limit = $('#flowsFilterLimitSelection').val(),
             sort = '',
             output = {
-                format: $('#filterOutputSelection').val() in ['line','long','extended','full'] ? $('#filterOutputSelection').val() : 'custom',
+                format: ['line','long','extended','full'].indexOf($('#filterOutputSelection').val()) >= 0 ? $('#filterOutputSelection').val() : 'custom',
                 custom: $('#customListOutputFormatValue').val(),
             };
 
-        hidden_fields = JSON.parse(window.localStorage.getItem('table_hidden_fields'))
-        hidden_fields = hidden_fields.filter( ( el ) => !$("#filterOutputSelection").val().includes( el ) );
+        var ui_table_hidden_fields = JSON.parse(window.localStorage.getItem('table_hidden_fields'));
+        ui_table_hidden_fields = ui_table_hidden_fields.filter( ( el ) => !$("#filterOutputSelection").val().includes( el ) );            
         window.localStorage.setItem('table_hidden_fields', JSON.stringify(ui_table_hidden_fields) )
 
         // parse form values to generate a proper API request

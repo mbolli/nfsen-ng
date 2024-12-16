@@ -1094,7 +1094,7 @@ $(document).ready(function() {
                     column['breakpoints'] = '';
                 }
                 
-                hidden_fields = window.localStorage.getItem('table_hidden_fields');
+                hidden_fields = JSON.parse(window.localStorage.getItem('table_hidden_fields'));
                 // least important columns should be hidden on small screens
                 if (hidden_fields.indexOf(val) !== -1) {
                     column['breakpoints'] = 'all';

@@ -428,7 +428,7 @@ $(document).ready(function() {
 
         // load table preferences data into UI
         var ui_table_hidden_fields = ['flg', 'fwd', 'in', 'out', 'sas', 'das'];
-        if ('table' in config['frontend']['defaults']['table']){
+        if (config['frontend']['defaults'].indexOf('table')>-1){
             ui_table_hidden_fields = config['frontend']['defaults']['table']['hidden_fields'];
         }
         window.localStorage.setItem('table_hidden_fields', JSON.stringify(ui_table_hidden_fields) )

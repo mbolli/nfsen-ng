@@ -907,7 +907,7 @@ $(document).ready(function() {
             limit = $('#flowsFilterLimitSelection').val(),
             sort = '',
             output = {
-                format: $('#filterOutputSelection').val(),
+                format: $('#filterOutputSelection').val() in ['line','long','extended','full'] ? $('#filterOutputSelection').val() : 'custom',
                 custom: $('#customListOutputFormatValue').val(),
             };
 

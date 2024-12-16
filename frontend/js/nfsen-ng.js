@@ -427,7 +427,11 @@ $(document).ready(function() {
         window.localStorage.setItem('stored_output_formats', JSON.stringify(local_output_formats))
 
         // load table preferences data into UI
-        var ui_table_hidden_fields = frontend['table']['hidden_fields'];
+        if ('table' in config['frontend']['defaults']['table']){
+            var ui_table_hidden_fields = config['frontend']['defaults']['table']['hidden_fields'];
+        } else {
+            var ui_table_hidden_fields = ['flg', 'fwd', 'in', 'out', 'sas', 'das'];
+        }
         window.localStorage.setItem('table_hidden_fields', JSON.stringify(ui_table_hidden_fields) )
 
         // load values for form

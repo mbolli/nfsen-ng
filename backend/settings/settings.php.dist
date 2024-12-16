@@ -40,6 +40,11 @@ $nfsen_config = [
             'statistics' => [
                 'order_by' => 'bytes',
             ],
+            'table'=> [
+                'hidden_fields' => [
+                    'flg', 'fwd', 'in', 'out', 'sas', 'das'
+                ],
+            ]
         ],
     ],
     'nfdump' => [

@@ -422,7 +422,7 @@ $(document).ready(function() {
         var local_output_formats = JSON.parse(window.localStorage.getItem('stored_output_formats'));
         local_output_formats = local_output_formats == null ? {} : local_output_formats 
         for (var attrname in stored_output_formats){
-                local_output_formats[attrname] = stored_output_formats[attrname]
+            local_output_formats[attrname] = stored_output_formats[attrname]
         }
         window.localStorage.setItem('stored_output_formats', JSON.stringify(local_output_formats))
 
@@ -1141,12 +1141,11 @@ $(document).ready(function() {
 
         // if "custom" is selected, show "customFlowListOutputFormat" otherwise hide it
         if (!['line','long', 'extended','full'].includes($(this).val())){
-        $('#customListOutputFormat').removeClass('d-none');
-        if ($(this).val() != 'custom'){
-            $('#customListOutputFormatValue').val($(this).val());
+            $('#customListOutputFormat').removeClass('d-none');
+            if ($(this).val() !== 'custom'){
+                $('#customListOutputFormatValue').val($(this).val());
             } else { $('#customListOutputFormatValue').val('') }
-        }
-        else { $('#customListOutputFormat').addClass('d-none'); }
+        } else { $('#customListOutputFormat').addClass('d-none'); }
     });
 
     /**
@@ -1225,8 +1224,7 @@ $(document).ready(function() {
         var stored_filters = JSON.parse(window.localStorage.getItem('stored_filters'));
         var filter = [document.getElementById('filterNfdumpTextarea').value];
 
-        if (!stored_filters.includes(filter[0]))
-        {
+        if (!stored_filters.includes(filter[0])) {
             stored_filters = JSON.stringify( filter.concat(stored_filters));
             window.localStorage.setItem('stored_filters', stored_filters);
             updateDropdown('filters', filter);
@@ -1244,7 +1242,6 @@ $(document).ready(function() {
         if (selected_output_format_val === '') {
             if ( confirm("Are you sure you want to delete following filter:\n\n" + selected_output_format+"\n"+stored_output_formats[selected_output_format]) )
             delete stored_output_formats[selected_output_format];
-
         } else {
             stored_output_formats[selected_output_format] = selected_output_format_val;
         }
@@ -1262,8 +1259,7 @@ $(document).ready(function() {
         var stored_output_formats = JSON.parse(window.localStorage.getItem('stored_output_formats'));
         var output_format = document.getElementById('customListOutputFormatValue').value;
 
-        if (stored_output_formats[new_output_format_name] === undefined)
-        {
+        if (stored_output_formats[new_output_format_name] === undefined) {
             stored_output_formats[new_output_format_name] = output_format;
             window.localStorage.setItem('stored_output_formats', JSON.stringify(stored_output_formats) );
             document.getElementById('filterOutputSelection').value = "line";

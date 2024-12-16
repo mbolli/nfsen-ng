@@ -911,6 +911,10 @@ $(document).ready(function() {
                 custom: $('#customListOutputFormatValue').val(),
             };
 
+        hidden_fields = JSON.parse(window.localStorage.getItem('table_hidden_fields'))
+        hidden_fields = hidden_fields.filter( ( el ) => !$("#filterOutputSelection").val().includes( el ) );
+        window.localStorage.setItem('table_hidden_fields', JSON.stringify(ui_table_hidden_fields) )
+
         // parse form values to generate a proper API request
         var aggregate = parse_aggregation_fields();
 
@@ -1092,7 +1096,6 @@ $(document).ready(function() {
                 }
                 
                 hidden_fields = window.localStorage.getItem('table_hidden_fields');
-                
                 // least important columns should be hidden on small screens
                 if (hidden_fields.indexOf(val) !== -1) {
                     column['breakpoints'] = 'all';

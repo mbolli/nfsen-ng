@@ -426,13 +426,6 @@ $(document).ready(function() {
         }
         window.localStorage.setItem('stored_output_formats', JSON.stringify(local_output_formats))
 
-        // load table preferences data into UI
-        var ui_table_hidden_fields = ['flg', 'fwd', 'in', 'out', 'sas', 'das'];
-        if (Object.hasOwn(config['frontend']['defaults'], 'table')){
-            ui_table_hidden_fields = config['frontend']['defaults']['table']['hidden_fields'];
-        }
-        window.localStorage.setItem('table_hidden_fields', JSON.stringify(ui_table_hidden_fields) )
-
         // load values for form
         updateDropdown('sources', config['sources']);
         updateDropdown('ports', config['ports']);
@@ -910,7 +903,10 @@ $(document).ready(function() {
                 custom: $('#customListOutputFormatValue').val(),
             };
 
-        var ui_table_hidden_fields = JSON.parse(window.localStorage.getItem('table_hidden_fields'));
+        var ui_table_hidden_fields = ['flg', 'fwd', 'in', 'out', 'sas', 'das'];
+        if (Object.hasOwn(config['frontend']['defaults'], 'table')){
+            ui_table_hidden_fields = config['frontend']['defaults']['table']['hidden_fields'];
+        }
         ui_table_hidden_fields = ui_table_hidden_fields.filter( ( el ) => !$("#filterOutputSelection").val().includes( el ) );            
         window.localStorage.setItem('table_hidden_fields', JSON.stringify(ui_table_hidden_fields) )
 

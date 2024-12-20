@@ -412,16 +412,25 @@ $(document).ready(function() {
         // set version
         $('#version').html(config.version);
 
-	var stored_filters = config['stored_filters'];
-	var local_filters = window.localStorage.getItem('stored_filters');
-	stored_filters = stored_filters.concat(JSON.parse( local_filters ));
-	stored_filters = Array.from(new Set(stored_filters));
-	window.localStorage.setItem('stored_filters', JSON.stringify(stored_filters) )
+        var stored_filters = config['stored_filters'];
+        var local_filters = window.localStorage.getItem('stored_filters');
+        stored_filters = stored_filters.concat(JSON.parse( local_filters ));
+        stored_filters = Array.from(new Set(stored_filters));
+        window.localStorage.setItem('stored_filters', JSON.stringify(stored_filters) )
+
+        var stored_output_formats = config['stored_output_formats'];
+        var local_output_formats = JSON.parse(window.localStorage.getItem('stored_output_formats'));
+        local_output_formats = local_output_formats == null ? {} : local_output_formats 
+        for (var attrname in stored_output_formats){
+            local_output_formats[attrname] = stored_output_formats[attrname]
+        }
+        window.localStorage.setItem('stored_output_formats', JSON.stringify(local_output_formats))
 
         // load values for form
         updateDropdown('sources', config['sources']);
         updateDropdown('ports', config['ports']);
         updateDropdown('filters', stored_filters);
+        updateDropdown('output', local_output_formats);
 
         init_rangeslider();
 
@@ -890,9 +899,16 @@ $(document).ready(function() {
             limit = $('#flowsFilterLimitSelection').val(),
             sort = '',
             output = {
-                format: $('#filterOutputSelection').val(),
+                format: ['line','long','extended','full'].indexOf($('#filterOutputSelection').val()) >= 0 ? $('#filterOutputSelection').val() : 'custom',
                 custom: $('#customListOutputFormatValue').val(),
             };
+
+        var ui_table_hidden_fields = ['flg', 'fwd', 'in', 'out', 'sas', 'das'];
+        if (Object.hasOwn(config['frontend']['defaults'], 'table')){
+            ui_table_hidden_fields = config['frontend']['defaults']['table']['hidden_fields'];
+        }
+        ui_table_hidden_fields = ui_table_hidden_fields.filter( ( el ) => !$("#filterOutputSelection").val().includes( el ) );            
+        window.localStorage.setItem('table_hidden_fields', JSON.stringify(ui_table_hidden_fields) )
 
         // parse form values to generate a proper API request
         var aggregate = parse_aggregation_fields();
@@ -1073,9 +1089,10 @@ $(document).ready(function() {
                 if (['sa', 'da', 'pr', 'val'].indexOf(val) !== -1) {
                     column['breakpoints'] = '';
                 }
-
+                
+                hidden_fields = JSON.parse(window.localStorage.getItem('table_hidden_fields'));
                 // least important columns should be hidden on small screens
-                if (['flg', 'fwd', 'in', 'out', 'sas', 'das'].indexOf(val) !== -1) {
+                if (hidden_fields.indexOf(val) !== -1) {
                     column['breakpoints'] = 'all';
                     column['type'] = 'text';
                 }
@@ -1123,8 +1140,12 @@ $(document).ready(function() {
     $(document).on('change', '#filterOutputSelection', function() {
 
         // if "custom" is selected, show "customFlowListOutputFormat" otherwise hide it
-        if ($(this).val() === 'custom') $('#customListOutputFormat').removeClass('d-none');
-        else $('#customListOutputFormat').addClass('d-none');
+        if (!['line','long', 'extended','full'].includes($(this).val())){
+            $('#customListOutputFormat').removeClass('d-none');
+            if ($(this).val() !== 'custom'){
+                $('#customListOutputFormatValue').val($(this).val());
+            } else { $('#customListOutputFormatValue').val('') }
+        } else { $('#customListOutputFormat').addClass('d-none'); }
     });
 
     /**
@@ -1184,16 +1205,16 @@ $(document).ready(function() {
      * handle "onchange/onclick" for filter Filters controls
      */
     $(document).on('change', '#filterFiltersSelect', function() {
-	document.getElementById('filterNfdumpTextarea').value = event.target.value;
+        document.getElementById('filterNfdumpTextarea').value = event.target.value;
     });
 
     $(document).on('click', '#filterFiltersButtonRemove', function() {
-	var filter = [document.getElementById('filterNfdumpTextarea').value];
-	var select = document.getElementById('filterFiltersSelect');
+        var filter = [document.getElementById('filterNfdumpTextarea').value];
+        var select = document.getElementById('filterFiltersSelect');
         var stored_filters = JSON.parse(window.localStorage.getItem('stored_filters'));
-	stored_filters = stored_filters.filter(element => { return !filter.includes(element); });
-	stored_filters = JSON.stringify(stored_filters);
-	window.localStorage.setItem('stored_filters', stored_filters);
+        stored_filters = stored_filters.filter(element => { return !filter.includes(element); });
+        stored_filters = JSON.stringify(stored_filters);
+        window.localStorage.setItem('stored_filters', stored_filters);
 
         select.innerHTML = '';
         updateDropdown('filters', JSON.parse(stored_filters));
@@ -1201,16 +1222,54 @@ $(document).ready(function() {
 
     $(document).on('click', '#filterFiltersButtonSave', function() {
         var stored_filters = JSON.parse(window.localStorage.getItem('stored_filters'));
-	var filter = [document.getElementById('filterNfdumpTextarea').value];
+        var filter = [document.getElementById('filterNfdumpTextarea').value];
 
-	if (!stored_filters.includes(filter[0]))
-	{
-	    stored_filters = JSON.stringify( filter.concat(stored_filters));
-	    window.localStorage.setItem('stored_filters', stored_filters);
+        if (!stored_filters.includes(filter[0])) {
+            stored_filters = JSON.stringify( filter.concat(stored_filters));
+            window.localStorage.setItem('stored_filters', stored_filters);
             updateDropdown('filters', filter);
-	}
+        }
     });
 
+    /**
+     * handle "onchange/onclick" for Custom output format controls
+     */
+    $(document).on('click', '#customListOutputFormatUpdate', function() {
+        var selected_output_format = document.getElementById('filterOutputSelection').selectedOptions[0].text;
+        var selected_output_format_val = document.getElementById('customListOutputFormatValue').value;
+        
+        var stored_output_formats = JSON.parse(window.localStorage.getItem('stored_output_formats'));
+        if (selected_output_format_val === '') {
+            if ( confirm("Are you sure you want to delete following filter:\n\n" + selected_output_format+"\n"+stored_output_formats[selected_output_format]) )
+            delete stored_output_formats[selected_output_format];
+        } else {
+            stored_output_formats[selected_output_format] = selected_output_format_val;
+        }
+        window.localStorage.setItem('stored_output_formats', JSON.stringify(stored_output_formats) );
+        document.getElementById('filterOutputSelection').value = "line";
+        $('#customListOutputFormat').addClass('d-none');
+        resetDropdown('output',5);
+        updateDropdown('output', stored_output_formats);
+    });
+
+
+    $(document).on('click', '#customListOutputFormatAdd', function() {
+        var default_format_name = new Date().toString().split(" (")[0];
+        var new_output_format_name = window.prompt("How do you wish to name your new output format?", default_format_name);
+        var stored_output_formats = JSON.parse(window.localStorage.getItem('stored_output_formats'));
+        var output_format = document.getElementById('customListOutputFormatValue').value;
+
+        if (stored_output_formats[new_output_format_name] === undefined) {
+            stored_output_formats[new_output_format_name] = output_format;
+            window.localStorage.setItem('stored_output_formats', JSON.stringify(stored_output_formats) );
+            document.getElementById('filterOutputSelection').value = "line";
+            $('#customListOutputFormat').addClass('d-none');
+            resetDropdown('output',5);
+            updateDropdown('output', stored_output_formats);
+        } else {
+            alert("This filter name already exists!");
+        }
+    });
 
     /**
      * modify some GUI elements if the user selected "sources" to display
@@ -1281,18 +1340,30 @@ $(document).ready(function() {
 
     /**
      * updates the filter dropdowns with data
-     * @param displaytype string: sources/ports/protocols
-     * @param array array: the values to add
+     * @param displaytype string: sources/ports/protocols/outputSelection
+     * @param array array: the values to add; adds value if key is numeric ("list") else key ("dict")
      */
     function updateDropdown(displaytype, array) {
         var id = '#filter' + displaytype.charAt(0).toUpperCase() + displaytype.slice(1);
         var $select = $(id).find('select');
-
         $.each(array, function(key, value) {
+            text_value = typeof(key)=="string" ? key : value
             $select
                 .append($('<option></option>')
-                .attr('value',value).text(value));
+                .attr('value',value).text(text_value));
         });
+    }
+
+    /**
+     * Resets the dropdown by deleting appended options after index 
+     * @param displaytype string: sources/ports/protocols/output
+     * @param maxindex int: sequential id of first option to remove, i.e. displaytype[maxindex:]
+     */
+    function resetDropdown(displaytype, maxindex) {
+        var id = '#filter' + displaytype.charAt(0).toUpperCase() + displaytype.slice(1);
+        while ( $(id).find('select').find('option').length > maxindex){
+            $(id).find('select').find('option:last-child').remove()
+        }
     }
 });
 

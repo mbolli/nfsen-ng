@@ -275,7 +275,7 @@ class Api {
         $ports = Config::$cfg['general']['ports'];
         $frontend = Config::$cfg['frontend'];
 
-        $stored_output_formats = []; // todo implement
+        $stored_output_formats = Config::$cfg['general']['formats'];
         $stored_filters =  Config::$cfg['general']['filters'];
 
         $folder = \dirname(__FILE__, 2);

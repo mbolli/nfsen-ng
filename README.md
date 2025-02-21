@@ -51,7 +51,7 @@ PHP modules required:
 
 ## Configuration
 
-> *Note:* nfsen-ng expects the profiles-data folder structure to be `PROFILES_DATA_PATH/PROFILE/SOURCE/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`, e.g. `/var/nfdump/profiles_data/live/source1/2018/12/01/nfcapd.201812010225`.
+> *Note:* nfsen-ng expects the `profiles_data` folder structure to be `PROFILES_DATA_PATH/PROFILE/SOURCE/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`, e.g. `/var/nfdump/profiles_data/live/source1/2018/12/01/nfcapd.201812010225`.
 
 The default settings file is `backend/settings/settings.php.dist`. Copy it to `backend/settings/settings.php` and start modifying it. Example values are in *italic*:
 
@@ -79,7 +79,7 @@ You should also have a look at the nfdump configuration file `/etc/nfdump.conf` 
 Hhere is an example of an nfdump configuration:
 
 ```ini
-options='-z -S 1 -T all -l /var/nfdump/profiles-data/live/<source> -p <port>'
+options='-z -S 1 -T all -l /var/nfdump/profiles_data/live/<source> -p <port>'
 ```
 
 where

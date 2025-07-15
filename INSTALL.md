@@ -62,14 +62,16 @@ php composer.phar install --no-dev
 
 ```bash
 # run following commands as root
+su -
 
 # add php repository
-apt install -y apt-transport-https lsb-release ca-certificates wget
+apt install -y apt-transport-https lsb-release ca-certificates wget curl gpg
 echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/php.list
+curl -fsSL https://packages.sury.org/php/apt.gpg | gpg --dearmor | tee /etc/apt/trusted.gpg.d/sury-php.gpg > /dev/null
 apt update
 
 # install packages
-apt install apache2 git pkg-config php8.3 php8.3-dev php8.3-mbstring libapache2-mod-php8.3 rrdtool librrd-dev
+apt install apache2 git pkg-config php8.4 php8.4-dev php8.4-mbstring libapache2-mod-php8.4 rrdtool librrd-dev
 
 # compile nfdump (optional, if you want to use the most recent version)
 apt install flex libbz2-dev yacc unzip
@@ -90,7 +92,7 @@ a2enmod rewrite deflate headers expires
 pecl install rrd
 
 # create rrd library mod entry for php
-echo "extension=rrd.so" > /etc/php/8.3/mods-available/rrd.ini
+echo "extension=rrd.so" > /etc/php/8.4/mods-available/rrd.ini
 
 # enable php mods
 phpenmod rrd mbstring

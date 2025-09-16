@@ -6,7 +6,6 @@
     "prefer-stable": true,
     "require": {
         "php": "^8.1",
-        "ext-mbstring": "*",
         "ext-rrd": "*"
     },
     "require-dev": {
@@ -28,7 +27,7 @@
         "lint": "@fix --dry-run",
         "lint-diff": "@fix --dry-run --diff",
         "fix": "php-cs-fixer fix --ansi --allow-risky=yes -v --config=./.php-cs-fixer.php",
-        "test-phpstan": "phpstan analyse backend -l 6 -a backend/settings/settings.php"
+        "test-phpstan": "phpstan analyse backend -l 5 -a backend/settings/settings.php"
     },
     "authors": [
         {

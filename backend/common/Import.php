@@ -178,7 +178,7 @@ class Import {
             return false;
         }
 
-        $date = new \DateTime(mb_substr($statsPath, -12));
+        $date = new \DateTime(substr($statsPath, -12));
         $data = [
             'fields' => [],
             'source' => $source,
@@ -202,7 +202,7 @@ class Import {
 
             // we only need flows/packets/bytes values, the source and the timestamp
             if (preg_match('/^(flows|packets|bytes)/i', $type)) {
-                $data['fields'][mb_strtolower($type)] = (int) $value;
+                $data['fields'][strtolower($type)] = (int) $value;
             }
         }
 
@@ -264,7 +264,7 @@ class Import {
 
         // parse and turn into usable data
 
-        $date = new \DateTime(mb_substr($statsPath, -12));
+        $date = new \DateTime(substr($statsPath, -12));
         $data = [
             'fields' => [
                 'flows' => 0,
@@ -290,7 +290,7 @@ class Import {
                 continue;
             } // skip header
 
-            $proto = mb_strtolower((string) $line[3]);
+            $proto = strtolower((string) $line[3]);
 
             // add protocol-specific
             $data['fields']['flows_' . $proto] = (int) $line[5];

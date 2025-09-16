@@ -23,7 +23,7 @@ class Api {
 
         // get the HTTP method, path and body of the request
         $this->method = $_SERVER['REQUEST_METHOD'];
-        $this->request = explode('/', mb_trim((string) $_GET['request'], '/'));
+        $this->request = explode('/', trim((string) $_GET['request'], '/'));
 
         // only allow GET requests
         // if at some time POST requests are enabled, check the request's content type (or return 406)

@@ -9,7 +9,7 @@ abstract class Config {
     public const VERSION = 'v0.3';
     /**
      * @var array{
-     *     general: array{ports: int[], sources: string[], db: string, processor: string},
+     *     general: array{ports: int[], sources: string[], db: string, processor: string, formats?: array<string>, filters?: array<string>},
      *     frontend: array{reload_interval: int, defaults: array<string, array>},
      *     nfdump: array{binary: string, profiles-data: string, profile: string, max-processes: int},
      *     db: array<string, array>,

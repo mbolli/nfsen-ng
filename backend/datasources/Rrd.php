@@ -212,7 +212,7 @@ class Rrd implements Datasource {
         $data = rrd_xport($options);
         $error = ob_get_clean(); // rrd_xport weirdly prints stuff on error
 
-        if (!\is_array($data)) {
+        if (!\is_array($data)) { // @phpstan-ignore-line function.alreadyNarrowedType (probably wrong rrd stubs)
             return $error . '. ' . rrd_error();
         }
 

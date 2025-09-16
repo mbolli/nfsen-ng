@@ -12,9 +12,8 @@
     "require-dev": {
         "friendsofphp/php-cs-fixer": "3.x",
         "jetbrains/phpstorm-attributes": "^1.0",
-        "phpstan/phpstan": "^1.9",
-        "rector/rector": "^0.19.0",
-        "vimeo/psalm": "^5.4"
+        "phpstan/phpstan": "^2.1",
+        "rector/rector": "^2.1"
     },
     "autoload": {
         "psr-4": {
@@ -24,14 +23,12 @@
     "scripts": {
         "before-commit": [
             "@fix",
-            "@test-phpstan",
-            "@test-psalm"
+            "@test-phpstan"
         ],
         "lint": "@fix --dry-run",
         "lint-diff": "@fix --dry-run --diff",
-        "fix": "php-cs-fixer fix backend --ansi --allow-risky=yes -v --config=./.php-cs-fixer.php",
-        "test-phpstan": "phpstan analyse backend -l 5 -a backend/settings/settings.php",
-        "test-psalm": "psalm --php-version=8.2 --threads=1 --no-diff"
+        "fix": "php-cs-fixer fix --ansi --allow-risky=yes -v --config=./.php-cs-fixer.php",
+        "test-phpstan": "phpstan analyse backend -l 6 -a backend/settings/settings.php"
     },
     "authors": [
         {

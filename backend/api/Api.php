@@ -23,7 +23,7 @@ class Api {
 
         // get the HTTP method, path and body of the request
         $this->method = $_SERVER['REQUEST_METHOD'];
-        $this->request = explode('/', trim((string) $_GET['request'], '/'));
+        $this->request = explode('/', mb_trim((string) $_GET['request'], '/'));
 
         // only allow GET requests
         // if at some time POST requests are enabled, check the request's content type (or return 406)
@@ -276,7 +276,7 @@ class Api {
         $frontend = Config::$cfg['frontend'];
 
         $stored_output_formats = Config::$cfg['general']['formats'];
-        $stored_filters =  Config::$cfg['general']['filters'];
+        $stored_filters = Config::$cfg['general']['filters'];
 
         $folder = \dirname(__FILE__, 2);
         $pidfile = $folder . '/nfsen-ng.pid';

@@ -58,7 +58,7 @@ class Import {
             $lastUpdateDb = Config::$db->last_update($source);
 
             $lastUpdate = null;
-            if ($lastUpdateDb !== false && $lastUpdateDb !== 0) {
+            if ($lastUpdateDb > 0) {
                 $lastUpdate = (new \DateTime())->setTimestamp($lastUpdateDb);
             }
 

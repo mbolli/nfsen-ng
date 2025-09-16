@@ -316,12 +316,18 @@ class Api {
                 $this->error(404, 'Host command failed');
             }
 
-            $output = implode(' ', $output);
-            if (!preg_match('/domain name pointer (.*)\./', $output, $matches)) {
-                $this->error(500, "Could not parse host output: {$output}");
+            $output_domains = array_map(
+                static fn ($line) => preg_match('/domain name pointer (.*)\./', $line, $matches)
+                    ? $matches[1]
+                    : null,
+                $output
+            );
+            $output_domains = array_filter($output_domains);
+            if (empty($output_domains)) {
+                $this->error(500, 'Could not parse host output: ' . implode(' ', $output));
             }
 
-            return $matches[1];
+            return implode(', ', $output_domains);
         } catch (\Exception $e) {
             $this->error(500, $e->getMessage());
         }

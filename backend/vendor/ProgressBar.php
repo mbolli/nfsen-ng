@@ -75,7 +75,7 @@ class ProgressBar
      * @param int $done what fraction of $total to set as progress uses internal counter if not passed
      *
      * @static
-     * @return string, the formatted progress bar prefixed with a carriage return
+     * @return string the formatted progress bar prefixed with a carriage return
      */
     public static function display($done = null)
     {
@@ -154,7 +154,7 @@ class ProgressBar
      * reset internal state, and send a new line so that the progress bar text is "finished"
      *
      * @static
-     * @return string, a new line
+     * @return string a new line
      */
     public static function finish()
     {

@@ -6,6 +6,7 @@
  */
 return (new PhpCsFixer\Config())
     ->setRiskyAllowed(true)
+    ->setParallelConfig(PhpCsFixer\Runner\Parallel\ParallelConfigFactory::detect())
     ->setRules([
         '@PhpCsFixer' => true,
         '@PhpCsFixer:risky' => true,
@@ -15,7 +16,7 @@ return (new PhpCsFixer\Config())
         '@Symfony:risky' => true,
         'concat_space' => ['spacing' => 'one'],
         'control_structure_continuation_position' => ['position' => 'same_line'],
-        'curly_braces_position' => ['classes_opening_brace' => 'same_line', 'functions_opening_brace' => 'same_line'],
+        'braces_position' => ['classes_opening_brace' => 'same_line', 'functions_opening_brace' => 'same_line'],
         'declare_strict_types' => false,
         'mb_str_functions' => true,
         'nullable_type_declaration_for_default_null_value' => true,

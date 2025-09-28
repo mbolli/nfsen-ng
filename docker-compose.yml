@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  nfsen:
+    build: .
+    container_name: nfsen
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nfsen-data:/data/nfsen
+      - ./nfsen-config:/config/nfsen
+    restart: unless-stopped

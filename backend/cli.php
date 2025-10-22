@@ -62,7 +62,7 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
 
         $d->log('CLI: Starting import', \LOG_INFO);
         $start = new DateTime();
-        $start->setDate(date('Y') - 3, (int) date('m'), (int) date('d'));
+        $start->modify('-3 years');
         $i = new Import();
         if (in_array('-v', $argv, true)) {
             $i->setVerbose(true);
@@ -80,9 +80,35 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
     } elseif (in_array('start', $argv, true)) {
         // start the daemon
 
+        // Check if already running
+        if (file_exists($pidfile)) {
+            $pid = trim(file_get_contents($pidfile));
+
+            if (Misc::daemonIsRunning($pid)) {
+                echo 'Daemon already running, pid=' . $pid . \PHP_EOL;
+
+                exit(0);
+            }
+            // Clean up stale PID file
+            unlink($pidfile);
+        }
+
         $d->log('CLI: Starting daemon...', \LOG_INFO);
-        $pid = exec('nohup `which php` ' . $folder . '/listen.php > /dev/null 2>&1 & echo $!', $op, $exit);
-        var_dump($exit);
+        $phpBinary = trim(shell_exec('which php'));
+        if (empty($phpBinary)) {
+            echo 'Failed to start daemon. PHP binary not found in PATH.' . \PHP_EOL;
+
+            exit(1);
+        }
+        $pid = exec('nohup ' . escapeshellarg($phpBinary) . ' ' . escapeshellarg($folder . '/listen.php') . ' > /dev/null 2>&1 & echo $!', $op, $exit);
+
+        // Validate PID
+        if (!is_numeric($pid) || (int) $pid <= 0) {
+            echo 'Failed to start daemon. Could not retrieve valid PID.' . \PHP_EOL;
+
+            exit(1);
+        }
+
         // todo: get exit code of background process. possible at all?
         switch ((int) $exit) {
             case 128:

@@ -7,10 +7,8 @@ return (new PhpCsFixer\Config())
     ->setRules([
         '@PhpCsFixer' => true,
         '@PhpCsFixer:risky' => true,
-        '@PHP80Migration:risky' => true,
-        '@PHP82Migration' => true,
-        '@Symfony' => true,
-        '@Symfony:risky' => true,
+        '@auto:risky' => true,
+        '@autoPHPMigration:risky' => true,
         'braces_position' => ['classes_opening_brace' => 'same_line', 'functions_opening_brace' => 'same_line'],
         'concat_space' => ['spacing' => 'one'],
         'control_structure_continuation_position' => ['position' => 'same_line'],

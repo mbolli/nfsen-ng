@@ -16,10 +16,12 @@ ini_set('display_errors', true);
 ini_set('error_reporting', \E_ALL);
 
 $d = Debug::getInstance();
+
 try {
     Config::initialize();
 } catch (Exception $e) {
     $d->log('Fatal: ' . $e->getMessage(), \LOG_ALERT);
+
     exit;
 }
 
@@ -51,7 +53,7 @@ $i->start($start);
 
 $d->log('Starting periodic execution', \LOG_INFO);
 
-/* @phpstan-ignore-next-line */
+// @phpstan-ignore-next-line
 while (1) {
     // next import in 30 seconds
     sleep(30);
@@ -61,6 +63,6 @@ while (1) {
 }
 
 // all done; blank the PID file and explicitly release the lock
-/* @phpstan-ignore-next-line */
+// @phpstan-ignore-next-line
 ftruncate($lock_file, 0);
 flock($lock_file, \LOCK_UN);

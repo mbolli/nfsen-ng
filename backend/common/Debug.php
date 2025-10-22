@@ -3,10 +3,10 @@
 namespace mbolli\nfsen_ng\common;
 
 class Debug {
+    public static ?self $_instance = null;
     private readonly float $stopwatch;
     private bool $debug = true;
     private readonly bool $cli;
-    public static ?self $_instance = null;
 
     public function __construct() {
         $this->stopwatch = microtime(true);
@@ -14,7 +14,7 @@ class Debug {
     }
 
     public static function getInstance(): self {
-        if (!(self::$_instance instanceof self)) {
+        if (!self::$_instance instanceof self) {
             self::$_instance = new self();
         }
 
@@ -29,7 +29,7 @@ class Debug {
             syslog($priority, 'nfsen-ng: ' . $message);
 
             if ($this->cli === true && $this->debug === true) {
-                echo date('Y-m-d H:i:s') . ' ' . $message . \PHP_EOL;
+                echo date('Y-m-d H:i:s') . ' ' . $message . PHP_EOL;
             }
         }
     }
@@ -55,7 +55,7 @@ class Debug {
         }
 
         foreach ($mixed as $param) {
-            echo ($this->cli) ? \PHP_EOL . $this->stopWatch() . 's ' : "<br /><span style='color: green;'>" . $this->stopWatch() . '</span> ';
+            echo ($this->cli) ? PHP_EOL . $this->stopWatch() . 's ' : "<br /><span style='color: green;'>" . $this->stopWatch() . '</span> ';
             if (\is_array($param)) {
                 echo ($this->cli) ? print_r($mixed, true) : '<pre>', var_export($mixed, true), '</pre>';
             } else {

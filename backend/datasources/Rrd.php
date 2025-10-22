@@ -80,7 +80,7 @@ class Rrd implements Datasource {
 
         // check if folder has correct access rights
         if (!is_writable(\dirname($rrdFile))) {
-            $this->d->log('Error creating ' . $rrdFile . ': Not writable', \LOG_CRIT);
+            $this->d->log('Error creating ' . $rrdFile . ': Not writable', LOG_CRIT);
 
             return false;
         }
@@ -89,7 +89,7 @@ class Rrd implements Datasource {
             if ($reset === true) {
                 unlink($rrdFile);
             } else {
-                $this->d->log('Error creating ' . $rrdFile . ': File already exists', \LOG_ERR);
+                $this->d->log('Error creating ' . $rrdFile . ': File already exists', LOG_ERR);
 
                 return false;
             }
@@ -109,7 +109,7 @@ class Rrd implements Datasource {
 
         $saved = $creator->save();
         if ($saved === false) {
-            $this->d->log('Error saving RRD data structure to ' . $rrdFile, \LOG_ERR);
+            $this->d->log('Error saving RRD data structure to ' . $rrdFile, LOG_ERR);
         }
 
         return $saved;
@@ -127,7 +127,7 @@ class Rrd implements Datasource {
         }
 
         $nearest = (int) $data['date_timestamp'] - ($data['date_timestamp'] % 300);
-        $this->d->log('Writing to file ' . $rrdFile, \LOG_DEBUG);
+        $this->d->log('Writing to file ' . $rrdFile, LOG_DEBUG);
 
         // write data
         $updater = new \RRDUpdater($rrdFile);
@@ -187,7 +187,9 @@ class Rrd implements Datasource {
                     $options[] = 'DEF:data' . $sources[0] . $protocol . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
                     $options[] = 'XPORT:data' . $sources[0] . $protocol . ':' . implode('_', $legend);
                 }
+
                 break;
+
             case 'sources':
                 foreach ($sources as $source) {
                     $rrdFile = $this->get_data_path($source);
@@ -196,7 +198,9 @@ class Rrd implements Datasource {
                     $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
                     $options[] = 'XPORT:data' . $source . ':' . implode('_', $legend);
                 }
+
                 break;
+
             case 'ports':
                 foreach ($ports as $port) {
                     $source = ($sources[0] === 'any') ? '' : $sources[0];
@@ -289,7 +293,7 @@ class Rrd implements Datasource {
         $path = Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data' . \DIRECTORY_SEPARATOR . $source . $port . '.rrd';
 
         if (!file_exists($path)) {
-            $this->d->log('Was not able to find ' . $path, \LOG_INFO);
+            $this->d->log('Was not able to find ' . $path, LOG_INFO);
         }
 
         return $path;

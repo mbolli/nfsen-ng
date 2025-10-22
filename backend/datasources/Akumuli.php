@@ -14,6 +14,12 @@ class Akumuli implements Datasource {
         $this->connect();
     }
 
+    public function __destruct() {
+        if (\is_resource($this->client)) {
+            fclose($this->client);
+        }
+    }
+
     /**
      * connects to TCP socket.
      */
@@ -53,15 +59,8 @@ class Akumuli implements Datasource {
         fwrite($this->client, $query);
 
         return stream_get_contents($this->client);
-
         // to read:
         // curl localhost:8181/api/query -d "{'select':'flows'}"
-    }
-
-    public function __destruct() {
-        if (\is_resource($this->client)) {
-            fclose($this->client);
-        }
     }
 
     /**

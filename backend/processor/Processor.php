@@ -10,7 +10,7 @@ interface Processor {
     /**
      * Sets an option's value.
      *
-     * @param string|array|int|null $value
+     * @param null|array|int|string $value
      */
     public function setOption(string $option, $value): void;
 

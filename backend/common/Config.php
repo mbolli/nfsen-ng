@@ -6,10 +6,11 @@ use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\Processor;
 
 abstract class Config {
-    public const VERSION = 'v0.3';
+    public const VERSION = 'v0.4';
+
     /**
      * @var array{
-     *     general: array{ports: int[], sources: string[], db: string, processor: string, formats?: array<string>, filters?: array<string>},
+     *     general: array{ports: int[], sources: string[], db: string, processor?: string, formats?: array<string>, filters?: array<string>},
      *     frontend: array{reload_interval: int, defaults: array<string, array>},
      *     nfdump: array{binary: string, profiles-data: string, profile: string, max-processes: int},
      *     db: array<string, array>,
@@ -95,6 +96,7 @@ abstract class Config {
             // Check if source directory exists
             if (!is_dir($sourcePath)) {
                 $errors[] = "Source directory does not exist: {$sourcePath}";
+
                 continue;
             }
 
@@ -120,6 +122,7 @@ abstract class Config {
         if (!empty($errors)) {
             $errorMsg = "Invalid nfcapd directory structure detected:\n\n" . implode("\n", $errors);
             $errorMsg .= "\n\nFor more information, see INSTALL.md";
+
             throw new \Exception($errorMsg);
         }
     }

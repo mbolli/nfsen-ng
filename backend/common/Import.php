@@ -3,6 +3,7 @@
 namespace mbolli\nfsen_ng\common;
 
 use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\vendor\ProgressBar;
 
 class Import {
     private readonly Debug $d;
@@ -30,7 +31,7 @@ class Import {
         // if in force mode, reset existing data
         if ($this->force === true) {
             if ($this->cli === true) {
-                echo 'Resetting existing data...' . \PHP_EOL;
+                echo 'Resetting existing data...' . PHP_EOL;
             }
             Config::$db->reset([]);
         }
@@ -38,7 +39,7 @@ class Import {
         // start progress bar (CLI only)
         $daysTotal = ((int) $dateStart->diff(new \DateTime())->format('%a') + 1) * \count($sources);
         if ($this->cli === true && $this->quiet === false) {
-            echo \PHP_EOL . \mbolli\nfsen_ng\vendor\ProgressBar::start($daysTotal, 'Processing ' . \count($sources) . ' sources...');
+            echo PHP_EOL . ProgressBar::start($daysTotal, 'Processing ' . \count($sources) . ' sources...');
         }
 
         // process each source, e.g. gateway, mailserver, etc.
@@ -48,7 +49,7 @@ class Import {
                 throw new \Exception('Could not read nfdump profile directory ' . $sourcePath);
             }
             if ($this->cli === true && $this->quiet === false) {
-                echo \PHP_EOL . 'Processing source ' . $source . ' (' . ($nr + 1) . '/' . \count($sources) . ')...' . \PHP_EOL;
+                echo PHP_EOL . 'Processing source ' . $source . ' (' . ($nr + 1) . '/' . \count($sources) . ')...' . PHP_EOL;
             }
 
             $date = clone $dateStart;
@@ -66,10 +67,10 @@ class Import {
                 $daysSaved = (int) $date->diff($lastUpdate)->format('%a');
                 $daysTotal -= $daysSaved;
                 if ($this->quiet === false) {
-                    $this->d->log('Last update: ' . $lastUpdate->format('Y-m-d H:i'), \LOG_INFO);
+                    $this->d->log('Last update: ' . $lastUpdate->format('Y-m-d H:i'), LOG_INFO);
                 }
                 if ($this->cli === true && $this->quiet === false) {
-                    \mbolli\nfsen_ng\vendor\ProgressBar::setTotal($daysTotal);
+                    ProgressBar::setTotal($daysTotal);
                 }
 
                 // set progress to the date when the import was stopped
@@ -89,17 +90,18 @@ class Import {
                 if (!file_exists($scanPath)) {
                     $this->d->dpr($scanPath . ' does not exist!');
                     if ($this->cli === true && $this->quiet === false) {
-                        echo \mbolli\nfsen_ng\vendor\ProgressBar::next(1);
+                        echo ProgressBar::next(1);
                     }
+
                     continue;
                 }
 
                 // scan path
-                $this->d->log('Scanning path ' . $scanPath, \LOG_INFO);
+                $this->d->log('Scanning path ' . $scanPath, LOG_INFO);
                 $scanFiles = scandir($scanPath);
 
                 if ($this->cli === true && $this->quiet === false) {
-                    echo \mbolli\nfsen_ng\vendor\ProgressBar::next(1, 'Scanning ' . $scanPath . '...');
+                    echo ProgressBar::next(1, 'Scanning ' . $scanPath . '...');
                 }
 
                 foreach ($scanFiles as $file) {
@@ -115,7 +117,8 @@ class Import {
                         }
                         $fileDatetime = new \DateTime($fileDate[1]);
                     } catch (\LengthException $e) {
-                        $this->d->log('Caught exception: ' . $e->getMessage(), \LOG_DEBUG);
+                        $this->d->log('Caught exception: ' . $e->getMessage(), LOG_DEBUG);
+
                         continue;
                     }
 
@@ -141,18 +144,99 @@ class Import {
                             $this->writePortsData($statsPath, $source);
                         }
                     } catch (\Exception $e) {
-                        $this->d->log('Caught exception: ' . $e->getMessage(), \LOG_WARNING);
+                        $this->d->log('Caught exception: ' . $e->getMessage(), LOG_WARNING);
                     }
                 }
             }
             ++$processedSources;
         }
         if ($processedSources === 0) {
-            $this->d->log('Import did not process any sources.', \LOG_WARNING);
+            $this->d->log('Import did not process any sources.', LOG_WARNING);
         }
         if ($this->cli === true && $this->quiet === false) {
-            echo \mbolli\nfsen_ng\vendor\ProgressBar::finish();
+            echo ProgressBar::finish();
         }
+    }
+
+    /**
+     * Import a single nfcapd file.
+     */
+    public function importFile(string $file, string $source, bool $last): void {
+        try {
+            $this->d->log('Importing file ' . $file . ' (' . $source . '), last=' . (int) $last, LOG_INFO);
+
+            // fill source.rrd
+            $this->writeSourceData($source, $file);
+
+            // write general port data (not depending on source, so only executed per port)
+            if ($last === true) {
+                $this->writePortsData($file);
+            }
+
+            // if enabled, process ports per source as well (source_80.rrd)
+            if ($this->processPorts === true) {
+                $this->writePortsData($file, $source);
+            }
+        } catch (\Exception $e) {
+            $this->d->log('Caught exception: ' . $e->getMessage(), LOG_WARNING);
+        }
+    }
+
+    /**
+     * Check if db is free to update (some databases only allow inserting data at the end).
+     *
+     * @throws \Exception
+     */
+    public function dbUpdatable(string $file, string $source = '', int $port = 0): bool {
+        if ($this->checkLastUpdate === false) {
+            return true;
+        }
+
+        // parse capture file's datetime. can't use filemtime as we need the datetime in the file name.
+        $date = [];
+        if (!preg_match('/nfcapd\.([0-9]{12})$/', $file, $date)) {
+            return false;
+        } // nothing to import
+
+        $fileDatetime = new \DateTime($date[1]);
+
+        // get last updated time from database
+        $lastUpdateDb = Config::$db->last_update($source, $port);
+        $lastUpdate = null;
+        if ($lastUpdateDb !== 0) {
+            $lastUpdate = new \DateTime();
+            $lastUpdate->setTimestamp($lastUpdateDb);
+        }
+
+        // prevent attempt to import the same file again
+        return $fileDatetime > $lastUpdate;
+    }
+
+    public function setVerbose(bool $verbose): void {
+        if ($verbose === true) {
+            $this->d->setDebug(true);
+        }
+        $this->verbose = $verbose;
+    }
+
+    public function setProcessPorts(bool $processPorts): void {
+        $this->processPorts = $processPorts;
+    }
+
+    public function setForce(bool $force): void {
+        $this->force = $force;
+    }
+
+    public function setQuiet(bool $quiet): void {
+        $this->quiet = $quiet;
+    }
+
+    public function setProcessPortsBySource($processPortsBySource): void {
+        $this->processPortsBySource = $processPortsBySource;
+    }
+
+    public function setCheckLastUpdate(bool $checkLastUpdate): void {
+        $this->checkLastUpdate = $checkLastUpdate;
     }
 
     /**
@@ -173,7 +257,7 @@ class Import {
         try {
             $input = $nfdump->execute();
         } catch (\Exception $e) {
-            $this->d->log('Exception: ' . $e->getMessage(), \LOG_WARNING);
+            $this->d->log('Exception: ' . $e->getMessage(), LOG_WARNING);
 
             return false;
         }
@@ -190,7 +274,7 @@ class Import {
         // flows_tcp: 323829
         foreach ($input as $i => $line) {
             if (!\is_string($line)) {
-                $this->d->log('Got no output of previous command', \LOG_DEBUG);
+                $this->d->log('Got no output of previous command', LOG_DEBUG);
             }
             if ($i === 0) {
                 continue;
@@ -257,7 +341,7 @@ class Import {
         try {
             $input = $nfdump->execute();
         } catch (\Exception $e) {
-            $this->d->log('Exception: ' . $e->getMessage(), \LOG_WARNING);
+            $this->d->log('Exception: ' . $e->getMessage(), LOG_WARNING);
 
             return false;
         }
@@ -309,86 +393,5 @@ class Import {
         }
 
         return true;
-    }
-
-    /**
-     * Import a single nfcapd file.
-     */
-    public function importFile(string $file, string $source, bool $last): void {
-        try {
-            $this->d->log('Importing file ' . $file . ' (' . $source . '), last=' . (int) $last, \LOG_INFO);
-
-            // fill source.rrd
-            $this->writeSourceData($source, $file);
-
-            // write general port data (not depending on source, so only executed per port)
-            if ($last === true) {
-                $this->writePortsData($file);
-            }
-
-            // if enabled, process ports per source as well (source_80.rrd)
-            if ($this->processPorts === true) {
-                $this->writePortsData($file, $source);
-            }
-        } catch (\Exception $e) {
-            $this->d->log('Caught exception: ' . $e->getMessage(), \LOG_WARNING);
-        }
-    }
-
-    /**
-     * Check if db is free to update (some databases only allow inserting data at the end).
-     *
-     * @throws \Exception
-     */
-    public function dbUpdatable(string $file, string $source = '', int $port = 0): bool {
-        if ($this->checkLastUpdate === false) {
-            return true;
-        }
-
-        // parse capture file's datetime. can't use filemtime as we need the datetime in the file name.
-        $date = [];
-        if (!preg_match('/nfcapd\.([0-9]{12})$/', $file, $date)) {
-            return false;
-        } // nothing to import
-
-        $fileDatetime = new \DateTime($date[1]);
-
-        // get last updated time from database
-        $lastUpdateDb = Config::$db->last_update($source, $port);
-        $lastUpdate = null;
-        if ($lastUpdateDb !== 0) {
-            $lastUpdate = new \DateTime();
-            $lastUpdate->setTimestamp($lastUpdateDb);
-        }
-
-        // prevent attempt to import the same file again
-        return $fileDatetime > $lastUpdate;
-    }
-
-    public function setVerbose(bool $verbose): void {
-        if ($verbose === true) {
-            $this->d->setDebug(true);
-        }
-        $this->verbose = $verbose;
-    }
-
-    public function setProcessPorts(bool $processPorts): void {
-        $this->processPorts = $processPorts;
-    }
-
-    public function setForce(bool $force): void {
-        $this->force = $force;
-    }
-
-    public function setQuiet(bool $quiet): void {
-        $this->quiet = $quiet;
-    }
-
-    public function setProcessPortsBySource($processPortsBySource): void {
-        $this->processPortsBySource = $processPortsBySource;
-    }
-
-    public function setCheckLastUpdate(bool $checkLastUpdate): void {
-        $this->checkLastUpdate = $checkLastUpdate;
     }
 }

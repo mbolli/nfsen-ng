@@ -6,6 +6,7 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 
 class Nfdump implements Processor {
+    public static ?self $_instance = null;
     private array $cfg = [
         'env' => [],
         'option' => [],
@@ -14,7 +15,6 @@ class Nfdump implements Processor {
     ];
     private array $clean;
     private readonly Debug $d;
-    public static ?self $_instance = null;
 
     public function __construct() {
         $this->d = Debug::getInstance();
@@ -23,7 +23,7 @@ class Nfdump implements Processor {
     }
 
     public static function getInstance(): self {
-        if (!(self::$_instance instanceof self)) {
+        if (!self::$_instance instanceof self) {
             self::$_instance = new self();
         }
 
@@ -32,6 +32,8 @@ class Nfdump implements Processor {
 
     /**
      * Sets an option's value.
+     *
+     * @param mixed $value
      */
     public function setOption(string $option, $value): void {
         switch ($option) {
@@ -58,15 +60,21 @@ class Nfdump implements Processor {
                 ]);
 
                 break;
+
             case '-R': // set path
                 $this->cfg['option'][$option] = $this->convert_date_to_path($value[0], $value[1]);
+
                 break;
+
             case '-o': // set output format
                 $this->cfg['format'] = $value;
+
                 break;
+
             default:
                 $this->cfg['option'][$option] = $value;
                 $this->cfg['option']['-o'] = 'csv'; // always get parsable data todo user-selectable? calculations bps/bpp/pps not in csv
+
                 break;
         }
     }
@@ -90,7 +98,7 @@ class Nfdump implements Processor {
         $timer = microtime(true);
         $filter = (empty($this->cfg['filter'])) ? '' : ' ' . escapeshellarg((string) $this->cfg['filter']);
         $command = $this->cfg['env']['bin'] . ' ' . $this->flatten($this->cfg['option']) . $filter . ' 2>&1';
-        $this->d->log('Trying to execute ' . $command, \LOG_DEBUG);
+        $this->d->log('Trying to execute ' . $command, LOG_DEBUG);
 
         // check for already running nfdump processes
         // use pgrep if available, fallback to ps, or skip check if neither available
@@ -124,10 +132,13 @@ class Nfdump implements Processor {
         switch ($return) {
             case 127:
                 throw new \Exception('NfDump: Failed to start process. Is nfdump installed? <br><b>Output:</b> ' . implode(' ', $output));
+
             case 255:
                 throw new \Exception('NfDump: Initialization failed. ' . $command . '<br><b>Output:</b> ' . implode(' ', $output));
+
             case 254:
                 throw new \Exception('NfDump: Error in filter syntax. <br><b>Output:</b> ' . implode(' ', $output));
+
             case 250:
                 throw new \Exception('NfDump: Internal error. <br><b>Output:</b> ' . implode(' ', $output));
         }
@@ -161,6 +172,7 @@ class Nfdump implements Processor {
             if (\count($line) === 1 || preg_match('/limit/', $line[0]) || preg_match('/error/', $line[0])) { // probably an error message or warning. add to command
                 $output[0] .= ' <br><b>' . $line[0] . '</b>';
                 unset($output[$i]);
+
                 continue;
             }
             if (!\is_array($format)) {
@@ -187,26 +199,9 @@ class Nfdump implements Processor {
         }
 
         // add execution time to output
-        $output[] .= '<br><b>Execution time:</b> ' . round(microtime(true) - $timer, 3) . ' seconds';
+        $output[0] .= '<br><b>Execution time:</b> ' . round(microtime(true) - $timer, 3) . ' seconds';
 
         return array_values($output);
-    }
-
-    /**
-     * Concatenates key and value of supplied array.
-     */
-    private function flatten(array $array): string {
-        $output = '';
-
-        foreach ($array as $key => $value) {
-            if ($value === null) {
-                $output .= $key . ' ';
-            } else {
-                $output .= \is_int($key) ?: $key . ' ' . escapeshellarg((string) $value) . ' ';
-            }
-        }
-
-        return $output;
     }
 
     /**
@@ -259,6 +254,7 @@ class Nfdump implements Processor {
         while ($fileendexists === false) {
             if ($end === $start) { // strict comparison won't work
                 $fileend = $filestart;
+
                 break;
             }
 
@@ -273,7 +269,7 @@ class Nfdump implements Processor {
             $end->sub(new \DateInterval('PT5M'));
         }
 
-        return $filestart . \PATH_SEPARATOR . $fileend;
+        return $filestart . PATH_SEPARATOR . $fileend;
     }
 
     public function get_output_format($format): array {
@@ -285,5 +281,22 @@ class Nfdump implements Processor {
             'full' => ['ts', 'te', 'td', 'sa', 'da', 'sp', 'dp', 'pr', 'flg', 'fwd', 'stos', 'ipkt', 'ibyt', 'opkt', 'obyt', 'in', 'out', 'sas', 'das', 'smk', 'dmk', 'dtos', 'dir', 'nh', 'nhb', 'svln', 'dvln', 'ismc', 'odmc', 'idmc', 'osmc', 'mpls1', 'mpls2', 'mpls3', 'mpls4', 'mpls5', 'mpls6', 'mpls7', 'mpls8', 'mpls9', 'mpls10', 'cl', 'sl', 'al', 'ra', 'eng', 'exid', 'tr'],
             default => explode(' ', str_replace(['fmt:', '%'], '', (string) $format)),
         };
+    }
+
+    /**
+     * Concatenates key and value of supplied array.
+     */
+    private function flatten(array $array): string {
+        $output = '';
+
+        foreach ($array as $key => $value) {
+            if ($value === null) {
+                $output .= $key . ' ';
+            } else {
+                $output .= \is_int($key) ?: $key . ' ' . escapeshellarg((string) $value) . ' ';
+            }
+        }
+
+        return $output;
     }
 }

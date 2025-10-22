@@ -1,52 +1,57 @@
 #!/usr/bin/env php
 <?php
-include_once implode(\DIRECTORY_SEPARATOR, [__DIR__, '..', 'vendor', 'autoload.php']);
+
+include_once dirname(__DIR__) . '/vendor/autoload.php';
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\Import;
 
 $d = Debug::getInstance();
+
 try {
     Config::initialize();
 } catch (Exception $e) {
     $d->log('Fatal: ' . $e->getMessage(), \LOG_ALERT);
+
     exit;
 }
 
 if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
-    ?>
+    $script = $argv[0];
+    $help = <<<EOT
 
-    This is the command line interface to nfsen-ng.
+        This is the command line interface to nfsen-ng.
 
-    Usage:
-    <?php echo $argv[0]; ?> [options] import
-    <?php echo $argv[0]; ?> start|stop|status
+        Usage:
+        {$script} [options] import
+        {$script} start|stop|status
 
-    Options:
-    -v  Show verbose output
-    -p  Import ports data
-    -ps Import ports data per source
-    -f  Force overwriting database and start at the beginning
+        Options:
+        -v  Show verbose output
+        -p  Import ports data
+        -ps Import ports data per source
+        -f  Force overwriting database and start at the beginning
 
-    Commands:
-    import  - Import existing nfdump data to nfsen-ng.
-    Notice: If you have existing nfcapd files, better do this overnight.
-    start   - Start the daemon for continuous reading of new data
-    stop    - Stop the daemon
-    status  - Get the daemon's status
+        Commands:
+        import  - Import existing nfdump data to nfsen-ng.
+        Notice: If you have existing nfcapd files, better do this overnight.
+        start   - Start the daemon for continuous reading of new data
+        stop    - Stop the daemon
+        status  - Get the daemon's status
 
-    Examples:
-    <?php echo $argv[0]; ?> -f import
-    Imports fresh data for sources
+        Examples:
+        {$script} -f import
+        Imports fresh data for sources
 
-    <?php echo $argv[0]; ?> -s -p import
-    Imports data for ports only
+        {$script} -s -p import
+        Imports data for ports only
 
-    <?php echo $argv[0]; ?> start
-    Start the daemon
+        {$script} start
+        Start the daemon
 
-    <?php
+        EOT;
+    echo $help;
 } else {
     $folder = __DIR__;
     $pidfile = $folder . '/nfsen-ng.pid';
@@ -81,12 +86,17 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
         switch ((int) $exit) {
             case 128:
                 echo 'Unexpected error opening or locking lock file. Perhaps you don\'t have permission to write to the lock file or its containing directory?';
+
                 break;
+
             case 129:
                 echo 'Another instance is already running; terminating.';
+
                 break;
+
             default:
                 echo 'Daemon running, pid=' . $pid;
+
                 break;
         }
         echo \PHP_EOL;
@@ -95,6 +105,7 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
 
         if (!file_exists($pidfile)) {
             echo 'Not running' . \PHP_EOL;
+
             exit;
         }
         $pid = file_get_contents($pidfile);
@@ -108,6 +119,7 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
 
         if (!file_exists($pidfile)) {
             echo 'Not running' . \PHP_EOL;
+
             exit;
         }
         $pid = file_get_contents($pidfile);

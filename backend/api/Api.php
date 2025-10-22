@@ -69,19 +69,25 @@ class Api {
                         $this->error(400, 'Expected type int for ' . $arg->name);
                     }
                     $args[$arg->name] = (int) $_REQUEST[$arg->name];
+
                     break;
+
                 case 'array':
                     if (!\is_array($_REQUEST[$arg->name])) {
                         $this->error(400, 'Expected type array for ' . $arg->name);
                     }
                     $args[$arg->name] = $_REQUEST[$arg->name];
+
                     break;
+
                 case 'string':
                     if (!\is_string($_REQUEST[$arg->name])) {
                         $this->error(400, 'Expected type string for ' . $arg->name);
                     }
                     $args[$arg->name] = $_REQUEST[$arg->name];
+
                     break;
+
                 default:
                     $args[$arg->name] = $_REQUEST[$arg->name];
             }
@@ -106,7 +112,7 @@ class Api {
             fclose($return);
         } else {
             // output JSON
-            echo json_encode($output, \JSON_THROW_ON_ERROR);
+            echo json_encode($output, JSON_THROW_ON_ERROR);
         }
     }
 
@@ -120,33 +126,46 @@ class Api {
         $debug = Debug::getInstance();
 
         $response = ['code' => $code, 'error' => ''];
+
         switch ($code) {
             case 400:
                 $response['error'] = '400 - Bad Request. ' . (empty($msg) ? 'Probably wrong or not enough arguments.' : $msg);
-                $debug->log($response['error'], \LOG_INFO);
+                $debug->log($response['error'], LOG_INFO);
+
                 break;
+
             case 401:
                 $response['error'] = '401 - Unauthorized. ' . $msg;
-                $debug->log($response['error'], \LOG_WARNING);
+                $debug->log($response['error'], LOG_WARNING);
+
                 break;
+
             case 403:
                 $response['error'] = '403 - Forbidden. ' . $msg;
-                $debug->log($response['error'], \LOG_WARNING);
+                $debug->log($response['error'], LOG_WARNING);
+
                 break;
+
             case 404:
                 $response['error'] = '404 - Not found. ' . $msg;
-                $debug->log($response['error'], \LOG_WARNING);
+                $debug->log($response['error'], LOG_WARNING);
+
                 break;
+
             case 501:
                 $response['error'] = '501 - Method not implemented. ' . $msg;
-                $debug->log($response['error'], \LOG_WARNING);
+                $debug->log($response['error'], LOG_WARNING);
+
                 break;
+
             case 503:
                 $response['error'] = '503 - Service unavailable. ' . $msg;
-                $debug->log($response['error'], \LOG_ERR);
+                $debug->log($response['error'], LOG_ERR);
+
                 break;
         }
-        echo json_encode($response, \JSON_THROW_ON_ERROR);
+        echo json_encode($response, JSON_THROW_ON_ERROR);
+
         exit;
     }
 
@@ -283,7 +302,7 @@ class Api {
         $daemon_running = file_exists($pidfile);
 
         // get date of first data point
-        $firstDataPoint = \PHP_INT_MAX;
+        $firstDataPoint = PHP_INT_MAX;
         foreach ($sources as $source) {
             $firstDataPoint = min($firstDataPoint, Config::$db->date_boundaries($source)[0]);
         }
@@ -307,7 +326,7 @@ class Api {
     public function host(string $ip): string {
         try {
             // check ip format
-            if (!filter_var($ip, \FILTER_VALIDATE_IP)) {
+            if (!filter_var($ip, FILTER_VALIDATE_IP)) {
                 $this->error(400, 'Invalid IP address');
             }
 

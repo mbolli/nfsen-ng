@@ -93,9 +93,24 @@ class Nfdump implements Processor {
         $this->d->log('Trying to execute ' . $command, \LOG_DEBUG);
 
         // check for already running nfdump processes
-        exec('ps -eo user,pid,args | grep -v grep | grep `whoami` | grep "' . $this->cfg['env']['bin'] . '"', $processes);
-        if (\count($processes) / 2 > (int) Config::$cfg['nfdump']['max-processes']) {
-            throw new \Exception('There already are ' . \count($processes) / 2 . ' processes of NfDump running!');
+        // use pgrep if available, fallback to ps, or skip check if neither available
+        $process_count = 0;
+        $bin_name = basename($this->cfg['env']['bin']);
+
+        // Try pgrep first (more likely in containers)
+        exec("command -v pgrep > /dev/null 2>&1 && pgrep -c '^{$bin_name}$' 2>/dev/null || echo '0'", $pgrep_output);
+        if (!empty($pgrep_output[0]) && is_numeric($pgrep_output[0])) {
+            $process_count = (int) $pgrep_output[0];
+        } else {
+            // Fallback to ps if available
+            exec("command -v ps > /dev/null 2>&1 && ps -eo comm | grep -c '^{$bin_name}$' 2>/dev/null || echo '0'", $ps_output);
+            if (!empty($ps_output[0]) && is_numeric($ps_output[0])) {
+                $process_count = (int) $ps_output[0];
+            }
+        }
+
+        if ($process_count > (int) Config::$cfg['nfdump']['max-processes']) {
+            throw new \Exception('There already are ' . $process_count . ' processes of NfDump running!');
         }
 
         // execute nfdump
@@ -172,7 +187,7 @@ class Nfdump implements Processor {
         }
 
         // add execution time to output
-        $output[0] .= '<br><b>Execution time:</b> ' . round(microtime(true) - $timer, 3) . ' seconds';
+        $output[] .= '<br><b>Execution time:</b> ' . round(microtime(true) - $timer, 3) . ' seconds';
 
         return array_values($output);
     }

@@ -1,0 +1,14 @@
+{
+  "name": "nfsen-ng-frontend",
+  "version": "0.4.0",
+  "description": "Frontend for nfsen-ng",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint frontend/js/nfsen-ng.js frontend/components frontend/css/nfsen-ng.css",
+    "format": "prettier --write frontend/js/nfsen-ng.js frontend/components frontend/css/nfsen-ng.css"
+  },
+  "devDependencies": {
+    "eslint": "^9.38.0",
+    "prettier": "^3.6.2"
+  }
+}

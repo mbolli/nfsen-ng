@@ -1,7 +1,21 @@
 /* general */
-@media (prefers-color-scheme: light) { html { filter: invert(0.0);  } :root { } }
-@media (prefers-color-scheme: dark)  { html { filter: invert(0.85); } :root { } }
-html { filter: none; }
+@media (prefers-color-scheme: light) {
+    html {
+        filter: invert(0);
+    }
+    :root {
+    }
+}
+@media (prefers-color-scheme: dark) {
+    html {
+        filter: invert(0.85);
+    }
+    :root {
+    }
+}
+html {
+    filter: none;
+}
 
 :root {
     --bs-primary: #ccc;
@@ -9,7 +23,7 @@ html { filter: none; }
 
 .nav {
     --bs-nav-link-color: #000;
-    --bs-link-color-rgb: 0,0,0;
+    --bs-link-color-rgb: 0, 0, 0;
 }
 
 .btn-outline-primary {
@@ -28,24 +42,29 @@ html { filter: none; }
 
 /* light grey background for active nav links */
 .nav-tabs .nav-link.active {
-    --bs-nav-tabs-link-active-bg: rgba(var(--bs-light-rgb),1);
+    --bs-nav-tabs-link-active-bg: rgba(var(--bs-light-rgb), 1);
     border-bottom: 1px solid rgb(var(--bs-light-rgb));
     font-weight: bold;
 }
 
-.btn.disabled, .btn:disabled, fieldset:disabled .btn {
-    opacity: .3;
+.btn.disabled,
+.btn:disabled,
+fieldset:disabled .btn {
+    opacity: 0.3;
 }
 
 textarea {
     resize: none;
 }
 
-code, pre, .code {
-    font-family: Menlo, Monaco, Consolas, "Courier New", monospace
+code,
+pre,
+.code {
+    font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
-.h5, .h6 {
+.h5,
+.h6 {
     text-transform: uppercase;
     font-weight: bold;
 }
@@ -62,7 +81,7 @@ code, pre, .code {
 }
 
 #legend span {
-    padding: .2rem;
+    padding: 0.2rem;
 }
 
 #legend span.highlight {
@@ -80,20 +99,24 @@ code, pre, .code {
 /* graph options */
 
 .accordion h4:after {
-    content: "\25B2";
+    content: '\25B2';
     float: right;
 }
 
 .accordion h4.collapsed:after {
-    content: "\25BC";
+    content: '\25BC';
 }
 
 /* flows */
-#sourceCIDRPrefixDiv:before, #destinationCIDRPrefixDiv:before {
-    content: "/";
+#sourceCIDRPrefixDiv:before,
+#destinationCIDRPrefixDiv:before {
+    content: '/';
     width: auto;
     position: absolute;
     font-size: 170%;
     padding-left: 1rem;
 }
-#sourceCIDRPrefix, #destinationCIDRPrefix { padding-left: 2rem; }
+#sourceCIDRPrefix,
+#destinationCIDRPrefix {
+    padding-left: 2rem;
+}

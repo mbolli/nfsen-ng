@@ -4,6 +4,7 @@ namespace mbolli\nfsen_ng\processor;
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\Misc;
 
 class Nfdump implements Processor {
     public static ?self $_instance = null;
@@ -102,20 +103,8 @@ class Nfdump implements Processor {
 
         // check for already running nfdump processes
         // use pgrep if available, fallback to ps, or skip check if neither available
-        $process_count = 0;
         $bin_name = basename($this->cfg['env']['bin']);
-
-        // Try pgrep first (more likely in containers)
-        exec("command -v pgrep > /dev/null 2>&1 && pgrep -c '^{$bin_name}$' 2>/dev/null || echo '0'", $pgrep_output);
-        if (!empty($pgrep_output[0]) && is_numeric($pgrep_output[0])) {
-            $process_count = (int) $pgrep_output[0];
-        } else {
-            // Fallback to ps if available
-            exec("command -v ps > /dev/null 2>&1 && ps -eo comm | grep -c '^{$bin_name}$' 2>/dev/null || echo '0'", $ps_output);
-            if (!empty($ps_output[0]) && is_numeric($ps_output[0])) {
-                $process_count = (int) $ps_output[0];
-            }
-        }
+        $process_count = Misc::countProcessesByName($bin_name);
 
         if ($process_count > (int) Config::$cfg['nfdump']['max-processes']) {
             throw new \Exception('There already are ' . $process_count . ' processes of NfDump running!');

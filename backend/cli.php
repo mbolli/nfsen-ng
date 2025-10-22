@@ -6,6 +6,7 @@ include_once dirname(__DIR__) . '/vendor/autoload.php';
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\Import;
+use mbolli\nfsen_ng\common\Misc;
 
 $d = Debug::getInstance();
 
@@ -122,12 +123,14 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
 
             exit;
         }
-        $pid = file_get_contents($pidfile);
-        exec('ps -p ' . $pid, $op);
-        if (!isset($op[1])) {
-            echo 'Not running' . \PHP_EOL;
-        } else {
+        $pid = trim(file_get_contents($pidfile));
+
+        if (Misc::daemonIsRunning($pid)) {
             echo 'Running: ' . $pid . \PHP_EOL;
+        } else {
+            echo 'Not running (stale PID file: ' . $pid . ')' . \PHP_EOL;
+            // Clean up stale PID file
+            unlink($pidfile);
         }
     }
 }

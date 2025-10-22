@@ -75,7 +75,9 @@ class Rrd implements Datasource {
 
         // check if folder exists
         if (!file_exists(\dirname($rrdFile))) {
-            mkdir(\dirname($rrdFile), 0o755, true);
+            if (!mkdir($concurrentDirectory = \dirname($rrdFile), 0o755, true) && !is_dir($concurrentDirectory)) {
+                throw new \RuntimeException(\sprintf('Directory "%s" was not created', $concurrentDirectory));
+            }
         }
 
         // check if folder has correct access rights
@@ -130,9 +132,7 @@ class Rrd implements Datasource {
         $this->d->log('Writing to file ' . $rrdFile, LOG_DEBUG);
 
         // write data
-        $updater = new \RRDUpdater($rrdFile);
-
-        return $updater->update($data['fields'], (string) $nearest);
+        return (new \RRDUpdater($rrdFile))->update($data['fields'], (string) $nearest);
     }
 
     /**
@@ -285,10 +285,10 @@ class Rrd implements Datasource {
      * Concatenates the path to the source's rrd file.
      */
     public function get_data_path(string $source = '', int $port = 0): string {
-        if ((int) $port === 0) {
+        if ($port === 0) {
             $port = '';
         } else {
-            $port = (empty($source)) ? $port : '_' . $port;
+            $port = empty($source) ? $port : '_' . $port;
         }
         $path = Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data' . \DIRECTORY_SEPARATOR . $source . $port . '.rrd';
 

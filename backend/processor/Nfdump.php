@@ -114,7 +114,7 @@ class Nfdump implements Processor {
         exec($command, $output, $return);
 
         // prevent logging the command usage description
-        if (isset($output[0]) && preg_match('/^usage/i', $output[0])) {
+        if (isset($output[0]) && stripos($output[0], 'usage') === 0) {
             $output = [];
         }
 
@@ -158,7 +158,7 @@ class Nfdump implements Processor {
             $line = str_getcsv($line, ',');
             $temp_line = [];
 
-            if (\count($line) === 1 || preg_match('/limit/', $line[0]) || preg_match('/error/', $line[0])) { // probably an error message or warning. add to command
+            if (\count($line) === 1 || str_contains($line[0], 'limit') || str_contains($line[0], 'error')) { // probably an error message or warning. add to command
                 $output[0] .= ' <br><b>' . $line[0] . '</b>';
                 unset($output[$i]);
 

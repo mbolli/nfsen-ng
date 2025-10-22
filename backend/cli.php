@@ -110,22 +110,11 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
         }
 
         // todo: get exit code of background process. possible at all?
-        switch ((int) $exit) {
-            case 128:
-                echo 'Unexpected error opening or locking lock file. Perhaps you don\'t have permission to write to the lock file or its containing directory?';
-
-                break;
-
-            case 129:
-                echo 'Another instance is already running; terminating.';
-
-                break;
-
-            default:
-                echo 'Daemon running, pid=' . $pid;
-
-                break;
-        }
+        echo match ((int) $exit) {
+            128 => 'Unexpected error opening or locking lock file. Perhaps you don\'t have permission to write to the lock file or its containing directory?',
+            129 => 'Another instance is already running; terminating.',
+            default => 'Daemon running, pid=' . $pid,
+        };
         echo \PHP_EOL;
     } elseif (in_array('stop', $argv, true)) {
         // stop the daemon

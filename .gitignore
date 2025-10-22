@@ -5,4 +5,5 @@ backend/cli/nfsen-ng.log
 backend/cli/nfsen-ng.pid
 profiles-data/
 vendor/
+node_modules/
 *.cache

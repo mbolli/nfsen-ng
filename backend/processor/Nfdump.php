@@ -188,7 +188,12 @@ class Nfdump implements Processor {
         }
 
         // add execution time to output
-        $output[0] .= '<br><b>Execution time:</b> ' . round(microtime(true) - $timer, 3) . ' seconds';
+        $executionMsg = '<br><b>Execution time:</b> ' . round(microtime(true) - $timer, 3) . ' seconds';
+        if (isset($output[0])) {
+            $output[0] .= $executionMsg;
+        } else {
+            $output[] = $executionMsg;
+        }
 
         return array_values($output);
     }

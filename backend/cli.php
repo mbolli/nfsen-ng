@@ -58,11 +58,17 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
     $pidfile = $folder . '/nfsen-ng.pid';
 
     if (in_array('import', $argv, true)) {
-        // import 3 years of data if available
+        // import N years of data if available (configurable via NFSEN_IMPORT_YEARS)
 
         $d->log('CLI: Starting import', \LOG_INFO);
+        $importYears = (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3);
+        $forceImport = in_array('-f', $argv, true);
+        $d->log('CLI: NFSEN_IMPORT_YEARS=' . $importYears . ', force=' . ($forceImport ? 'true' : 'false'), \LOG_INFO);
+
         $start = new DateTime();
-        $start->modify('-3 years');
+        $start->modify('-' . $importYears . ' years');
+        $d->log('CLI: Import start date: ' . $start->format('Y-m-d H:i:s'), \LOG_INFO);
+
         $i = new Import();
         if (in_array('-v', $argv, true)) {
             $i->setVerbose(true);
@@ -73,7 +79,7 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
         if (in_array('-ps', $argv, true)) {
             $i->setProcessPortsBySource(true);
         }
-        if (in_array('-f', $argv, true)) {
+        if ($forceImport) {
             $i->setForce(true);
         }
         $i->start($start);

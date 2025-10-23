@@ -8,6 +8,8 @@ use mbolli\nfsen_ng\common\Debug;
 
 class Rrd implements Datasource {
     private readonly Debug $d;
+    private readonly int $importYears;
+    private readonly array $layout;
     private array $fields = [
         'flows',
         'flows_tcp',
@@ -26,20 +28,24 @@ class Rrd implements Datasource {
         'bytes_other',
     ];
 
-    private array $layout = [
-        '0.5:1:' . ((60 / (1 * 5)) * 24 * 45), // 45 days of 5 min samples
-        '0.5:6:' . ((60 / (6 * 5)) * 24 * 90), // 90 days of 30 min samples
-        '0.5:24:' . ((60 / (24 * 5)) * 24 * 360), // 360 days of 2 hour samples
-        '0.5:288:1080', // 1080 days of daily samples
-        // = 3 years of data
-    ];
-
     public function __construct() {
         $this->d = Debug::getInstance();
 
         if (!\function_exists('rrd_version')) {
             throw new \Exception('Please install the PECL rrd library.');
         }
+
+        // Get import years from environment variable (default: 3)
+        $this->importYears = (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3);
+
+        // Calculate layout based on import years
+        // Structure maintains same resolution levels but extends daily samples
+        $this->layout = [
+            '0.5:1:' . ((60 / (1 * 5)) * 24 * 45), // 45 days of 5 min samples
+            '0.5:6:' . ((60 / (6 * 5)) * 24 * 90), // 90 days of 30 min samples
+            '0.5:24:' . ((60 / (24 * 5)) * 24 * 365), // 365 days of 2 hour samples
+            '0.5:288:' . $this->importYears * 365, // N years of daily samples (based on NFSEN_IMPORT_YEARS)
+        ];
     }
 
     /**
@@ -97,7 +103,7 @@ class Rrd implements Datasource {
             }
         }
 
-        $start = strtotime('3 years ago');
+        $start = strtotime('-' . $this->importYears . ' years');
         $starttime = (int) $start - ($start % 300);
 
         $creator = new \RRDCreator($rrdFile, (string) $starttime, 60 * 5);
@@ -115,6 +121,110 @@ class Rrd implements Datasource {
         }
 
         return $saved;
+    }
+
+    /**
+     * Validate if an existing RRD file matches the expected structure.
+     * Returns true if valid, false if invalid or doesn't exist.
+     *
+     * @param string $source       e.g. gateway or server_xyz
+     * @param int    $port         port number (0 for no port)
+     * @param bool   $showWarnings whether to display CLI warnings when validation fails
+     * @param bool   $quiet        suppress all output
+     *
+     * @return array{valid: bool, message: string, expected_rows: null|int, actual_rows: null|int}
+     */
+    public function validateStructure(string $source, int $port = 0, bool $showWarnings = false, bool $quiet = false): array {
+        $rrdFile = $this->get_data_path($source, $port);
+
+        if (!file_exists($rrdFile)) {
+            return [
+                'valid' => false,
+                'message' => 'RRD file does not exist',
+                'expected_rows' => null,
+                'actual_rows' => null,
+            ];
+        }
+
+        // Get RRD info
+        $info = rrd_info($rrdFile);
+        if ($info === false) { // @phpstan-ignore identical.alwaysFalse
+            return [
+                'valid' => false,
+                'message' => 'Could not read RRD file info: ' . rrd_error(),
+                'expected_rows' => null,
+                'actual_rows' => null,
+            ];
+        }
+
+        // Check the last RRA (daily samples) which contains the year-dependent data
+        // RRAs are indexed as rra[0], rra[1], etc. We have 2 RRAs per layout entry (AVERAGE and MAX)
+        // So for N layout entries, we have 2*N RRAs total. The last AVERAGE RRA is index (count($this->layout) - 1) * 2.
+        $expectedDailyRows = $this->importYears * 365;
+        $lastAverageRraIndex = (\count($this->layout) - 1) * 2;
+
+        // Check if the RRA exists and get its rows
+        $rraKey = "rra[{$lastAverageRraIndex}].rows";
+        if (!isset($info[$rraKey])) {
+            return [
+                'valid' => false,
+                'message' => 'Could not find expected RRA structure in RRD file',
+                'expected_rows' => $expectedDailyRows,
+                'actual_rows' => null,
+            ];
+        }
+
+        $actualRows = (int) $info[$rraKey];
+
+        if ($actualRows !== $expectedDailyRows) {
+            $message = "RRD structure mismatch: Expected {$expectedDailyRows} daily rows (NFSEN_IMPORT_YEARS={$this->importYears}), but RRD has {$actualRows} rows";
+
+            // Display warning if requested and we're in CLI mode
+            if ($showWarnings && \PHP_SAPI === 'cli') {
+                $actualYears = round($actualRows / 365, 1);
+
+                echo <<<WARNING
+
+\033[1;33mWARNING: RRD Structure Mismatch\033[0m
+Your existing RRD files were created with a different NFSEN_IMPORT_YEARS
+setting than what is currently configured.
+
+Current setting:  NFSEN_IMPORT_YEARS={$this->importYears} (~{$this->importYears} years)
+Existing RRD has: ~{$actualYears} years of storage ({$actualRows} daily rows)
+
+This mismatch can cause:
+  • Data loss if new setting stores less data than before
+  • Import errors or incomplete data coverage
+
+\033[1mTo fix this:\033[0m
+  1. Set NFSEN_FORCE_IMPORT=true to recreate RRD files, OR
+  2. Adjust NFSEN_IMPORT_YEARS to match existing structure (~{$actualYears})
+
+Continuing import with existing structure...
+
+
+WARNING;
+            }
+
+            return [
+                'valid' => false,
+                'message' => $message,
+                'expected_rows' => $expectedDailyRows,
+                'actual_rows' => $actualRows,
+            ];
+        }
+
+        // Display success message if requested
+        if ($showWarnings && !$quiet && \PHP_SAPI === 'cli') {
+            echo '✓ RRD structure is valid (configured for ' . $this->importYears . ' years)' . PHP_EOL;
+        }
+
+        return [
+            'valid' => true,
+            'message' => 'RRD structure is valid',
+            'expected_rows' => $expectedDailyRows,
+            'actual_rows' => $actualRows,
+        ];
     }
 
     /**

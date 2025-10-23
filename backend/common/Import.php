@@ -2,6 +2,7 @@
 
 namespace mbolli\nfsen_ng\common;
 
+use mbolli\nfsen_ng\datasources\Rrd;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\vendor\ProgressBar;
 
@@ -27,6 +28,14 @@ class Import {
     public function start(\DateTime $dateStart): void {
         $sources = Config::$cfg['general']['sources'];
         $processedSources = 0;
+
+        // Validate RRD structure before starting import (if using RRD datasource and not in force mode)
+        if ($this->force === false && Config::$db instanceof Rrd && !empty($sources)) {
+            if ($this->cli === true && $this->quiet === false) {
+                echo PHP_EOL . 'Validating RRD structure...' . PHP_EOL;
+            }
+            Config::$db->validateStructure($sources[0], 0, true, $this->quiet);
+        }
 
         // if in force mode, reset existing data
         if ($this->force === true) {

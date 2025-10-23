@@ -315,6 +315,7 @@ class Api {
             'stored_filters' => $stored_filters,
             'daemon_running' => $daemon_running,
             'frontend' => $frontend,
+            'import_years' => (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3),
             'version' => Config::VERSION,
             'tz_offset' => (new \DateTimeZone(date_default_timezone_get()))->getOffset(new \DateTime('now', new \DateTimeZone('UTC'))) / 3600,
         ];

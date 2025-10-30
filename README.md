@@ -8,9 +8,22 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 
 ![nfsen-ng dashboard overview](https://github.com/mbolli/nfsen-ng/assets/722725/c3df942e-3d3c-4ef9-86ad-4e5780c7b6d8)
 
+## v1 Changes
+
+This version includes major architectural improvements:
+
+- **Hypermedia Architecture**: Migrated from JSON API to server-side rendered HTML with Datastar for real-time updates via SSE
+- **Server-Push Architecture**: SSE-based push replaces client polling - server detects changes and pushes updates to all connected clients
+- **Swoole HTTP Server**: Replaced Apache with Swoole for coroutine-based concurrency (10,000+ concurrent SSE connections vs 2-4 with traditional workers)
+- **HTTP Compression**: Caddy reverse proxy with Brotli compression (5x bandwidth reduction for static assets, 100x+ for long-running SSE requests)
+- **Configurable RRD Database**: Adjustable retention period via `NFSEN_IMPORT_YEARS` environment variable (default: 3 years)
+- **Interactive Graph Resolution**: User-selectable data point density (50-2000 points) for optimal visualization at any time range
+- **Enhanced Date Navigation**: Intuitive time range slider with quick presets, period navigation, and graph zoom synchronization
+- **Web Components**: JavaScript functionality is encapsulated in native Web Components for modularity and reusability. Footable library was replaced with a custom Web Component.
+
 ## Used components
 
-* Front end: [jQuery](https://jquery.com), [dygraphs](http://dygraphs.com), [FooTable](http://fooplugins.github.io/FooTable/), [ion.rangeSlider](http://ionden.com/a/plugins/ion.rangeSlider/en.html)
+* Front end: [jQuery](https://jquery.com), [dygraphs](http://dygraphs.com),  [ion.rangeSlider](http://ionden.com/a/plugins/ion.rangeSlider/en.html)
 * Back end: [RRDtool](http://oss.oetiker.ch/rrdtool/), [nfdump tools](https://github.com/phaag/nfdump)
 
 ## TOC

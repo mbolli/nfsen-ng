@@ -1,0 +1,22 @@
+# Custom Caddy build with Brotli encoder
+# Based on the caddy:builder image which includes xcaddy
+
+FROM caddy:builder AS builder
+
+# Install build dependencies for Brotli (requires CGO and brotli-dev)
+RUN apk add --no-cache gcc musl-dev brotli-dev
+
+# Enable CGO for Brotli compilation
+ENV CGO_ENABLED=1
+
+# Build Caddy with Brotli encoder module
+RUN xcaddy build \
+    --with github.com/dunglas/caddy-cbrotli
+
+FROM caddy:latest
+
+# Install runtime Brotli libraries
+RUN apk add --no-cache brotli-libs
+
+# Copy the custom-built Caddy binary
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy

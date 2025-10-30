@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "lint": "eslint frontend/js/nfsen-ng.js frontend/components frontend/css/nfsen-ng.css",
-    "format": "prettier --write frontend/js/nfsen-ng.js frontend/components frontend/css/nfsen-ng.css"
+    "format": "prettier --write frontend/js/nfsen-ng.js frontend/components frontend/css/nfsen-ng.css",
+    "postinstall": "cp node_modules/datastar/bundles/datastar.* frontend/js"
+  },
+  "dependencies": {
+    "datastar": "github:starfederation/datastar"
   },
   "devDependencies": {
     "eslint": "^9.38.0",

@@ -1,8 +1,12 @@
 <?php
 
-return (new PhpCsFixer\Config())
+use PhpCsFixer\Config;
+use PhpCsFixer\Finder;
+use PhpCsFixer\Runner\Parallel\ParallelConfigFactory;
+
+return (new Config())
     ->setUnsupportedPhpVersionAllowed(true)
-    ->setParallelConfig(PhpCsFixer\Runner\Parallel\ParallelConfigFactory::detect())
+    ->setParallelConfig(ParallelConfigFactory::detect())
     ->setRiskyAllowed(true)
     ->setRules([
         '@PhpCsFixer' => true,
@@ -24,5 +28,5 @@ return (new PhpCsFixer\Config())
         'string_implicit_backslashes' => ['double_quoted' => 'escape', 'single_quoted' => 'ignore', 'heredoc' => 'escape'],
         'yoda_style' => ['equal' => false, 'identical' => false, 'less_and_greater' => false],
     ])
-    ->setFinder(PhpCsFixer\Finder::create()->exclude('vendor')->in(__DIR__))
+    ->setFinder(Finder::create()->exclude('vendor')->in(__DIR__))
 ;

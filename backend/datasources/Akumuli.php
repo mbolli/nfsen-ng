@@ -70,12 +70,6 @@ class Akumuli implements Datasource {
      *   * protocols - $sources must not contain more than one source (legend e.g. gateway_flows_udp, gateway_flows_tcp)
      *   * sources - $protocols must not contain more than one protocol (legend e.g. gateway_traffic_icmp, othersource_traffic_icmp).
      *
-     * @param int    $start     timestamp
-     * @param int    $end       timestamp
-     * @param array  $sources   subset of sources specified in settings
-     * @param array  $protocols UDP/TCP/ICMP/other
-     * @param string $type      flows/packets/traffic
-     *
      * @return array in the following format:
      *
      * $return = array(
@@ -94,7 +88,7 @@ class Akumuli implements Datasource {
      *  )
      * );
      */
-    public function get_graph_data(int $start, int $end, array $sources, array $protocols, array $ports, string $type = 'flows', string $display = 'sources'): array|string {
+    public function get_graph_data(int $start, int $end, array $sources, array $protocols, array $ports, string $type = 'flows', string $display = 'sources', ?int $maxrows = 500): array|string {
         // TODO: Implement get_graph_data() method.
         return [];
     }
@@ -120,7 +114,7 @@ class Akumuli implements Datasource {
     /**
      * Gets the path where the datasource's data is stored.
      */
-    public function get_data_path(): string {
+    public function get_data_path(string $source = '', int $port = 0): string {
         // TODO: Implement get_data_path() method.
         return '';
     }

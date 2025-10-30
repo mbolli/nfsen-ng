@@ -5,6 +5,7 @@
  * remarks:
  * * database name = datasource class name (case-sensitive)
  * * log priority should be one of the predefined core constants prefixed with LOG_
+ * * you can use getenv() to read environment variables for flexibility
  */
 
 $nfsen_config = [
@@ -16,17 +17,38 @@ $nfsen_config = [
             'source1', 'source2',
         ],
         'filters' => [
-            'proto udp',
+            // Protocol filters
             'proto tcp',
+            'proto udp',
+            'proto icmp',
+            
+            // Port filters
+            'dst port 80',
+            'dst port 443',
+            'src port 53 or dst port 53',
+            
+            // IP filters
+            'src net 192.168.0.0/16',
+            'dst net 10.0.0.0/8',
+            
+            // Common services
+            'dst port 22',      // SSH
+            'dst port 3389',    // RDP
+            'dst port 3306',    // MySQL
+            
+            // Traffic patterns
+            'flags S and not flags A',  // SYN packets (new connections)
+            'flags R',                   // RST packets (connection resets)
+            'packets > 100',             // Large packet counts
+            'bytes > 1000000',           // Large transfers (>1MB)
         ],
         'formats' => [
             'external_interfaces' => '%ts %td %pr %in %out %sa %sp %da %dp %ipkt %ibyt %opkt %obyt %flg',
         ],
-        'db' => 'RRD',
+        'db' => getenv('NFSEN_DATASOURCE') ?: 'RRD',
         'processor' => 'NfDump',
     ],
     'frontend' => [
-        'reload_interval' => 60,
         'defaults' => [
             'view' => 'graphs', // graphs, flows, statistics
             'graphs' => [
@@ -40,27 +62,30 @@ $nfsen_config = [
             'statistics' => [
                 'order_by' => 'bytes',
             ],
-            'table'=> [
-                'hidden_fields' => [
-                    'flg', 'fwd', 'in', 'out', 'sas', 'das'
-                ],
-            ]
         ],
     ],
     'nfdump' => [
-        'binary' => '/usr/bin/nfdump',
-        'profiles-data' => '/var/nfdump/profiles-data',
-        'profile' => 'live',
-        'max-processes' => 1, // maximum number of concurrently running nfdump processes
+        'binary' => getenv('NFSEN_NFDUMP_BINARY') ?: '/usr/bin/nfdump',
+        'profiles-data' => getenv('NFSEN_NFDUMP_PROFILES') ?: '/var/nfdump/profiles-data',
+        'profile' => getenv('NFSEN_NFDUMP_PROFILE') ?: 'live',
+        'max-processes' => (int) (getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 1),
     ],
     'db' => [
         'Akumuli' => [
             // 'host' => 'localhost',
             // 'port' => 8282,
         ],
-        'RRD' => [],
+        'RRD' => [
+            'data_path' => getenv('NFSEN_RRD_PATH') ?: null,  // null = use default (backend/datasources/data)
+            'import_years' => (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3),  // Number of years to import
+        ],
+        'VictoriaMetrics' => [
+            'host' => getenv('VM_HOST') ?: 'victoriametrics',
+            'port' => (int) (getenv('VM_PORT') ?: 8428),
+            'import_years' => (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3),  // Number of years to import
+        ],
     ],
     'log' => [
-        'priority' => \LOG_INFO, // LOG_DEBUG is very talkative!
+        'priority' => \LOG_INFO, // LOG_DEBUG is very talkative! (overridden by NFSEN_LOG_LEVEL env var)
     ],
 ];

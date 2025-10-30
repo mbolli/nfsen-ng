@@ -1,0 +1,15 @@
+[Unit]
+Description=nfsen-ng
+After=network-online.target
+
+[Service]
+Type=simple
+RemainAfterExit=yes
+restart=always
+startLimitIntervalSec=0
+restartSec=2
+ExecStart=su - www-data --shell=/bin/bash -c '/var/www/html/nfsen-ng/backend/cli.php start'
+ExecStop=su - www-data --shell=/bin/bash -c '/var/www/html/nfsen-ng/backend/cli.php stop'
+
+[Install]
+WantedBy=multi-user.target

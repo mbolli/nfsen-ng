@@ -35,8 +35,8 @@ class Rrd implements Datasource {
             throw new \Exception('Please install the PECL rrd library.');
         }
 
-        // Get import years from environment variable (default: 3)
-        $this->importYears = (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3);
+        // Get import years from config (which reads from env var with default of 3)
+        $this->importYears = Config::$cfg['db']['RRD']['import_years'] ?? 3;
 
         // Calculate layout based on import years
         // Structure maintains same resolution levels but extends daily samples
@@ -44,7 +44,7 @@ class Rrd implements Datasource {
             '0.5:1:' . ((60 / (1 * 5)) * 24 * 45), // 45 days of 5 min samples
             '0.5:6:' . ((60 / (6 * 5)) * 24 * 90), // 90 days of 30 min samples
             '0.5:24:' . ((60 / (24 * 5)) * 24 * 365), // 365 days of 2 hour samples
-            '0.5:288:' . $this->importYears * 365, // N years of daily samples (based on NFSEN_IMPORT_YEARS)
+            '0.5:288:' . $this->importYears * 365, // N years of daily samples (based on import_years)
         ];
     }
 
@@ -177,7 +177,7 @@ class Rrd implements Datasource {
         $actualRows = (int) $info[$rraKey];
 
         if ($actualRows !== $expectedDailyRows) {
-            $message = "RRD structure mismatch: Expected {$expectedDailyRows} daily rows (NFSEN_IMPORT_YEARS={$this->importYears}), but RRD has {$actualRows} rows";
+            $message = "RRD structure mismatch: Expected {$expectedDailyRows} daily rows (import_years={$this->importYears}), but RRD has {$actualRows} rows";
 
             // Display warning if requested and we're in CLI mode
             if ($showWarnings && \PHP_SAPI === 'cli') {
@@ -186,10 +186,10 @@ class Rrd implements Datasource {
                 echo <<<WARNING
 
 \033[1;33mWARNING: RRD Structure Mismatch\033[0m
-Your existing RRD files were created with a different NFSEN_IMPORT_YEARS
+Your existing RRD files were created with a different import_years
 setting than what is currently configured.
 
-Current setting:  NFSEN_IMPORT_YEARS={$this->importYears} (~{$this->importYears} years)
+Current setting:  import_years={$this->importYears} (~{$this->importYears} years)
 Existing RRD has: ~{$actualYears} years of storage ({$actualRows} daily rows)
 
 This mismatch can cause:
@@ -198,7 +198,7 @@ This mismatch can cause:
 
 \033[1mTo fix this:\033[0m
   1. Set NFSEN_FORCE_IMPORT=true to recreate RRD files, OR
-  2. Adjust NFSEN_IMPORT_YEARS to match existing structure (~{$actualYears})
+  2. Adjust import_years in settings.php to match existing structure (~{$actualYears})
 
 Continuing import with existing structure...
 
@@ -246,8 +246,9 @@ WARNING;
     }
 
     /**
-     * @param string $type    flows/packets/traffic
-     * @param string $display protocols/sources/ports
+     * @param string   $type    flows/packets/traffic
+     * @param string   $display protocols/sources/ports
+     * @param null|int $maxrows optional maximum rows to return (null = 500 default, let RRDtool calculate step)
      */
     public function get_graph_data(
         int $start,
@@ -259,6 +260,7 @@ WARNING;
         string $type = 'flows',
         #[ExpectedValues(['protocols', 'sources', 'ports'])]
         string $display = 'sources',
+        ?int $maxrows = 500,
     ): array|string {
         $options = [
             '--start',
@@ -266,7 +268,7 @@ WARNING;
             '--end',
             $end - ($end % 300),
             '--maxrows',
-            300,
+            $maxrows,
             // number of values. works like the width value (in pixels) in rrd_graph
             // '--step', 1200, // by default, rrdtool tries to get data for each row. if you want rrdtool to get data at a one-hour resolution, set step to 3600.
             '--json',
@@ -327,7 +329,7 @@ WARNING;
         $error = ob_get_clean(); // rrd_xport weirdly prints stuff on error
 
         if (!\is_array($data)) { // @phpstan-ignore-line function.alreadyNarrowedType (probably wrong rrd stubs)
-            return $error . '. ' . rrd_error();
+            throw new \Exception($error . '. ' . rrd_error());
         }
 
         // remove invalid numbers and create processable array
@@ -400,7 +402,12 @@ WARNING;
         } else {
             $port = empty($source) ? $port : '_' . $port;
         }
-        $path = Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data' . \DIRECTORY_SEPARATOR . $source . $port . '.rrd';
+
+        // Get RRD data path from config or use default
+        $rrdPath = Config::$cfg['db']['RRD']['data_path']
+            ?? Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data';
+
+        $path = $rrdPath . \DIRECTORY_SEPARATOR . $source . $port . '.rrd';
 
         if (!file_exists($path)) {
             $this->d->log('Was not able to find ' . $path, LOG_INFO);

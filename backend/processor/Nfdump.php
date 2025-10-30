@@ -68,13 +68,35 @@ class Nfdump implements Processor {
                 break;
 
             case '-o': // set output format
-                $this->cfg['format'] = $value;
+                // If aggregation is set and format is json, force csv instead
+                if ($value === 'json' && isset($this->cfg['option']['-a'])) {
+                    $this->cfg['format'] = 'csv';
+                    $this->cfg['option'][$option] = 'csv';
+                    $this->d->log('Forcing CSV output format because aggregation (-a) is incompatible with JSON', LOG_INFO);
+                } else {
+                    $this->cfg['format'] = $value;
+                    $this->cfg['option'][$option] = $value;
+                }
+
+                break;
+
+            case '-a': // set aggregation
+                $this->cfg['option'][$option] = $value;
+                // If json format is already set, switch to csv
+                if (isset($this->cfg['format']) && $this->cfg['format'] === 'json') {
+                    $this->cfg['format'] = 'csv';
+                    $this->cfg['option']['-o'] = 'csv';
+                    $this->d->log('Forcing CSV output format because aggregation (-a) is incompatible with JSON', LOG_INFO);
+                }
 
                 break;
 
             default:
                 $this->cfg['option'][$option] = $value;
-                $this->cfg['option']['-o'] = 'csv'; // always get parsable data todo user-selectable? calculations bps/bpp/pps not in csv
+                // Set default output format to csv if not already set
+                if (!isset($this->cfg['option']['-o'])) {
+                    $this->cfg['option']['-o'] = 'csv';
+                }
 
                 break;
         }
@@ -90,6 +112,8 @@ class Nfdump implements Processor {
     /**
      * Executes the nfdump command, tries to throw an exception based on the return code.
      *
+     * @return array{command: string, rawOutput: string, decoded: array<array<string, mixed>>, stderr?: string}
+     *
      * @throws \Exception
      */
     public function execute(): array {
@@ -98,24 +122,81 @@ class Nfdump implements Processor {
         $return = '';
         $timer = microtime(true);
         $filter = (empty($this->cfg['filter'])) ? '' : ' ' . escapeshellarg((string) $this->cfg['filter']);
-        $command = $this->cfg['env']['bin'] . ' ' . $this->flatten($this->cfg['option']) . $filter . ' 2>&1';
+        $command = $this->cfg['env']['bin'] . ' ' . $this->flatten($this->cfg['option']) . $filter;
         $this->d->log('Trying to execute ' . $command, LOG_DEBUG);
 
         // check for already running nfdump processes
         // use pgrep if available, fallback to ps, or skip check if neither available
-        $bin_name = basename($this->cfg['env']['bin']);
+        $bin_name = basename((string) $this->cfg['env']['bin']);
         $process_count = Misc::countProcessesByName($bin_name);
 
         if ($process_count > (int) Config::$cfg['nfdump']['max-processes']) {
             throw new \Exception('There already are ' . $process_count . ' processes of NfDump running!');
         }
 
-        // execute nfdump
-        exec($command, $output, $return);
+        // execute nfdump using proc_open to separate stdout and stderr
+        $descriptorspec = [
+            0 => ['pipe', 'r'],  // stdin
+            1 => ['pipe', 'w'],  // stdout
+            2 => ['pipe', 'w'],   // stderr
+        ];
+
+        // Remove 2>&1 from command since we're handling stderr separately
+        $command = str_replace(' 2>&1', '', $command);
+
+        $process = proc_open($command, $descriptorspec, $pipes);
+
+        if (!\is_resource($process)) {
+            throw new \Exception('Failed to start nfdump process');
+        }
+
+        // Close stdin as we don't need it
+        fclose($pipes[0]);
+
+        // Read stdout and stderr
+        $stdout = stream_get_contents($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        // Get return code
+        $return = proc_close($process);
+
+        // Log stderr if present (but don't fail on benign messages)
+        if (!empty($stderr)) {
+            $stderrTrimmed = trim($stderr);
+            // Only log as warning if it's not the benign "read() error ... Success" message
+            if (stripos($stderrTrimmed, 'read() error') !== false && stripos($stderrTrimmed, 'Success') !== false) {
+                $this->d->log('NfDump benign stderr message: ' . $stderrTrimmed, LOG_DEBUG);
+            } else {
+                $this->d->log('NfDump stderr: ' . $stderrTrimmed, LOG_WARNING);
+            }
+        }
+
+        // Split stdout into lines for processing
+        $output = explode("\n", $stdout);
+        // Remove empty last line if present
+        if (end($output) === '') {
+            array_pop($output);
+        }
+
+        // Store raw output
+        $rawOutput = $stdout;
 
         // prevent logging the command usage description
         if (isset($output[0]) && stripos($output[0], 'usage') === 0) {
             $output = [];
+        }
+
+        // If we only have 1 line of output, it's likely an error message
+        // BUT: single-line JSON output is valid (e.g., from -s statistics with -n 1)
+        if (\count($output) === 1) {
+            // Check if it looks like JSON - if so, let it through
+            $firstChar = $output[0][0] ?? '';
+            if ($firstChar !== '{' && $firstChar !== '[') {
+                throw new \Exception('NfDump error: ' . $output[0] . '<br><b>Command:</b> ' . $command);
+            }
         }
 
         switch ($return) {
@@ -132,70 +213,184 @@ class Nfdump implements Processor {
                 throw new \Exception('NfDump: Internal error. <br><b>Output:</b> ' . implode(' ', $output));
         }
 
-        // add command to output
-        array_unshift($output, $command);
-
-        // if last element contains a colon, it's not a csv
-        if (str_contains($output[\count($output) - 1], ':')) {
-            return $output; // return output if it is a flows/packets/bytes dump
-        }
-
-        // remove the 3 summary lines at the end of the csv output
-        $output = \array_slice($output, 0, -3);
-
-        // slice csv (only return the fields actually wanted)
-        $field_ids_active = [];
-        $parsed_header = false;
-        $format = false;
-        if (isset($this->cfg['format'])) {
-            $format = $this->get_output_format($this->cfg['format']);
-        }
-
-        foreach ($output as $i => &$line) {
-            if ($i === 0) {
-                continue;
-            } // skip nfdump command
-            $line = str_getcsv($line, ',');
-            $temp_line = [];
-
-            if (\count($line) === 1 || str_contains($line[0], 'limit') || str_contains($line[0], 'error')) { // probably an error message or warning. add to command
-                $output[0] .= ' <br><b>' . $line[0] . '</b>';
-                unset($output[$i]);
-
-                continue;
+        // if output format is JSON, decode and return structured data
+        if (isset($this->cfg['format']) && $this->cfg['format'] === 'json' && isset($output[0]) && preg_match('/^[\{|\[]/', $output[0])) {
+            // Check for "No matching flows" error message
+            foreach ($output as $line) {
+                $trimmed = trim($line);
+                if ($trimmed === 'No matching flows') {
+                    throw new \Exception('NfDump: No matching flows found for the given filter and time range.<br><b>Command:</b> ' . $command);
+                }
             }
-            if (!\is_array($format)) {
-                $format = $line;
-            } // set first valid line as header if not already defined
 
-            foreach ($line as $field_id => $field) {
-                // heading has the field identifiers. fill $fields_active with all active fields
-                if ($parsed_header === false) {
-                    if (\in_array($field, $format, true)) {
-                        $field_ids_active[array_search($field, $format, true)] = $field_id;
+            // Check if this is NDJSON (newline-delimited JSON) - each line is a separate JSON object
+            // This happens with statistics queries (-s flag)
+            if (str_starts_with($output[0], '{')) {
+                $decodedData = [];
+                foreach ($output as $line) {
+                    $trimmed = trim($line);
+                    if (empty($trimmed)) {
+                        continue;
                     }
+                    $decoded = json_decode($trimmed, true);
+                    if (!\is_array($decoded)) {
+                        throw new \Exception('Invalid NDJSON line from nfdump: ' . json_last_error_msg() . '<br><b>Line: </b><code>' . $trimmed . '</code><br><b>nfdump command: </b><code>' . $command . '</code>');
+                    }
+                    $decodedData[] = $decoded;
                 }
 
-                // remove field if not in $fields_active
-                if (\in_array($field_id, $field_ids_active, true)) {
-                    $temp_line[array_search($field_id, $field_ids_active, true)] = $field;
+                $result = [
+                    'command' => $command,
+                    'rawOutput' => $rawOutput,
+                    'decoded' => $decodedData,
+                ];
+
+                // Add stderr if present and not benign
+                if (!empty($stderr)) {
+                    $result['stderr'] = trim($stderr);
+                }
+
+                return $result;
+            }
+
+            // Handle regular JSON array or object format
+            // Join all output lines into single JSON string
+            $jsonOutput = implode("\n", $output);
+
+            // fix common JSON output issue: missing ] at the end
+            if (str_starts_with($jsonOutput, '[') && !str_ends_with(trim($jsonOutput), ']')) {
+                $jsonOutput .= ']';
+            }
+
+            // Decode JSON data
+            $decodedData = json_decode($jsonOutput, true);
+            if (!\is_array($decodedData)) {
+                throw new \Exception('Invalid JSON data from nfdump: ' . json_last_error_msg() . '<br><b>Data: </b><code>' . $jsonOutput . '</code><br><b>nfdump command: </b><code>' . $command . '</code>');
+            }
+
+            $result = [
+                'command' => $command,
+                'rawOutput' => $rawOutput,
+                'decoded' => $decodedData,
+            ];
+
+            // Add stderr if present and not benign
+            if (!empty($stderr)) {
+                $result['stderr'] = trim($stderr);
+            }
+
+            return $result;
+        }
+
+        // Check if aggregation produces fixed-width format (not parseable CSV)
+        // - Bidirectional aggregation (-B) ALWAYS produces fixed-width format, even with -o csv
+        // - Other aggregations (-A*) without -o csv produce fixed-width format
+        // - Other aggregations (-A*) WITH -o csv produce proper parseable CSV
+        // Note: setOption() method automatically forces csv when json+aggregation is requested
+        $isBidirectional = isset($this->cfg['option']['-a']) && str_contains($this->cfg['option']['-a'], 'B');
+        $isAggregationWithoutCsv = isset($this->cfg['option']['-a']) && $this->cfg['format'] !== 'csv';
+
+        if ($isBidirectional || $isAggregationWithoutCsv) {
+            $this->d->log('Aggregation detected (-a flag=' . ($this->cfg['option']['-a'] ?? 'null') . ') producing fixed-width format (bidirectional=' . ($isBidirectional ? 'yes' : 'no') . ', format=' . ($this->cfg['format'] ?? 'null') . '), returning enhanced raw output', LOG_DEBUG);
+
+            $result = [
+                'command' => $command,
+                'rawOutput' => $this->beautifyAggregatedOutput($output),
+                'decoded' => [], // No structured data for aggregated output
+            ];
+
+            // Add stderr if present and not benign
+            if (!empty($stderr)) {
+                $result['stderr'] = trim($stderr);
+            }
+
+            return $result;
+        }
+
+        // if last element contains a colon AND no comma, it's not a csv (it's a summary like flows/packets/bytes)
+        $lastLine = $output[\count($output) - 1];
+        if (str_contains($lastLine, ':') && !str_contains($lastLine, ',')) {
+            // Parse summary format
+            /** @var array<array<string, mixed>> $decoded */
+            $decoded = [];
+            foreach ($output as $line) {
+                if (str_contains($line, ':')) {
+                    [$key, $value] = explode(':', $line, 2);
+                    $decoded[] = ['metric' => trim($key), 'value' => trim($value)];
+                }
+            }
+            $result = [
+                'command' => $command,
+                'rawOutput' => $rawOutput,
+                'decoded' => $decoded,
+            ];
+
+            // Add stderr if present and not benign
+            if (!empty($stderr)) {
+                $result['stderr'] = trim($stderr);
+            }
+
+            return $result;
+        }
+
+        // Parse CSV into array of associative arrays (similar to JSON structure)
+        /** @var array<array<string, mixed>> $csvData */
+        $csvData = [];
+
+        /** @var array<string> $headers */
+        $headers = [];
+
+        // Detect delimiter once: use comma if first line contains commas, otherwise tab
+        $delimiter = str_contains($output[0] ?? '', ',') ? ',' : "\t";
+        $aggregationNote = isset($this->cfg['option']['-a']) ? ' (with aggregation -a=' . $this->cfg['option']['-a'] . ')' : '';
+        $this->d->log('CSV delimiter detected: ' . ($delimiter === ',' ? 'comma' : 'tab') . $aggregationNote, LOG_DEBUG);
+
+        foreach ($output as $i => $line) {
+            $fields = str_getcsv($line, $delimiter);
+
+            if (\count($fields) === 1 || str_contains((string) $fields[0], 'limit') || str_contains((string) $fields[0], 'error')) {
+                // probably an error message or warning. add to command
+                $command .= ' <br><b>' . $fields[0] . '</b>';
+
+                continue;
+            }
+
+            // First valid line is the header
+            if (empty($headers)) {
+                $headers = $fields;
+
+                continue;
+            }
+
+            // Convert CSV row to associative array
+            $row = [];
+            foreach ($fields as $field_id => $value) {
+                if (isset($headers[$field_id])) {
+                    $row[$headers[$field_id]] = $value;
                 }
             }
 
-            $parsed_header = true;
-            ksort($temp_line);
-            $line = array_values($temp_line);
+            $csvData[] = $row;
         }
 
-        // add execution time to output
+        $this->d->log('CSV parsing complete. Headers: ' . implode(', ', $headers) . '. Rows: ' . \count($csvData), LOG_DEBUG);
+
+        // add execution time to command
         $executionMsg = '<br><b>Execution time:</b> ' . round(microtime(true) - $timer, 3) . ' seconds';
-        if (isset($output[0])) {
-            $output[0] .= $executionMsg;
-        } else {
-            $output[] = $executionMsg;
+        $command .= $executionMsg;
+
+        $result = [
+            'command' => $command,
+            'rawOutput' => $rawOutput,
+            'decoded' => $csvData,
+        ];
+
+        // Add stderr if present and not benign
+        if (!empty($stderr)) {
+            $result['stderr'] = trim($stderr);
         }
 
-        return array_values($output);
+        return $result;
     }
 
     /**
@@ -292,5 +487,67 @@ class Nfdump implements Processor {
         }
 
         return $output;
+    }
+
+    /**
+     * Beautifies aggregated nfdump output by bolding headers and summary labels.
+     * Aggregated output (-a flag) produces fixed-width space-padded format that
+     * cannot be reliably parsed as CSV.
+     *
+     * @param array<string> $output Raw output lines from nfdump
+     *
+     * @return string Enhanced output with HTML bold tags
+     */
+    private function beautifyAggregatedOutput(array $output): string {
+        $enhancedLines = [];
+
+        foreach ($output as $i => $line) {
+            // Bold first line (headers)
+            if ($i === 0) {
+                $enhancedLines[] = '<b>' . $line . '</b>';
+
+                continue;
+            }
+
+            $trim = trim($line);
+
+            // For the "Summary:" line which contains comma-separated key: value pairs
+            if (str_starts_with($trim, 'Summary:')) {
+                $after = trim(substr($trim, \strlen('Summary:')));
+                $parts = array_map('trim', explode(',', $after));
+                $newParts = [];
+                foreach ($parts as $p) {
+                    if (str_contains($p, ':')) {
+                        [$k, $v] = explode(':', $p, 2);
+                        $newParts[] = '<b>' . trim($k) . ':</b> ' . trim($v);
+                    } else {
+                        $newParts[] = $p;
+                    }
+                }
+                $enhancedLines[] = '<b>Summary:</b> ' . implode(', ', $newParts);
+
+                continue;
+            }
+
+            // Lines like "Time window: ..." or "Total records processed: ..."
+            if (str_contains($line, ':')) {
+                // Check if it's a summary-style line (not data with port notation like "IP:Port")
+                if (preg_match('/^([^:]+):\s*(.*)$/', $line, $matches)) {
+                    $key = trim($matches[1]);
+                    $value = trim($matches[2]);
+                    // Only bold if the key doesn't look like an IP or port (no dots or pure numbers)
+                    if (!str_contains($key, '.') && !is_numeric($key)) {
+                        $enhancedLines[] = '<b>' . $key . ':</b> ' . $value;
+
+                        continue;
+                    }
+                }
+            }
+
+            // Default: keep the line as-is
+            $enhancedLines[] = $line;
+        }
+
+        return implode("\n", $enhancedLines);
     }
 }

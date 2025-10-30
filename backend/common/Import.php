@@ -279,23 +279,21 @@ class Import {
             'date_iso' => $date->format('Ymd\THis'),
             'date_timestamp' => $date->getTimestamp(),
         ];
-        // $input data is an array of lines looking like this:
-        // flows_tcp: 323829
-        foreach ($input as $i => $line) {
-            if (!\is_string($line)) {
-                $this->d->log('Got no output of previous command', LOG_DEBUG);
+        // $input['decoded'] data is an array of metric/value pairs
+        // e.g., [['metric' => 'flows_tcp', 'value' => '323829'], ...]
+        foreach ($input['decoded'] as $item) {
+            if (!\is_array($item) || !isset($item['metric'], $item['value'])) { // @phpstan-ignore function.alreadyNarrowedType
+                $this->d->log('Got invalid item format', LOG_DEBUG);
+
+                continue;
             }
-            if ($i === 0) {
-                continue;
-            } // skip nfdump command
-            if (!preg_match('/:/', (string) $line)) {
-                continue;
-            } // skip invalid lines like error messages
-            [$type, $value] = explode(': ', (string) $line);
+
+            $type = $item['metric'];
+            $value = $item['value'];
 
             // we only need flows/packets/bytes values, the source and the timestamp
-            if (preg_match('/^(flows|packets|bytes)/i', $type)) {
-                $data['fields'][strtolower($type)] = (int) $value;
+            if (preg_match('/^(flows|packets|bytes)/i', (string) $type)) {
+                $data['fields'][strtolower((string) $type)] = (int) $value;
             }
         }
 
@@ -371,29 +369,29 @@ class Import {
         ];
 
         // process protocols
-        // headers: ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ipbs,ibpp
-        foreach ($input as $i => $line) {
-            if (!\is_array($line) && $line instanceof \Countable === false) {
+        // decoded data contains associative arrays with keys like: ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ipbs,ibpp
+        foreach ($input['decoded'] as $row) {
+            if (!\is_array($row)) { // @phpstan-ignore function.alreadyNarrowedType
                 continue;
-            } // skip anything uncountable
-            if (\count($line) !== 14) {
+            } // skip anything that's not an array
+            if (!isset($row['pr'], $row['fl'], $row['ipkt'], $row['ibyt'])) {
                 continue;
-            } // skip anything invalid
-            if ($line[0] === 'ts') {
+            } // skip rows missing required fields
+            if ($row['pr'] === 'pr') {
                 continue;
-            } // skip header
+            } // skip header row
 
-            $proto = strtolower((string) $line[3]);
+            $proto = strtolower((string) $row['pr']);
 
             // add protocol-specific
-            $data['fields']['flows_' . $proto] = (int) $line[5];
-            $data['fields']['packets_' . $proto] = (int) $line[7];
-            $data['fields']['bytes_' . $proto] = (int) $line[9];
+            $data['fields']['flows_' . $proto] = (int) $row['fl'];
+            $data['fields']['packets_' . $proto] = (int) $row['ipkt'];
+            $data['fields']['bytes_' . $proto] = (int) $row['ibyt'];
 
             // add to overall stats
-            $data['fields']['flows'] += (int) $line[5];
-            $data['fields']['packets'] += (int) $line[7];
-            $data['fields']['bytes'] += (int) $line[9];
+            $data['fields']['flows'] += (int) $row['fl'];
+            $data['fields']['packets'] += (int) $row['ipkt'];
+            $data['fields']['bytes'] += (int) $row['ibyt'];
         }
 
         // write to database

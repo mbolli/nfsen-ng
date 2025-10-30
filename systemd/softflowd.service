@@ -1,0 +1,16 @@
+[Unit]
+Description=softflowd NetFlow Exporter
+After=network.target nfcapd.service
+Documentation=man:softflowd(8)
+
+[Service]
+Type=simple
+# Replace eth0 with your actual network interface
+# Find it with: ip link show
+ExecStart=/usr/sbin/softflowd -i eth0 -n 127.0.0.1:9995 -v 9 -d
+Restart=on-failure
+RestartSec=5s
+User=root
+
+[Install]
+WantedBy=multi-user.target

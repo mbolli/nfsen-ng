@@ -58,12 +58,16 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
     $pidfile = $folder . '/nfsen-ng.pid';
 
     if (in_array('import', $argv, true)) {
-        // import N years of data if available (configurable via NFSEN_IMPORT_YEARS)
+        // import N years of data if available (configurable via settings.php or NFSEN_IMPORT_YEARS env var)
 
         $d->log('CLI: Starting import', \LOG_INFO);
-        $importYears = (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3);
+
+        // Get import years from config (respects NFSEN_IMPORT_YEARS env var via settings.php)
+        $datasource = Config::$cfg['general']['db'];
+        $importYears = Config::$cfg['db'][$datasource]['import_years'] ?? 3;
+
         $forceImport = in_array('-f', $argv, true);
-        $d->log('CLI: NFSEN_IMPORT_YEARS=' . $importYears . ', force=' . ($forceImport ? 'true' : 'false'), \LOG_INFO);
+        $d->log('CLI: import_years=' . $importYears . ', force=' . ($forceImport ? 'true' : 'false'), \LOG_INFO);
 
         $start = new DateTime();
         $start->modify('-' . $importYears . ' years');
@@ -106,7 +110,7 @@ if ($argc < 2 || in_array($argv[1], ['--help', '-help', '-h', '-?'], true)) {
 
             exit(1);
         }
-        $pid = exec('nohup ' . escapeshellarg($phpBinary) . ' ' . escapeshellarg($folder . '/listen.php') . ' > /dev/null 2>&1 & echo $!', $op, $exit);
+        $pid = exec('nohup ' . escapeshellarg($phpBinary) . ' ' . escapeshellarg($folder . '/listen.php') . ' > /tmp/nfsen-ng-daemon.log 2>&1 & echo $!', $op, $exit);
 
         // Validate PID
         if (!is_numeric($pid) || (int) $pid <= 0) {

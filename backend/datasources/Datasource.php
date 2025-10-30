@@ -71,6 +71,7 @@ interface Datasource {
         array $ports,
         string $type = 'flows',
         string $display = 'sources',
+        ?int $maxrows = 500,
     ): array|string;
 
     /**
@@ -94,5 +95,5 @@ interface Datasource {
     /**
      * Gets the path where the datasource's data is stored.
      */
-    public function get_data_path(): string;
+    public function get_data_path(string $source = '', int $port = 0): string;
 }

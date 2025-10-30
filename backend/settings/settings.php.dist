@@ -61,6 +61,6 @@ $nfsen_config = [
         'RRD' => [],
     ],
     'log' => [
-        'priority' => \LOG_INFO, // LOG_DEBUG is very talkative!
+        'priority' => \LOG_INFO, // LOG_ALERT, LOG_INFO or LOG_DEBUG. LOG_DEBUG is very talkative!
     ],
 ];

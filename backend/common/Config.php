@@ -6,7 +6,7 @@ use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\Processor;
 
 abstract class Config {
-    public const VERSION = 'v0.4';
+    public const VERSION = 'v1.0-alpha';
 
     /**
      * @var array{
@@ -31,9 +31,12 @@ abstract class Config {
             return;
         }
 
-        $settingsFile = \dirname(__DIR__) . \DIRECTORY_SEPARATOR . 'settings' . \DIRECTORY_SEPARATOR . 'settings.php';
+        // Allow custom settings file via environment variable
+        $settingsFile = getenv('NFSEN_SETTINGS_FILE')
+            ?: \dirname(__DIR__) . \DIRECTORY_SEPARATOR . 'settings' . \DIRECTORY_SEPARATOR . 'settings.php';
+
         if (!file_exists($settingsFile)) {
-            throw new \Exception('No settings.php found. Did you rename the distributed settings correctly?');
+            throw new \Exception('No settings.php found at: ' . $settingsFile . '. Did you rename the distributed settings correctly or set NFSEN_SETTINGS_FILE correctly?');
         }
 
         include $settingsFile;
@@ -41,6 +44,33 @@ abstract class Config {
         self::$cfg = $nfsen_config;
         self::$path = \dirname(__DIR__);
         self::$initialized = true;
+
+        // Override log level from environment variable if set
+        if (getenv('NFSEN_LOG_LEVEL')) {
+            $logLevelMap = [
+                'LOG_EMERG' => LOG_EMERG,
+                'LOG_ALERT' => LOG_ALERT,
+                'LOG_CRIT' => LOG_CRIT,
+                'LOG_ERR' => LOG_ERR,
+                'LOG_WARNING' => LOG_WARNING,
+                'LOG_NOTICE' => LOG_NOTICE,
+                'LOG_INFO' => LOG_INFO,
+                'LOG_DEBUG' => LOG_DEBUG,
+                'EMERG' => LOG_EMERG,
+                'ALERT' => LOG_ALERT,
+                'CRIT' => LOG_CRIT,
+                'ERR' => LOG_ERR,
+                'ERROR' => LOG_ERR,
+                'WARNING' => LOG_WARNING,
+                'NOTICE' => LOG_NOTICE,
+                'INFO' => LOG_INFO,
+                'DEBUG' => LOG_DEBUG,
+            ];
+            $envLogLevel = getenv('NFSEN_LOG_LEVEL');
+            if (isset($logLevelMap[$envLogLevel])) {
+                self::$cfg['log']['priority'] = $logLevelMap[$envLogLevel];
+            }
+        }
 
         // Validate directory structure for nfcapd files
         self::validateDirectoryStructure();

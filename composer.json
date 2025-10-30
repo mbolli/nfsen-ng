@@ -1,12 +1,16 @@
 {
     "name": "mbolli/nfsen-ng",
+    "version": "1.0.0-alpha",
     "description": "Responsive NetFlow visualizer built on top of nfdump tools",
     "license": "Apache-2.0",
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "php": "^8.1",
-        "ext-rrd": "*"
+        "php": "^8.4",
+        "ext-inotify": "*",
+        "ext-rrd": "*",
+        "ext-swoole": "*",
+        "starfederation/datastar-php": "^1.0@RC"
     },
     "require-dev": {
         "friendsofphp/php-cs-fixer": "3.x",

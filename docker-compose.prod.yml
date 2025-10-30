@@ -11,8 +11,10 @@ services:
       - "9000"  # Swoole HTTP server (internal only)
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng
+      - rrd-data:/var/nfsen-ng/rrd  # Persistent RRD database storage
     environment:
       - TZ=UTC
+      - NFSEN_RRD_PATH=/var/nfsen-ng/rrd  # Store RRD files on separate volume
       
       # Import configuration (see ENVIRONMENT_VARIABLES.md for details)
       # - NFSEN_FORCE_IMPORT=true         # Reset database and import from scratch
@@ -27,8 +29,8 @@ services:
       # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 4, set to CPU cores)
       # - SWOOLE_MAX_REQUEST=50000        # Max requests per worker before restart (default: 10000)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
-    entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/docker-entrypoint.sh"]
     restart: unless-stopped
+  entrypoint: ["/bin/bash", "-c", "./docker-entrypoint.sh"]
   
   caddy:
     build:
@@ -49,5 +51,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  rrd-data:  # Persistent storage for RRD database files
   caddy_data:
   caddy_config:

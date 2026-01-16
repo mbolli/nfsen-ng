@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace mbolli\nfsen_ng\common;
 
 use mbolli\nfsen_ng\datasources\Datasource;

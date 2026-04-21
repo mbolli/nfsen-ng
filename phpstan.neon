@@ -1,0 +1,10 @@
+parameters:
+    # Legacy Swoole server (kept as rollback reference; not used in production).
+    # Excluded because it references deleted route handler classes.
+    excludePaths:
+        - backend/server.php
+        - backend/vendor/ProgressBar.php
+
+    # PHPDoc-sourced narrowed types cause false "always true/false" positives in
+    # places where we intentionally use is_resource() / null checks.
+    treatPhpDocTypesAsCertain: false

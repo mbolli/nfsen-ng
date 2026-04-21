@@ -1,9 +1,13 @@
 .idea/
+.vscode/
 backend/settings/settings.php
 backend/datasources/data/
 backend/cli/nfsen-ng.log
 backend/cli/nfsen-ng.pid
+backend/nfsen-ng.pid
 profiles-data/
 vendor/
 node_modules/
 *.cache
+*.pdf
+

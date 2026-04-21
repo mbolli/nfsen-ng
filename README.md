@@ -12,184 +12,130 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 
 This version includes major architectural improvements:
 
-- **Hypermedia Architecture**: Migrated from JSON API to server-side rendered HTML with Datastar for real-time updates via SSE
-- **Server-Push Architecture**: SSE-based push replaces client polling - server detects changes and pushes updates to all connected clients
-- **Swoole HTTP Server**: Replaced Apache with Swoole for coroutine-based concurrency (10,000+ concurrent SSE connections vs 2-4 with traditional workers)
-- **HTTP Compression**: Caddy reverse proxy with Brotli compression (5x bandwidth reduction for static assets, 100x+ for long-running SSE requests)
-- **Configurable RRD Database**: Adjustable retention period via `NFSEN_IMPORT_YEARS` environment variable (default: 3 years)
-- **Interactive Graph Resolution**: User-selectable data point density (50-2000 points) for optimal visualization at any time range
-- **Enhanced Date Navigation**: Intuitive time range slider with quick presets, period navigation, and graph zoom synchronization
-- **Web Components**: JavaScript functionality is encapsulated in native Web Components for modularity and reusability. Footable library was replaced with a custom Web Component.
+- **Hypermedia Architecture**: Server-side rendered HTML with [Datastar](https://data-star.dev) for real-time updates via SSE — no JSON API, no client-side routing
+- **Server-Push**: inotify watches nfcapd files; RRD updates are broadcast over SSE to all connected tabs automatically
+- **OpenSwoole + php-via**: Coroutine-based HTTP server handles 10,000+ concurrent SSE connections in a single worker
+- **Caddy Reverse Proxy**: Brotli/zstd/gzip compression, static file serving, TLS termination
+- **Configurable RRD Retention**: Adjust via `NFSEN_IMPORT_YEARS` (default: 3 years)
+- **Interactive Graph Resolution**: User-selectable data point density (50–2000 points)
+- **Enhanced Date Navigation**: Range slider with quick presets, period navigation, graph zoom sync
+- **Web Components**: Native Web Components replace third-party widget libraries
 
-## Used components
+## Components
 
-* Front end: [jQuery](https://jquery.com), [dygraphs](http://dygraphs.com),  [ion.rangeSlider](http://ionden.com/a/plugins/ion.rangeSlider/en.html)
-* Back end: [RRDtool](http://oss.oetiker.ch/rrdtool/), [nfdump tools](https://github.com/phaag/nfdump)
+* Front end: [Datastar](https://data-star.dev), [dygraphs](http://dygraphs.com), [ion.rangeSlider](http://ionden.com/a/plugins/ion.rangeSlider/en.html)
+* Back end: [RRDtool](http://oss.oetiker.ch/rrdtool/), [nfdump tools](https://github.com/phaag/nfdump), [OpenSwoole](https://openswoole.com), [php-via](https://github.com/mbolli/php-via)
 
 ## TOC
 
-* [nfsen-ng](#nfsen-ng)
-  * [Installation](#installation)
-  * [Configuration](#configuration)
-    * [Nfdump](#nfdump)
-  * [CLI/Daemon](#cli--daemon)
-    * [Daemon as a systemd service](#daemon-as-a-systemd-service)
-  * [Logs](#logs)
-  * [API](#api)
+* [Quick Start](#quick-start)
+* [Configuration](#configuration)
+  * [Settings file](#settings-file)
+  * [Environment variables](#environment-variables)
+  * [Nfdump / nfcapd](#nfdump--nfcapd)
+* [CLI + Daemon](#cli--daemon)
+  * [Daemon as a systemd service](#daemon-as-a-systemd-service)
+* [Logs](#logs)
 
-## Installation
+## Quick Start
 
-Detailed installation instructions are available in [INSTALL.md](./INSTALL.md). Pull requests for additional distributions are welcome.
+Docker is the recommended way to run nfsen-ng. See [QUICKSTART.md](./QUICKSTART.md) for the fastest path and [DOCKER_SETUP.md](./DOCKER_SETUP.md) for dev vs production details.
 
-Software packages required:
+For a bare-metal install (no Docker), see [INSTALL.md](./INSTALL.md).
 
-* nfdump
-* rrdtool
-* git
-* composer
-* apache2
-* php >= 8.1
+```bash
+# Production (port 80/443)
+docker-compose up -d
 
-Apache modules required:
-
-* mod_rewrite
-* mod_deflate
-* mod_headers
-* mod_expires
-
-PHP modules required:
-
-* mbstring
-* rrd
+# Development (port 8080, source mounted)
+docker-compose -f docker-compose.dev.yml up -d
+```
 
 ## Configuration
 
-> *Note:* nfsen-ng expects the `profiles_data` folder structure to be `PROFILES_DATA_PATH/PROFILE/SOURCE/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`, e.g. `/var/nfdump/profiles_data/live/source1/2018/12/01/nfcapd.201812010225`.
+> nfsen-ng expects nfcapd files organised as:
+> `<profiles-data>/<profile>/<source>/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`
+> e.g. `/var/nfdump/profiles-data/live/source1/2024/12/01/nfcapd.202412010025`
 
-The default settings file is `backend/settings/settings.php.dist`. Copy it to `backend/settings/settings.php` and start modifying it. Example values are in *italic*:
+### Settings file
 
-* **general**
-  * **ports:** (*array(80, 23, 22, ...)*) The ports to examine. *Note:* If you use RRD as datasource and want to import existing data, you might keep the number of ports to a minimum, or the import time will be measured in moon cycles...
-    * **sources:** (*array('source1', ...)*) The sources to scan.
-    * **db:** (*RRD*) The name of the datasource class (case-sensitive).
-  * **frontend**
-    * **reload_interval:** Interval in seconds between graph reloads.
-  * **nfdump**
-    * **binary:** (*/usr/bin/nfdump*) The location of your nfdump executable
-    * **profiles-data:** (*/var/nfdump/profiles_data*) The location of your nfcapd files
-    * **profile:** (*live*) The profile folder to use
-    * **max-processes:** (*1*) The maximum number of concurrently running nfdump processes. *Note:* Statistics and aggregations can use lots of system resources, even to aggregate one week of data might take more than 15 minutes. Put this value to > 1 if you want nfsen-ng to be usable while running another query.
-  * **db** If the used data source needs additional configuration, you can specify it here, e.g. host and port.
-  * **log**
-    * **priority:** (*LOG_INFO*) see other possible values at [http://php.net/manual/en/function.syslog.php]
+Copy `backend/settings/settings.php.dist` to `backend/settings/settings.php` and edit it. Key options:
 
-### Nfdump
+* **general.sources** — list of nfcapd source names, e.g. `['source1', 'source2']`
+* **general.ports** — port numbers to track in RRD
+* **general.db** — datasource class: `RRD` (default) or `VictoriaMetrics`
+* **nfdump.binary** — path to nfdump binary (default: `/usr/bin/nfdump`)
+* **nfdump.profiles-data** — path to nfcapd data directory
+* **nfdump.profile** — profile folder (default: `live`)
+* **nfdump.max-processes** — max concurrent nfdump processes (default: `1`)
+* **log.priority** — syslog level constant, e.g. `LOG_INFO`
 
-Nfsen-ng uses nfdump to read the nfcapd files. You can specify the location of the nfdump binary in `backend/settings/settings.php`. The default location is `/usr/bin/nfdump`.
+### Environment variables
 
-You should also have a look at the nfdump configuration file `/etc/nfdump.conf` and make sure that the `nfcapd` files are written to the correct location. The default location is `/var/nfdump/profiles_data`.
+All settings can be overridden via environment variables. See [ENVIRONMENT_VARIABLES.md](./ENVIRONMENT_VARIABLES.md) for the full reference.
 
-Hhere is an example of an nfdump configuration:
+### Nfdump / nfcapd
+
+nfsen-ng reads nfcapd files produced by nfdump's capture daemon. An example nfcapd invocation:
 
 ```ini
-options='-z -S 1 -T all -l /var/nfdump/profiles_data/live/<source> -p <port>'
+options='-z -S 1 -T all -l /var/nfdump/profiles-data/live/<source> -p <port>'
 ```
 
-where
+* `-z` — compress nfcapd files
+* `-S 1` — subdirectory structure `YYYY/MM/DD/`
+* `-T all` — capture all extensions
+* `-l` — output directory
+* `-p` — listening port
 
-* `-z` is used to compress the nfcapd files
-* `-S 1` is used to specify the nfcapd directory structure
-* `-T all` is used to specify the extension of the nfcapd files
-* `-l` is used to specify the destination location of the nfcapd files
-* `-p` is used to specify the port of the nfcapd files.
-
-#### Nfcapd x Sfcapd
-
-To use sfcapd instead of nfcapd, you have to change the `nfdump` configuration file `/lib/systemd/system/nfdump@.service` to use `sfcapd` instead of `nfcapd`:
-
-```ini
-[Unit]
-Description=netflow capture daemon, %I instance
-Documentation=man:sfcapd(1)
-After=network.target auditd.service
-PartOf=nfdump.service
-
-[Service]
-Type=forking
-EnvironmentFile=/etc/nfdump/%I.conf
-ExecStart=/usr/bin/sfcapd -D -P /run/sfcapd.%I.pid $options
-PIDFile=/run/sfcapd.%I.pid
-KillMode=process
-Restart=no
-
-[Install]
-WantedBy=multi-user.target
-```
+To use **sfcapd** instead of nfcapd, update your systemd unit's `ExecStart` to point to the `sfcapd` binary with the same arguments.
 
 ## CLI + Daemon
 
-The command line interface is used to initially scan existing nfcapd.* files, or to administer the daemon.
+```
+backend/cli.php [ options ] import
+backend/cli.php start | stop | status
+```
 
-Usage:
+**Options:**
 
-  `./cli.php [ options ] import`
+| Flag | Description |
+|------|-------------|
+| `-v` | Verbose output |
+| `-p` | Import port-level data (slower) |
+| `-ps` | Import port-per-source data (slower) |
+| `-f` | Force fresh import (deletes existing RRD files) |
 
-or for the daemon
+**Commands:**
 
-  `./cli.php start|stop|status`
+| Command | Description |
+|---------|-------------|
+| `import` | Import existing nfcapd files into RRD |
+| `start` | Start the inotify-based daemon |
+| `stop` | Stop the daemon |
+| `status` | Show daemon status |
 
-* **Options:**
-  * **-v**  Show verbose output
-  * **-p**  Import ports data as well *Note:* Using RRD this will take quite a bit longer, depending on the number of your defined ports.
-  * **-ps**  Import ports per source as well *Note:* Using RRD this will take quite a bit longer, depending on the number of your defined ports.
-  * **-f**  Force overwriting database and start fresh
+**Inside Docker:**
 
-  * **Commands:**
-    * **import** Import existing nfdump data to nfsen-ng. *Note:* If you have existing nfcapd files, better do this overnight or over a week-end.
-    * **start** Start the daemon for continuous reading of new data
-    * **stop** Stop the daemon
-    * **status** Get the daemon's status
-
-  * **Examples:**
-    * `./cli.php -f import`
-        Imports fresh data for sources
-
-    * `./cli.php -f -p -ps import`
-        Imports all data
-
-    * `./cli.php start`
-        Starts the daemon
+```bash
+docker-compose exec nfsen php backend/cli.php -v import
+docker-compose exec nfsen php backend/cli.php start
+```
 
 ### Daemon as a systemd service
 
-You can use the daemon as a service. To do so, you can use the provided systemd service file below. You can copy it to `/etc/systemd/system/nfsen-ng.service` and then start it with `systemctl start nfsen-ng`.
-
-```ini
-[Unit]
-Description=nfsen-ng
-After=network-online.target
-
-[Service]
-Type=simple
-RemainAfterExit=yes
-restart=always
-startLimitIntervalSec=0
-restartSec=2
-ExecStart=su - www-data --shell=/bin/bash -c '/var/www/html/nfsen-ng/backend/cli.php start'
-ExecStop=su - www-data --shell=/bin/bash -c '/var/www/html/nfsen-ng/backend/cli.php stop'
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Now, you should reload and enable the service to start on boot with `systemctl daemon-reload` and `systemctl enable nfsen-ng`.
+Pre-built unit files are in `systemd/`. See [systemd/README.md](./systemd/README.md) for installation instructions. For Docker-based deployments use the `nfsen-ng-docker.service` file.
 
 ## Logs
 
-Nfsen-ng logs to syslog. You can find the logs in `/var/log/syslog` or `/var/log/messages` depending on your system. Some distributions might register it in `journalctl`. To access the logs, you can use `tail -f /var/log/syslog` or `journalctl -u nfsen-ng`
+nfsen-ng logs to syslog (`nfsen-ng:` prefix). Find logs with:
 
-You can change the log priority in `backend/settings/settings.php`.
+```bash
+# System log
+journalctl -t nfsen-ng -f
 
-## API
+# Docker logs
+docker-compose logs -f nfsen
+```
 
-The API is used by the frontend to retrieve data. The API endpoints are documented in [API_ENDPOINTS.md](./API_ENDPOINTS.md).
+Adjust verbosity via `NFSEN_LOG_LEVEL` env var or `log.priority` in `settings.php`.

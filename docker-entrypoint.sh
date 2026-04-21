@@ -37,6 +37,6 @@ sleep 3
 # Check daemon status
 php /var/www/html/nfsen-ng/backend/cli.php status
 
-# Execute container command (Swoole HTTP server)
-echo "Starting Swoole HTTP server..."
-exec "$@"
+# Start the nfsen-ng HTTP server (php-via / OpenSwoole)
+echo "Starting nfsen-ng HTTP server (php-via)..."
+exec php /var/www/html/nfsen-ng/backend/app.php

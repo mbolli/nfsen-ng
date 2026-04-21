@@ -123,8 +123,24 @@ class NfsenIpInfoModal extends HTMLElement {
                 : '';
             let heading = '<h3>' + ip + ' ' + flag + '</h3>';
 
-            // Add placeholder for hostname (will be filled via SSE)
-            heading += '<div id="ip-host-result" data-init="@get(\'/api/host?ip=' + ip + '\')"><h4>Host: Loading...</h4></div>';
+            // Add placeholder for hostname.
+            // The server's host action stores the resolved name in the _hostResult signal.
+            // We bind data-text to that signal ID so Datastar updates the span when the
+            // SSE pushes the result. A hidden trigger element fires the POST action.
+            const cfg = window.__nfsen ?? {};
+            const hostResultId = cfg.hostResultId ?? '_hostResult';
+            const hostActionUrl = cfg.hostActionUrl;
+            heading += '<div id="ip-host-result"><h4>Host: <span data-text="$' + hostResultId + '">Looking up\u2026</span></h4></div>';
+
+            // Trigger the host action via a transient element with data-on:init.
+            // Datastar's MutationObserver picks it up immediately; we remove it after 3 s.
+            if (hostActionUrl) {
+                const trigger = document.createElement('span');
+                trigger.style.display = 'none';
+                trigger.setAttribute('data-on:init', '@post(\'' + hostActionUrl + '?ip=' + encodeURIComponent(ip) + '\')');
+                document.body.appendChild(trigger);
+                setTimeout(() => { if (trigger.parentNode) trigger.remove(); }, 3000);
+            }
 
             // Replace loader with content
             modalBody.innerHTML = heading + markup;

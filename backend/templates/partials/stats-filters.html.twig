@@ -1,0 +1,119 @@
+{#
+    Statistics filter controls.
+#}
+<div class="row">
+
+    {# Top N #}
+    <div id="filterStatisticsTop" class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
+        <p class="h6">Top records
+            <nfsen-tooltip text="Number of top N statistics to display (-n option)." placement="top"></nfsen-tooltip>
+        </p>
+        <select {{ bind(statsCount) }} class="form-control form-select">
+            {% for n in [10, 20, 50, 100, 200, 500] %}
+            <option value="{{ n }}"{% if n == 10 %} selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {# Sources #}
+    <div id="filterStatsSources" class="col-xs-6 col-sm-3 col-md-2">
+        <p class="h6">Sources
+            <nfsen-tooltip text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
+        </p>
+        <select {{ bind(statsSources) }} multiple class="form-control form-select">
+            <option value="any">Any</option>
+            {% for source in sources %}
+            <option value="{{ source }}" selected>{{ source }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {# NFDUMP filter #}
+    <div class="col-xs-12 col-sm-7 col-md-5">
+        <p class="h6">NFDUMP filter
+            <nfsen-tooltip text="Filter syntax like tcpdump. Examples: 'dst port 80', 'bytes > 10M'" placement="right"></nfsen-tooltip>
+        </p>
+        <textarea class="form-control" id="filterNfdumpTextareaStats"
+                  {{ bind(statsFilter) }} rows="3" autocomplete="on"></textarea>
+        <nfsen-filter-manager
+            data-target-textarea="filterNfdumpTextareaStats"
+            data-default-filters="{{ filters|json_encode }}">
+        </nfsen-filter-manager>
+    </div>
+
+    {# Statistic properties #}
+    <div id="filterStatsProperties" class="col-xs-6 col-sm-6 col-md-4 col-lg-2">
+        <p class="h6">Statistic properties
+            <nfsen-tooltip text="Choose what to aggregate (-s option) and how to sort." placement="top"></nfsen-tooltip>
+        </p>
+        <div class="form-group">
+            <label for="statsFilterForSelection">Statistic for</label>
+            <select id="statsFilterForSelection" class="form-control form-select" {{ bind(statsFor) }}>
+                <option value="record" selected>Flow Records</option>
+                <option value="ip">Any IP address</option>
+                <option value="srcip">Src IP address</option>
+                <option value="dstip">Dst IP address</option>
+                <option value="port">Any port</option>
+                <option value="srcport">Src port</option>
+                <option value="dstport">Dst port</option>
+                <option value="if">Any interface</option>
+                <option value="inif">IN interface</option>
+                <option value="outif">OUT interface</option>
+                <option value="as">Any AS</option>
+                <option value="srcas">Src AS</option>
+                <option value="dstas">Dst AS</option>
+                <option value="nhip">Next Hop IP</option>
+                <option value="nhbip">Next Hop BGP IP</option>
+                <option value="router">Router IP</option>
+                <option value="proto">Proto</option>
+                <option value="dir">Direction</option>
+                <option value="srctos">Src TOS</option>
+                <option value="dsttos">Dst TOS</option>
+                <option value="tos">Tos</option>
+                <option value="mask">Any Mask Bits</option>
+                <option value="srcmask">Src Mask Bits</option>
+                <option value="dstmask">Dst Mask Bits</option>
+                <option value="vlan">Any VLAN ID</option>
+                <option value="srcvlan">Src VLAN ID</option>
+                <option value="dstvlan">Dst VLAN ID</option>
+                <option value="srcmac">Src MAC</option>
+                <option value="dstmac">Dst MAC</option>
+                <option value="inmac">IN MAC</option>
+                <option value="outmac">OUT MAC</option>
+                <option value="insrcmac">IN src MAC</option>
+                <option value="outdstmac">OUT dst MAC</option>
+                <option value="indstmac">IN dst MAC</option>
+                <option value="outsrcmac">OUT src MAC</option>
+                {% for i in 1..10 %}
+                <option value="mpls{{ i }}">MPLS Label {{ i }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="statsFilterOrderBySelection">Order by</label>
+            <select id="statsFilterOrderBySelection" class="form-control form-select" {{ bind(statsOrderBy) }}>
+                <option value="flows" selected>Flows</option>
+                <option value="packets">Packets</option>
+                <option value="bytes">Bytes</option>
+                <option value="pps">Packets per second</option>
+                <option value="bps">Bits per second</option>
+                <option value="bpp">Bytes per packet</option>
+            </select>
+        </div>
+    </div>
+
+    {# Submit #}
+    <div class="col-12 border-top mt-3 pt-3">
+        <nfsen-tooltip text="Generate statistics using nfdump -s with current filters" placement="top" no-icon>
+            <button type="button"
+                    class="btn btn-primary"
+                    data-indicator:stats._indicator
+                    data-on:click="@post('{{ action_statsActions }}')">
+                <span data-show="!$stats._indicator">Process data</span>
+                <span class="spinner-grow spinner-grow-sm" data-show="$stats._indicator" role="status" aria-hidden="true"></span>
+                <span data-show="$stats._indicator">Processing…</span>
+            </button>
+        </nfsen-tooltip>
+    </div>
+
+</div>

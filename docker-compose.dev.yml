@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile.dev  # Use development Dockerfile
     container_name: nfsen-ng
     expose:
-      - "9000"  # Swoole HTTP server (internal only)
+      - "9000"  # OpenSwoole HTTP server (internal only)
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng
       - .:/var/www/html/nfsen-ng  # Mount source for development
@@ -13,25 +13,25 @@ services:
       # - rrd-data:/var/nfsen-ng/rrd
     environment:
       - TZ=UTC
+      - NFSEN_NFDUMP_PROFILES=/data/nfsen-ng  # Must match the container-side volume mount path
       # Uncomment to use separate RRD data path
       # - NFSEN_RRD_PATH=/var/nfsen-ng/rrd
-      
+
       # Import configuration (see ENVIRONMENT_VARIABLES.md for details)
       # - NFSEN_FORCE_IMPORT=true         # Reset database and import from scratch (use manually when needed)
       # - NFSEN_IMPORT_VERBOSE=true       # Show verbose import output
       # - NFSEN_SKIP_INITIAL_IMPORT=true  # Skip initial import on startup
       - NFSEN_IMPORT_YEARS=1            # Import last N years (default: 3)
-      
-      # Logging (controls both application and Swoole)
+
+      # Logging
       # - NFSEN_LOG_LEVEL=DEBUG           # DEBUG, INFO, NOTICE, WARNING, ERR, CRIT, ALERT, EMERG
-      
-      # Swoole HTTP server performance tuning
-      # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 4, set to CPU cores)
-      # - SWOOLE_MAX_REQUEST=50000        # Max requests per worker before restart (default: 10000)
+
+      # OpenSwoole HTTP server performance tuning
+      # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 1)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
     entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/docker-entrypoint-dev.sh"]
     restart: unless-stopped
-  
+
   caddy:
     build:
       context: .
@@ -44,6 +44,34 @@ services:
       - ./frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files
     depends_on:
       - nfsen
+    restart: unless-stopped
+
+  # nfcapd — NetFlow collector for local development with softflowd.
+  #
+  # Usage:
+  #   1. Uncomment this service.
+  #   2. Add "all" to your backend/settings/settings.php sources list.
+  #   3. Start the stack: docker-compose -f docker-compose.dev.yml up -d
+  #   4. Install softflowd on the host and point it at port 9995:
+  #        sudo softflowd -i <interface> -n 127.0.0.1:9995 -v 9
+  #      or run it permanently via the bundled systemd unit:
+  #        sudo cp systemd/softflowd.service /etc/systemd/system/
+  #        sudo systemctl enable --now softflowd
+  #
+  # nfcapd writes nfcapd files to /var/nfdump/profiles-data/live/all/ on the
+  # host (same directory the nfsen container reads via the shared volume).
+  #
+  nfcapd:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: nfsen-nfcapd
+    ports:
+      - "9995:9995/udp"  # NetFlow UDP — softflowd on the host sends here
+    volumes:
+      - /var/nfdump/profiles-data:/data/nfsen-ng
+    entrypoint: ["/usr/local/nfdump/bin/nfcapd"]
+    command: ["-w", "/data/nfsen-ng/live/all", "-z", "-S", "1", "-T", "all", "-p", "9995"]
     restart: unless-stopped
 
 # volumes:

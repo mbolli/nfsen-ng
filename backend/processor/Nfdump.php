@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace mbolli\nfsen_ng\processor;
 
 use mbolli\nfsen_ng\common\Config;
@@ -421,9 +423,10 @@ class Nfdump implements Processor {
         $filestartexists = false;
         $fileendexists = false;
         $sourcepath = $this->cfg['env']['profiles-data'] . \DIRECTORY_SEPARATOR . $this->cfg['env']['profile'] . \DIRECTORY_SEPARATOR;
+        $counter = 0;
 
         // if start file does not exist, increment by 5 minutes and try again
-        while ($filestartexists === false) {
+        while ($filestartexists === false && $counter < 10000) {
             if ($start >= $end) {
                 break;
             }
@@ -437,10 +440,12 @@ class Nfdump implements Processor {
             $pathstart = $start->format('Y/m/d') . \DIRECTORY_SEPARATOR;
             $filestart = $pathstart . 'nfcapd.' . $start->format('YmdHi');
             $start->add(new \DateInterval('PT5M'));
+            ++$counter;
         }
 
+        $counter = 0;
         // if end file does not exist, subtract by 5 minutes and try again
-        while ($fileendexists === false) {
+        while ($fileendexists === false && $counter < 10000) {
             if ($end === $start) { // strict comparison won't work
                 $fileend = $filestart;
 
@@ -456,6 +461,7 @@ class Nfdump implements Processor {
             $pathend = $end->format('Y/m/d') . \DIRECTORY_SEPARATOR;
             $fileend = $pathend . 'nfcapd.' . $end->format('YmdHi');
             $end->sub(new \DateInterval('PT5M'));
+            ++$counter;
         }
 
         return $filestart . PATH_SEPARATOR . $fileend;

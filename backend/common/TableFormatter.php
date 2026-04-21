@@ -194,7 +194,8 @@ class TableFormatter {
             }
         }
 
-        return (string) $value;
+        // Escape HTML for unknown/unhandled field types to prevent XSS
+        return htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5);
     }
 
     /**

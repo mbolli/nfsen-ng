@@ -10,8 +10,10 @@ services:
     expose:
       - "9000"  # Swoole HTTP server (internal only)
     volumes:
-      - /var/nfdump/profiles-data:/data/nfsen-ng
+      - /var/nfdump/profiles-data:/data/nfsen-ng:ro
       - rrd-data:/var/nfsen-ng/rrd  # Persistent RRD database storage
+      - nfsen-frontend:/var/www/html/nfsen-ng/frontend  # Share frontend with Caddy
+      - ./backend/settings/settings.php:/var/www/html/nfsen-ng/backend/settings/settings.php:ro  # Custom settings
     environment:
       - TZ=UTC
       - NFSEN_RRD_PATH=/var/nfsen-ng/rrd  # Store RRD files on separate volume
@@ -30,7 +32,6 @@ services:
       # - SWOOLE_MAX_REQUEST=50000        # Max requests per worker before restart (default: 10000)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
     restart: unless-stopped
-  entrypoint: ["/bin/bash", "-c", "./docker-entrypoint.sh"]
   
   caddy:
     build:
@@ -43,7 +44,7 @@ services:
       - "443:443/udp"  # HTTP/3
     volumes:
       - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
-      - ./frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files
+      - nfsen-frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files from nfsen container
       - caddy_data:/data  # Certificate storage
       - caddy_config:/config  # Caddy config storage
     depends_on:
@@ -52,5 +53,6 @@ services:
 
 volumes:
   rrd-data:  # Persistent storage for RRD database files
+  nfsen-frontend:  # Shared volume for frontend files between nfsen and caddy
   caddy_data:
   caddy_config:

@@ -1,0 +1,120 @@
+<?php
+/**
+ * nfsen-ng settings - VictoriaMetrics Example
+ * 
+ * This is an example configuration using VictoriaMetrics as the datasource.
+ * Copy this file to settings.php and adjust values as needed.
+ */
+
+$nfsen_config = [
+    'general' => [
+        /**
+         * list of sources (routers/exporters) to poll
+         */
+        'sources' => [
+            'gateway',
+            'router',
+        ],
+
+        /**
+         * list of ports to examine
+         * Note: More ports = longer import times
+         */
+        'ports' => [
+            80,    // HTTP
+            443,   // HTTPS
+            22,    // SSH
+            25,    // SMTP
+            53,    // DNS
+        ],
+
+        /**
+         * Datasource - VictoriaMetrics
+         * Other options: 'Rrd', 'Akumuli'
+         */
+        'db' => 'VictoriaMetrics',
+
+        /**
+         * Processor (optional) - defaults to Nfdump
+         */
+        // 'processor' => 'Nfdump',
+
+        /**
+         * Output formats for flows (optional)
+         */
+        'formats' => [
+            'auto',
+            'line',
+            'long',
+            'extended',
+        ],
+
+        /**
+         * Predefined filters (optional)
+         */
+        'filters' => [
+            'tcp' => 'proto tcp',
+            'udp' => 'proto udp',
+            'icmp' => 'proto icmp',
+        ],
+    ],
+
+    'frontend' => [
+        /**
+         * Refresh interval for graphs (seconds)
+         */
+        'reload_interval' => 60,
+
+        /**
+         * Frontend defaults
+         */
+        'defaults' => [
+            'view' => 'graphs',
+            'sources' => ['gateway'],
+            'protocols' => ['any'],
+            'display' => 'sources',
+        ],
+    ],
+
+    'nfdump' => [
+        /**
+         * Path to nfdump binary
+         */
+        'binary' => '/usr/local/nfdump/bin/nfdump',
+
+        /**
+         * Path to nfcapd data directory
+         * Files must be organized as: profiles-data/profile/source/YYYY/MM/DD/nfcapd.*
+         */
+        'profiles-data' => '/var/nfdump/profiles_data',
+
+        /**
+         * Profile to use (usually 'live')
+         */
+        'profile' => 'live',
+
+        /**
+         * Maximum concurrent nfdump processes
+         * Higher values = faster queries but more resource usage
+         */
+        'max-processes' => 1,
+    ],
+
+    /**
+     * Database-specific configuration (optional)
+     * VictoriaMetrics uses environment variables:
+     * - VM_HOST (default: victoriametrics)
+     * - VM_PORT (default: 8428)
+     * - NFSEN_IMPORT_YEARS (default: 3)
+     */
+    'db' => [],
+
+    'log' => [
+        /**
+         * Log priority (PHP syslog constants)
+         * LOG_EMERG, LOG_ALERT, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_NOTICE, LOG_INFO, LOG_DEBUG
+         * Can be overridden with NFSEN_LOG_LEVEL environment variable
+         */
+        'priority' => LOG_INFO,
+    ],
+];

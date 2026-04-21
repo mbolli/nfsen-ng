@@ -1,0 +1,23 @@
+{#
+    Flow results panel.
+    flowMessageHtml and flowTableHtml are pre-rendered server-side on every sync.
+    The server pushes them as part of the full-page DOM morph — no targeted element
+    patches needed.
+#}
+<div class="row">
+    <div class="col-12">
+        <div class="card" data-class:loading="$flows._indicator">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Network Flows</h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-info" data-text="${{ flowCount.id() }}"></span>
+                        <span class="text-muted small">flows</span>
+                    </div>
+                </div>
+                <div id="flowMessage">{{ flowMessageHtml|raw }}</div>
+                <div id="flowTable">{{ flowTableHtml|raw }}</div>
+            </div>
+        </div>
+    </div>
+</div>

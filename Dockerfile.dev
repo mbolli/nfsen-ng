@@ -36,8 +36,9 @@ RUN wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.6.zip \
 # Install PHP extension installer helper
 ADD --chmod=0755 https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
-# Install Swoole and inotify extensions for async HTTP and file watching
-RUN install-php-extensions swoole inotify
+# Install OpenSwoole, inotify, and brotli extensions
+# brotli is required for php-via's ->withBrotli() compression support
+RUN install-php-extensions openswoole inotify brotli
 
 # Install PHP RRD extension
 RUN pecl install rrd \

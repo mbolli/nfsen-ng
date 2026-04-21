@@ -24,8 +24,8 @@ $ports = Config::$cfg['general']['ports'] ?? [];
     data-computed:graph._config="{ sources: $graph.sources, protocols: $graph.protocols, ports: $graph.ports, display: $graph.display, type: $graph.datatype, trafficUnit: $graph.trafficUnit }"
     data-indicator:graph._connecting
     data-on-interval__duration.15s.leading="!$graph._connecting && $graph._isLive && @get('/api/graphs', { openWhenHidden: true })"
-    data-init="@get('/api/graphs', { openWhenHidden: true })"
-    data-on:change__window__throttle.250ms="window.mayUpdateGraph(evt, el) && @get('/api/graphs', { openWhenHidden: true })">
+    data-init="@get('/api/graphs', { openWhenHidden: true, retryMaxCount: Infinity })"
+    data-on:change__window__throttle.250ms="window.mayUpdateGraph(evt, el) && @get('/api/graphs', { openWhenHidden: true, retryMaxCount: Infinity })">
 
     <!-- Display Type -->
     <div class="col-md-2">

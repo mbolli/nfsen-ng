@@ -52,9 +52,13 @@ describe('Debug', function () {
             $elapsed = $debug->stopWatch();
 
             // Should have at most 4 decimal places
+            expect($elapsed)->toBeFloat();
             $parts = explode('.', (string) $elapsed);
             if (isset($parts[1])) {
                 expect(strlen($parts[1]))->toBeLessThanOrEqual(4);
+            } else {
+                // Integer result is also valid (0 decimal places)
+                expect(true)->toBeTrue();
             }
         });
 

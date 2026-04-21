@@ -45,53 +45,24 @@ echo "Watching: backend/*.php, frontend/*.js, frontend/*.css"
 PID_FILE="/tmp/nfsen-ng-server.pid"
 
 # Initial server start
-php /var/www/html/nfsen-ng/backend/server.php &
-echo $! > "$PID_FILE"
-echo "Started Swoole server (PID: $(cat $PID_FILE))"
+ENTRY_SCRIPT="/var/www/html/nfsen-ng/backend/app.php"
+php "${ENTRY_SCRIPT}" &
+SERVER_PID=$!
+echo $SERVER_PID > "$PID_FILE"
+echo "Started nfsen-ng server (PID: $SERVER_PID)"
 
-# Watch PHP/JS/CSS files and reload on changes
-# Use entr without -r flag so we can manually control process termination
+# Watch PHP/JS/CSS files and reload on changes using entr -r (auto-restart on change)
 cd /var/www/html/nfsen-ng
 while true; do
-    # entr will exit when a file changes (without -r flag)
+    echo "Watching for file changes..."
+    # entr -r kills and restarts the command when files change
+    # We wrap the kill+start in a subshell so we can update the PID file
     find . -type f \( -name '*.php' -o -name '*.js' -o -name '*.css' \) 2>/dev/null | \
-        grep -v vendor | grep -v node_modules | entr -dn echo "File changed"
-    
-    echo "File change detected, reloading server..."
-    
-    # Send SIGTERM to Swoole server
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        if kill -0 "$PID" 2>/dev/null; then
-            echo "Stopping Swoole server (PID: $PID)..."
-            kill -TERM "$PID"
-            
-            # Wait for graceful shutdown (max 3 seconds)
-            for i in {1..30}; do
-                if ! kill -0 "$PID" 2>/dev/null; then
-                    echo "Server stopped gracefully"
-                    break
-                fi
-                sleep 0.1
-            done
-            
-            # Force kill if still running
-            if kill -0 "$PID" 2>/dev/null; then
-                echo "Server did not stop gracefully, force killing..."
-                kill -9 "$PID" 2>/dev/null || true
-                sleep 0.5
-            fi
-        fi
-    fi
-    
-    # Additional sleep to ensure port is fully released
-    sleep 1
-    
-    # Start new server
-    php /var/www/html/nfsen-ng/backend/server.php &
-    echo $! > "$PID_FILE"
-    echo "Started new Swoole server (PID: $(cat $PID_FILE))"
-    
-    # Small delay before watching again
-    sleep 1
+        grep -v vendor | grep -v node_modules | \
+        entr -dn sh -c "echo 'File change detected, reloading server...'; \
+            kill \$(cat $PID_FILE) 2>/dev/null; sleep 1; \
+            php ${ENTRY_SCRIPT} & echo \$! > $PID_FILE; echo \"Started new server (PID: \$(cat $PID_FILE))\""
+    # entr -d exits when a new file appears in a watched dir; restart the watch loop
+    echo "Restarting file watcher..."
+    sleep 0.5
 done

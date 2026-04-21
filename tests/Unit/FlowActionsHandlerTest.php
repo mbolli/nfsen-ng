@@ -1,103 +1,75 @@
 <?php
 
+/**
+ * Tests for the aggregation string building logic used in the flow-actions handler
+ * (now inlined in backend/app.php — the old FlowActionsHandler class was removed).
+ */
+
 declare(strict_types=1);
 
-use mbolli\nfsen_ng\routes\FlowActionsHandler;
+/**
+ * Replicates the aggregation-string builder from app.php's flow-actions closure.
+ * Kept here so the logic can be unit-tested independently.
+ *
+ * @param array<string, mixed> $aggregation
+ */
+function buildAggregationString(array $aggregation): string {
+    if (!empty($aggregation['bidirectional'])) {
+        return 'bidirectional';
+    }
 
-describe('FlowActionsHandler', function () {
-    describe('buildAggregationString', function () {
-        // We need to test the private method through reflection or by making it protected
-        // For now, let's test the expected behavior patterns
+    $parts = [];
+    foreach (['proto', 'srcport', 'dstport'] as $k) {
+        if (!empty($aggregation[$k])) {
+            $parts[] = $k;
+        }
+    }
+    foreach (['srcip', 'dstip'] as $k) {
+        if (!empty($aggregation[$k]) && $aggregation[$k] !== 'none') {
+            $v = $aggregation[$k];
+            if (\in_array($v, ['srcip4', 'srcip6', 'dstip4', 'dstip6'], true) && !empty($aggregation[$k . 'Prefix'])) {
+                $parts[] = $v . '/' . $aggregation[$k . 'Prefix'];
+            } else {
+                $parts[] = $v;
+            }
+        }
+    }
 
-        test('builds empty string for empty aggregation', function () {
-            // Use reflection to test private method
-            $handler = new ReflectionClass(FlowActionsHandler::class);
-            $method = $handler->getMethod('buildAggregationString');
-            $method->setAccessible(true);
+    return implode(',', $parts);
+}
 
-            // Create a mock instance - need to handle constructor dependencies
-            // For unit testing, we'll test the logic patterns instead
-            expect(true)->toBeTrue(); // Placeholder - actual test needs mocked dependencies
-        });
+describe('Aggregation string building', function () {
+    test('returns empty string for empty aggregation', function () {
+        expect(buildAggregationString([]))->toBe('');
     });
-});
-
-describe('Aggregation string building logic', function () {
-    // Test the aggregation logic patterns without instantiating the handler
 
     test('bidirectional aggregation returns correct string', function () {
-        $aggregation = ['bidirectional' => true];
-
-        $result = '';
-        if (!empty($aggregation['bidirectional'])) {
-            $result = 'bidirectional';
-        }
-
-        expect($result)->toBe('bidirectional');
+        expect(buildAggregationString(['bidirectional' => true]))->toBe('bidirectional');
     });
 
     test('protocol aggregation adds proto', function () {
-        $aggregation = ['proto' => true];
-        $parts = [];
-
-        if (!empty($aggregation['proto'])) {
-            $parts[] = 'proto';
-        }
-
-        expect($parts)->toContain('proto');
+        expect(buildAggregationString(['proto' => true]))->toContain('proto');
     });
 
     test('source and destination ports build correctly', function () {
-        $aggregation = ['srcport' => true, 'dstport' => true];
-        $parts = [];
-
-        if (!empty($aggregation['srcport'])) {
-            $parts[] = 'srcport';
-        }
-        if (!empty($aggregation['dstport'])) {
-            $parts[] = 'dstport';
-        }
-
-        expect(implode(',', $parts))->toBe('srcport,dstport');
+        expect(buildAggregationString(['srcport' => true, 'dstport' => true]))->toBe('srcport,dstport');
     });
 
     test('IP with prefix builds correctly', function () {
-        $aggregation = [
-            'srcip' => 'srcip4',
-            'srcipPrefix' => '24',
-        ];
+        $result = buildAggregationString(['srcip' => 'srcip4', 'srcipPrefix' => '24']);
+        expect($result)->toBe('srcip4/24');
+    });
 
-        $parts = [];
-        if (!empty($aggregation['srcip']) && $aggregation['srcip'] !== 'none') {
-            $srcip = $aggregation['srcip'];
-            if (\in_array($srcip, ['srcip4', 'srcip6'], true) && !empty($aggregation['srcipPrefix'])) {
-                $parts[] = $srcip . '/' . $aggregation['srcipPrefix'];
-            } else {
-                $parts[] = $srcip;
-            }
-        }
-
-        expect($parts[0])->toBe('srcip4/24');
+    test('plain IP without prefix builds correctly', function () {
+        expect(buildAggregationString(['srcip' => 'srcip']))->toBe('srcip');
     });
 
     test('combined aggregation builds comma-separated string', function () {
-        $aggregation = [
-            'proto' => true,
-            'srcport' => true,
-            'srcip' => 'srcip',
-        ];
+        $result = buildAggregationString(['proto' => true, 'srcport' => true, 'srcip' => 'srcip']);
+        expect($result)->toBe('proto,srcport,srcip');
+    });
 
-        $parts = [];
-        if (!empty($aggregation['proto'])) {
-            $parts[] = 'proto';
-        }
-        if (!empty($aggregation['srcport'])) {
-            $parts[] = 'srcport';
-        }
-        if (!empty($aggregation['srcip']) && $aggregation['srcip'] !== 'none') {
-            $parts[] = $aggregation['srcip'];
-        }
-
-        expect(implode(',', $parts))->toBe('proto,srcport,srcip');
+    test('none srcip is excluded', function () {
+        expect(buildAggregationString(['srcip' => 'none', 'proto' => true]))->toBe('proto');
     });
 });

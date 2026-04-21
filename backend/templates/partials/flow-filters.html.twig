@@ -1,0 +1,141 @@
+{#
+    Flow query filter controls.
+
+    flowAggregation is initialised server-side with the full nested structure so
+    sub-property bindings like {{ bind(flowAggregation) }}.bidirectional work.
+    The server never reads flows_outputFormat (hardcoded to JSON); it is kept as a
+    client-local signal initialised here so the UI state is preserved across re-renders.
+#}
+<div class="row">
+
+    {# Limit #}
+    <div id="filterFlowsLimit" class="col-auto">
+        <p class="h6">Limit Flows
+            <nfsen-tooltip text="Maximum number of flow records to display (-c option)." placement="top"></nfsen-tooltip>
+        </p>
+        <select class="form-control form-select" {{ bind(flowLimit) }}>
+            {% for n in [20, 50, 100, 500, 1000, 10000] %}
+            <option value="{{ n }}"{% if n == 50 %} selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {# Sources #}
+    <div id="filterFlowSources" class="col-auto">
+        <p class="h6">Sources
+            <nfsen-tooltip text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
+        </p>
+        <select {{ bind(flowSources is defined ? flowSources : statsSources) }} multiple class="form-control form-select">
+            <option value="any">Any</option>
+            {% for source in sources %}
+            <option value="{{ source }}" selected>{{ source }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {# NFDUMP filter #}
+    <div class="col-xs-12 col-sm-12 col-md-auto col-lg-auto">
+        <p class="h6">NFDUMP filter
+            <nfsen-tooltip text="Filter syntax similar to tcpdump/pcap. Example: dst port 80" placement="right"></nfsen-tooltip>
+        </p>
+        <textarea class="form-control" id="filterNfdumpTextarea"
+                  {{ bind(flowFilter) }} rows="3" autocomplete="on"></textarea>
+        <nfsen-filter-manager
+            data-target-textarea="filterNfdumpTextarea"
+            data-default-filters="{{ filters|json_encode }}">
+        </nfsen-filter-manager>
+    </div>
+
+    {# Aggregation & output #}
+    <div id="filterFlowAggregation" class="col-12 col-xl-auto">
+        <p class="h6 mb-2">Aggregation &amp; Output
+            <nfsen-tooltip text="Aggregate flows: Bi-directional (-b), Protocol, Port, IP/prefix, or sort by tstart." placement="top"></nfsen-tooltip>
+        </p>
+        <div class="row g-2">
+
+            {# Global & port aggregation #}
+            <div class="col-auto">
+                <label class="form-label small mb-1">Global</label>
+                <div class="btn-group btn-group-sm d-flex mb-2" id="filterFlowAggregationGlobal">
+                    <input type="checkbox" class="btn-check" name="bidirectional"
+                           id="filterFlowAggBi" {{ bind(flowAggregation) }}.bidirectional>
+                    <label class="btn btn-outline-primary" for="filterFlowAggBi">Bi-directional</label>
+                    <input type="checkbox" class="btn-check" name="proto"
+                           id="filterFlowAggProto" {{ bind(flowAggregation) }}.proto>
+                    <label class="btn btn-outline-primary" for="filterFlowAggProto">Protocol</label>
+                </div>
+                <label class="form-label small mb-1">Port</label>
+                <div class="btn-group btn-group-sm d-flex" id="filterFlowAggregationPort">
+                    <input type="checkbox" class="btn-check" name="srcport"
+                           id="filterFlowAggPortSrc" {{ bind(flowAggregation) }}.srcport>
+                    <label class="btn btn-outline-primary" for="filterFlowAggPortSrc">Source</label>
+                    <input type="checkbox" class="btn-check" name="dstport"
+                           id="filterFlowAggPortDst" {{ bind(flowAggregation) }}.dstport>
+                    <label class="btn btn-outline-primary" for="filterFlowAggPortDst">Destination</label>
+                </div>
+            </div>
+
+            {# IP aggregation #}
+            <div class="col-auto">
+                <label class="form-label small mb-1">IP Aggregation</label>
+                <div class="row g-1">
+                    <div class="col-6">
+                        <select data-attr:disabled="${{ flowAggregation.id() }}.bidirectional"
+                                class="form-select form-select-sm"
+                                {{ bind(flowAggregation) }}.srcip>
+                            <option value="none">Src: None</option>
+                            <option value="srcip">Src: IP</option>
+                            <option value="srcip4">Src: IPv4 /</option>
+                            <option value="srcip6">Src: IPv6 /</option>
+                        </select>
+                        <input data-attr:disabled="${{ flowAggregation.id() }}.srcip == 'srcip' || ${{ flowAggregation.id() }}.srcip == 'none'"
+                               placeholder="24" type="text"
+                               class="form-control form-control-sm mt-1" style="width:3.5rem"
+                               {{ bind(flowAggregation) }}.srcipPrefix>
+                    </div>
+                    <div class="col-6">
+                        <select data-attr:disabled="${{ flowAggregation.id() }}.bidirectional"
+                                class="form-select form-select-sm"
+                                {{ bind(flowAggregation) }}.dstip>
+                            <option value="none">Dst: None</option>
+                            <option value="dstip">Dst: IP</option>
+                            <option value="dstip4">Dst: IPv4 /</option>
+                            <option value="dstip6">Dst: IPv6 /</option>
+                        </select>
+                        <input data-attr:disabled="${{ flowAggregation.id() }}.dstip == 'dstip' || ${{ flowAggregation.id() }}.dstip == 'none'"
+                               placeholder="24" type="text"
+                               class="form-control form-control-sm mt-1" style="width:3.5rem"
+                               {{ bind(flowAggregation) }}.dstipPrefix>
+                    </div>
+                </div>
+            </div>
+
+            {# Output options #}
+            <div class="col-auto" id="filterOutput">
+                <label class="form-label small mb-1">Options</label>
+                <div id="flowsFilterOther">
+                    <input type="checkbox" class="btn-check" name="ordertstart"
+                           id="flowsFilterOrderTstart" {{ bind(flowOrderByTstart) }}>
+                    <label class="btn btn-outline-primary btn-sm" for="flowsFilterOrderTstart">Order by tstart</label>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    {# Submit #}
+    <div class="col-12 border-top mt-3 pt-3">
+        <nfsen-tooltip text="Execute nfdump query with current filters" placement="top" no-icon>
+            <button type="button"
+                    class="btn btn-primary"
+                    data-indicator:flows._indicator
+                    data-class:loading="$flows._indicator"
+                    data-on:click="@post('{{ action_flowActions }}')">
+                <span data-show="!$flows._indicator">Process data</span>
+                <span class="spinner-grow spinner-grow-sm" data-show="$flows._indicator" role="status" aria-hidden="true"></span>
+                <span data-show="$flows._indicator">Processing…</span>
+            </button>
+        </nfsen-tooltip>
+    </div>
+
+</div>

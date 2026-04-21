@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>nfsen-ng</title>
+
+    {#
+        php-via SSE bootstrap — mirrors the pattern in php-via's shell.html.
+        contextId and basePath are auto-injected by Context::render().
+        _connecting is a Datastar-managed indicator (no server signal needed).
+        _disconnected is local-only (underscore prefix = never sent to server).
+    #}
+    <meta data-signals='{"via_ctx":"{{ contextId }}","_disconnected":false}'>
+    <meta data-indicator="_connecting"
+          data-on-interval__duration.15s.leading="!$_connecting && @get('{{ basePath }}_sse')"
+          data-on-datastar-fetch="el === evt.detail.el &&
+                             ((evt.detail.type.startsWith('datastar') && ($_disconnected = false)) ||
+                             (['retrying', 'error', 'finished'].includes(evt.detail.type) && ($_disconnected = true)))">
+    <meta data-init="window.addEventListener('beforeunload', () => { navigator.sendBeacon('{{ basePath }}_session/close', '{{ contextId }}'); });">
+
+    <link rel="stylesheet" type="text/css" href="{{ basePath }}frontend/css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="{{ basePath }}frontend/css/dygraph.css">
+    <link rel="stylesheet" type="text/css" href="{{ basePath }}frontend/css/ion.rangeSlider.css">
+    <link rel="stylesheet" type="text/css" href="{{ basePath }}frontend/css/nfsen-ng.css">
+</head>
+
+{#
+    _currentView: purely browser-local navigation signal (underscore prefix).
+    The server never reads it — in immediate mode every tab's content is always
+    rendered and Datastar data-show handles visibility client-side.
+#}
+<body class="p-2"
+      data-signals='{"_currentView": "{{ (defaults.view ?? 'graphs')|e('js') }}"}'>
+
+    {# ── Reconnect banner ─────────────────────────────────────────────────── #}
+    <div data-show="$_disconnected" style="display:none" class="alert alert-warning py-1 mb-1 text-center small">
+        ⚠ Reconnecting to server…
+    </div>
+
+    {# ── Fatal config error ────────────────────────────────────────────────── #}
+    {% if fatalError %}
+    <div class="alert alert-danger">
+        <strong>Fatal error:</strong> {{ fatalError }}
+    </div>
+    {% endif %}
+
+    <header>
+        <a class="position-absolute link-secondary" style="text-decoration: none;"
+           href="https://github.com/mbolli/nfsen-ng" target="_blank">
+            nfsen-ng <span id="version">{{ version }}</span>
+        </a>
+        {% include 'partials/nav.html.twig' %}
+    </header>
+
+    <main class="container-fluid tab-content">
+
+        {# ── Server error signal (pushed by server, never sent back) ───────── #}
+        <div class="alert alert-danger"
+             data-effect="el.style.display = (${{ error.id() }} != null && ${{ error.id() }} != '') ? 'block' : 'none'"
+             role="alert"
+             data-text="${{ error.id() }}"
+             style="display: none;"></div>
+
+        <div class="filter row align-items-start bg-light border-bottom py-3 mb-3" style="flex-direction: row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+
+                        {% include 'partials/date-range.html.twig' %}
+
+                        {# View-specific filter panels — all rendered, visibility via data-show #}
+                        <div data-show="$_currentView == 'graphs'" class="col-12">
+                            {% include 'partials/graph-filters.html.twig' %}
+                        </div>
+                        <div data-show="$_currentView == 'flows'" class="col-12" style="display: none;">
+                            {% include 'partials/flow-filters.html.twig' %}
+                        </div>
+                        <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
+                            {% include 'partials/stats-filters.html.twig' %}
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── View panels ───────────────────────────────────────────────────── #}
+        <div data-show="$_currentView == 'graphs'" class="col-12">
+            {% include 'partials/graph-view.html.twig' %}
+        </div>
+        <div data-show="$_currentView == 'flows'" class="col-12" style="display: none;">
+            {% include 'partials/flow-view.html.twig' %}
+        </div>
+        <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
+            {% include 'partials/stats-view.html.twig' %}
+        </div>
+
+    </main>
+
+    {# ── Server stats footer ───────────────────────────────────────────────── #}
+    <div id="server-stats" class="mt-2 p-2 bg-light border rounded text-center text-muted small">
+        <span class="badge bg-primary">{{ connections }} connection{{ connections != 1 ? 's' : '' }}</span>
+        nfsen-ng {{ version }}
+    </div>
+
+    <footer class="mt-2 text-center text-muted small">
+        <p>nfsen-ng {{ version }} &mdash; NetFlow Sensor Next Generation</p>
+    </footer>
+
+    {# ── JS ────────────────────────────────────────────────────────────────── #}
+    {#
+        Expose action URLs and signal IDs for JS web components that need them.
+        hostResult signal: underscore-prefixed — server pushes the resolved hostname,
+        browser displays it, never sends it back.
+    #}
+    <script>
+        window.__nfsen = {
+            hostActionUrl:  '{{ action_host }}',
+            hostResultId:   '{{ hostResult.id() }}'
+        };
+    </script>
+
+    <script src="{{ basePath }}frontend/js/popper.min.js"></script>
+    <script src="{{ basePath }}frontend/js/bootstrap.min.js"></script>
+    <script src="{{ basePath }}frontend/js/dygraph.min.js"></script>
+
+    <script type="module">
+        import * as datastar from "{{ basePath }}frontend/js/datastar.js";
+
+        {# Sync element *properties* (not attributes) from Datastar signals #}
+        datastar.attribute({
+            name: 'prop',
+            requirement: { value: 'must' },
+            returnsValue: true,
+            apply({ el, key, rx }) {
+                const update = key
+                    ? () => { observer.disconnect(); el[key] = rx(); observer.observe(el, { attributeFilter: [key] }); }
+                    : () => { observer.disconnect(); const obj = rx(); const af = Object.keys(obj); for (const k of af) el[k] = obj[k]; observer.observe(el, { attributeFilter: af }); };
+                const observer = new MutationObserver(update);
+                const cleanup = datastar.effect(update);
+                return () => { observer.disconnect(); cleanup(); };
+            }
+        });
+
+        /**
+         * Returns true only when a filter-change event originated from inside
+         * the graph filters panel or the date range controls. Prevents spurious
+         * graph refreshes when the user changes flow / stats filters.
+         */
+        window.mayUpdateGraph = (function() {
+            let dateRangeNode = null;
+            let dateRangeControlsNode = null;
+            return function(evt, el) {
+                const target = evt.target;
+                if (el && el.contains(target)) return true;
+                if (!dateRangeNode) dateRangeNode = document.querySelector('nfsen-daterange');
+                if (dateRangeNode && dateRangeNode.contains(target)) return true;
+                if (!dateRangeControlsNode) dateRangeControlsNode = document.querySelector('.date-range-controls');
+                if (dateRangeControlsNode && dateRangeControlsNode.contains(target)) return true;
+                return false;
+            };
+        })();
+    </script>
+
+    <script type="module" src="{{ basePath }}frontend/js/datastar.js"></script>
+    <script type="module" src="{{ basePath }}frontend/js/components/nfsen-chart.js"></script>
+    <script type="module" src="{{ basePath }}frontend/js/components/nfsen-table.js"></script>
+    <script type="module" src="{{ basePath }}frontend/js/components/nfsen-daterange.js"></script>
+    <script type="module" src="{{ basePath }}frontend/js/components/dark-mode-toggle.js"></script>
+    <script type="module" src="{{ basePath }}frontend/js/components/nfsen-toast.js"></script>
+    <script type="module" src="{{ basePath }}frontend/js/components/nfsen-ip-info-modal.js"></script>
+    <script type="module" src="{{ basePath }}frontend/js/components/nfsen-filter-manager.js"></script>
+    <script type="module" src="{{ basePath }}frontend/js/components/nfsen-tooltip.js"></script>
+
+</body>
+</html>

@@ -1,117 +1,86 @@
 # nfsen-ng installation
 
-These instructions install nfsen-ng on a fresh Ubuntu 22.04/24.04 LTS or Debian 11/12 system.
+## Option A: Docker (recommended)
 
-**Note that setup of nfcapd is not covered here, but nfsen-ng requires data captured by nfcapd to work.**
+Docker is the easiest way to get nfsen-ng running. See [QUICKSTART.md](./QUICKSTART.md) for the fastest path and [DOCKER_SETUP.md](./DOCKER_SETUP.md) for dev vs production details.
 
-## Ubuntu 22.04/24.04 LTS
+Prerequisites: Docker, Docker Compose, and nfcapd writing files to `/var/nfdump/profiles-data`.
 
- ```bash
-# run following commands as root
-
-# add php repository
-add-apt-repository -y ppa:ondrej/php
-
-# install packages
-apt install apache2 git pkg-config php8.3 php8.3-dev php8.3-mbstring libapache2-mod-php8.3 rrdtool librrd-dev
-
-# compile nfdump (optional, if you want to use the most recent version)
-apt install flex libbz2-dev yacc unzip
-wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.4.zip
-unzip v1.7.4.zip
-cd nfdump-1.7.4/
-./autogen.sh
-./configure
-make
-make install
-ldconfig
-nfdump -V
-
-# enable apache modules
-a2enmod rewrite deflate headers expires
-
-# install rrd library for php
-pecl install rrd
-
-# create rrd library mod entry for php
-echo "extension=rrd.so" > /etc/php/8.3/mods-available/rrd.ini
-
-# enable php mods
-phpenmod rrd mbstring
-
-# configure virtual host to read .htaccess files
-vi /etc/apache2/apache2.conf # set AllowOverride All for /var/www directory
-
-# restart apache web server
-systemctl restart apache2
-
-# install nfsen-ng
-cd /var/www # or wherever, needs to be in the web root
+```bash
 git clone https://github.com/mbolli/nfsen-ng
-chown -R www-data:www-data .
-chmod +x nfsen-ng/backend/cli.php
-
 cd nfsen-ng
-# install composer with instructions from https://getcomposer.org/download/
-php composer.phar install --no-dev
-
-# next step: create configuration file from backend/settings/settings.php.dist
+cp backend/settings/settings.php.dist backend/settings/settings.php
+# Edit settings.php with your sources and ports
+docker-compose up -d
 ```
 
-## Debian 11/12
+Visit **http://localhost** (production) or **http://localhost:8080** (dev).
+
+---
+
+## Option B: Bare-metal install (Ubuntu 22.04/24.04 LTS or Debian 11/12)
+
+**Note: setup of nfcapd is not covered here, but nfsen-ng requires data captured by nfcapd to work.**
 
 ```bash
 # run following commands as root
-su -
 
-# add php repository
-apt install -y apt-transport-https lsb-release ca-certificates wget curl gpg
+# add php repository (Ubuntu)
+add-apt-repository -y ppa:ondrej/php
+
+# OR for Debian:
+apt install -y apt-transport-https lsb-release ca-certificates curl gpg
 echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/php.list
 curl -fsSL https://packages.sury.org/php/apt.gpg | gpg --dearmor | tee /etc/apt/trusted.gpg.d/sury-php.gpg > /dev/null
 apt update
 
 # install packages
-apt install apache2 git pkg-config php8.4 php8.4-dev php8.4-mbstring libapache2-mod-php8.4 rrdtool librrd-dev
+apt install git pkg-config php8.4 php8.4-dev php8.4-mbstring rrdtool librrd-dev
 
-# compile nfdump (optional, if you want to use the most recent version)
-apt install flex libbz2-dev yacc unzip
-wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.4.zip
-unzip v1.7.4.zip
-cd nfdump-1.7.4/
-./autogen.sh
-./configure
-make
-make install
-ldconfig
+# compile nfdump (optional, if you want the most recent version)
+apt install flex libbz2-dev bison unzip wget
+wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.6.zip
+unzip v1.7.6.zip && cd nfdump-1.7.6
+./autogen.sh && ./configure && make && make install && ldconfig
 nfdump -V
+cd ..
 
-# enable apache modules
-a2enmod rewrite deflate headers expires
+# install OpenSwoole PHP extension
+pecl install openswoole
+echo "extension=openswoole.so" > /etc/php/8.4/mods-available/openswoole.ini
 
-# install rrd library for php
+# install inotify PHP extension (for file watching)
+pecl install inotify
+echo "extension=inotify.so" > /etc/php/8.4/mods-available/inotify.ini
+
+# install rrd PHP extension
 pecl install rrd
-
-# create rrd library mod entry for php
 echo "extension=rrd.so" > /etc/php/8.4/mods-available/rrd.ini
 
-# enable php mods
-phpenmod rrd mbstring
-
-# configure virtual host to read .htaccess files
-vi /etc/apache2/apache2.conf # set AllowOverride All for /var/www
-
-# restart apache web server
-systemctl restart apache2
+# enable PHP extensions
+phpenmod openswoole inotify rrd mbstring
 
 # install nfsen-ng
-cd /var/www # or wherever
+cd /var/www
 git clone https://github.com/mbolli/nfsen-ng
-chown -R www-data:www-data .
+chown -R www-data:www-data nfsen-ng
 chmod +x nfsen-ng/backend/cli.php
-cd nfsen-ng
 
-# install composer with instructions from https://getcomposer.org/download/
+cd nfsen-ng
+# install Composer: https://getcomposer.org/download/
 php composer.phar install --no-dev
 
-# next step: create configuration file from backend/settings/settings.php.dist
+# copy and edit settings
+cp backend/settings/settings.php.dist backend/settings/settings.php
+# vi backend/settings/settings.php
+
+# run initial import
+sudo -u www-data php backend/cli.php -v import
+
+# start the HTTP server (listens on port 9000)
+sudo -u www-data php backend/app.php
 ```
+
+For TLS and compression, put Caddy in front of the OpenSwoole server. See [CADDY_SWOOLE_SETUP.md](./CADDY_SWOOLE_SETUP.md) for the Caddyfile configuration.
+
+For running the server as a systemd service, see the unit files in `systemd/` and [systemd/README.md](./systemd/README.md).

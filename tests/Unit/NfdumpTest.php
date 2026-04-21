@@ -2,7 +2,30 @@
 
 declare(strict_types=1);
 
+use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\processor\Nfdump;
+
+// Nfdump requires Config to be initialized, so we set up minimal config
+beforeAll(function () {
+    // Set up minimal config for Nfdump to work
+    Config::$cfg = [
+        'general' => [
+            'ports' => [80, 443],
+            'sources' => ['gateway'],
+            'db' => 'Rrd',
+            'processor' => 'Nfdump',
+        ],
+        'nfdump' => [
+            'binary' => '/usr/bin/nfdump',
+            'profiles-data' => '/tmp/test-profiles-data',
+            'profile' => 'live',
+            'max-processes' => 4,
+        ],
+        'log' => [
+            'priority' => LOG_WARNING,
+        ],
+    ];
+});
 
 describe('Nfdump', function () {
     describe('get_output_format', function () {
@@ -49,7 +72,7 @@ describe('Nfdump', function () {
 
             expect($result)
                 ->toBeArray()
-                ->toHaveCount(47);
+                ->toHaveCount(48);
         });
 
         test('parses custom format string', function () {

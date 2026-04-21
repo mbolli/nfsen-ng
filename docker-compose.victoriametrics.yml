@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: victoriametrics
+    ports:
+      - "8428:8428"
+    volumes:
+      - vm-data:/victoria-metrics-data
+    command:
+      - "--storageDataPath=/victoria-metrics-data"
+      - "--httpListenAddr=:8428"
+      - "--retentionPeriod=3y"  # Match NFSEN_IMPORT_YEARS
+      - "--search.maxQueryDuration=60s"
+      - "--search.latencyOffset=30s"
+    restart: unless-stopped
+    networks:
+      - nfsen-ng
+
+  nfsen-ng:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: nfsen-ng
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/var/www/html/backend
+      - ./frontend:/var/www/html/frontend
+      - ./components:/var/www/html/components
+      - ./stream:/var/www/html/stream
+      - ./frontend/templates/index.php:/var/www/html/frontend/templates/index.php
+      - /var/nfdump:/var/nfdump:ro
+      - rrd-data:/var/nfsen-ng/rrd
+    environment:
+      - TZ=UTC
+      - NFSEN_IMPORT_YEARS=3
+      - NFSEN_FORCE_IMPORT=0
+      - NFSEN_RRD_PATH=/var/nfsen-ng/rrd
+      # VictoriaMetrics configuration
+      - NFSEN_DATASOURCE=VictoriaMetrics
+      - VM_HOST=victoriametrics
+      - VM_PORT=8428
+    depends_on:
+      - victoriametrics
+    restart: unless-stopped
+    networks:
+      - nfsen-ng
+
+volumes:
+  vm-data:
+    driver: local
+  rrd-data:
+    driver: local
+
+networks:
+  nfsen-ng:
+    driver: bridge

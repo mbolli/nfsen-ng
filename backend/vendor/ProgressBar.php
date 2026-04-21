@@ -35,6 +35,11 @@ class ProgressBar {
     protected static $options = [];
 
     /**
+     * Detect if running in Docker (or other non-interactive environment).
+     */
+    protected static $isDocker = null;
+
+    /**
      * How much have we done already.
      */
     protected static $done = 0;
@@ -71,6 +76,20 @@ class ProgressBar {
     protected static $total;
 
     /**
+     * Detect if running in Docker or non-interactive environment.
+     */
+    protected static function isDocker(): bool {
+        if (self::$isDocker === null) {
+            // Check for Docker environment indicators
+            self::$isDocker = file_exists('/.dockerenv') 
+                || (file_exists('/proc/1/cgroup') && strpos(file_get_contents('/proc/1/cgroup'), 'docker') !== false)
+                || getenv('DOCKER_CONTAINER') !== false
+                || !posix_isatty(STDOUT);
+        }
+        return self::$isDocker;
+    }
+
+    /**
      * Show a progress bar, actually not usually called explicitly. Called by next().
      *
      * @param int $done what fraction of $total to set as progress uses internal counter if not passed
@@ -82,6 +101,38 @@ class ProgressBar {
     public static function display($done = null) {
         if ($done) {
             self::$done = $done;
+        }
+
+        // In Docker or non-interactive mode, output progress every 5% or specific milestones
+        if (self::isDocker()) {
+            $fractionComplete = self::$total ? (float) (self::$done / self::$total) : 0;
+            $percent = number_format($fractionComplete * 100, 1);
+            
+            // Only output every 5% to avoid log spam
+            static $lastPercent = -1;
+            $currentPercentMilestone = floor($percent / 5) * 5;
+            
+            if ($currentPercentMilestone != $lastPercent || self::$done === self::$total) {
+                $lastPercent = $currentPercentMilestone;
+                $elapsed = time() - self::$start;
+                $timeElapsed = self::humanTime($elapsed);
+                
+                $rate = self::$done ? $elapsed / self::$done : 0;
+                $left = self::$total - self::$done;
+                $etc = round($rate * $left, 2);
+                $timeRemaining = self::humanTime($etc, self::$done ? '< 1 sec' : '???');
+                
+                return sprintf(
+                    "\n%s: %.01f%% (%d/%d) - ETC: %s, Elapsed: %s",
+                    self::$message,
+                    $percent,
+                    self::$done,
+                    self::$total,
+                    $timeRemaining,
+                    $timeElapsed
+                );
+            }
+            return ''; // Don't output between milestones
         }
 
         $now = time();

@@ -35,8 +35,9 @@ RUN wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.6.zip \
 # Install PHP extension installer helper
 ADD --chmod=0755 https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
-# Install Swoole and inotify extensions for async HTTP and file watching
-RUN install-php-extensions swoole inotify
+# Install OpenSwoole, inotify, and brotli extensions
+# brotli is required for php-via's ->withBrotli() compression support
+RUN install-php-extensions openswoole inotify brotli
 
 # Install PHP RRD extension
 RUN pecl install rrd \
@@ -45,8 +46,8 @@ RUN pecl install rrd \
 # Setup volumes for persistent data and configuration
 VOLUME ["/data/nfsen-ng"]
 
-# Clone nfsen-ng from git (production)
-RUN git clone https://github.com/mbolli/nfsen-ng.git /var/www/html/nfsen-ng \
+# Clone nfsen-ng from git (production) - v1 branch
+RUN git clone -b v1 https://github.com/mbolli/nfsen-ng.git /var/www/html/nfsen-ng \
     && chmod +x /var/www/html/nfsen-ng/backend/cli.php
 
 # Install composer and production dependencies
@@ -62,5 +63,5 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 EXPOSE 9000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["php", "/var/www/html/nfsen-ng/backend/server.php"]
+CMD ["php", "/var/www/html/nfsen-ng/backend/app.php"]
 

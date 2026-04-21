@@ -1,7 +1,4 @@
 :80 {
-	# Compression - Caddy handles br (Brotli), zstd, and gzip automatically
-	encode br zstd gzip
-
 	# Security headers
 	header {
 		-Server
@@ -11,7 +8,9 @@
 	}
 
 	# Serve static files from frontend directory
+	# Caddy compresses these directly (php-via never sees /frontend/* requests)
 	handle /frontend/* {
+		encode br zstd gzip
 		root * /var/www/html/nfsen-ng
 		file_server
 		header Cache-Control "public, max-age=31536000"

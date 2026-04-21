@@ -284,7 +284,7 @@ class Import {
         // $input['decoded'] data is an array of metric/value pairs
         // e.g., [['metric' => 'flows_tcp', 'value' => '323829'], ...]
         foreach ($input['decoded'] as $item) {
-            if (!\is_array($item) || !isset($item['metric'], $item['value'])) { // @phpstan-ignore function.alreadyNarrowedType
+            if (!\is_array($item) || !isset($item['metric'], $item['value'])) {
                 $this->d->log('Got invalid item format', LOG_DEBUG);
 
                 continue;
@@ -373,7 +373,7 @@ class Import {
         // process protocols
         // decoded data contains associative arrays with keys like: ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ipbs,ibpp
         foreach ($input['decoded'] as $row) {
-            if (!\is_array($row)) { // @phpstan-ignore function.alreadyNarrowedType
+            if (!\is_array($row)) {
                 continue;
             } // skip anything that's not an array
             if (!isset($row['pr'], $row['fl'], $row['ipkt'], $row['ibyt'])) {

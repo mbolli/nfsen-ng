@@ -8,9 +8,9 @@
     "require": {
         "php": "^8.4",
         "ext-inotify": "*",
+        "ext-openswoole": "*",
         "ext-rrd": "*",
-        "ext-swoole": "*",
-        "starfederation/datastar-php": "^1.0@RC"
+        "mbolli/php-via": "dev-master"
     },
     "require-dev": {
         "friendsofphp/php-cs-fixer": "3.x",

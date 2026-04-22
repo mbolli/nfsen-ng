@@ -103,11 +103,26 @@ Trigger from Twig: `data-on:click="@post('{{ action_myAction }}')"`.
 
 ## JS: Parsing Datastar Signal Values
 
-Array signals arrive as JSON strings in computed expressions and `data-chart-config`. Always parse:
+With native signal storage, array signals arrive as real JS arrays on the client. Code that reads them from `data-chart-config` attributes (HTML strings) still needs to parse, so use a defensive helper:
 
 ```js
 const parse = (v) => Array.isArray(v) ? v : JSON.parse(v);
-const items = parse(config.sources);
+const items = parse(config.sources); // config from data-chart-config attr (string); signal expr already a JS array
+```
+
+## Dates and Timezones
+
+The container runs `TZ=UTC`. To display timestamps in the user's local timezone, store them as Unix epoch on the server and format client-side:
+
+```php
+// server (app.php)
+$graphLastUpdate->setValue(time(), broadcast: false); // Unix epoch int
+```
+
+```twig
+{# Twig template — format in browser local time #}
+<span data-text="new Date(${{ signal.id() }} * 1000).toLocaleString('sv')"></span>
+{# 'sv' locale produces ISO-like YYYY-MM-DD HH:MM:SS #}
 ```
 
 ## Testing

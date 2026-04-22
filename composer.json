@@ -10,7 +10,7 @@
         "ext-inotify": "*",
         "ext-openswoole": "*",
         "ext-rrd": "*",
-        "mbolli/php-via": "dev-master"
+        "mbolli/php-via": "~0.7.1"
     },
     "require-dev": {
         "friendsofphp/php-cs-fixer": "3.x",

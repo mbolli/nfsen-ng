@@ -40,7 +40,7 @@ php /var/www/html/nfsen-ng/backend/cli.php status
 
 # Development mode: Use entr to auto-reload on file changes
 echo "Starting Swoole HTTP server with auto-reload (entr)..."
-echo "Watching: backend/*.php, frontend/*.js, frontend/*.css"
+echo "Watching: backend/*.php, frontend/*.js, frontend/*.css, backend/templates/*.twig"
 
 PID_FILE="/tmp/nfsen-ng-server.pid"
 
@@ -57,7 +57,7 @@ while true; do
     echo "Watching for file changes..."
     # entr -r kills and restarts the command when files change
     # We wrap the kill+start in a subshell so we can update the PID file
-    find . -type f \( -name '*.php' -o -name '*.js' -o -name '*.css' \) 2>/dev/null | \
+    find . -type f \( -name '*.php' -o -name '*.js' -o -name '*.css' -o -name '*.twig' \) 2>/dev/null | \
         grep -v vendor | grep -v node_modules | \
         entr -dn sh -c "echo 'File change detected, reloading server...'; \
             kill \$(cat $PID_FILE) 2>/dev/null; sleep 1; \

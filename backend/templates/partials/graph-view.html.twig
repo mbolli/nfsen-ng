@@ -23,8 +23,8 @@
                   title="Graph is showing real-time data">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-circle-fill me-1" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8"/></svg>
                 LIVE
-                <span class="fw-light" data-show="${{ graphLastUpdate.id() }} != ''">
-                    last update: <span data-text="${{ graphLastUpdate.id() }}"></span>
+                <span class="fw-light" data-show="${{ graphLastUpdate.id() }} > 0">
+                    last update: <span data-text="new Date(${{ graphLastUpdate.id() }} * 1000).toLocaleString('sv')"></span>
                 </span>
             </span>
             <span class="badge bg-secondary"
@@ -94,11 +94,11 @@
             <div class="btn-group" role="group" id="graph_linlog">
                 <input type="radio" class="btn-check" name="scale" value="linear" checked
                        id="graph_linlog_linear"
-                       data-on:change__stop="$graph._widget.updateOptions({logscale: false})">
+                       data-on:change__stop="$_graph_logscale = false; $graph._widget.updateOptions({logscale: false})">
                 <label for="graph_linlog_linear" class="btn btn-outline-primary btn-sm">Linear</label>
                 <input type="radio" class="btn-check" name="scale" value="logarithmic"
                        id="graph_linlog_log"
-                       data-on:change__stop="$graph._widget.updateOptions({logscale: true})">
+                       data-on:change__stop="$_graph_logscale = true; $graph._widget.updateOptions({logscale: true})">
                 <label for="graph_linlog_log" class="btn btn-outline-primary btn-sm">Logarithmic</label>
             </div>
         </div>
@@ -107,7 +107,7 @@
         <div class="col-md-3">
             <p class="h6">Series Display</p>
             <div class="btn-group" role="group"
-                 data-on:change__stop="const stacked = evt.target.value === 'stacked'; $graph._widget.updateOptions({stackedGraph: stacked, fillGraph: stacked})">
+                 data-on:change__stop="const stacked = evt.target.value === 'stacked'; $_graph_stacked = stacked; $graph._widget.updateOptions({stackedGraph: stacked, fillGraph: stacked})">
                 <input type="radio" class="btn-check" name="type" value="stacked" id="graph_linestacked_stacked">
                 <label class="btn btn-outline-primary btn-sm" for="graph_linestacked_stacked">Stacked</label>
                 <input type="radio" class="btn-check" name="type" value="line" checked id="graph_linestacked_line">
@@ -116,11 +116,11 @@
             <div class="btn-group mt-2" role="group" id="graph_lineplot">
                 <input type="radio" class="btn-check" name="lineplot" value="step" checked
                        id="graph_lineplot_step"
-                       data-on:change__stop="$graph._widget.updateOptions({stepPlot: true})">
+                       data-on:change__stop="$_graph_stepplot = true; $graph._widget.updateOptions({stepPlot: true})">
                 <label class="btn btn-outline-primary btn-sm" for="graph_lineplot_step">Step plot</label>
                 <input type="radio" class="btn-check" name="lineplot" value="curve"
                        id="graph_lineplot_curve"
-                       data-on:change__stop="$graph._widget.updateOptions({stepPlot: false})">
+                       data-on:change__stop="$_graph_stepplot = false; $graph._widget.updateOptions({stepPlot: false})">
                 <label class="btn btn-outline-primary btn-sm" for="graph_lineplot_curve">Curve plot</label>
             </div>
         </div>

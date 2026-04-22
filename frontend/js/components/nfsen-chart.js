@@ -62,6 +62,12 @@ export class NfsenChart extends HTMLElement {
     }
 
     async initializeChart() {
+        // Ensure container is available (attributeChangedCallback fires before connectedCallback during upgrade)
+        if (!this.container) {
+            this.container = this.querySelector('.chart-canvas');
+            if (!this.container) return;
+        }
+
         // Wait for Dygraph library to load
         if (!window.Dygraph) {
             this.showMessage('Waiting for Dygraph library...', 'info');
@@ -177,7 +183,10 @@ export class NfsenChart extends HTMLElement {
             labelsDiv: document.getElementById('legend'),
             labelsSeparateLines: true,
             legend: 'always',
-            stepPlot: true,
+            stepPlot: config.stepplot !== undefined ? config.stepplot : true,
+            logscale: config.logscale || false,
+            stackedGraph: config.stacked || false,
+            fillGraph: config.stacked || false,
             showRangeSelector: true,
             dateWindow: [chartData[0][0], chartData[chartData.length - 1][0]],
             zoomCallback: this.handleZoom.bind(this),
@@ -189,8 +198,6 @@ export class NfsenChart extends HTMLElement {
             },
             rangeSelectorPlotStrokeColor: '#888888',
             rangeSelectorPlotFillColor: '#cccccc',
-            stackedGraph: true,
-            fillGraph: true,
         };
 
         try {
@@ -211,7 +218,14 @@ export class NfsenChart extends HTMLElement {
     }
 
     getTitle(display, sources, protocols, ports, type) {
-        const displayItems = display === 'sources' ? sources : display === 'protocols' ? protocols : ports;
+        const parse = (v) => {
+            if (Array.isArray(v)) return v;
+            if (typeof v === 'string') {
+                try { return JSON.parse(v); } catch { return [v]; }
+            }
+            return [v];
+        };
+        const displayItems = parse(display === 'sources' ? sources : display === 'protocols' ? protocols : ports);
         const cat = displayItems.length > 1 ? display : display.replace(/s$/, ''); // singular form
         const titleSuffix = displayItems.length > 4 ? displayItems.length + ' ' + cat : cat + ' ' + displayItems.join(', ');
         return type + ' for ' + titleSuffix;

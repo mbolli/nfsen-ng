@@ -58,19 +58,19 @@
                 <label class="form-label small mb-1">Global</label>
                 <div class="btn-group btn-group-sm d-flex mb-2" id="filterFlowAggregationGlobal">
                     <input type="checkbox" class="btn-check" name="bidirectional"
-                           id="filterFlowAggBi" {{ bind(flowAggregation) }}.bidirectional>
+                           id="filterFlowAggBi" {{ bind(flowAggBidirectional) }}>
                     <label class="btn btn-outline-primary" for="filterFlowAggBi">Bi-directional</label>
                     <input type="checkbox" class="btn-check" name="proto"
-                           id="filterFlowAggProto" {{ bind(flowAggregation) }}.proto>
+                           id="filterFlowAggProto" {{ bind(flowAggProto) }}>
                     <label class="btn btn-outline-primary" for="filterFlowAggProto">Protocol</label>
                 </div>
                 <label class="form-label small mb-1">Port</label>
                 <div class="btn-group btn-group-sm d-flex" id="filterFlowAggregationPort">
                     <input type="checkbox" class="btn-check" name="srcport"
-                           id="filterFlowAggPortSrc" {{ bind(flowAggregation) }}.srcport>
+                           id="filterFlowAggPortSrc" {{ bind(flowAggSrcPort) }}>
                     <label class="btn btn-outline-primary" for="filterFlowAggPortSrc">Source</label>
                     <input type="checkbox" class="btn-check" name="dstport"
-                           id="filterFlowAggPortDst" {{ bind(flowAggregation) }}.dstport>
+                           id="filterFlowAggPortDst" {{ bind(flowAggDstPort) }}>
                     <label class="btn btn-outline-primary" for="filterFlowAggPortDst">Destination</label>
                 </div>
             </div>
@@ -80,32 +80,32 @@
                 <label class="form-label small mb-1">IP Aggregation</label>
                 <div class="row g-1">
                     <div class="col-6">
-                        <select data-attr:disabled="${{ flowAggregation.id() }}.bidirectional"
+                        <select data-attr:disabled="${{ flowAggBidirectional.id() }}"
                                 class="form-select form-select-sm"
-                                {{ bind(flowAggregation) }}.srcip>
+                                {{ bind(flowAggSrcIp) }}>
                             <option value="none">Src: None</option>
                             <option value="srcip">Src: IP</option>
                             <option value="srcip4">Src: IPv4 /</option>
                             <option value="srcip6">Src: IPv6 /</option>
                         </select>
-                        <input data-attr:disabled="${{ flowAggregation.id() }}.srcip == 'srcip' || ${{ flowAggregation.id() }}.srcip == 'none'"
+                        <input data-attr:disabled="${{ flowAggSrcIp.id() }} == 'srcip' || ${{ flowAggSrcIp.id() }} == 'none'"
                                placeholder="24" type="text"
                                class="form-control form-control-sm mt-1" style="width:3.5rem"
-                               {{ bind(flowAggregation) }}.srcipPrefix>
+                               {{ bind(flowAggSrcIpPrefix) }}>
                     </div>
                     <div class="col-6">
-                        <select data-attr:disabled="${{ flowAggregation.id() }}.bidirectional"
+                        <select data-attr:disabled="${{ flowAggBidirectional.id() }}"
                                 class="form-select form-select-sm"
-                                {{ bind(flowAggregation) }}.dstip>
+                                {{ bind(flowAggDstIp) }}>
                             <option value="none">Dst: None</option>
                             <option value="dstip">Dst: IP</option>
                             <option value="dstip4">Dst: IPv4 /</option>
                             <option value="dstip6">Dst: IPv6 /</option>
                         </select>
-                        <input data-attr:disabled="${{ flowAggregation.id() }}.dstip == 'dstip' || ${{ flowAggregation.id() }}.dstip == 'none'"
+                        <input data-attr:disabled="${{ flowAggDstIp.id() }} == 'dstip' || ${{ flowAggDstIp.id() }} == 'none'"
                                placeholder="24" type="text"
                                class="form-control form-control-sm mt-1" style="width:3.5rem"
-                               {{ bind(flowAggregation) }}.dstipPrefix>
+                               {{ bind(flowAggDstIpPrefix) }}>
                     </div>
                 </div>
             </div>

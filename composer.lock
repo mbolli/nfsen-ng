@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "e986472bd999b3114043f53ef3683f82",
+    "content-hash": "e266bff6fc34d271d9e127b6a0391b81",
     "packages": [
         {
             "name": "mbolli/php-via",
-            "version": "dev-master",
+            "version": "v0.7.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/mbolli/php-via.git",
-                "reference": "59ef90e860ebb845ca7bf300f925ecddd4c37ed7"
+                "reference": "eeaaa377c15d77198a3a981bbfe89391ba4ecc3d"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/mbolli/php-via/zipball/59ef90e860ebb845ca7bf300f925ecddd4c37ed7",
-                "reference": "59ef90e860ebb845ca7bf300f925ecddd4c37ed7",
+                "url": "https://api.github.com/repos/mbolli/php-via/zipball/eeaaa377c15d77198a3a981bbfe89391ba4ecc3d",
+                "reference": "eeaaa377c15d77198a3a981bbfe89391ba4ecc3d",
                 "shasum": ""
             },
             "require": {
@@ -42,7 +42,6 @@
             "suggest": {
                 "ext-brotli": "Required for Config::withBrotli(): Native Brotli compression for pages, static assets, and SSE streams"
             },
-            "default-branch": true,
             "type": "library",
             "autoload": {
                 "psr-4": {
@@ -62,9 +61,9 @@
             "description": "Real-time engine for building reactive web applications in PHP",
             "support": {
                 "issues": "https://github.com/mbolli/php-via/issues",
-                "source": "https://github.com/mbolli/php-via/tree/master"
+                "source": "https://github.com/mbolli/php-via/tree/v0.7.1"
             },
-            "time": "2026-04-17T08:54:40+00:00"
+            "time": "2026-04-22T06:23:54+00:00"
         },
         {
             "name": "nyholm/psr7",
@@ -6293,9 +6292,7 @@
     ],
     "aliases": [],
     "minimum-stability": "dev",
-    "stability-flags": {
-        "mbolli/php-via": 20
-    },
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

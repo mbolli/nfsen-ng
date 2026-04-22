@@ -14,17 +14,19 @@
 <div class="mb-3">
     <nfsen-daterange
         id="dateRangeSlider"
+        data-ignore-morph
         data-min="{{ minMs }}"
         data-max="{{ maxMs }}"
         data-from="{{ fromMs }}"
         data-to="{{ maxMs }}"
         data-ref="_daterangeWidget"
         data-on-interval__duration.60s="el.dataset.min = new Date().getTime() - {{ rangeMs }}; el.dataset.max = new Date().getTime();"
-        data-on:range-change="{{ bind(datestart) }}; ${{ datestart.id() }} = Math.floor(evt.detail.from / 1000); ${{ dateend.id() }} = Math.floor(evt.detail.to / 1000); el.dispatchEvent(new Event('change', { bubbles: true }));">
+        data-on:range-change="${{ datestart.id() }} = Math.floor(evt.detail.from / 1000); ${{ dateend.id() }} = Math.floor(evt.detail.to / 1000); el.dispatchEvent(new Event('change', { bubbles: true }));">
     </nfsen-daterange>
 </div>
 
-<div class="d-flex justify-content-end gap-2 flex-wrap mb-4 date-range-controls">
+<div class="d-flex justify-content-end gap-2 flex-wrap mb-4 date-range-controls"
+     data-signals='{"_activeDuration": 86400000}'>
 
     {# Quick-select preset windows #}
     <div class="btn-group" id="date_slot" role="group">
@@ -37,7 +39,8 @@
         } %}
         <button type="button"
                 class="btn btn-outline-primary"
-                data-on:click="document.getElementById('dateRangeSlider').setQuickRange({{ ms }})">
+                data-class:active="$_activeDuration === {{ ms }}"
+                data-on:click="document.getElementById('dateRangeSlider').setQuickRange({{ ms }}); $_activeDuration = {{ ms }};">
             {{ label }}
         </button>
         {% endfor %}
@@ -46,21 +49,21 @@
     {# Previous / next / jump-to-now #}
     <div class="btn-group" id="date_slot_nav" role="group">
         <button type="button" class="btn btn-outline-primary"
-                data-on:click="document.getElementById('dateRangeSlider').navigate('prev')"
+                data-on:click="document.getElementById('dateRangeSlider').navigate('prev'); $_activeDuration = 0;"
                 title="Previous period">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-left" viewBox="0 0 16 16">
                 <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8"/>
             </svg>
         </button>
         <button type="button" class="btn btn-outline-primary"
-                data-on:click="document.getElementById('dateRangeSlider').navigate('next')"
+                data-on:click="document.getElementById('dateRangeSlider').navigate('next'); $_activeDuration = 0;"
                 title="Next period">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-right" viewBox="0 0 16 16">
                 <path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h11.793l-3.147-3.146a.5.5 0 0 1 .708-.708l4 4a.5.5 0 0 1 0 .708l-4 4a.5.5 0 0 1-.708-.708L13.293 8.5H1.5A.5.5 0 0 1 1 8"/>
             </svg>
         </button>
         <button type="button" class="btn btn-outline-primary"
-                data-on:click="document.getElementById('dateRangeSlider').goToEnd()"
+                data-on:click="document.getElementById('dateRangeSlider').goToEnd(); $_activeDuration = 0;"
                 title="Jump to now (most recent data)">
             <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-arrow-bar-right" viewBox="0 0 16 16" width="16"><path d="M3 8a.5.5 0 0 1 .5-.5h5.793L7.146 5.354a.5.5 0 1 1 .708-.708l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 1 1-.708-.708L9.293 8.5H3.5A.5.5 0 0 1 3 8" style="transform-box:fill-box" transform-origin="50% 50%"/><path d="M13.501 1a.5.5 0 0 0-.5.5v13a.5.5 0 0 0 1 0v-13a.5.5 0 0 0-.5-.5" style="transform-box:fill-box" transform="rotate(180 0 0)" transform-origin="50% 50%"/></svg>
         </button>

@@ -160,7 +160,7 @@ $app->page('/', function (Context $c) use ($app): void {
     // Server-side graph metadata (read-only for browser)
     $graphIsLive      = $c->signal(false, 'graph_isLive');
     $graphActualRes   = $c->signal(0,     'graph_actualResolution');
-    $graphLastUpdate  = $c->signal('',    'graph_lastUpdate');
+    $graphLastUpdate  = $c->signal(0,     'graph_lastUpdate');
 
     // Flow signals
     $flowFilter      = $c->signal('', 'flows_filter', clientWritable: true);
@@ -169,16 +169,14 @@ $app->page('/', function (Context $c) use ($app): void {
         'flows_limit',
         clientWritable: true
     );
-    $flowAggregation = $c->signal([
-        'bidirectional' => false,
-        'proto'         => false,
-        'srcport'       => false,
-        'dstport'       => false,
-        'srcip'         => 'none',
-        'srcipPrefix'   => '',
-        'dstip'         => 'none',
-        'dstipPrefix'   => '',
-    ], 'flows_aggregation', clientWritable: true);
+    $flowAggBidirectional  = $c->signal(false,  'flows_agg_bidirectional',  clientWritable: true);
+    $flowAggProto          = $c->signal(false,  'flows_agg_proto',          clientWritable: true);
+    $flowAggSrcPort        = $c->signal(false,  'flows_agg_srcport',        clientWritable: true);
+    $flowAggDstPort        = $c->signal(false,  'flows_agg_dstport',        clientWritable: true);
+    $flowAggSrcIp          = $c->signal('none', 'flows_agg_srcip',          clientWritable: true);
+    $flowAggSrcIpPrefix    = $c->signal('',     'flows_agg_srcip_prefix',   clientWritable: true);
+    $flowAggDstIp          = $c->signal('none', 'flows_agg_dstip',          clientWritable: true);
+    $flowAggDstIpPrefix    = $c->signal('',     'flows_agg_dstip_prefix',   clientWritable: true);
     $flowOrderByTstart = $c->signal(false, 'flows_orderByTstart', clientWritable: true);
     $flowCount       = $c->signal(0, 'flows_count');
     $flowMessage     = $c->signal('', 'flowMessage');
@@ -206,26 +204,12 @@ $app->page('/', function (Context $c) use ($app): void {
     // ── Subscribe to RRD import broadcasts ───────────────────────────────────
     $c->addScope('rrd:live');
 
-    // ── Helper: decode Signal array values ───────────────────────────────────
-    // Signal::setValue() JSON-encodes arrays; getValue() returns the raw stored
-    // value (a JSON string). Decode it back to a PHP array before use.
-    $sig2arr = static function (mixed $v): array {
-        if (\is_string($v)) {
-            $decoded = json_decode($v, true);
-
-            return \is_array($decoded) ? $decoded : (($v !== '') ? [$v] : []);
-        }
-
-        return (array) $v;
-    };
-
     // ── Helper: fetch graph data from datasource ─────────────────────────────
     $fetchGraphData = function () use (
         $datestart, $dateend,
         $graphDisplay, $graphSources, $graphPorts, $graphProtocols,
         $graphDatatype, $graphTrafficUnit, $graphResolution,
-        $graphIsLive, $graphActualRes, $graphLastUpdate, $error,
-        $sig2arr
+        $graphIsLive, $graphActualRes, $graphLastUpdate, $error
     ): array {
         $ds = $datestart->int();
         $de = $dateend->int();
@@ -240,9 +224,9 @@ $app->page('/', function (Context $c) use ($app): void {
             $data = Config::$db->get_graph_data(
                 $ds,
                 $de,
-                $sig2arr($graphSources->getValue()),
-                $sig2arr($graphProtocols->getValue()),
-                $sig2arr($graphPorts->getValue()),
+                $graphSources->array(),
+                $graphProtocols->array(),
+                $graphPorts->array(),
                 $unit,
                 $graphDisplay->string(),
                 $graphResolution->int()
@@ -257,7 +241,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $pointCount = count($data[array_key_first($data) ?? ''] ?? $data);
         $actualRes  = $pointCount > 0 ? (int) ($windowSize / $pointCount) : 0;
         $graphActualRes->setValue($actualRes, broadcast: false);
-        $graphLastUpdate->setValue(date('Y-m-d H:i:s'), broadcast: false);
+        $graphLastUpdate->setValue(time(), broadcast: false);
 
         return $data;
     };
@@ -284,33 +268,37 @@ $app->page('/', function (Context $c) use ($app): void {
     $flowAction = $c->action(function (Context $c) use (
         $debug, $makeToast,
         $datestart, $dateend, $flowFilter, $flowLimit,
-        $flowAggregation, $flowOrderByTstart,
+        $flowAggBidirectional, $flowAggProto, $flowAggSrcPort, $flowAggDstPort,
+        $flowAggSrcIp, $flowAggSrcIpPrefix, $flowAggDstIp, $flowAggDstIpPrefix,
+        $flowOrderByTstart,
         $flowCount, $flowMessage,
-        $sig2arr,
         &$flowTableHtml
     ): void {
         $time = microtime(true);
 
-        // Build aggregation string
-        $agg = $sig2arr($flowAggregation->getValue());
+        // Build aggregation string from individual signals
         $aggregate = '';
-        if (!empty($agg['bidirectional'])) {
+        if ($flowAggBidirectional->bool()) {
             $aggregate = 'bidirectional';
         } else {
             $parts = [];
-            foreach (['proto', 'srcport', 'dstport'] as $k) {
-                if (!empty($agg[$k])) {
-                    $parts[] = $k;
+            if ($flowAggProto->bool())   { $parts[] = 'proto'; }
+            if ($flowAggSrcPort->bool()) { $parts[] = 'srcport'; }
+            if ($flowAggDstPort->bool()) { $parts[] = 'dstport'; }
+            $srcIp = $flowAggSrcIp->string();
+            if ($srcIp !== 'none' && $srcIp !== '') {
+                if (in_array($srcIp, ['srcip4', 'srcip6'], true) && ($p = trim($flowAggSrcIpPrefix->string())) !== '') {
+                    $parts[] = $srcIp . '/' . $p;
+                } else {
+                    $parts[] = $srcIp;
                 }
             }
-            foreach (['srcip', 'dstip'] as $k) {
-                if (!empty($agg[$k]) && $agg[$k] !== 'none') {
-                    $v = $agg[$k];
-                    if (in_array($v, ['srcip4', 'srcip6', 'dstip4', 'dstip6'], true) && !empty($agg[$k . 'Prefix'])) {
-                        $parts[] = $v . '/' . $agg[$k . 'Prefix'];
-                    } else {
-                        $parts[] = $v;
-                    }
+            $dstIp = $flowAggDstIp->string();
+            if ($dstIp !== 'none' && $dstIp !== '') {
+                if (in_array($dstIp, ['dstip4', 'dstip6'], true) && ($p = trim($flowAggDstIpPrefix->string())) !== '') {
+                    $parts[] = $dstIp . '/' . $p;
+                } else {
+                    $parts[] = $dstIp;
                 }
             }
             $aggregate = implode(',', $parts);
@@ -372,14 +360,13 @@ $app->page('/', function (Context $c) use ($app): void {
         $datestart, $dateend, $statsFilter, $statsCount,
         $statsFor, $statsOrderBy, $statsSources,
         $statsMessage,
-        $sig2arr,
         &$statsTableHtml
     ): void {
         $time = microtime(true);
         $forParam = $statsFor->string() . '/' . $statsOrderBy->string();
 
         try {
-            $srcs = $sig2arr($statsSources->getValue()) ?: Config::$cfg['general']['sources'];
+            $srcs = $statsSources->array() ?: Config::$cfg['general']['sources'];
             $processor = new Config::$processorClass();
             $processor->setOption('-M', implode(':', $srcs));
             $processor->setOption('-R', [$datestart->int(), $dateend->int()]);
@@ -466,7 +453,10 @@ $app->page('/', function (Context $c) use ($app): void {
         $graphDisplay, $graphSources, $graphPorts, $graphProtocols,
         $graphDatatype, $graphTrafficUnit, $graphResolution,
         $graphIsLive, $graphActualRes, $graphLastUpdate,
-        $flowFilter, $flowLimit, $flowAggregation, $flowOrderByTstart, $flowCount, $flowMessage,
+        $flowFilter, $flowLimit,
+        $flowAggBidirectional, $flowAggProto, $flowAggSrcPort, $flowAggDstPort,
+        $flowAggSrcIp, $flowAggSrcIpPrefix, $flowAggDstIp, $flowAggDstIpPrefix,
+        $flowOrderByTstart, $flowCount, $flowMessage,
         $statsSources, $statsFilter, $statsCount, $statsFor, $statsOrderBy, $statsMessage,
         $hostResult,
         $refreshGraphsAction, $flowAction, $statsAction, $hostAction,
@@ -507,10 +497,17 @@ $app->page('/', function (Context $c) use ($app): void {
             'graphActualRes'   => $graphActualRes,
             'graphLastUpdate'  => $graphLastUpdate,
             // Flow filter signals
-            'flowFilter'        => $flowFilter,
-            'flowLimit'         => $flowLimit,
-            'flowAggregation'   => $flowAggregation,
-            'flowOrderByTstart' => $flowOrderByTstart,
+            'flowFilter'            => $flowFilter,
+            'flowLimit'             => $flowLimit,
+            'flowAggBidirectional'  => $flowAggBidirectional,
+            'flowAggProto'          => $flowAggProto,
+            'flowAggSrcPort'        => $flowAggSrcPort,
+            'flowAggDstPort'        => $flowAggDstPort,
+            'flowAggSrcIp'          => $flowAggSrcIp,
+            'flowAggSrcIpPrefix'    => $flowAggSrcIpPrefix,
+            'flowAggDstIp'          => $flowAggDstIp,
+            'flowAggDstIpPrefix'    => $flowAggDstIpPrefix,
+            'flowOrderByTstart'     => $flowOrderByTstart,
             'flowCount'         => $flowCount,
             'flowMessage'       => $flowMessage,
             // Stats filter signals

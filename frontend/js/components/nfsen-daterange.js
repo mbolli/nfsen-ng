@@ -168,14 +168,30 @@ export class NfsenDateRange extends HTMLElement {
 
     attributeChangedCallback(name, oldValue, newValue) {
         if (oldValue !== newValue && this.isConnected && this.slider) {
-            const updates = {};
+            // Skip update if container has no rendered width — Ion.RangeSlider 2.2.0
+            // crashes in calcGridCollision when the grid labels aren't laid out yet.
+            if (!this.offsetWidth) return;
 
-            if (name === 'data-min') updates.min = parseInt(newValue);
-            if (name === 'data-max') updates.max = parseInt(newValue);
-            if (name === 'data-from') updates.from = parseInt(newValue);
-            if (name === 'data-to') updates.to = parseInt(newValue);
+            // Batch attribute changes: multiple attrs may fire in the same microtask;
+            // defer to a single slider.update() call to avoid cascading re-inits.
+            if (!this._pendingUpdates) this._pendingUpdates = {};
+            if (name === 'data-min') this._pendingUpdates.min = parseInt(newValue);
+            if (name === 'data-max') this._pendingUpdates.max = parseInt(newValue);
+            if (name === 'data-from') this._pendingUpdates.from = parseInt(newValue);
+            if (name === 'data-to') this._pendingUpdates.to = parseInt(newValue);
 
-            this.slider.update(updates);
+            clearTimeout(this._updateTimer);
+            this._updateTimer = setTimeout(() => {
+                if (this._pendingUpdates && Object.keys(this._pendingUpdates).length) {
+                    try {
+                        this.slider.update(this._pendingUpdates);
+                    } catch (e) {
+                        // Ion.RangeSlider 2.2.0 can crash in calcGridCollision when
+                        // the grid has fewer labels than expected (zero-width container).
+                    }
+                    this._pendingUpdates = {};
+                }
+            }, 0);
         }
     }
 

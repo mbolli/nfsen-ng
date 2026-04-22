@@ -100,13 +100,14 @@
     </main>
 
     {# ── Server stats footer ───────────────────────────────────────────────── #}
-    <div id="server-stats" class="mt-2 p-2 bg-light border rounded text-center text-muted small">
+    <footer class="mt-4 pt-2 border-top text-center text-muted small">
         <span class="badge bg-primary">{{ connections }} connection{{ connections != 1 ? 's' : '' }}</span>
-        nfsen-ng {{ version }}
-    </div>
-
-    <footer class="mt-2 text-center text-muted small">
-        <p>nfsen-ng {{ version }} &mdash; NetFlow Sensor Next Generation</p>
+        &bull;
+        <a href="https://github.com/mbolli/nfsen-ng" target="_blank" rel="noopener" class="text-muted">nfsen-ng {{ version }}</a>
+        &bull;
+        <a href="https://github.com/mbolli/nfsen-ng/releases" target="_blank" rel="noopener" class="text-muted">Changelog</a>
+        &bull;
+        <a href="https://github.com/mbolli/nfsen-ng/issues" target="_blank" rel="noopener" class="text-muted">Issues</a>
     </footer>
 
     {# ── JS ────────────────────────────────────────────────────────────────── #}
@@ -122,6 +123,8 @@
         };
     </script>
 
+    <script src="{{ basePath }}frontend/js/jquery.min.js"></script>
+    <script src="{{ basePath }}frontend/js/ion.rangeSlider.min.js"></script>
     <script src="{{ basePath }}frontend/js/popper.min.js"></script>
     <script src="{{ basePath }}frontend/js/bootstrap.min.js"></script>
     <script src="{{ basePath }}frontend/js/dygraph.min.js"></script>

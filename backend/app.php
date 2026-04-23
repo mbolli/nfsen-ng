@@ -193,8 +193,6 @@ $app->page('/', function (Context $c) use ($app): void {
     $statsMessage  = $c->signal('', 'statsMessage');
     $statsSources  = $c->signal(Config::$cfg['general']['sources'] ?? [], 'stats_sources', clientWritable: true);
 
-    // Host modal
-    $hostResult = $c->signal('', '_hostResult');
 
     // ── State containers (plain PHP — NOT signals, not sent to browser) ──────
     // These carry large result sets between the action and the view closure.
@@ -406,24 +404,30 @@ $app->page('/', function (Context $c) use ($app): void {
         $c->sync();
     }, 'stats-actions');
 
-    // Host / IP resolution
-    $hostAction = $c->action(function (Context $c) use ($hostResult): void {
+    // IP info: geo lookup + hostname resolution — pushes a rendered modal fragment,
+    // no full page re-render. The browser JS triggers this action; Datastar patches
+    // the fragment into #ip-modal-placeholder and JS calls Bootstrap .show().
+    $ipInfoAction = $c->action(function (Context $c): void {
         $ip = $c->input('ip') ?? '';
 
         if (empty($ip) || !filter_var($ip, FILTER_VALIDATE_IP)) {
-            $hostResult->setValue('<div class="alert alert-danger">Invalid IP address</div>', broadcast: false);
-            $c->sync();
-
             return;
         }
 
+        // 1. Geo lookup (server-side — no CORS issue)
+        $geoData = [];
+        $ctx = stream_context_create(['http' => ['timeout' => 5, 'user_agent' => 'nfsen-ng']]);
+        $json = @file_get_contents('https://ipapi.co/' . rawurlencode($ip) . '/json/', false, $ctx);
+        if ($json !== false) {
+            $geoData = json_decode($json, true) ?? [];
+        }
+
+        // 2. Hostname resolution
         $hostname = @gethostbyaddr($ip);
         if ($hostname === $ip || $hostname === false) {
             $esc = escapeshellarg((string) $ip);
             exec("host -W 5 {$esc} 2>&1", $out, $ret);
-            if ($ret !== 0) {
-                $hostname = 'Error: ' . (!empty($out) ? implode(' ', $out) : 'could not be resolved');
-            } else {
+            if ($ret === 0) {
                 $domains = [];
                 foreach ($out as $line) {
                     if (preg_match('/domain name pointer (.*)\./', $line, $m)) {
@@ -431,14 +435,26 @@ $app->page('/', function (Context $c) use ($app): void {
                     }
                 }
                 $hostname = $domains ? implode(', ', $domains) : 'could not be resolved';
+            } else {
+                $hostname = 'could not be resolved';
             }
         }
 
-        // Store plain text — template wraps it in the heading element.
-        // _hostResult is underscore-prefixed: server pushes it, browser never sends it back.
-        $hostResult->setValue(htmlspecialchars((string) $hostname, ENT_QUOTES), broadcast: false);
-        $c->sync();
-    }, 'host');
+        // 3. Render modal HTML and push as a fragment — no full page re-render
+        $modalHtml = $c->render('partials/ip-info-modal.html.twig', [
+            'ip'       => htmlspecialchars($ip, ENT_QUOTES),
+            'hostname' => htmlspecialchars((string) $hostname, ENT_QUOTES),
+            'geoData'  => $geoData,
+        ]);
+
+        $c->getPatchManager()->queuePatch([
+            'type'    => 'elements',
+            'content' => $modalHtml,
+        ]);
+
+        // 4. Show modal via JS after the fragment lands
+        $c->execScript('bootstrap.Modal.getOrCreateInstance(document.getElementById("ip-modal-inner")).show()');
+    }, 'ip-info');
 
     // ── View ─────────────────────────────────────────────────────────────────
     // Re-renders the full page on every $c->sync() (actions) and every
@@ -458,8 +474,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $flowAggSrcIp, $flowAggSrcIpPrefix, $flowAggDstIp, $flowAggDstIpPrefix,
         $flowOrderByTstart, $flowCount, $flowMessage,
         $statsSources, $statsFilter, $statsCount, $statsFor, $statsOrderBy, $statsMessage,
-        $hostResult,
-        $refreshGraphsAction, $flowAction, $statsAction, $hostAction,
+        $refreshGraphsAction, $flowAction, $statsAction, $ipInfoAction,
         &$flowTableHtml, &$statsTableHtml
     ): string {
         // Always fetch fresh graph data (on broadcast the RRD file is already updated)
@@ -517,14 +532,11 @@ $app->page('/', function (Context $c) use ($app): void {
             'statsOrderBy' => $statsOrderBy,
             'statsSources' => $statsSources,
             'statsMessage' => $statsMessage,
-            // Host modal
-            'hostResult' => $hostResult,
-
             // ── Action URLs ────────────────────────────────────────────────
             'action_refreshGraphs' => $refreshGraphsAction->url(),
             'action_flowActions'   => $flowAction->url(),
             'action_statsActions'  => $statsAction->url(),
-            'action_host'          => $hostAction->url(),
+            'action_ipInfo'        => $ipInfoAction->url(),
 
             // ── Computed / pre-rendered data ──────────────────────────────
             'graphData'        => json_encode($graphData, JSON_THROW_ON_ERROR),

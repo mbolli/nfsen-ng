@@ -111,15 +111,10 @@
     </footer>
 
     {# ── JS ────────────────────────────────────────────────────────────────── #}
-    {#
-        Expose action URLs and signal IDs for JS web components that need them.
-        hostResult signal: underscore-prefixed — server pushes the resolved hostname,
-        browser displays it, never sends it back.
-    #}
+    {# Expose action URLs for JS web components #}
     <script>
         window.__nfsen = {
-            hostActionUrl:  '{{ action_host }}',
-            hostResultId:   '{{ hostResult.id() }}'
+            ipInfoActionUrl: '{{ action_ipInfo }}'
         };
     </script>
 
@@ -173,6 +168,9 @@
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-daterange.js"></script>
     <script type="module" src="{{ basePath }}frontend/js/components/dark-mode-toggle.js"></script>
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-toast.js"></script>
+    {# Placeholder for the server-rendered IP info modal fragment #}
+    <div id="ip-modal-placeholder"></div>
+
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-ip-info-modal.js"></script>
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-filter-manager.js"></script>
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-tooltip.js"></script>

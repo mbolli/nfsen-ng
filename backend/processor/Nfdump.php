@@ -289,11 +289,11 @@ class Nfdump implements Processor {
         // - Other aggregations (-A*) without -o csv produce fixed-width format
         // - Other aggregations (-A*) WITH -o csv produce proper parseable CSV
         // Note: setOption() method automatically forces csv when json+aggregation is requested
-        $isBidirectional = isset($this->cfg['option']['-a']) && str_contains($this->cfg['option']['-a'], 'B');
+        $isBidirectional = isset($this->cfg['option']['-B']) || (isset($this->cfg['option']['-a']) && str_contains($this->cfg['option']['-a'], 'B'));
         $isAggregationWithoutCsv = isset($this->cfg['option']['-a']) && $this->cfg['format'] !== 'csv';
 
         if ($isBidirectional || $isAggregationWithoutCsv) {
-            $this->d->log('Aggregation detected (-a flag=' . ($this->cfg['option']['-a'] ?? 'null') . ') producing fixed-width format (bidirectional=' . ($isBidirectional ? 'yes' : 'no') . ', format=' . ($this->cfg['format'] ?? 'null') . '), returning enhanced raw output', LOG_DEBUG);
+            $this->d->log('Aggregation detected (-B=' . (isset($this->cfg['option']['-B']) ? 'yes' : 'no') . ', -a flag=' . ($this->cfg['option']['-a'] ?? 'null') . ') producing fixed-width format (bidirectional=' . ($isBidirectional ? 'yes' : 'no') . ', format=' . ($this->cfg['format'] ?? 'null') . '), returning enhanced raw output', LOG_DEBUG);
 
             $result = [
                 'command' => $command,
@@ -428,7 +428,7 @@ class Nfdump implements Processor {
         // if start file does not exist, increment by 5 minutes and try again
         while ($filestartexists === false && $counter < 10000) {
             if ($start >= $end) {
-                break;
+                throw new \Exception('No nfcapd data files found for the requested time range.');
             }
 
             foreach ($this->cfg['env']['sources'] as $source) {
@@ -531,6 +531,13 @@ class Nfdump implements Processor {
                     }
                 }
                 $enhancedLines[] = '<b>Summary:</b> ' . implode(', ', $newParts);
+
+                continue;
+            }
+
+            // Flow data rows start with a timestamp like "2026-04-22 10:43:..." — don't split on colon
+            if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:/', $trim)) {
+                $enhancedLines[] = $line;
 
                 continue;
             }

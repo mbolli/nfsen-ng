@@ -81,7 +81,7 @@
                        min="50" max="2000" step="50"
                        {{ bind(graphResolution) }}
                        title="Number of data points (higher = more detail)"
-                       data-on:input="el.dispatchEvent(new Event('change', { bubbles: true }))">
+                       data-on:change__stop="@post('{{ action_refreshGraphs }}')">
                 <div class="d-flex justify-content-between small text-muted">
                     <span>50</span><span>2000</span>
                 </div>

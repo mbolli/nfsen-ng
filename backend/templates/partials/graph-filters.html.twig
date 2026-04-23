@@ -15,7 +15,7 @@
     controls; mayUpdateGraph() guards against spurious triggers from other panels.
 #}
 <div class="row"
-     data-signals='{"_graph_logscale": false, "_graph_stacked": false, "_graph_stepplot": true}'
+     data-signals='{"_graph_logscale": false, "_graph_stacked": false, "_graph_stepplot": true, "_sourcesDefault": {{ sources|json_encode }}}'
      data-computed:graph._config="{{ '{' }} sources: ${{ graphSources.id() }}, protocols: ${{ graphProtocols.id() }}, ports: ${{ graphPorts.id() }}, display: ${{ graphDisplay.id() }}, type: ${{ graphDatatype.id() }}, trafficUnit: ${{ graphTrafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot {{ '}' }}"
      data-indicator:graph._connecting
      data-on-interval__duration.15s.leading="!$_connecting && ${{ graphIsLive.id() }} && @post('{{ action_refreshGraphs }}')"
@@ -27,7 +27,7 @@
             <nfsen-tooltip text="Choose what to visualize: individual sources, protocol breakdown, or port statistics." placement="top"></nfsen-tooltip>
         </p>
         <select id="filterDisplaySelect" class="form-control form-select" {{ bind(graphDisplay) }}
-                data-on:change="el.value === 'protocols' ? ${{ graphProtocols.id() }} = ['tcp', 'udp', 'icmp', 'other'] : (${{ graphProtocols.id() }} = ['any'])">
+                data-on:change="el.value === 'protocols' ? ${{ graphProtocols.id() }} = ['tcp', 'udp', 'icmp', 'other'] : (${{ graphProtocols.id() }} = ['any']); el.value === 'sources' && (${{ graphSources.id() }} = $_sourcesDefault)">
             <option value="sources">Sources</option>
             <option value="protocols">Protocols</option>
             <option value="ports">Ports</option>

@@ -81,12 +81,12 @@ class Table {
 
         // Handle empty data
         if (empty($data)) {
-            return \sprintf(
-                '<div id="%s" class="alert alert-info">%s<br>Original output: <pre>%s</pre></div>',
-                $tableId,
-                $options['emptyMessage'],
-                var_export($options['originalData'] ?? null, true)
-            );
+            if (!empty($options['originalData'])) {
+                // Raw aggregated output (e.g. bidirectional) — render as pre-formatted text
+                return \sprintf('<div id="%s"><pre class="nfsen-raw-output">%s</pre></div>', $tableId, $options['originalData']);
+            }
+
+            return \sprintf('<div id="%s" class="alert alert-info">%s</div>', $tableId, $options['emptyMessage']);
         }
 
         // Get column headers from first row

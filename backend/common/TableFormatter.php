@@ -187,7 +187,8 @@ class TableFormatter {
 
             if (filter_var($value, FILTER_VALIDATE_IP)) {
                 return \sprintf(
-                    '<a href="#" class="ip-link" data-on:click__prevent="@post(window.__nfsen.ipInfoActionUrl+\'?ip=\'+encodeURIComponent(\'%s\'))">%s</a>',
+                    '<a href="#" class="ip-link" data-on:click__prevent="@post(\'%s?ip=\'+encodeURIComponent(\'%s\'))">%s</a>',
+                    htmlspecialchars((string) ($options['ipInfoActionUrl'] ?? ''), ENT_QUOTES | ENT_HTML5),
                     htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5),
                     htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5)
                 );

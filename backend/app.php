@@ -270,7 +270,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $flowAggSrcIp, $flowAggSrcIpPrefix, $flowAggDstIp, $flowAggDstIpPrefix,
         $flowOrderByTstart,
         $flowCount, $flowMessage,
-        &$flowTableHtml
+        &$flowTableHtml, &$ipInfoAction
     ): void {
         $time = microtime(true);
 
@@ -339,9 +339,10 @@ $app->page('/', function (Context $c) use ($app): void {
             $flowMessage->setValue($msg, broadcast: false);
 
             $flowTableHtml = Table::generate($flowData, 'flowTable', [
-                'hiddenFields'    => [],
-                'linkIpAddresses' => true,
-                'originalData'    => $result['rawOutput'] ?? null,
+                'hiddenFields'      => [],
+                'linkIpAddresses'   => true,
+                'ipInfoActionUrl'   => $ipInfoAction->url(),
+                'originalData'      => $result['rawOutput'] ?? null,
             ]);
         } catch (\Throwable $e) {
             $debug->log('Flow action error: ' . $e->getMessage(), LOG_ERR);
@@ -358,7 +359,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $datestart, $dateend, $statsFilter, $statsCount,
         $statsFor, $statsOrderBy, $statsSources,
         $statsMessage,
-        &$statsTableHtml
+        &$statsTableHtml, &$ipInfoAction
     ): void {
         $time = microtime(true);
         $forParam = $statsFor->string() . '/' . $statsOrderBy->string();
@@ -391,9 +392,10 @@ $app->page('/', function (Context $c) use ($app): void {
             $statsMessage->setValue($msg, broadcast: false);
 
             $statsTableHtml = Table::generate($statsData, 'statsTable', [
-                'hiddenFields'    => [],
-                'linkIpAddresses' => true,
-                'originalData'    => $result['rawOutput'] ?? null,
+                'hiddenFields'      => [],
+                'linkIpAddresses'   => true,
+                'ipInfoActionUrl'   => $ipInfoAction->url(),
+                'originalData'      => $result['rawOutput'] ?? null,
             ]);
         } catch (\Throwable $e) {
             $debug->log('Stats action error: ' . $e->getMessage(), LOG_ERR);
@@ -536,8 +538,6 @@ $app->page('/', function (Context $c) use ($app): void {
             'action_refreshGraphs' => $refreshGraphsAction->url(),
             'action_flowActions'   => $flowAction->url(),
             'action_statsActions'  => $statsAction->url(),
-            'action_ipInfo'        => $ipInfoAction->url(),
-
             // ── Computed / pre-rendered data ──────────────────────────────
             'graphData'        => json_encode($graphData, JSON_THROW_ON_ERROR),
             'flowTableHtml'    => $flowTableHtml,

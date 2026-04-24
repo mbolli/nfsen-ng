@@ -11,7 +11,10 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <h4>Host: {{ hostname }}</h4>
+                    <dl class="row mb-3">
+                        <dt class="col-sm-3">Hostname</dt>
+                        <dd class="col-sm-9{% if hostname == 'could not be resolved' %} text-secondary fst-italic{% endif %}">{{ hostname }}</dd>
+                    </dl>
 
                     {% if geoData.error is defined and geoData.error %}
                         <div class="alert alert-warning">{{ geoData.reason ?? 'IP lookup failed' }}</div>

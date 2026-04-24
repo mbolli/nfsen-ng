@@ -187,9 +187,9 @@ class TableFormatter {
 
             if (filter_var($value, FILTER_VALIDATE_IP)) {
                 return \sprintf(
-                    '<nfsen-ip-info-modal data-ip="%s"><a href="#" class="ip-link">%s</a></nfsen-ip-info-modal>',
-                    htmlspecialchars((string) $value),
-                    htmlspecialchars((string) $value)
+                    '<a href="#" class="ip-link" data-on:click__prevent="@post(window.__nfsen.ipInfoActionUrl+\'?ip=\'+encodeURIComponent(\'%s\'))">%s</a>',
+                    htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5),
+                    htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5)
                 );
             }
         }

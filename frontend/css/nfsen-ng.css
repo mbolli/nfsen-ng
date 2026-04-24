@@ -158,6 +158,29 @@ pre,
     padding-bottom: 0.5rem;
 }
 
+/* LIVE badge — subtle breathing animation while live data is displayed */
+@keyframes live-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+.live-badge {
+    animation: live-pulse 2s ease-in-out infinite;
+}
+
+/* Import dot on Admin nav tab — pulses while import is running */
+@keyframes import-dot-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+.import-indicator-dot {
+    animation: import-dot-pulse 1.2s ease-in-out infinite;
+    width: 0.55rem !important;
+    height: 0.55rem !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+}
+
 /* sortable tables */
 th.sortable {
     cursor: pointer;

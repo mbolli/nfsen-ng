@@ -29,6 +29,7 @@ use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\Import;
 use mbolli\nfsen_ng\common\ImportDaemon;
 use mbolli\nfsen_ng\common\Table;
@@ -80,6 +81,7 @@ $app->onStart(function () use ($app): void {
 
     if (getenv('NFSEN_SKIP_DAEMON') === '1' || getenv('NFSEN_SKIP_DAEMON') === 'true') {
         $debug->log('ImportDaemon skipped (NFSEN_SKIP_DAEMON)', LOG_INFO);
+        $app->setGlobalState('daemon_disabled', true);
 
         return;
     }
@@ -99,11 +101,44 @@ $app->onStart(function () use ($app): void {
     // NOTE: Import::start() is not coroutine-safe per the original comment in
     // listen.php. If problems arise, move this call before $app->start() so it
     // runs synchronously before the server accepts connections.
-    \OpenSwoole\Coroutine::create(function () use ($daemon, $debug): void {
+    \OpenSwoole\Coroutine::create(function () use ($app, $daemon, $debug): void {
+        $app->setGlobalState('import_status_text', 'Initial import…');
+        if (!empty($app->getClients())) {
+            $app->broadcast('admin:import');
+        }
+
+        /** Append new Debug WARNING+ entries to the global log state. */
+        $flushLog = static function () use ($app): void {
+            $new = Debug::drainBuffer();
+            if ($new !== []) {
+                $log = $app->globalState('import_log', []);
+                $app->setGlobalState('import_log', array_merge($log, $new));
+            }
+        };
+
         try {
-            $daemon->initialImport();
+            $daemon->initialImport(function (array $progress) use ($app, $flushLog): void {
+                $app->setGlobalState('import_progress', $progress['pct']);
+                $app->setGlobalState('import_current_file', $progress['file']);
+                $app->setGlobalState('import_status_text', 'Initial import: ' . $progress['processed'] . ' / ' . $progress['total'] . ' files');
+                $app->setGlobalState('import_eta', $progress['eta']);
+                $flushLog();
+                if (!empty($app->getClients())) {
+                    $app->broadcast('admin:import');
+                }
+            });
+            $flushLog();
+            $app->setGlobalState('import_status_text', 'Initial import complete');
+            $app->setGlobalState('import_progress', 100);
+            $app->setGlobalState('import_current_file', '');
+            $app->setGlobalState('import_eta', '');
         } catch (\Throwable $e) {
             $debug->log('ImportDaemon: initial import failed: ' . $e->getMessage(), LOG_ERR);
+            $app->setGlobalState('import_status_text', 'Initial import failed: ' . $e->getMessage());
+        }
+
+        if (!empty($app->getClients())) {
+            $app->broadcast('admin:import');
         }
     });
 
@@ -113,6 +148,21 @@ $app->onStart(function () use ($app): void {
         try {
             $daemon->pollOnce(function () use ($app, $debug): void {
                 $debug->log('ImportDaemon: file imported → broadcasting rrd:live', LOG_DEBUG);
+
+                // Surface any RRD write warnings from this inotify-triggered import
+                $new = Debug::drainBuffer();
+                if ($new !== []) {
+                    $log = $app->globalState('import_log', []);
+                    $merged = array_merge($log, $new);
+                    if (count($merged) > 100) {
+                        $merged = array_slice($merged, -100);
+                    }
+                    $app->setGlobalState('import_log', $merged);
+                    if (!empty($app->getClients())) {
+                        $app->broadcast('admin:import');
+                    }
+                }
+
                 if (!empty($app->getClients())) {
                     $app->broadcast('rrd:live');
                 }
@@ -253,11 +303,16 @@ $app->page('/', function (Context $c) use ($app): void {
             return [];
         }
 
-        $windowSize = max(1, $de - $ds);
         $pointCount = count($data[array_key_first($data) ?? ''] ?? $data);
-        $actualRes  = $pointCount > 0 ? (int) ($windowSize / $pointCount) : 0;
-        $graphActualRes->setValue($actualRes, broadcast: false);
-        $graphLastUpdate->setValue(time(), broadcast: false);
+        $graphActualRes->setValue($pointCount, broadcast: false);
+
+        // Use the actual RRD last-write time rather than wall-clock "now"
+        $activeSources = $graphSources->array() ?: (Config::$cfg['general']['sources'] ?? []);
+        $lastWrite = empty($activeSources) ? 0 : max(array_map(
+            fn($s) => Config::$db->last_update($s),
+            $activeSources
+        ));
+        $graphLastUpdate->setValue($lastWrite > 0 ? $lastWrite : time(), broadcast: false);
 
         return $data;
     };
@@ -683,6 +738,11 @@ $app->page('/', function (Context $c) use ($app): void {
     /** @var array<array{name: string, last_update: int}> $cachedImportSources */
     $cachedImportSources = [];
 
+    // Health checks: cached per-tab; re-run at most every 30 s (or when not importing).
+    $lastHealthFetch = 0;
+    /** @var list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string}> */
+    $cachedHealthChecks = [];
+
     $c->view(function (bool $isUpdate) use (
         $c, $app, $fetchGraphData,
         $datestart, $dateend, $error,
@@ -697,18 +757,23 @@ $app->page('/', function (Context $c) use ($app): void {
         $importRunning, $confirmRescan,
         $refreshGraphsAction, $flowAction, $statsAction, $ipInfoAction,
         $triggerImportAction, $forceRescanAction, $cancelImportAction,
-        &$flowTableHtml, &$statsTableHtml, &$lastGraphFetch, &$cachedGraphData, &$cachedImportSources
+        &$flowTableHtml, &$statsTableHtml, &$lastGraphFetch, &$cachedGraphData, &$cachedImportSources,
+        &$lastHealthFetch, &$cachedHealthChecks
     ): string {
         // Sync importRunning signal to daemon lock state so all tabs reflect the
         // correct value when re-rendered by an admin:import or rrd:live broadcast.
         $isImporting = $app->globalState('daemon', null)?->isLocked() ?? false;
         $importRunning->setValue($isImporting, broadcast: false);
 
+        // Skip all data fetches when Config failed to initialize (fatal error path).
+        // The template will render the error banner and nothing else needs DB access.
+        $hasFatalError = $app->globalState('_fatalError', null) !== null;
+
         // During import, throttle fetchGraphData() to at most once every 10 seconds
         // per tab — avoids N×files×RRD-reads while still refreshing the graph live.
         // Between intervals, reuse the last cached result so chart and timestamps stay visible.
         $now = time();
-        if (!$isImporting || ($now - $lastGraphFetch) >= 10) {
+        if (!$hasFatalError && (!$isImporting || ($now - $lastGraphFetch) >= 10)) {
             $cachedGraphData = json_encode($fetchGraphData(), JSON_THROW_ON_ERROR);
             $lastGraphFetch = $now;
 
@@ -722,6 +787,46 @@ $app->page('/', function (Context $c) use ($app): void {
         }
         $graphData = $cachedGraphData;
         $importSources = $cachedImportSources;
+
+        // Health checks — throttled to at most once every 30 s per tab
+        if (!$hasFatalError && (!$isImporting || ($now - $lastHealthFetch) >= 30)) {
+            $cachedHealthChecks = HealthChecker::run((bool) $app->globalState('daemon_disabled', false));
+            $lastHealthFetch = $now;
+        }
+        $healthChecks = $cachedHealthChecks;
+
+        // ── Status indicator computation ──────────────────────────────────
+        // Capture health: infer nfcapd activity from most recent RRD last_update
+        $maxLastUpdate = empty($importSources) ? 0 : max(array_column($importSources, 'last_update'));
+        $captureAge    = $maxLastUpdate > 0 ? (time() - $maxLastUpdate) : PHP_INT_MAX;
+        if ($maxLastUpdate === 0) {
+            $captureStatus = 'secondary';
+            $captureLabel  = 'nfcapd: no data yet';
+        } elseif ($captureAge < 600) {
+            $captureStatus = 'success';
+            $ageStr = $captureAge < 60 ? "{$captureAge}s" : round($captureAge / 60) . 'min';
+            $captureLabel  = "nfcapd: last capture {$ageStr} ago";
+        } elseif ($captureAge < 3600) {
+            $captureStatus = 'warning';
+            $captureLabel  = 'nfcapd: no capture in ' . round($captureAge / 60) . 'min';
+        } else {
+            $captureStatus = 'danger';
+            $captureLabel  = 'nfcapd: no capture in ' . round($captureAge / 3600, 1) . 'h';
+        }
+
+        // Daemon health
+        $d2 = $app->globalState('daemon', null);
+        if ((bool) $app->globalState('daemon_disabled', false) || $d2 === null) {
+            $daemonStatus = 'danger';
+            $daemonLabel  = 'Import daemon: disabled (NFSEN_SKIP_DAEMON)';
+        } elseif (!$d2->isDaemonReady()) {
+            $daemonStatus = 'warning';
+            $daemonLabel  = 'Import daemon: initializing…';
+        } else {
+            $n = $d2->getWatchCount();
+            $daemonStatus = 'success';
+            $daemonLabel  = "Import daemon: watching {$n} dir" . ($n !== 1 ? 's' : '');
+        }
 
         return $c->render('layout.html.twig', [
             // ── App metadata ──────────────────────────────────────────────
@@ -796,6 +901,19 @@ $app->page('/', function (Context $c) use ($app): void {
             'importStatusText'    => $app->globalState('import_status_text', ''),
             'importEta'           => $app->globalState('import_eta', ''),
             'importLog'           => $app->globalState('import_log', []),
+            'daemonDisabled'      => (bool) $app->globalState('daemon_disabled', false),
+            'daemonInfo'          => ($d = $app->globalState('daemon', null)) !== null ? [
+                'ready'          => $d->isDaemonReady(),
+                'watchCount'     => $d->getWatchCount(),
+                'lastAutoImport' => $d->getLastAutoImportTime(),
+            ] : null,
+            // ── Status indicators ─────────────────────────────────────────
+            'captureStatus' => $captureStatus,
+            'captureLabel'  => $captureLabel,
+            'daemonStatus'  => $daemonStatus,
+            'daemonLabel'   => $daemonLabel,
+            // ── Health checks ─────────────────────────────────────────────
+            'healthChecks'  => $healthChecks,
         ]);
     }, cacheUpdates: false);
 });

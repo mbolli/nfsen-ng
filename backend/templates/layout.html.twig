@@ -120,7 +120,8 @@
     <script type="module">
         import * as datastar from "{{ basePath }}frontend/js/datastar.js";
 
-        {# Sync element *properties* (not attributes) from Datastar signals #}
+        {# data-prop:key — sets element *properties* (not attributes) from arbitrary expressions.
+           Built-in data-bind__prop.checked only handles signal binding, not computed expressions. #}
         datastar.attribute({
             name: 'prop',
             requirement: { value: 'must' },

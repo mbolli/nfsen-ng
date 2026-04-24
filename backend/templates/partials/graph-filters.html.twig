@@ -85,6 +85,7 @@
                    id="filterProtocol{{ value|capitalize }}"
                    value="{{ value }}"
                    data-prop:checked="${{ graphProtocols.id() }}.includes('{{ value }}')"
+
                    data-on:change="${{ graphDisplay.id() }} !== 'protocols' ? el.checked && (${{ graphProtocols.id() }} = [el.value]) : (el.checked ? ${{ graphProtocols.id() }}.push(el.value) : ${{ graphProtocols.id() }} = ${{ graphProtocols.id() }}.filter(p => p !== el.value))">
             <label class="btn btn-outline-primary btn-sm" for="filterProtocol{{ value|capitalize }}">{{ label }}</label>
             {% endfor %}

@@ -40,6 +40,9 @@ class ImportDaemon {
      */
     private bool $importLocked = false;
 
+    /** Unix timestamp of the last inotify-triggered import, 0 if none yet. */
+    private int $lastAutoImportTime = 0;
+
     public function __construct() {
         $this->debug = Debug::getInstance();
     }
@@ -56,6 +59,21 @@ class ImportDaemon {
         return $this->importLocked;
     }
 
+    /** True once inotify watches are set up (initial import has completed). */
+    public function isDaemonReady(): bool {
+        return $this->inotify !== false;
+    }
+
+    /** Number of directory paths currently watched by inotify. */
+    public function getWatchCount(): int {
+        return count($this->watches);
+    }
+
+    /** Unix timestamp of the most recent inotify-triggered import, 0 if none. */
+    public function getLastAutoImportTime(): int {
+        return $this->lastAutoImportTime;
+    }
+
     // ─── Public API ──────────────────────────────────────────────────────────
 
     /**
@@ -65,26 +83,32 @@ class ImportDaemon {
      * Note: If the Import class proves unsafe in a coroutine context, call this
      * directly in onStart() (blocking) before the server accepts connections.
      */
-    public function initialImport(): void {
-        $datasource = Config::$cfg['general']['db'];
-        $importYears = Config::$cfg['db'][$datasource]['import_years'] ?? 3;
+    public function initialImport(?callable $onProgress = null): void {
+        $this->lock();
+        try {
+            $datasource = Config::$cfg['general']['db'];
+            $importYears = Config::$cfg['db'][$datasource]['import_years'] ?? 3;
 
-        $this->debug->log("ImportDaemon: running initial import (last {$importYears} years)", LOG_INFO);
+            $this->debug->log("ImportDaemon: running initial import (last {$importYears} years)", LOG_INFO);
 
-        $start = new \DateTime();
-        $start->modify('-' . $importYears . ' years');
+            $start = new \DateTime();
+            $start->modify('-' . $importYears . ' years');
 
-        $importer = new Import();
-        $importer->setQuiet(false);
-        $importer->setVerbose(false);
-        $importer->setProcessPorts(true);
-        $importer->setProcessPortsBySource(true);
-        $importer->setCheckLastUpdate(true);
-        $importer->start($start);
+            $importer = new Import();
+            $importer->setQuiet(false);
+            $importer->setVerbose(false);
+            $importer->setProcessPorts(true);
+            $importer->setProcessPortsBySource(true);
+            $importer->setCheckLastUpdate(true);
+            $importer->start($start, $onProgress);
 
-        $this->debug->log('ImportDaemon: initial import done', LOG_INFO);
+            $this->debug->log('ImportDaemon: initial import done', LOG_INFO);
+        } finally {
+            $this->unlock();
+        }
 
         // Prepare the shared importer for ongoing use (quiet mode, no re-init)
+        // (only reached if start() did not throw)
         $this->importer = new Import();
         $this->importer->setQuiet(true);
         $this->importer->setVerbose(false);
@@ -122,8 +146,9 @@ class ImportDaemon {
             }
         }
 
-        // Refresh watches for today/tomorrow every hour
-        if (time() - $this->lastPathUpdate >= 3600) {
+        // Refresh watches for today/tomorrow every hour, or immediately when
+        // no directories are watched yet (e.g. today's dir appeared after startup).
+        if (count($this->watches) === 0 || time() - $this->lastPathUpdate >= 3600) {
             $this->debug->log('ImportDaemon: refreshing inotify watches', LOG_DEBUG);
             $this->addCurrentPaths();
             $this->lastPathUpdate = time();
@@ -259,6 +284,7 @@ class ImportDaemon {
 
             $this->importer->importFile($relativePath, $eventSource, $isLastSource);
             $this->debug->log("ImportDaemon: processed {$filename}", LOG_INFO);
+            $this->lastAutoImportTime = time();
             $onImportDone();
         } catch (\Throwable $e) {
             $this->debug->log("ImportDaemon: error processing {$filename}: " . $e->getMessage(), LOG_ERR);

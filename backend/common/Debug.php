@@ -10,6 +10,10 @@ class Debug {
     private bool $debug = true;
     private readonly bool $cli;
 
+    /** @var array<int,array{ts:int,level:int,msg:string}> Ring buffer for admin UI log drain. */
+    private static array $logBuffer = [];
+    private const LOG_BUFFER_MAX = 200;
+
     public function __construct() {
         $this->stopwatch = microtime(true);
         $this->cli = (\PHP_SAPI === 'cli');
@@ -37,6 +41,26 @@ class Debug {
                 echo date('Y-m-d H:i:s') . ' ' . $message . PHP_EOL;
             }
         }
+
+        // Always buffer LOG_WARNING and above so the admin UI can show them.
+        if ($priority <= \LOG_WARNING) {
+            self::$logBuffer[] = ['ts' => time(), 'level' => $priority, 'msg' => $message];
+            if (\count(self::$logBuffer) > self::LOG_BUFFER_MAX) {
+                array_shift(self::$logBuffer);
+            }
+        }
+    }
+
+    /**
+     * Drain and return all buffered log entries, clearing the buffer.
+     *
+     * @return array<int,array{ts:int,level:int,msg:string}>
+     */
+    public static function drainBuffer(): array {
+        $entries = self::$logBuffer;
+        self::$logBuffer = [];
+
+        return $entries;
     }
 
     /**

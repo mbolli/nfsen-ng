@@ -32,8 +32,28 @@ class ImportDaemon {
 
     private ?Import $importer = null;
 
+    /**
+     * Set by UI-triggered import actions to prevent pollOnce() from interleaving
+     * mid-scan (critical for force-rescan: reset() sets last_update=0, then a
+     * stray poll write would advance last_update to now, breaking all subsequent
+     * historical writes).
+     */
+    private bool $importLocked = false;
+
     public function __construct() {
         $this->debug = Debug::getInstance();
+    }
+
+    public function lock(): void {
+        $this->importLocked = true;
+    }
+
+    public function unlock(): void {
+        $this->importLocked = false;
+    }
+
+    public function isLocked(): bool {
+        return $this->importLocked;
     }
 
     // ─── Public API ──────────────────────────────────────────────────────────
@@ -81,6 +101,14 @@ class ImportDaemon {
     public function pollOnce(callable $onImportDone): void {
         if ($this->inotify === false) {
             // Watches not yet initialised (initial import still running)
+            return;
+        }
+
+        if ($this->importLocked) {
+            // A UI-triggered import is running; consume and discard inotify
+            // events to avoid advancing RRD last_update ahead of the scan.
+            @inotify_read($this->inotify);
+
             return;
         }
 

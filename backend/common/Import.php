@@ -25,11 +25,85 @@ class Import {
     }
 
     /**
+     * Count the number of nfcapd files that start() would process for the given
+     * start date. Used for progress-bar initialisation and dynamic recount.
+     * Respects $this->force: if true, counts all files (reset mode); if false,
+     * counts only files after each source's last_update.
+     */
+    public function countFiles(\DateTime $dateStart): int {
+        $sources = Config::$cfg['general']['sources'];
+        $sourcePath = Config::$cfg['nfdump']['profiles-data']
+            . \DIRECTORY_SEPARATOR
+            . Config::$cfg['nfdump']['profile'];
+        $count = 0;
+
+        foreach ($sources as $source) {
+            $date = clone $dateStart;
+            $lastUpdate = null;
+
+            if ($this->force === false) {
+                $lastUpdateDb = Config::$db->last_update($source);
+                if ($lastUpdateDb > 0) {
+                    $lastUpdate = (new \DateTime())->setTimestamp($lastUpdateDb);
+                    $date->setTimestamp($lastUpdateDb);
+                    $date->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+                }
+            }
+
+            while ((int) $date->format('Ymd') <= (int) (new \DateTime())->format('Ymd')) {
+                $scanPath = implode(\DIRECTORY_SEPARATOR, [
+                    $sourcePath, $source,
+                    $date->format('Y'), $date->format('m'), $date->format('d'),
+                ]);
+                $date->modify('+1 day');
+
+                if (!file_exists($scanPath)) {
+                    continue;
+                }
+
+                foreach (scandir($scanPath) as $file) {
+                    if (\in_array($file, ['.', '..'], true)) {
+                        continue;
+                    }
+                    if (!preg_match('/^nfcapd\.([0-9]{12})$/', (string) $file, $m)) {
+                        continue;
+                    }
+                    if ($lastUpdate !== null) {
+                        try {
+                            if ((new \DateTime($m[1])) <= $lastUpdate) {
+                                continue;
+                            }
+                        } catch (\Exception) {
+                            continue;
+                        }
+                    }
+                    ++$count;
+                }
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * @param callable(array{file:string,source:string,processed:int,total:int,pct:int,eta:string}):void|null $onProgress
+     *   Optional callback invoked after each successfully written file.
+     * @param callable():void|null $onTick
+     *   Optional callback invoked after each failed/skipped file (for log draining).
+     * @param callable():bool|null $shouldCancel
+     *   Optional callback checked before each file; return true to abort the import.
+     *
      * @throws \Exception
      */
-    public function start(\DateTime $dateStart): void {
+    public function start(\DateTime $dateStart, ?callable $onProgress = null, ?callable $onTick = null, ?callable $shouldCancel = null): void {
         $sources = Config::$cfg['general']['sources'];
         $processedSources = 0;
+
+        // Progress tracking
+        $total = ($onProgress !== null) ? $this->countFiles($dateStart) : 0;
+        $processed = 0;
+        $startTime = null;
+        $todayRecounted = false;
 
         // Validate RRD structure before starting import (if using RRD datasource and not in force mode)
         if ($this->force === false && Config::$db instanceof Rrd && !empty($sources)) {
@@ -91,11 +165,19 @@ class Import {
 
             // iterate from $datestart until today
             while ((int) $date->format('Ymd') <= (int) (new \DateTime())->format('Ymd')) {
+                $isToday = ($date->format('Ymd') === (new \DateTime())->format('Ymd'));
                 $scan = [$sourcePath, $source, $date->format('Y'), $date->format('m'), $date->format('d')];
                 $scanPath = implode(\DIRECTORY_SEPARATOR, $scan);
 
                 // set date to tomorrow for next iteration
                 $date->modify('+1 day');
+
+                // Dynamic recount when we first reach today's directory (non-force only).
+                // Catches any new nfcapd files that arrived during the long historical scan.
+                if ($onProgress !== null && $isToday && !$todayRecounted && $this->force === false) {
+                    $total = $processed + $this->countFiles($dateStart);
+                    $todayRecounted = true;
+                }
 
                 // if no data exists for current date  (e.g. .../2017/03/03)
                 if (!file_exists($scanPath)) {
@@ -118,6 +200,13 @@ class Import {
                 foreach ($scanFiles as $file) {
                     if (\in_array($file, ['.', '..'], true)) {
                         continue;
+                    }
+
+                    // Check for user-requested cancellation before each file.
+                    if ($shouldCancel !== null && $shouldCancel()) {
+                        $this->d->log('Import cancelled by user.', LOG_WARNING);
+
+                        return;
                     }
 
                     try {
@@ -154,8 +243,36 @@ class Import {
                         if ($this->processPortsBySource === true) {
                             $this->writePortsData($statsPath, $source);
                         }
+
+                        // Progress callback — invoked after each successfully written file
+                        if ($onProgress !== null) {
+                            ++$processed;
+                            if ($startTime === null) {
+                                $startTime = microtime(true);
+                            }
+                            $eta = '';
+                            $elapsed = microtime(true) - $startTime;
+                            if ($elapsed >= 1.0 && $total > $processed) {
+                                $rate = $processed / $elapsed;
+                                $etaSecs = (int) (($total - $processed) / $rate);
+                                $eta = $this->formatEta($etaSecs);
+                            }
+                            $onProgress([
+                                'file'      => $statsPath,
+                                'source'    => $source,
+                                'processed' => $processed,
+                                'total'     => $total,
+                                'pct'       => $total > 0 ? min(99, (int) (($processed / $total) * 100)) : 0,
+                                'eta'       => $eta,
+                            ]);
+                        }
                     } catch (\Exception $e) {
                         $this->d->log('Caught exception: ' . $e->getMessage(), LOG_WARNING);
+                        // Tick callback: lets the caller drain the log buffer immediately
+                        // rather than waiting for the next successful write.
+                        if ($onTick !== null) {
+                            $onTick();
+                        }
                     }
                 }
             }
@@ -167,6 +284,22 @@ class Import {
         if ($this->cli === true && $this->quiet === false) {
             echo ProgressBar::finish();
         }
+    }
+
+    private function formatEta(int $seconds): string {
+        if ($seconds < 60) {
+            return "~{$seconds}s";
+        }
+        if ($seconds < 3600) {
+            $m = (int) ($seconds / 60);
+            $s = $seconds % 60;
+
+            return "~{$m}m {$s}s";
+        }
+        $h = (int) ($seconds / 3600);
+        $m = (int) (($seconds % 3600) / 60);
+
+        return "~{$h}h {$m}m";
     }
 
     /**
@@ -299,6 +432,11 @@ class Import {
             }
         }
 
+        // No usable data decoded (e.g. nfdump could not read the file) — skip write.
+        if (empty($data['fields'])) {
+            return false;
+        }
+
         // write to database
         if (Config::$db->write($data) === false) {
             throw new \Exception('Error writing to ' . $statsPath);
@@ -352,6 +490,12 @@ class Import {
         } catch (\Exception $e) {
             $this->d->log('Exception: ' . $e->getMessage(), LOG_WARNING);
 
+            return false;
+        }
+
+        // No stats returned for this port (e.g. no matching flows or nfdump couldn't read the file).
+        // Skip the write so RRD last_update stays at the correct position for future runs.
+        if (empty($input['decoded'])) {
             return false;
         }
 

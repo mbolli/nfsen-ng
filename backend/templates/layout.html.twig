@@ -63,7 +63,9 @@
              data-text="${{ error.id() }}"
              style="display: none;"></div>
 
-        <div class="filter row align-items-start bg-light border-bottom py-3 mb-3" style="flex-direction: row">
+        <div class="filter row align-items-start bg-light border-bottom py-3 mb-3"
+             style="flex-direction: row"
+             data-show="$_currentView != 'admin'">
             <div class="col-12">
                 <div class="card">
                     <div class="card-body">
@@ -95,6 +97,9 @@
         </div>
         <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
             {% include 'partials/stats-view.html.twig' %}
+        </div>
+        <div data-show="$_currentView == 'admin'" class="col-12" style="display: none;">
+            {% include 'partials/admin.html.twig' %}
         </div>
 
     </main>

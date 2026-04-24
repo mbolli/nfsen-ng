@@ -1,0 +1,153 @@
+{# Admin panel — data source status, import controls, live progress #}
+
+{# ── Source status table ───────────────────────────────────────────────────── #}
+<div class="row mb-4 mt-4 justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header fw-semibold">Data Sources</div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th class="ps-3">Source</th>
+                            <th>Last Import</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for src in importSources %}
+                        <tr>
+                            <td class="ps-3"><code>{{ src.name }}</code></td>
+                            <td>
+                                {% if src.last_update > 0 %}
+                                    <span data-text="new Date({{ src.last_update }} * 1000).toLocaleString('sv')">
+                                        {{ src.last_update | date('Y-m-d H:i:s') }}
+                                    </span>
+                                {% else %}
+                                    <span class="text-muted fst-italic">Never</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="2" class="text-muted ps-3 py-2">No sources configured.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Progress bar — visible while import is running ────────────────────────── #}
+<div data-show="${{ importRunning.id() }}" style="display: none;" class="row mb-3 justify-content-center">
+    <div class="col-lg-8">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+            <small class="text-muted">{{ importStatusText }}</small>
+            <small class="fw-semibold">{{ importProgress }}%{% if importEta %} &mdash; {{ importEta }}{% endif %}</small>
+        </div>
+        <div class="progress mb-2" style="height: 22px;" role="progressbar"
+             aria-valuenow="{{ importProgress }}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar progress-bar-striped progress-bar-animated"
+                 style="width: {{ importProgress }}%"></div>
+        </div>
+        <div class="text-muted small{{ importCurrentFile ? '' : ' invisible' }}">
+            Current: <code>{{ importCurrentFile ?: '…' }}</code>
+        </div>
+    </div>
+</div>
+
+{# ── Import status / log — always shown when there's something to display ──── #}
+{% if importStatusText and not importRunning.getValue() %}
+<div class="row mb-3 justify-content-center">
+    <div class="col-lg-8">
+        <div class="alert alert-{{ importLog|filter(e => e.level <= 3)|length > 0 ? 'danger' : (importLog|length > 0 ? 'warning' : 'success') }} py-2 mb-0 small">
+            {{ importStatusText }}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% if importLog|length > 0 %}
+<div class="row mb-4 justify-content-center">
+    <div class="col-lg-8">
+        <div class="card border-warning">
+            <div class="card-header py-1 small fw-semibold text-warning-emphasis bg-warning-subtle">
+                Import log ({{ importLog|length }} warning{{ importLog|length != 1 ? 's' : '' }})
+            </div>
+            <div class="card-body p-0">
+                <div class="overflow-auto" style="max-height: 240px;">
+                    <table class="table table-sm table-borderless mb-0 font-monospace small">
+                        <tbody>
+                        {% for entry in importLog|reverse %}
+                            <tr class="{{ entry.level <= 3 ? 'table-danger' : 'table-warning' }}">
+                                <td class="ps-2 text-nowrap text-muted" style="width:1%">{{ entry.ts|date('H:i:s') }}</td>
+                                <td class="ps-3">{{ entry.msg }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ── Action buttons ────────────────────────────────────────────────────────── #}
+<div class="row justify-content-center">
+    <div class="col-auto d-flex gap-2 align-items-center flex-wrap">
+
+        {# Trigger import: catch up on any new nfcapd files since last import #}
+        <button class="btn btn-primary"
+                data-attr:disabled="${{ importRunning.id() }}"
+                data-show="!${{ importRunning.id() }}"
+                data-on:click="@post('{{ action_triggerImport }}')">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise me-1" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
+            </svg>
+            Trigger Import
+        </button>
+
+        {# Two-step confirm for destructive Force Rescan #}
+        <button class="btn btn-outline-danger"
+                data-attr:disabled="${{ importRunning.id() }}"
+                data-show="!${{ confirmRescan.id() }} && !${{ importRunning.id() }}"
+                data-on:click="${{ confirmRescan.id() }} = true">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-counterclockwise me-1" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2z"/>
+                <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308c-.12.1-.12.284 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466"/>
+            </svg>
+            Force Rescan
+        </button>
+
+        {# Cancel — only visible while an import is running #}
+        <button class="btn btn-warning"
+                data-show="${{ importRunning.id() }}" style="display: none;"
+                data-indicator:_cancel_loading
+                data-on:click="@post('{{ action_cancelImport }}')">            <span data-show="$_cancel_loading" style="display: none;" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            <svg data-show="!$_cancel_loading" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle me-1" viewBox="0 0 16 16">
+                <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"/>
+            </svg>
+            Cancel Import
+        </button>
+
+        <div data-show="${{ confirmRescan.id() }}" style="display: none;">
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+            <span class="text-danger fw-semibold small">
+                ⚠ Resets all RRD data and re-imports from scratch.
+            </span>
+            <button class="btn btn-danger btn-sm"
+                    data-attr:disabled="${{ importRunning.id() }}"
+                    data-on:click="@post('{{ action_forceRescan }}')">
+                Confirm &amp; Rescan
+            </button>
+            <button class="btn btn-secondary btn-sm"
+                    data-on:click="${{ confirmRescan.id() }} = false">
+                Cancel
+            </button>
+        </div>
+
+    </div>
+</div>

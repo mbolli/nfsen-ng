@@ -18,7 +18,7 @@
      data-signals='{"_graph_logscale": false, "_graph_stacked": false, "_graph_stepplot": true, "_sourcesDefault": {{ sources|json_encode }}}'
      data-computed:graph._config="{{ '{' }} sources: ${{ graphSources.id() }}, protocols: ${{ graphProtocols.id() }}, ports: ${{ graphPorts.id() }}, display: ${{ graphDisplay.id() }}, type: ${{ graphDatatype.id() }}, trafficUnit: ${{ graphTrafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot {{ '}' }}"
      data-indicator:graph._connecting
-     data-on-interval__duration.15s.leading="!$_connecting && ${{ graphIsLive.id() }} && @post('{{ action_refreshGraphs }}')"
+     data-on-interval__duration.15s.leading="!$_disconnected && ${{ graphIsLive.id() }} && @post('{{ action_refreshGraphs }}')""
      data-on:change__window__throttle.250ms="window.mayUpdateGraph(evt, el) && @post('{{ action_refreshGraphs }}')">
 
     {# Display type #}

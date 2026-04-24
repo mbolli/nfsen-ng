@@ -275,7 +275,17 @@ $app->page('/', function (Context $c) use ($app): void {
     // ── Actions ──────────────────────────────────────────────────────────────
 
     // Refresh graphs (called by the filter UI after any filter change)
-    $refreshGraphsAction = $c->action(function (Context $c) use ($fetchGraphData): void {
+    $refreshGraphsAction = $c->action(function (Context $c) use ($fetchGraphData, $datestart, $dateend): void {
+        // If the end date is within the live window (< 10 min old), slide the range
+        // forward to keep the "LIVE" badge active across repeated 15-second refreshes.
+        $now = time();
+        $de  = $dateend->int();
+        if ($now - $de < 600) {
+            $window = $de - $datestart->int();   // preserve the user's chosen window width
+            $dateend->setValue($now, broadcast: false);
+            $datestart->setValue($now - $window, broadcast: false);
+        }
+
         $fetchGraphData(); // signals updated in-place; view closure will read them
         $c->sync();
     }, 'refresh-graphs');

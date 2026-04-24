@@ -76,7 +76,7 @@
                    class="btn-check"
                    id="filterProtocolAny"
                    value="any"
-                   data-prop:checked="${{ graphProtocols.id() }}.includes('any') || (${{ graphDisplay.id() }} === 'protocols' && ${{ graphProtocols.id() }}.length >= 4)"
+                   data-effect="el.checked = ${{ graphProtocols.id() }}.includes('any') || (${{ graphDisplay.id() }} === 'protocols' && ${{ graphProtocols.id() }}.length >= 4)"
                    data-on:change="${{ graphDisplay.id() }} !== 'protocols' ? el.checked && (${{ graphProtocols.id() }} = ['any']) : (el.checked ? (${{ graphProtocols.id() }} = ['tcp', 'udp', 'icmp', 'other']) : ${{ graphProtocols.id() }} = ['tcp'])">
             <label class="btn btn-outline-primary btn-sm" for="filterProtocolAny">Any</label>
             {% for value, label in {'tcp': 'TCP', 'udp': 'UDP', 'icmp': 'ICMP', 'other': 'Others'} %}
@@ -84,7 +84,7 @@
                    class="btn-check"
                    id="filterProtocol{{ value|capitalize }}"
                    value="{{ value }}"
-                   data-prop:checked="${{ graphProtocols.id() }}.includes('{{ value }}')"
+                   data-effect="el.checked = ${{ graphProtocols.id() }}.includes('{{ value }}')"
 
                    data-on:change="${{ graphDisplay.id() }} !== 'protocols' ? el.checked && (${{ graphProtocols.id() }} = [el.value]) : (el.checked ? ${{ graphProtocols.id() }}.push(el.value) : ${{ graphProtocols.id() }} = ${{ graphProtocols.id() }}.filter(p => p !== el.value))">
             <label class="btn btn-outline-primary btn-sm" for="filterProtocol{{ value|capitalize }}">{{ label }}</label>

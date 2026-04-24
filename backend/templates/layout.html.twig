@@ -118,24 +118,6 @@
     <script src="{{ basePath }}frontend/js/dygraph.min.js"></script>
 
     <script type="module">
-        import * as datastar from "{{ basePath }}frontend/js/datastar.js";
-
-        {# data-prop:key — sets element *properties* (not attributes) from arbitrary expressions.
-           Built-in data-bind__prop.checked only handles signal binding, not computed expressions. #}
-        datastar.attribute({
-            name: 'prop',
-            requirement: { value: 'must' },
-            returnsValue: true,
-            apply({ el, key, rx }) {
-                const update = key
-                    ? () => { observer.disconnect(); el[key] = rx(); observer.observe(el, { attributeFilter: [key] }); }
-                    : () => { observer.disconnect(); const obj = rx(); const af = Object.keys(obj); for (const k of af) el[k] = obj[k]; observer.observe(el, { attributeFilter: af }); };
-                const observer = new MutationObserver(update);
-                const cleanup = datastar.effect(update);
-                return () => { observer.disconnect(); cleanup(); };
-            }
-        });
-
         /**
          * Returns true only when a filter-change event originated from inside
          * the graph filters panel or the date range controls. Prevents spurious

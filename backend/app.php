@@ -29,6 +29,7 @@ use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\Import;
 use mbolli\nfsen_ng\common\ImportDaemon;
 use mbolli\nfsen_ng\common\Table;
 
@@ -84,6 +85,15 @@ $app->onStart(function () use ($app): void {
     }
 
     $daemon = new ImportDaemon();
+    $app->setGlobalState('daemon', $daemon);
+
+    // Shared import progress — written by the import coroutine, read by every admin tab.
+    $app->setGlobalState('import_progress', 0);
+    $app->setGlobalState('import_current_file', '');
+    $app->setGlobalState('import_status_text', '');
+    $app->setGlobalState('import_eta', '');
+    $app->setGlobalState('import_log', []);
+    $app->setGlobalState('import_cancel', false);
 
     // Initial bulk import runs in a coroutine — does not block the event loop.
     // NOTE: Import::start() is not coroutine-safe per the original comment in
@@ -191,15 +201,23 @@ $app->page('/', function (Context $c) use ($app): void {
         clientWritable: true
     );
     $statsMessage  = $c->signal('', 'statsMessage');
-    $statsSources  = $c->signal(Config::$cfg['general']['sources'] ?? [], 'stats_sources', clientWritable: true);
 
+    // Admin / import signals
+    /** @var \mbolli\nfsen_ng\common\ImportDaemon|null $daemon */
+    $daemon = $app->globalState('daemon', null);
+    $importRunning = $c->signal($daemon !== null && $daemon->isLocked(), 'import_running');
+    // Client-writable: browser toggles confirm panel without a round-trip
+    $confirmRescan = $c->signal(false, 'confirm_rescan', clientWritable: true);
 
     // ── State containers (plain PHP — NOT signals, not sent to browser) ──────
     // These carry large result sets between the action and the view closure.
     $flowTableHtml  = '';
     $statsTableHtml = '';
 
-    // ── Subscribe to RRD import broadcasts ───────────────────────────────────
+    // ── Subscribe to import and RRD broadcasts ──────────────────────────────
+    // admin:import — live progress pushed from the import coroutine to all admin tabs
+    // rrd:live     — graph refresh after any import completes
+    $c->addScope('admin:import');
     $c->addScope('rrd:live');
 
     // ── Helper: fetch graph data from datasource ─────────────────────────────
@@ -357,7 +375,7 @@ $app->page('/', function (Context $c) use ($app): void {
     $statsAction = $c->action(function (Context $c) use (
         $debug, $makeToast,
         $datestart, $dateend, $statsFilter, $statsCount,
-        $statsFor, $statsOrderBy, $statsSources,
+        $statsFor, $statsOrderBy, $graphSources,
         $statsMessage,
         &$statsTableHtml, &$ipInfoAction
     ): void {
@@ -365,7 +383,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $forParam = $statsFor->string() . '/' . $statsOrderBy->string();
 
         try {
-            $srcs = $statsSources->array() ?: Config::$cfg['general']['sources'];
+            $srcs = $graphSources->array() ?: Config::$cfg['general']['sources'];
             $processor = new Config::$processorClass();
             $processor->setOption('-M', implode(':', $srcs));
             $processor->setOption('-R', [$datestart->int(), $dateend->int()]);
@@ -406,8 +424,190 @@ $app->page('/', function (Context $c) use ($app): void {
         $c->sync();
     }, 'stats-actions');
 
-    // IP info: geo lookup + hostname resolution — pushes a rendered modal fragment,
-    // no full page re-render. The browser JS triggers this action; Datastar patches
+    // Trigger import — runs a catch-up Import::start() in a coroutine.
+    // Progress is stored in global state and broadcast to the admin:import scope so
+    // ALL admin tabs see live updates. The coroutine never calls $c->sync(), so a
+    // dropped SSE connection on the triggering tab cannot abort the import.
+    $triggerImportAction = $c->action(function (Context $c) use (
+        $app, $debug, $daemon,
+        $importRunning
+    ): void {
+        if ($daemon === null || $daemon->isLocked()) {
+            return;
+        }
+
+        $daemon->lock();
+        $importRunning->setValue(true, broadcast: false);
+        $app->setGlobalState('import_progress', 0);
+        $app->setGlobalState('import_current_file', '');
+        $app->setGlobalState('import_status_text', 'Counting files…');
+        $app->setGlobalState('import_eta', '');
+        $app->setGlobalState('import_log', []);
+        Debug::drainBuffer(); // clear any stale entries from before this run
+        $c->sync();
+        if (!empty($app->getClients())) {
+            $app->broadcast('admin:import');
+        }
+
+        \OpenSwoole\Coroutine::create(function () use ($app, $debug, $daemon): void {
+            $app->setGlobalState('import_cancel', false);
+            /** Append new Debug WARNING+ entries to the global log state. */
+            $flushLog = static function () use ($app): void {
+                $new = Debug::drainBuffer();
+                if ($new !== []) {
+                    $log = $app->globalState('import_log', []);
+                    $app->setGlobalState('import_log', array_merge($log, $new));
+                    if (!empty($app->getClients())) {
+                        $app->broadcast('admin:import');
+                    }
+                }
+            };
+            try {
+                $datasource  = Config::$cfg['general']['db'];
+                $importYears = Config::$cfg['db'][$datasource]['import_years'] ?? 3;
+                $start       = (new \DateTime())->modify('-' . $importYears . ' years');
+
+                $importer = new Import();
+                $importer->setQuiet(true);
+                $importer->setProcessPorts(true);
+                $importer->setProcessPortsBySource(true);
+                $importer->setCheckLastUpdate(true);
+
+                $importer->start(
+                    $start,
+                    function (array $progress) use ($app, $flushLog): void {
+                        $flushLog();
+                        $app->setGlobalState('import_progress', $progress['pct']);
+                        $app->setGlobalState('import_current_file', $progress['file']);
+                        $app->setGlobalState('import_status_text',
+                            'Scanning ' . number_format($progress['processed'])
+                            . ' / ' . number_format($progress['total']) . ' files');
+                        $app->setGlobalState('import_eta', $progress['eta']);
+                        if (!empty($app->getClients())) {
+                            $app->broadcast('admin:import');
+                        }
+                    },
+                    $flushLog,
+                    static fn (): bool => (bool) $app->globalState('import_cancel', false)
+                );
+
+                $cancelled = (bool) $app->globalState('import_cancel', false);
+                $app->setGlobalState('import_status_text', $cancelled ? 'Import cancelled.' : 'Import complete.');
+                $app->setGlobalState('import_current_file', '');
+                $app->setGlobalState('import_eta', '');
+            } catch (\Throwable $e) {
+                $debug->log('Import failed: ' . $e->getMessage(), LOG_ERR);
+                $app->setGlobalState('import_status_text', 'Import failed: ' . $e->getMessage());
+            } finally {
+                $flushLog();
+                $app->setGlobalState('import_cancel', false);
+                $daemon->unlock();
+                $app->setGlobalState('import_progress', 100);
+                if (!empty($app->getClients())) {
+                    $app->broadcast('admin:import');
+                    $app->broadcast('rrd:live');
+                }
+            }
+        });
+    }, 'trigger-import');
+
+    // Force rescan — same as triggerImport but resets all RRD data first.
+    $forceRescanAction = $c->action(function (Context $c) use (
+        $app, $debug, $daemon,
+        $importRunning, $confirmRescan
+    ): void {
+        $confirmRescan->setValue(false);
+
+        if ($daemon === null || $daemon->isLocked()) {
+            return;
+        }
+
+        $daemon->lock();
+        $importRunning->setValue(true, broadcast: false);
+        $app->setGlobalState('import_progress', 0);
+        $app->setGlobalState('import_current_file', '');
+        $app->setGlobalState('import_status_text', 'Resetting RRD data…');
+        $app->setGlobalState('import_eta', '');
+        $app->setGlobalState('import_log', []);
+        Debug::drainBuffer(); // clear any stale entries from before this run
+        $c->sync();
+        if (!empty($app->getClients())) {
+            $app->broadcast('admin:import');
+        }
+
+        \OpenSwoole\Coroutine::create(function () use ($app, $debug, $daemon): void {
+            $app->setGlobalState('import_cancel', false);
+            /** Append new Debug WARNING+ entries to the global log state. */
+            $flushLog = static function () use ($app): void {
+                $new = Debug::drainBuffer();
+                if ($new !== []) {
+                    $log = $app->globalState('import_log', []);
+                    $app->setGlobalState('import_log', array_merge($log, $new));
+                    if (!empty($app->getClients())) {
+                        $app->broadcast('admin:import');
+                    }
+                }
+            };
+            try {
+                $datasource  = Config::$cfg['general']['db'];
+                $importYears = Config::$cfg['db'][$datasource]['import_years'] ?? 3;
+                $start       = (new \DateTime())->modify('-' . $importYears . ' years');
+
+                $importer = new Import();
+                $importer->setQuiet(true);
+                $importer->setForce(true);
+                $importer->setProcessPorts(true);
+                $importer->setProcessPortsBySource(true);
+
+                $importer->start(
+                    $start,
+                    function (array $progress) use ($app, $flushLog): void {
+                        $flushLog();
+                        $app->setGlobalState('import_progress', $progress['pct']);
+                        $app->setGlobalState('import_current_file', $progress['file']);
+                        $app->setGlobalState('import_status_text',
+                            'Scanning ' . number_format($progress['processed'])
+                            . ' / ' . number_format($progress['total']) . ' files');
+                        $app->setGlobalState('import_eta', $progress['eta']);
+                        if (!empty($app->getClients())) {
+                            $app->broadcast('admin:import');
+                        }
+                    },
+                    $flushLog,
+                    static fn (): bool => (bool) $app->globalState('import_cancel', false)
+                );
+
+                $cancelled = (bool) $app->globalState('import_cancel', false);
+                $app->setGlobalState('import_status_text', $cancelled ? 'Rescan cancelled.' : 'Rescan complete.');
+                $app->setGlobalState('import_current_file', '');
+                $app->setGlobalState('import_eta', '');
+            } catch (\Throwable $e) {
+                $debug->log('Rescan failed: ' . $e->getMessage(), LOG_ERR);
+                $app->setGlobalState('import_status_text', 'Rescan failed: ' . $e->getMessage());
+            } finally {
+                $flushLog();
+                $app->setGlobalState('import_cancel', false);
+                $daemon->unlock();
+                $app->setGlobalState('import_progress', 100);
+                if (!empty($app->getClients())) {
+                    $app->broadcast('admin:import');
+                    $app->broadcast('rrd:live');
+                }
+            }
+        });
+    }, 'force-rescan');
+
+    // Cancel import — sets the global cancel flag; the running import coroutine will
+    // detect it before the next file and exit cleanly.
+    $cancelImportAction = $c->action(function (Context $c) use ($app): void {
+        $app->setGlobalState('import_cancel', true);
+        $app->setGlobalState('import_status_text', 'Cancelling…');
+        if (!empty($app->getClients())) {
+            $app->broadcast('admin:import');
+        }
+    }, 'cancel-import');
+
+    // IP info: geo lookup + hostname resolution — pushes a rendered modal fragment,    // no full page re-render. The browser JS triggers this action; Datastar patches
     // the fragment into #ip-modal-placeholder and JS calls Bootstrap .show().
     $ipInfoAction = $c->action(function (Context $c): void {
         $ip = $c->input('ip') ?? '';
@@ -465,6 +665,14 @@ $app->page('/', function (Context $c) use ($app): void {
     //
     // cacheUpdates: false — each tab has independent filter state, no sharing.
 
+    // Throttle: last timestamp fetchGraphData() was actually called for this tab.
+    // Allows graph refreshes every 10s during import instead of per-file.
+    // Cached values are reused between refreshes so chart and timestamps stay visible.
+    $lastGraphFetch = 0;
+    $cachedGraphData = '[]';
+    /** @var array<array{name: string, last_update: int}> $cachedImportSources */
+    $cachedImportSources = [];
+
     $c->view(function (bool $isUpdate) use (
         $c, $app, $fetchGraphData,
         $datestart, $dateend, $error,
@@ -475,12 +683,35 @@ $app->page('/', function (Context $c) use ($app): void {
         $flowAggBidirectional, $flowAggProto, $flowAggSrcPort, $flowAggDstPort,
         $flowAggSrcIp, $flowAggSrcIpPrefix, $flowAggDstIp, $flowAggDstIpPrefix,
         $flowOrderByTstart, $flowCount, $flowMessage,
-        $statsSources, $statsFilter, $statsCount, $statsFor, $statsOrderBy, $statsMessage,
+        $statsFilter, $statsCount, $statsFor, $statsOrderBy, $statsMessage,
+        $importRunning, $confirmRescan,
         $refreshGraphsAction, $flowAction, $statsAction, $ipInfoAction,
-        &$flowTableHtml, &$statsTableHtml
+        $triggerImportAction, $forceRescanAction, $cancelImportAction,
+        &$flowTableHtml, &$statsTableHtml, &$lastGraphFetch, &$cachedGraphData, &$cachedImportSources
     ): string {
-        // Always fetch fresh graph data (on broadcast the RRD file is already updated)
-        $graphData = $fetchGraphData();
+        // Sync importRunning signal to daemon lock state so all tabs reflect the
+        // correct value when re-rendered by an admin:import or rrd:live broadcast.
+        $isImporting = $app->globalState('daemon', null)?->isLocked() ?? false;
+        $importRunning->setValue($isImporting, broadcast: false);
+
+        // During import, throttle fetchGraphData() to at most once every 10 seconds
+        // per tab — avoids N×files×RRD-reads while still refreshing the graph live.
+        // Between intervals, reuse the last cached result so chart and timestamps stay visible.
+        $now = time();
+        if (!$isImporting || ($now - $lastGraphFetch) >= 10) {
+            $cachedGraphData = json_encode($fetchGraphData(), JSON_THROW_ON_ERROR);
+            $lastGraphFetch = $now;
+
+            $cachedImportSources = [];
+            foreach (Config::$cfg['general']['sources'] ?? [] as $source) {
+                $cachedImportSources[] = [
+                    'name'        => $source,
+                    'last_update' => Config::$db->last_update($source),
+                ];
+            }
+        }
+        $graphData = $cachedGraphData;
+        $importSources = $cachedImportSources;
 
         return $c->render('layout.html.twig', [
             // ── App metadata ──────────────────────────────────────────────
@@ -532,18 +763,29 @@ $app->page('/', function (Context $c) use ($app): void {
             'statsCount'   => $statsCount,
             'statsFor'     => $statsFor,
             'statsOrderBy' => $statsOrderBy,
-            'statsSources' => $statsSources,
             'statsMessage' => $statsMessage,
             // ── Action URLs ────────────────────────────────────────────────
             'action_refreshGraphs' => $refreshGraphsAction->url(),
             'action_flowActions'   => $flowAction->url(),
             'action_statsActions'  => $statsAction->url(),
+            'action_triggerImport' => $triggerImportAction->url(),
+            'action_forceRescan'   => $forceRescanAction->url(),
+            'action_cancelImport'  => $cancelImportAction->url(),
             // ── Computed / pre-rendered data ──────────────────────────────
-            'graphData'        => json_encode($graphData, JSON_THROW_ON_ERROR),
+            'graphData'        => $graphData,
             'flowTableHtml'    => $flowTableHtml,
             'flowMessageHtml'  => $flowMessage->string(),
             'statsTableHtml'   => $statsTableHtml,
             'statsMessageHtml' => $statsMessage->string(),
+            // ── Admin / import ────────────────────────────────────────────
+            'importRunning'       => $importRunning,
+            'confirmRescan'       => $confirmRescan,
+            'importSources'       => $importSources,
+            'importProgress'      => $app->globalState('import_progress', 0),
+            'importCurrentFile'   => $app->globalState('import_current_file', ''),
+            'importStatusText'    => $app->globalState('import_status_text', ''),
+            'importEta'           => $app->globalState('import_eta', ''),
+            'importLog'           => $app->globalState('import_log', []),
         ]);
     }, cacheUpdates: false);
 });

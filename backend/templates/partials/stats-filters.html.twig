@@ -20,7 +20,7 @@
         <p class="h6">Sources
             <nfsen-tooltip text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
         </p>
-        <select {{ bind(statsSources) }} multiple class="form-control form-select">
+        <select {{ bind(graphSources) }} multiple class="form-control form-select">
             <option value="any">Any</option>
             {% for source in sources %}
             <option value="{{ source }}" selected>{{ source }}</option>

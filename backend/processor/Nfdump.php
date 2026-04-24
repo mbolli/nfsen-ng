@@ -191,6 +191,17 @@ class Nfdump implements Processor {
             $output = [];
         }
 
+        // No output at all — nfdump likely failed to open the file (stderr already logged above).
+        // Return empty decoded result so Import::start() can move on to the next file.
+        if (\count($output) === 0) {
+            $result = ['command' => $command, 'rawOutput' => '', 'decoded' => []];
+            if (!empty($stderr)) {
+                $result['stderr'] = trim($stderr);
+            }
+
+            return $result;
+        }
+
         // If we only have 1 line of output, it's likely an error message
         // BUT: single-line JSON output is valid (e.g., from -s statistics with -n 1)
         if (\count($output) === 1) {
@@ -310,7 +321,7 @@ class Nfdump implements Processor {
         }
 
         // if last element contains a colon AND no comma, it's not a csv (it's a summary like flows/packets/bytes)
-        $lastLine = $output[\count($output) - 1];
+        $lastLine = $output[\count($output) - 1] ?? '';
         if (str_contains($lastLine, ':') && !str_contains($lastLine, ',')) {
             // Parse summary format
             /** @var array<array<string, mixed>> $decoded */

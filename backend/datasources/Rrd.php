@@ -238,10 +238,26 @@ WARNING;
         $rrdFile = $this->get_data_path($data['source'], $data['port']);
         if (!file_exists($rrdFile)) {
             $this->create($data['source'], $data['port'], false);
+        } else {
+            $lastTs = rrd_last($rrdFile);
+            if (\is_int($lastTs)) {
+                if ($lastTs > time() + 86400 * 365) {
+                    // Corrupted far-future timestamp — recreate the file.
+                    $this->d->log('Recreating RRD with corrupted timestamp (' . $lastTs . '): ' . $rrdFile, \LOG_WARNING);
+                    $this->create($data['source'], $data['port'], true);
+                } else {
+                    $nearest = (int) $data['date_timestamp'] - ($data['date_timestamp'] % 300);
+                    if ($nearest <= $lastTs) {
+                        // Timestamp already covered — silently skip to avoid "illegal attempt to update" noise
+                        // when the import restarts mid-way and port RRDs are already ahead.
+                        return true;
+                    }
+                }
+            }
         }
 
         $nearest = (int) $data['date_timestamp'] - ($data['date_timestamp'] % 300);
-        $this->d->log('Writing to file ' . $rrdFile, LOG_DEBUG);
+        $this->d->log('Writing to file ' . $rrdFile, \LOG_DEBUG);
 
         // write data
         return (new \RRDUpdater($rrdFile))->update($data['fields'], (string) $nearest);
@@ -370,7 +386,7 @@ WARNING;
      * Creates a new database for every source/port combination.
      */
     public function reset(array $sources): bool {
-        $return = false;
+        $return = true;
         if (empty($sources)) {
             $sources = Config::$cfg['general']['sources'];
         }

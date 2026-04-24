@@ -58,6 +58,9 @@ services:
   #        sudo cp systemd/softflowd.service /etc/systemd/system/
   #        sudo systemctl enable --now softflowd
   #
+  # Note: network_mode: host is required because Docker's port-mapping NAT does
+  # not intercept loopback (127.0.0.1) traffic on Linux. Without it nfcapd
+  # receives 0 packets even though the port appears bound.
   # nfcapd writes nfcapd files to /var/nfdump/profiles-data/live/all/ on the
   # host (same directory the nfsen container reads via the shared volume).
   #
@@ -66,8 +69,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     container_name: nfsen-nfcapd
-    ports:
-      - "9995:9995/udp"  # NetFlow UDP — softflowd on the host sends here
+    network_mode: host  # Must use host networking so softflowd's loopback UDP reaches the container
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng
     entrypoint: ["/usr/local/nfdump/bin/nfcapd"]

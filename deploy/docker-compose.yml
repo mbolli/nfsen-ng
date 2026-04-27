@@ -27,17 +27,34 @@ services:
       - /var/nfdump/profiles-data:/data/nfsen-ng
     environment:
       - TZ=UTC
-      
-      # Import configuration (see ENVIRONMENT_VARIABLES.md for details)
+
+      # ── Sources & ports ───────────────────────────────────────────────────────
+      # Required: set to your actual nfcapd source names and ports to track.
+      # No settings.php needed — these env vars fully replace it for standard setups.
+      # For advanced use (custom filters, many sources), copy settings.php.dist instead.
+      - NFSEN_SOURCES=gw1                 # Comma-separated NetFlow source names
+      - NFSEN_PORTS=80,443,22,53          # Comma-separated port numbers to track
+      # - NFSEN_FILTERS=["proto tcp"]     # Optional: JSON array of nfdump filter presets
+
+      # ── nfdump ───────────────────────────────────────────────────────────────
+      - NFSEN_NFDUMP_BINARY=/usr/local/nfdump/bin/nfdump
+      - NFSEN_NFDUMP_PROFILES=/data/nfsen-ng  # Must match the container-side volume mount path
+      # - NFSEN_NFDUMP_PROFILE=live
+      # - NFSEN_NFDUMP_MAX_PROCESSES=1
+
+      # ── RRD storage ──────────────────────────────────────────────────────────
+      # - NFSEN_RRD_PATH=/var/nfsen-ng/rrd  # Default: backend/datasources/data
+
+      # ── Import (see ENVIRONMENT_VARIABLES.md for details) ────────────────────
       # - NFSEN_FORCE_IMPORT=true         # Reset database and import from scratch
       # - NFSEN_IMPORT_VERBOSE=true       # Show verbose import output
       # - NFSEN_SKIP_INITIAL_IMPORT=true  # Skip initial import on startup
       # - NFSEN_IMPORT_YEARS=5            # Import last N years (default: 3)
-      
-      # Logging (controls both application and Swoole)
+
+      # ── Logging (controls both application and Swoole) ───────────────────────
       # - NFSEN_LOG_LEVEL=INFO            # DEBUG, INFO, NOTICE, WARNING, ERR, CRIT, ALERT, EMERG
-      
-      # Swoole HTTP server performance tuning
+
+      # ── OpenSwoole ───────────────────────────────────────────────────────────
       # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 4, set to CPU cores)
       # - SWOOLE_MAX_REQUEST=50000        # Max requests per worker before restart (default: 10000)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)

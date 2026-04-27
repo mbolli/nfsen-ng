@@ -13,20 +13,32 @@ services:
       # - rrd-data:/var/nfsen-ng/rrd
     environment:
       - TZ=UTC
-      - NFSEN_NFDUMP_PROFILES=/data/nfsen-ng  # Must match the container-side volume mount path
-      # Uncomment to use separate RRD data path
-      # - NFSEN_RRD_PATH=/var/nfsen-ng/rrd
 
-      # Import configuration (see ENVIRONMENT_VARIABLES.md for details)
-      # - NFSEN_FORCE_IMPORT=true         # Reset database and import from scratch (use manually when needed)
+      # ── Sources & ports (comma-separated lists) ────────────────────────────
+      - NFSEN_SOURCES=all                  # NetFlow source names captured by nfcapd
+      - NFSEN_PORTS=80,22,53              # Ports tracked per-source in RRD
+      # - NFSEN_FILTERS=["proto tcp","dst port 80"]  # JSON array of nfdump filter presets
+
+      # ── nfdump ─────────────────────────────────────────────────────────────
+      - NFSEN_NFDUMP_BINARY=/usr/local/nfdump/bin/nfdump
+      - NFSEN_NFDUMP_PROFILES=/data/nfsen-ng  # Must match the container-side volume mount path
+      # - NFSEN_NFDUMP_PROFILE=live
+      # - NFSEN_NFDUMP_MAX_PROCESSES=1
+
+      # ── RRD storage ────────────────────────────────────────────────────────
+      # - NFSEN_RRD_PATH=/var/nfsen-ng/rrd  # Default: backend/datasources/data (in mounted source)
+      # - rrd-data:/var/nfsen-ng/rrd        # Uncomment volume above too
+
+      # ── Import (see ENVIRONMENT_VARIABLES.md for details) ──────────────────
+      # - NFSEN_FORCE_IMPORT=true         # Reset database and import from scratch
       # - NFSEN_IMPORT_VERBOSE=true       # Show verbose import output
       # - NFSEN_SKIP_INITIAL_IMPORT=true  # Skip initial import on startup
       - NFSEN_IMPORT_YEARS=1            # Import last N years (default: 3)
 
-      # Logging
+      # ── Logging ────────────────────────────────────────────────────────────
       # - NFSEN_LOG_LEVEL=DEBUG           # DEBUG, INFO, NOTICE, WARNING, ERR, CRIT, ALERT, EMERG
 
-      # OpenSwoole HTTP server performance tuning
+      # ── OpenSwoole ─────────────────────────────────────────────────────────
       # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 1)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
     entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/deploy/docker-entrypoint-dev.sh"]

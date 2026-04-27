@@ -1,50 +1,51 @@
 {#
     IP info modal fragment — pushed by the server as a Datastar patchElements event.
-    Replaces #ip-modal-placeholder in the DOM, then JS calls .show() on #ip-modal-inner.
+    Replaces #ip-modal-placeholder in the DOM, then JS calls .showModal() on #ip-modal-inner.
+    Uses a native <dialog> element — no Bootstrap JS / Popper required.
 #}
 <div id="ip-modal-placeholder">
-    <div id="ip-modal-inner" class="modal fade" tabindex="-1" aria-labelledby="ipModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h1 class="modal-title fs-5" id="ipModalLabel">Info for IP: {{ ip }}</h1>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <dl class="row mb-3">
-                        <dt class="col-sm-3">Hostname</dt>
-                        <dd class="col-sm-9{% if hostname == 'could not be resolved' %} text-secondary fst-italic{% endif %}">{{ hostname }}</dd>
-                    </dl>
+    <dialog id="ip-modal-inner" aria-labelledby="ipModalLabel">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="ipModalLabel">Info for IP: {{ ip }}</h1>
+                <button type="button" class="btn-close" aria-label="Close"
+                        data-on:click="document.getElementById('ip-modal-inner').close()"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="row mb-3">
+                    <dt class="col-sm-3">Hostname</dt>
+                    <dd class="col-sm-9{% if hostname == 'could not be resolved' %} text-secondary fst-italic{% endif %}">{{ hostname }}</dd>
+                </dl>
 
-                    {% if geoData.error is defined and geoData.error %}
-                        <div class="alert alert-warning">{{ geoData.reason ?? 'IP lookup failed' }}</div>
-                    {% else %}
-                        {% set countryCode = geoData.country_code ?? '' %}
-                        <h3>
-                            {{ ip }}
-                            {% if countryCode %}
-                                <img src="https://flagcdn.com/w40/{{ countryCode|lower }}.png"
-                                     alt="{{ geoData.country_name ?? '' }}"
-                                     title="{{ geoData.country_name ?? '' }}"
-                                     style="width: 3rem" />
+                {% if geoData.error is defined and geoData.error %}
+                    <div class="alert alert-warning">{{ geoData.reason ?? 'IP lookup failed' }}</div>
+                {% else %}
+                    {% set countryCode = geoData.country_code ?? '' %}
+                    <h3>
+                        {{ ip }}
+                        {% if countryCode %}
+                            <img src="https://flagcdn.com/w40/{{ countryCode|lower }}.png"
+                                 alt="{{ geoData.country_name ?? '' }}"
+                                 title="{{ geoData.country_name ?? '' }}"
+                                 style="width: 3rem" />
+                        {% endif %}
+                    </h3>
+                    {% set ignored = ['country_code', 'country_code_iso3', 'country_tld', 'country_area',
+                                      'country_population', 'continent_code', 'in_eu', 'network', 'version',
+                                      'error', 'reason'] %}
+                    <table class="table table-striped table-hover table-sm">
+                        {% for key, value in geoData %}
+                            {% if key not in ignored %}
+                                <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
                             {% endif %}
-                        </h3>
-                        {% set ignored = ['country_code', 'country_code_iso3', 'country_tld', 'country_area',
-                                          'country_population', 'continent_code', 'in_eu', 'network', 'version',
-                                          'error', 'reason'] %}
-                        <table class="table table-striped table-hover table-sm">
-                            {% for key, value in geoData %}
-                                {% if key not in ignored %}
-                                    <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
-                                {% endif %}
-                            {% endfor %}
-                        </table>
-                    {% endif %}
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
+                        {% endfor %}
+                    </table>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary"
+                        data-on:click="document.getElementById('ip-modal-inner').close()">Close</button>
             </div>
         </div>
-    </div>
+    </dialog>
 </div>

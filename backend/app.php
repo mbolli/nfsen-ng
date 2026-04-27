@@ -720,7 +720,7 @@ $app->page('/', function (Context $c) use ($app): void {
         ]);
 
         // 4. Show modal via JS after the fragment lands
-        $c->execScript('bootstrap.Modal.getOrCreateInstance(document.getElementById("ip-modal-inner")).show()');
+        $c->execScript('document.getElementById("ip-modal-inner").showModal()');
     }, 'ip-info');
 
     // ── View ─────────────────────────────────────────────────────────────────

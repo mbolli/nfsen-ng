@@ -14,7 +14,7 @@
     data-on:change__window fires on any filter change inside this panel or the date range
     controls; mayUpdateGraph() guards against spurious triggers from other panels.
 #}
-<div class="row"
+<div class="row g-3"
      data-signals='{"_graph_logscale": false, "_graph_stacked": false, "_graph_stepplot": true, "_sourcesDefault": {{ sources|json_encode }}}'
      data-computed:graph._config="{{ '{' }} sources: ${{ graphSources.id() }}, protocols: ${{ graphProtocols.id() }}, ports: ${{ graphPorts.id() }}, display: ${{ graphDisplay.id() }}, type: ${{ graphDatatype.id() }}, trafficUnit: ${{ graphTrafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot {{ '}' }}"
      data-indicator:graph._connecting
@@ -23,7 +23,8 @@
 
     {# Display type #}
     <div class="col-md-2">
-        <p class="h6">Display
+        <div class="filter-group">
+        <p class="filter-label">Display
             <nfsen-tooltip data-ignore-morph text="Choose what to visualize: individual sources, protocol breakdown, or port statistics." placement="top"></nfsen-tooltip>
         </p>
         <select id="filterDisplaySelect" class="form-control form-select" {{ bind(graphDisplay) }}
@@ -32,11 +33,13 @@
             <option value="protocols">Protocols</option>
             <option value="ports">Ports</option>
         </select>
+        </div>
     </div>
 
     {# Sources #}
     <div class="col-md-2" id="filterSources">
-        <p class="h6">Sources
+        <div class="filter-group">
+        <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="Select NetFlow sources to include in the graph." placement="top"></nfsen-tooltip>
         </p>
         <select id="filterSourcesSelect"
@@ -52,11 +55,13 @@
                     data-attr:selected="${{ graphDisplay.id() }} === 'sources'">{{ source }}</option>
             {% endfor %}
         </select>
+        </div>
     </div>
 
     {# Ports — only visible when display = ports #}
     <div class="col-md-2" id="filterPorts" data-show="${{ graphDisplay.id() }} === 'ports'">
-        <p class="h6">Ports
+        <div class="filter-group">
+        <p class="filter-label">Ports
             <nfsen-tooltip data-ignore-morph text="Select ports to track. Each port shows as a separate series." placement="top"></nfsen-tooltip>
         </p>
         <select id="filterPortsSelect" multiple class="form-control form-select" {{ bind(graphPorts) }}>
@@ -64,11 +69,13 @@
             <option value="{{ port }}" selected>{{ port }}</option>
             {% endfor %}
         </select>
+        </div>
     </div>
 
     {# Protocols #}
     <div class="col-md-4" id="filterProtocols">
-        <p class="h6">Protocols
+        <div class="filter-group">
+        <p class="filter-label">Protocols
             <nfsen-tooltip data-ignore-morph text="Filter by protocol. 'Any' shows all traffic." placement="top"></nfsen-tooltip>
         </p>
         <div class="btn-group" role="group" id="filterProtocolButtons">
@@ -90,11 +97,13 @@
             <label class="btn btn-outline-primary btn-sm" for="filterProtocol{{ value|capitalize }}">{{ label }}</label>
             {% endfor %}
         </div>
+        </div>
     </div>
 
     {# Data type #}
     <div class="col-md-2" id="filterTypes">
-        <p class="h6">Data Type
+        <div class="filter-group">
+        <p class="filter-label">Data Type
             <nfsen-tooltip data-ignore-morph text="Traffic (bits/bytes per second), Packets, or Flows per second." placement="top"></nfsen-tooltip>
         </p>
         <div class="btn-group" role="group">
@@ -105,11 +114,13 @@
             <label class="btn btn-outline-primary btn-sm" for="dataType{{ value|capitalize }}">{{ label }}</label>
             {% endfor %}
         </div>
+        </div>
     </div>
 
     {# Traffic unit — visible only when datatype = traffic #}
     <div class="col-md-1" id="trafficUnit" data-show="${{ graphDatatype.id() }} === 'traffic'">
-        <p class="h6">Unit
+        <div class="filter-group">
+        <p class="filter-label">Unit
             <nfsen-tooltip data-ignore-morph text="Bits/s (base-2) or Bytes/s (base-10)." placement="top"></nfsen-tooltip>
         </p>
         <div class="btn-group" role="group">
@@ -121,6 +132,7 @@
                    id="trafficUnitBytes" {{ bind(graphTrafficUnit) }}
                    data-on:change="$graph._widget.updateOptions({ylabel: 'Bytes/s', labelsKMG2: false})">
             <label class="btn btn-outline-primary btn-sm" for="trafficUnitBytes">Bytes</label>
+        </div>
         </div>
     </div>
 

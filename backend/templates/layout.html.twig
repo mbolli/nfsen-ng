@@ -1,5 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" data-signals__ifmissing="{_darkMode: false}" data-style:filter="$_darkMode && 'invert(0.85)'">
+<html lang="en" 
+    data-signals__ifmissing="{_darkMode: false, _currentView: '{{ defaults.view ?? 'graphs' }}'}" 
+    data-init="$_darkMode = (localStorage.getItem('nfsen_theme') === 'dark')"
+    data-effect="localStorage.setItem('nfsen_theme',$_darkMode?'dark':'light')"
+    data-style:filter="$_darkMode && 'invert(0.85)'">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -31,11 +35,7 @@
     The server never reads it — in immediate mode every tab's content is always
     rendered and Datastar data-show handles visibility client-side.
 #}
-<body class="p-2"
-      data-signals__ifmissing='{"_currentView": "{{ (defaults.view ?? 'graphs')|e('js') }}"}'
-      data-init="$_darkMode = (localStorage.getItem('nfsen_theme') === 'dark')"
-      data-effect="localStorage.setItem('nfsen_theme',$_darkMode?'dark':'light')">
-
+<body class="p-2">
     {# ── Reconnect banner ─────────────────────────────────────────────────── #}
     <div data-show="$_disconnected" style="display:none" class="alert alert-warning py-1 mb-1 text-center small">
         ⚠ Reconnecting to server…

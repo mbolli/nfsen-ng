@@ -1,172 +1,9 @@
-{# Admin panel — data source status, import controls, live progress #}
-
-{# ── System Health card ────────────────────────────────────────────────────── #}
-{% set hcErrors = healthChecks|filter(c => c.status == 'error')|length %}
-{% set hcWarnings = healthChecks|filter(c => c.status == 'warning')|length %}
-<div class="row mb-4 mt-4 justify-content-center">
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-                System Health
-                <span>
-                    {% if hcErrors > 0 %}
-                        <span class="badge bg-danger">{{ hcErrors }} error{{ hcErrors != 1 ? 's' : '' }}</span>
-                    {% elseif hcWarnings > 0 %}
-                        <span class="badge bg-warning text-dark">{{ hcWarnings }} warning{{ hcWarnings != 1 ? 's' : '' }}</span>
-                    {% else %}
-                        <span class="badge bg-success">All checks passed</span>
-                    {% endif %}
-                </span>
-            </div>
-            <div class="card-body p-0">
-                <table class="table table-sm mb-0">
-                    <tbody>
-                        {% for check in healthChecks %}
-                        {% if loop.first or check.group != healthChecks[loop.index0 - 1].group %}
-                        <tr class="table-light">
-                            <td colspan="2" class="ps-3 py-1 small fw-semibold text-muted text-uppercase" style="letter-spacing:.04em; font-size:.7rem">{{ check.group }}</td>
-                        </tr>
-                        {% endif %}
-                        <tr class="{{ check.status == 'error' ? 'table-danger' : (check.status == 'warning' ? 'table-warning' : '') }}">
-                            <td class="ps-3 text-nowrap" style="width:40%">
-                                <span class="text-{{ check.status == 'error' ? 'danger' : (check.status == 'warning' ? 'warning' : 'success') }}">●</span>
-                                {{ check.label }}
-                            </td>
-                            <td class="text-muted small">{% if check.code %}<code>{{ check.detail }}</code>{% else %}{{ check.detail }}{% endif %}</td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="2" class="text-muted ps-3 py-2 fst-italic">No checks available.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-
-{# ── Source status table ───────────────────────────────────────────────────── #}
-<div class="row mb-4 mt-4 justify-content-center">
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-                Data Sources
-                <span>
-                    {% if daemonDisabled %}
-                        <span class="badge bg-secondary" title="Import daemon disabled (NFSEN_SKIP_DAEMON=1)">
-                            Daemon disabled
-                        </span>
-                    {% elseif daemonInfo is null %}
-                        <span class="badge bg-secondary">No daemon</span>
-                    {% elseif not daemonInfo.ready %}
-                        <span class="badge bg-warning text-dark">
-                            <span class="spinner-border me-1" role="status" aria-hidden="true" style="width:0.7rem;height:0.7rem;border-width:0.15em;"></span>
-                            Initializing…
-                        </span>
-                    {% else %}
-                        <span class="badge bg-success">
-                            Watching {{ daemonInfo.watchCount }} dir{{ daemonInfo.watchCount != 1 ? 's' : '' }}
-                        </span>
-                        {% if daemonInfo.lastAutoImport > 0 %}
-                            <span class="text-muted small ms-1">
-                                auto: <span data-text="new Date({{ daemonInfo.lastAutoImport }} * 1000).toLocaleTimeString()">{{ daemonInfo.lastAutoImport|date('H:i:s') }}</span>
-                            </span>
-                        {% endif %}
-                    {% endif %}
-                </span>
-            </div>
-            <div class="card-body p-0">
-                <table class="table table-sm table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th class="ps-3">Source</th>
-                            <th>Last Import</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for src in importSources %}
-                        <tr>
-                            <td class="ps-3"><code>{{ src.name }}</code></td>
-                            <td>
-                                {% if src.last_update > 0 %}
-                                    <span data-text="new Date({{ src.last_update }} * 1000).toLocaleString('sv')">
-                                        {{ src.last_update | date('Y-m-d H:i:s') }}
-                                    </span>
-                                {% else %}
-                                    <span class="text-muted fst-italic">Never</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="2" class="text-muted ps-3 py-2">No sources configured.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-
-{# ── Progress bar — visible while import is running ────────────────────────── #}
-<div data-show="${{ importRunning.id() }}" style="display: none;" class="row mb-3 justify-content-center">
-    <div class="col-lg-8">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-            <small class="text-muted">{{ importStatusText }}</small>
-            <small class="fw-semibold">{{ importProgress }}%{% if importEta %} &mdash; {{ importEta }}{% endif %}</small>
-        </div>
-        <div class="progress mb-2" style="height: 22px;" role="progressbar"
-             aria-valuenow="{{ importProgress }}" aria-valuemin="0" aria-valuemax="100">
-            <div class="progress-bar progress-bar-striped progress-bar-animated"
-                 style="width: {{ importProgress }}%"></div>
-        </div>
-        <div class="text-muted small{{ importCurrentFile ? '' : ' invisible' }}">
-            Current: <code>{{ importCurrentFile ?: '…' }}</code>
-        </div>
-    </div>
-</div>
-
-{# ── Import status / log — always shown when there's something to display ──── #}
-{% if importStatusText and not importRunning.getValue() %}
-<div class="row mb-3 justify-content-center">
-    <div class="col-lg-8">
-        <div class="alert alert-{{ importLog|filter(e => e.level <= 3)|length > 0 ? 'danger' : (importLog|length > 0 ? 'warning' : 'success') }} py-2 mb-0 small">
-            {{ importStatusText }}
-        </div>
-    </div>
-</div>
-{% endif %}
-{% if importLog|length > 0 %}
-<div class="row mb-4 justify-content-center">
-    <div class="col-lg-8">
-        <div class="card border-warning">
-            <div class="card-header py-1 small fw-semibold text-warning-emphasis bg-warning-subtle">
-                Import log ({{ importLog|length }} warning{{ importLog|length != 1 ? 's' : '' }})
-            </div>
-            <div class="card-body p-0">
-                <div class="overflow-auto" style="max-height: 240px;">
-                    <table class="table table-sm table-borderless mb-0 font-monospace small">
-                        <tbody>
-                        {% for entry in importLog|reverse %}
-                            <tr class="{{ entry.level <= 3 ? 'table-danger' : 'table-warning' }}">
-                                <td class="ps-2 text-nowrap text-muted" style="width:1%">{{ entry.ts|date('H:i:s') }}</td>
-                                <td class="ps-3">{{ entry.msg }}</td>
-                            </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
+{# Admin panel — system health, import controls, live progress #}
 
 {# ── Action buttons ────────────────────────────────────────────────────────── #}
-<div class="row justify-content-center">
-    <div class="col-auto d-flex gap-2 align-items-center flex-wrap">
+<div class="row justify-content-center mt-4">
+    <div class="col-lg-8">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
 
     {% if daemonDisabled or daemonInfo is null %}
 
@@ -204,7 +41,8 @@
         <button class="btn btn-warning"
                 data-show="${{ importRunning.id() }}" style="display: none;"
                 data-indicator:_cancel_loading
-                data-on:click="@post('{{ action_cancelImport }}')">            <span data-show="$_cancel_loading" style="display: none;" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                data-on:click="@post('{{ action_cancelImport }}')">
+            <span data-show="$_cancel_loading" style="display: none;" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
             <svg data-show="!$_cancel_loading" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle me-1" viewBox="0 0 16 16">
                 <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
                 <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"/>
@@ -230,5 +68,114 @@
 
     {% endif %}
 
+        </div>
+    </div>
+</div>
+
+{# ── Progress bar — visible while import is running ────────────────────────── #}
+<div data-show="${{ importRunning.id() }}" style="display: none;" class="row mt-3 mb-0 justify-content-center">
+    <div class="col-lg-8">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+            <small class="text-muted">{{ importStatusText }}</small>
+            <small class="fw-semibold">{{ importProgress }}%{% if importEta %} &mdash; {{ importEta }}{% endif %}</small>
+        </div>
+        <div class="progress mb-2" style="height: 22px;" role="progressbar"
+             aria-valuenow="{{ importProgress }}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar progress-bar-striped progress-bar-animated"
+                 style="width: {{ importProgress }}%"></div>
+        </div>
+        <div class="text-muted small{{ importCurrentFile ? '' : ' invisible' }}">
+            Current: <code>{{ importCurrentFile ?: '…' }}</code>
+        </div>
+    </div>
+</div>
+
+{# ── Import status / log — always shown when there's something to display ──── #}
+{% if importStatusText and not importRunning.getValue() %}
+<div class="row mt-3 mb-0 justify-content-center">
+    <div class="col-lg-8">
+        <div class="alert alert-{{ importLog|filter(e => e.level <= 3)|length > 0 ? 'danger' : (importLog|length > 0 ? 'warning' : 'success') }} py-2 mb-0 small">
+            {{ importStatusText }}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% if importLog|length > 0 %}
+<div class="row mt-3 mb-0 justify-content-center">
+    <div class="col-lg-8">
+        <div class="card border-warning">
+            <div class="card-header py-1 small fw-semibold text-warning-emphasis bg-warning-subtle">
+                Import log ({{ importLog|length }} warning{{ importLog|length != 1 ? 's' : '' }})
+            </div>
+            <div class="card-body p-0">
+                <div class="overflow-auto" style="max-height: 240px;">
+                    <table class="table table-sm table-borderless mb-0 font-monospace small">
+                        <tbody>
+                        {% for entry in importLog|reverse %}
+                            <tr class="{{ entry.level <= 3 ? 'table-danger' : 'table-warning' }}">
+                                <td class="ps-2 text-nowrap text-muted" style="width:1%">{{ entry.ts|date('H:i:s') }}</td>
+                                <td class="ps-3">{{ entry.msg }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ── System Health card ────────────────────────────────────────────────────── #}
+{% set hcErrors = healthChecks|filter(c => c.status == 'error')|length %}
+{% set hcWarnings = healthChecks|filter(c => c.status == 'warning')|length %}
+<div class="row mb-4 mt-4 justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                System Health
+                <span>
+                    {% if hcErrors > 0 %}
+                        <span class="badge bg-danger">{{ hcErrors }} error{{ hcErrors != 1 ? 's' : '' }}</span>
+                    {% elseif hcWarnings > 0 %}
+                        <span class="badge bg-warning text-dark">{{ hcWarnings }} warning{{ hcWarnings != 1 ? 's' : '' }}</span>
+                    {% else %}
+                        <span class="badge bg-success">All checks passed</span>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        {% for check in healthChecks %}
+                        {% if loop.first or check.group != healthChecks[loop.index0 - 1].group %}
+                        <tr class="table-light">
+                            <td colspan="2" class="ps-3 py-1 small fw-semibold text-muted text-uppercase" style="letter-spacing:.04em; font-size:.7rem">{{ check.group }}</td>
+                        </tr>
+                        {% endif %}
+                        <tr class="{{ check.status == 'error' ? 'table-danger' : (check.status == 'warning' ? 'table-warning' : '') }}">
+                            <td class="ps-3 text-nowrap" style="width:40%">
+                                <span class="text-{{ check.status == 'error' ? 'danger' : (check.status == 'warning' ? 'warning' : 'success') }}">●</span>
+                                {{ check.label }}
+                            </td>
+                            <td class="text-muted small">
+                                {% if check.code %}<code>{{ check.detail }}</code>{% else %}{{ check.detail }}{% endif %}
+                                {% if check.epoch > 0 %}
+                                    <br><span class="font-monospace" style="font-size:.85em" data-text="new Date({{ check.epoch }} * 1000).toLocaleString('sv')">{{ check.epoch|date('Y-m-d H:i:s') }}</span>
+                                {% endif %}
+                                {% if check.hint %}
+                                    <br><small class="text-muted" style="opacity:.65; font-size:.78em">{{ check.hint }}</small>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="2" class="text-muted ps-3 py-2 fst-italic">No checks available.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>

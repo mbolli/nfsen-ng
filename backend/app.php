@@ -740,7 +740,7 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // Health checks: cached per-tab; re-run at most every 30 s (or when not importing).
     $lastHealthFetch = 0;
-    /** @var list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string}> */
+    /** @var list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}> */
     $cachedHealthChecks = [];
 
     $c->view(function (bool $isUpdate) use (
@@ -790,7 +790,15 @@ $app->page('/', function (Context $c) use ($app): void {
 
         // Health checks — throttled to at most once every 30 s per tab
         if (!$hasFatalError && (!$isImporting || ($now - $lastHealthFetch) >= 30)) {
-            $cachedHealthChecks = HealthChecker::run((bool) $app->globalState('daemon_disabled', false));
+            $hcDaemon = $app->globalState('daemon', null);
+            $cachedHealthChecks = HealthChecker::run(
+                (bool) $app->globalState('daemon_disabled', false),
+                $hcDaemon !== null ? [
+                    'ready'          => $hcDaemon->isDaemonReady(),
+                    'watchCount'     => $hcDaemon->getWatchCount(),
+                    'lastAutoImport' => $hcDaemon->getLastAutoImportTime(),
+                ] : null,
+            );
             $lastHealthFetch = $now;
         }
         $healthChecks = $cachedHealthChecks;

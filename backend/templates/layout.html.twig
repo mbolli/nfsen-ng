@@ -90,7 +90,9 @@
 
         <div class="filter row align-items-start bg-light border-bottom py-3 mb-3"
              style="flex-direction: row"
-             data-show="$_currentView != 'admin'">
+             data-show="$_currentView != 'admin'"
+             data-indicator:nfcapd._counting
+             data-on:change__window__throttle.1000ms="($_currentView === 'flows' || $_currentView === 'statistics') && evt.target.closest('nfsen-daterange') && @post('{{ action_countFiles }}')">
             <div class="col-12">
                 <div class="card">
                     <div class="card-body">

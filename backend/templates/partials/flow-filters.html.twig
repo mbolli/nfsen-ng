@@ -6,11 +6,12 @@
     The server never reads flows_outputFormat (hardcoded to JSON); it is kept as a
     client-local signal initialised here so the UI state is preserved across re-renders.
 #}
-<div class="row">
+<div class="row g-3">
 
     {# Limit #}
     <div id="filterFlowsLimit" class="col-2">
-        <p class="h6">Limit Flows
+        <div class="filter-group">
+        <p class="filter-label">Limit Flows
             <nfsen-tooltip data-ignore-morph text="Maximum number of flow records to display (-c option)." placement="top"></nfsen-tooltip>
         </p>
         <select class="form-control form-select" {{ bind(flowLimit) }}>
@@ -18,11 +19,13 @@
             <option value="{{ n }}"{% if n == 50 %} selected{% endif %}>{{ n }}</option>
             {% endfor %}
         </select>
+        </div>
     </div>
 
     {# Sources #}
     <div id="filterFlowSources" class="col-2">
-        <p class="h6">Sources
+        <div class="filter-group">
+        <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
         </p>
         <select {{ bind(graphSources) }} multiple class="form-control form-select">
@@ -31,11 +34,13 @@
             <option value="{{ source }}" selected>{{ source }}</option>
             {% endfor %}
         </select>
+        </div>
     </div>
 
     {# NFDUMP filter #}
     <div class="col">
-        <p class="h6">NFDUMP filter
+        <div class="filter-group">
+        <p class="filter-label">NFDUMP filter
             <nfsen-tooltip data-ignore-morph text="Filter syntax similar to tcpdump/pcap. Example: dst port 80" placement="right"></nfsen-tooltip>
         </p>
         <textarea class="form-control" id="filterNfdumpTextarea"
@@ -44,18 +49,20 @@
             data-target-textarea="filterNfdumpTextarea"
             data-default-filters="{{ filters|json_encode }}">
         </nfsen-filter-manager>
+        </div>
     </div>
 
     {# Aggregation & output #}
     <div id="filterFlowAggregation" class="col-12 col-xl">
-        <p class="h6 mb-2">Aggregation &amp; Output
+        <div class="filter-group">
+        <p class="filter-label mb-2">Aggregation &amp; Output
             <nfsen-tooltip data-ignore-morph text="Aggregate flows: Bi-directional (-b), Protocol, Port, IP/prefix, or sort by tstart." placement="top"></nfsen-tooltip>
         </p>
         <div class="row g-2">
 
             {# Global & port aggregation #}
             <div class="col">
-                <label class="form-label small mb-1">Global</label>
+                <label class="filter-sublabel">Global</label>
                 <div class="btn-group btn-group-sm d-flex mb-2" id="filterFlowAggregationGlobal">
                     <input type="checkbox" class="btn-check" name="bidirectional"
                            id="filterFlowAggBi" {{ bind(flowAggBidirectional) }}>
@@ -64,7 +71,7 @@
                            id="filterFlowAggProto" {{ bind(flowAggProto) }}>
                     <label class="btn btn-outline-primary" for="filterFlowAggProto">Protocol</label>
                 </div>
-                <label class="form-label small mb-1">Port</label>
+                <label class="filter-sublabel">Port</label>
                 <div class="btn-group btn-group-sm d-flex" id="filterFlowAggregationPort">
                     <input type="checkbox" class="btn-check" name="srcport"
                            id="filterFlowAggPortSrc" {{ bind(flowAggSrcPort) }}>
@@ -77,7 +84,7 @@
 
             {# IP aggregation #}
             <div class="col">
-                <label class="form-label small mb-1">IP Aggregation</label>
+                <label class="filter-sublabel">IP Aggregation</label>
                 <div class="row g-1">
                     <div class="col-6">
                         <select data-attr:disabled="${{ flowAggBidirectional.id() }}"
@@ -112,7 +119,7 @@
 
             {# Output options #}
             <div class="col" id="filterOutput">
-                <label class="form-label small mb-1">Options</label>
+                <label class="filter-sublabel">Options</label>
                 <div id="flowsFilterOther">
                     <input type="checkbox" class="btn-check" name="ordertstart"
                            id="flowsFilterOrderTstart" {{ bind(flowOrderByTstart) }}>
@@ -120,6 +127,7 @@
                 </div>
             </div>
 
+        </div>
         </div>
     </div>
 
@@ -130,7 +138,7 @@
                     class="btn btn-primary"
                     data-indicator:flows._indicator
                     data-class:loading="$flows._indicator"
-                    data-on:click="@post('{{ action_flowActions }}')">
+                    data-on:click="$_flows_queried = true; @post('{{ action_flowActions }}')">
                 <span data-show="!$flows._indicator">Process data</span>
                 <span class="spinner-grow spinner-grow-sm" data-show="$flows._indicator" role="status" aria-hidden="true"></span>
                 <span data-show="$flows._indicator">Processing…</span>

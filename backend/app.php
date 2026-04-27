@@ -251,6 +251,8 @@ $app->page('/', function (Context $c) use ($app): void {
         clientWritable: true
     );
     $statsMessage  = $c->signal('', 'statsMessage');
+    // nfcapd file count — updated by count-files action and on initial render
+    $nfcapdFileCount = $c->signal(0, 'nfcapd_file_count');
 
     // Admin / import signals
     /** @var \mbolli\nfsen_ng\common\ImportDaemon|null $daemon */
@@ -315,6 +317,49 @@ $app->page('/', function (Context $c) use ($app): void {
         $graphLastUpdate->setValue($lastWrite > 0 ? $lastWrite : time(), broadcast: false);
 
         return $data;
+    };
+
+    // ── Helper: count actual nfcapd files in a date range for given sources ─────
+    // Scans the filesystem path structure: profiles-data/profile/source/YYYY/MM/DD/
+    $countNfcapdFiles = static function (int $ds, int $de, array $sources): int {
+        $sourcePath = (Config::$cfg['nfdump']['profiles-data'] ?? '')
+            . \DIRECTORY_SEPARATOR
+            . (Config::$cfg['nfdump']['profile'] ?? 'live');
+        $count = 0;
+
+        foreach ($sources as $source) {
+            $cur = (new \DateTime())->setTimestamp($ds);
+            $end = (new \DateTime())->setTimestamp($de);
+
+            while ($cur->format('Ymd') <= $end->format('Ymd')) {
+                $dayPath = $sourcePath
+                    . \DIRECTORY_SEPARATOR . (string) $source
+                    . \DIRECTORY_SEPARATOR . $cur->format('Y')
+                    . \DIRECTORY_SEPARATOR . $cur->format('m')
+                    . \DIRECTORY_SEPARATOR . $cur->format('d');
+                $cur->modify('+1 day');
+
+                if (!is_dir($dayPath)) {
+                    continue;
+                }
+
+                foreach (scandir($dayPath) ?: [] as $file) {
+                    if (!preg_match('/^nfcapd\.(\d{12})$/', (string) $file, $m)) {
+                        continue;
+                    }
+                    try {
+                        $ft = (new \DateTime($m[1]))->getTimestamp();
+                    } catch (\Exception) {
+                        continue;
+                    }
+                    if ($ft >= $ds && $ft <= $de) {
+                        ++$count;
+                    }
+                }
+            }
+        }
+
+        return $count;
     };
 
     // ── Helper: build an nfsen-toast HTML snippet ────────────────────────────
@@ -488,6 +533,22 @@ $app->page('/', function (Context $c) use ($app): void {
 
         $c->sync();
     }, 'stats-actions');
+
+    // Count nfcapd files — lightweight scan triggered by date/source filter changes
+    // in the Flows and Statistics tabs. Only updates $nfcapdFileCount; no heavy work.
+    $countFilesAction = $c->action(function (Context $c) use (
+        $datestart, $dateend, $graphSources, $nfcapdFileCount, $countNfcapdFiles
+    ): void {
+        $srcs = $graphSources->array();
+        if (\in_array('any', $srcs, true) || empty($srcs)) {
+            $srcs = Config::$cfg['general']['sources'] ?? [];
+        }
+        $nfcapdFileCount->setValue(
+            $countNfcapdFiles($datestart->int(), $dateend->int(), $srcs),
+            broadcast: false
+        );
+        $c->sync();
+    }, 'count-files');
 
     // Trigger import — runs a catch-up Import::start() in a coroutine.
     // Progress is stored in global state and broadcast to the admin:import scope so
@@ -757,6 +818,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $importRunning, $confirmRescan,
         $refreshGraphsAction, $flowAction, $statsAction, $ipInfoAction,
         $triggerImportAction, $forceRescanAction, $cancelImportAction,
+        $countNfcapdFiles, $nfcapdFileCount, $countFilesAction,
         &$flowTableHtml, &$statsTableHtml, &$lastGraphFetch, &$cachedGraphData, &$cachedImportSources,
         &$lastHealthFetch, &$cachedHealthChecks
     ): string {
@@ -768,6 +830,20 @@ $app->page('/', function (Context $c) use ($app): void {
         // Skip all data fetches when Config failed to initialize (fatal error path).
         // The template will render the error banner and nothing else needs DB access.
         $hasFatalError = $app->globalState('_fatalError', null) !== null;
+
+        // On the initial render (not an SSE update), compute the nfcapd file count
+        // so the Flows/Statistics tabs show it without needing user interaction.
+        // Subsequent changes are handled by countFilesAction triggered from the browser.
+        if (!$hasFatalError && !$isUpdate) {
+            $srcs = $graphSources->array();
+            if (\in_array('any', $srcs, true) || empty($srcs)) {
+                $srcs = Config::$cfg['general']['sources'] ?? [];
+            }
+            $nfcapdFileCount->setValue(
+                $countNfcapdFiles($datestart->int(), $dateend->int(), $srcs),
+                broadcast: false
+            );
+        }
 
         // During import, throttle fetchGraphData() to at most once every 10 seconds
         // per tab — avoids N×files×RRD-reads while still refreshing the graph live.
@@ -886,10 +962,13 @@ $app->page('/', function (Context $c) use ($app): void {
             'statsFor'     => $statsFor,
             'statsOrderBy' => $statsOrderBy,
             'statsMessage' => $statsMessage,
-            // ── Action URLs ────────────────────────────────────────────────
+            // nfcapd file count (for Flows/Statistics tabs)
+            'nfcapdFileCount'  => $nfcapdFileCount,
+            // ── Action URLs ──────────────────────────────────────────────────────────────────
             'action_refreshGraphs' => $refreshGraphsAction->url(),
             'action_flowActions'   => $flowAction->url(),
             'action_statsActions'  => $statsAction->url(),
+            'action_countFiles'    => $countFilesAction->url(),
             'action_triggerImport' => $triggerImportAction->url(),
             'action_forceRescan'   => $forceRescanAction->url(),
             'action_cancelImport'  => $cancelImportAction->url(),

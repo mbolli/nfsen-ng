@@ -41,7 +41,7 @@ services:
       # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 4, set to CPU cores)
       # - SWOOLE_MAX_REQUEST=50000        # Max requests per worker before restart (default: 10000)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
-    entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/docker-entrypoint.sh"]
+    entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/docker/docker-entrypoint.sh"]
     restart: unless-stopped
   
   caddy:
@@ -54,7 +54,7 @@ services:
       - "443:443"  # HTTPS
       - "443:443/udp"  # HTTP/3
     volumes:
-      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - ./docker/Caddyfile.prod:/etc/caddy/Caddyfile:ro
       - ./frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files
       - caddy_data:/data  # Certificate storage
       - caddy_config:/config  # Caddy config storage

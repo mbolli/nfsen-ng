@@ -49,8 +49,8 @@ RUN curl -sS https://getcomposer.org/download/latest-stable/composer.phar -o /us
     && chmod +x /usr/local/bin/composer
 
 # Copy entrypoint scripts
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY docker-entrypoint-dev.sh /usr/local/bin/docker-entrypoint-dev.sh
+COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY docker/docker-entrypoint-dev.sh /usr/local/bin/docker-entrypoint-dev.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
     && chmod +x /usr/local/bin/docker-entrypoint-dev.sh
 

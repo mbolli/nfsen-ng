@@ -29,7 +29,7 @@ services:
       # OpenSwoole HTTP server performance tuning
       # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 1)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
-    entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/docker-entrypoint-dev.sh"]
+    entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/docker/docker-entrypoint-dev.sh"]
     restart: unless-stopped
 
   caddy:
@@ -40,7 +40,7 @@ services:
     ports:
       - "8080:80"  # External HTTP port
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files
     depends_on:
       - nfsen

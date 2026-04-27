@@ -43,7 +43,7 @@ services:
       - "443:443"  # HTTPS
       - "443:443/udp"  # HTTP/3
     volumes:
-      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - ./docker/Caddyfile.prod:/etc/caddy/Caddyfile:ro
       - nfsen-frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files from nfsen container
       - caddy_data:/data  # Certificate storage
       - caddy_config:/config  # Caddy config storage

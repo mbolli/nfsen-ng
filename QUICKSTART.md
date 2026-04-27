@@ -23,7 +23,7 @@ docker-compose up -d
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
-See [DOCKER_SETUP.md](DOCKER_SETUP.md) for the differences.
+See [DOCKER_SETUP.md](docs/DOCKER_SETUP.md) for the differences.
 
 ### Option B: Bare-metal (OpenSwoole)
 
@@ -79,6 +79,6 @@ docker-compose exec nfsen php backend/cli.php -f -p import
 
 ## Next steps
 
-- Review all env vars: [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md)
-- VictoriaMetrics datasource: [VICTORIAMETRICS.md](VICTORIAMETRICS.md)
+- Review all env vars: [ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md)
+- VictoriaMetrics datasource: [VICTORIAMETRICS.md](docs/VICTORIAMETRICS.md)
 - Caddy + compression details: [CADDY_SWOOLE_SETUP.md](CADDY_SWOOLE_SETUP.md)

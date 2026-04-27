@@ -11,7 +11,7 @@
     {# Limit #}
     <div id="filterFlowsLimit" class="col-auto">
         <p class="h6">Limit Flows
-            <nfsen-tooltip text="Maximum number of flow records to display (-c option)." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Maximum number of flow records to display (-c option)." placement="top"></nfsen-tooltip>
         </p>
         <select class="form-control form-select" {{ bind(flowLimit) }}>
             {% for n in [20, 50, 100, 500, 1000, 10000] %}
@@ -23,7 +23,7 @@
     {# Sources #}
     <div id="filterFlowSources" class="col-auto">
         <p class="h6">Sources
-            <nfsen-tooltip text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
         </p>
         <select {{ bind(graphSources) }} multiple class="form-control form-select">
             <option value="any">Any</option>
@@ -36,7 +36,7 @@
     {# NFDUMP filter #}
     <div class="col-xs-12 col-sm-12 col-md-auto col-lg-auto">
         <p class="h6">NFDUMP filter
-            <nfsen-tooltip text="Filter syntax similar to tcpdump/pcap. Example: dst port 80" placement="right"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Filter syntax similar to tcpdump/pcap. Example: dst port 80" placement="right"></nfsen-tooltip>
         </p>
         <textarea class="form-control" id="filterNfdumpTextarea"
                   {{ bind(flowFilter) }} rows="3" autocomplete="on"></textarea>
@@ -49,7 +49,7 @@
     {# Aggregation & output #}
     <div id="filterFlowAggregation" class="col-12 col-xl-auto">
         <p class="h6 mb-2">Aggregation &amp; Output
-            <nfsen-tooltip text="Aggregate flows: Bi-directional (-b), Protocol, Port, IP/prefix, or sort by tstart." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Aggregate flows: Bi-directional (-b), Protocol, Port, IP/prefix, or sort by tstart." placement="top"></nfsen-tooltip>
         </p>
         <div class="row g-2">
 
@@ -125,7 +125,7 @@
 
     {# Submit #}
     <div class="col-12 border-top mt-3 pt-3">
-        <nfsen-tooltip text="Execute nfdump query with current filters" placement="top" no-icon>
+        <nfsen-tooltip data-ignore-morph text="Execute nfdump query with current filters" placement="top" no-icon>
             <button type="button"
                     class="btn btn-primary"
                     data-indicator:flows._indicator

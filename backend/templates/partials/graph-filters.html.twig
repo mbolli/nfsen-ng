@@ -24,7 +24,7 @@
     {# Display type #}
     <div class="col-md-2">
         <p class="h6">Display
-            <nfsen-tooltip text="Choose what to visualize: individual sources, protocol breakdown, or port statistics." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Choose what to visualize: individual sources, protocol breakdown, or port statistics." placement="top"></nfsen-tooltip>
         </p>
         <select id="filterDisplaySelect" class="form-control form-select" {{ bind(graphDisplay) }}
                 data-on:change="el.value === 'protocols' ? ${{ graphProtocols.id() }} = ['tcp', 'udp', 'icmp', 'other'] : (${{ graphProtocols.id() }} = ['any']); el.value === 'sources' && (${{ graphSources.id() }} = $_sourcesDefault)">
@@ -37,7 +37,7 @@
     {# Sources #}
     <div class="col-md-2" id="filterSources">
         <p class="h6">Sources
-            <nfsen-tooltip text="Select NetFlow sources to include in the graph." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Select NetFlow sources to include in the graph." placement="top"></nfsen-tooltip>
         </p>
         <select id="filterSourcesSelect"
                 class="form-control form-select"
@@ -57,7 +57,7 @@
     {# Ports — only visible when display = ports #}
     <div class="col-md-2" id="filterPorts" data-show="${{ graphDisplay.id() }} === 'ports'">
         <p class="h6">Ports
-            <nfsen-tooltip text="Select ports to track. Each port shows as a separate series." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Select ports to track. Each port shows as a separate series." placement="top"></nfsen-tooltip>
         </p>
         <select id="filterPortsSelect" multiple class="form-control form-select" {{ bind(graphPorts) }}>
             {% for port in ports %}
@@ -69,7 +69,7 @@
     {# Protocols #}
     <div class="col-md-4" id="filterProtocols">
         <p class="h6">Protocols
-            <nfsen-tooltip text="Filter by protocol. 'Any' shows all traffic." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Filter by protocol. 'Any' shows all traffic." placement="top"></nfsen-tooltip>
         </p>
         <div class="btn-group" role="group" id="filterProtocolButtons">
             <input type="checkbox"
@@ -95,7 +95,7 @@
     {# Data type #}
     <div class="col-md-2" id="filterTypes">
         <p class="h6">Data Type
-            <nfsen-tooltip text="Traffic (bits/bytes per second), Packets, or Flows per second." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Traffic (bits/bytes per second), Packets, or Flows per second." placement="top"></nfsen-tooltip>
         </p>
         <div class="btn-group" role="group">
             {% for value, label in {'traffic': 'Traffic', 'packets': 'Packets', 'flows': 'Flows'} %}
@@ -110,7 +110,7 @@
     {# Traffic unit — visible only when datatype = traffic #}
     <div class="col-md-1" id="trafficUnit" data-show="${{ graphDatatype.id() }} === 'traffic'">
         <p class="h6">Unit
-            <nfsen-tooltip text="Bits/s (base-2) or Bytes/s (base-10)." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Bits/s (base-2) or Bytes/s (base-10)." placement="top"></nfsen-tooltip>
         </p>
         <div class="btn-group" role="group">
             <input type="radio" class="btn-check" name="trafficUnit" value="bits" checked

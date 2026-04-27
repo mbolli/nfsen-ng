@@ -30,6 +30,7 @@ yourdomain.com {
 	}
 
 	# Proxy everything else to Swoole container
+	# Do NOT add encode here — SSE streams must not be compressed or buffered
 	reverse_proxy nfsen:9000 {
 	
 		# Health check

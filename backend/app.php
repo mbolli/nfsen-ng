@@ -32,7 +32,9 @@ use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\Import;
 use mbolli\nfsen_ng\common\ImportDaemon;
+use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\Table;
+use mbolli\nfsen_ng\common\UserPreferences;
 
 // ─── Via configuration ───────────────────────────────────────────────────────
 
@@ -202,19 +204,19 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // Graph filter signals (client-writable — filter UI updates these)
     $graphDisplay     = $c->signal(
-        Config::$cfg['frontend']['defaults']['graphs']['display'] ?? 'sources',
+        Config::$settings->defaultGraphDisplay,
         'graph_display',
         clientWritable: true
     );
-    $graphSources     = $c->signal(Config::$cfg['general']['sources'] ?? [], 'graph_sources', clientWritable: true);
-    $graphPorts       = $c->signal(Config::$cfg['general']['ports'] ?? [], 'graph_ports', clientWritable: true);
+    $graphSources     = $c->signal(Config::$settings->sources, 'graph_sources', clientWritable: true);
+    $graphPorts       = $c->signal(Config::$settings->ports, 'graph_ports', clientWritable: true);
     $graphProtocols   = $c->signal(
-        Config::$cfg['frontend']['defaults']['graphs']['protocols'] ?? ['any'],
+        Config::$settings->defaultGraphProtocols,
         'graph_protocols',
         clientWritable: true
     );
     $graphDatatype    = $c->signal(
-        Config::$cfg['frontend']['defaults']['graphs']['datatype'] ?? 'traffic',
+        Config::$settings->defaultGraphDatatype,
         'graph_datatype',
         clientWritable: true
     );
@@ -228,7 +230,7 @@ $app->page('/', function (Context $c) use ($app): void {
     // Flow signals
     $flowFilter      = $c->signal('', 'flows_filter', clientWritable: true);
     $flowLimit       = $c->signal(
-        Config::$cfg['frontend']['defaults']['flows']['limit'] ?? 50,
+        Config::$settings->defaultFlowLimit,
         'flows_limit',
         clientWritable: true
     );
@@ -249,7 +251,7 @@ $app->page('/', function (Context $c) use ($app): void {
     $statsCount   = $c->signal(10, 'stats_count', clientWritable: true);
     $statsFor     = $c->signal('record', 'stats_for', clientWritable: true);
     $statsOrderBy = $c->signal(
-        Config::$cfg['frontend']['defaults']['statistics']['order_by'] ?? 'bytes',
+        Config::$settings->defaultStatsOrderBy,
         'stats_orderBy',
         clientWritable: true
     );
@@ -294,8 +296,10 @@ $app->page('/', function (Context $c) use ($app): void {
     // ── Subscribe to import and RRD broadcasts ──────────────────────────────
     // admin:import — live progress pushed from the import coroutine to all admin tabs
     // rrd:live     — graph refresh after any import completes
+    // settings:saved — preferences updated; all tabs re-render with new defaults
     $c->addScope('admin:import');
     $c->addScope('rrd:live');
+    $c->addScope('settings:saved');
 
     // ── Helper: fetch graph data from datasource ─────────────────────────────
     $fetchGraphData = function () use (
@@ -334,7 +338,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $graphActualRes->setValue($pointCount, broadcast: false);
 
         // Use the actual RRD last-write time rather than wall-clock "now"
-        $activeSources = $graphSources->array() ?: (Config::$cfg['general']['sources'] ?? []);
+        $activeSources = $graphSources->array() ?: Config::$settings->sources;
         $lastWrite = empty($activeSources) ? 0 : max(array_map(
             fn($s) => Config::$db->last_update($s),
             $activeSources
@@ -347,9 +351,9 @@ $app->page('/', function (Context $c) use ($app): void {
     // ── Helper: count actual nfcapd files in a date range for given sources ─────
     // Scans the filesystem path structure: profiles-data/profile/source/YYYY/MM/DD/
     $countNfcapdFiles = static function (int $ds, int $de, array $sources): int {
-        $sourcePath = (Config::$cfg['nfdump']['profiles-data'] ?? '')
+        $sourcePath = Config::$settings->nfdumpProfilesData
             . \DIRECTORY_SEPARATOR
-            . (Config::$cfg['nfdump']['profile'] ?? 'live');
+            . Config::$settings->nfdumpProfile;
         $count = 0;
 
         foreach ($sources as $source) {
@@ -456,7 +460,7 @@ $app->page('/', function (Context $c) use ($app): void {
         }
 
         try {
-            $sources = implode(':', Config::$cfg['general']['sources']);
+            $sources = implode(':', Config::$settings->sources);
             $processor = new Config::$processorClass();
             $processor->setOption('-M', $sources);
             $processor->setOption('-R', [$datestart->int(), $dateend->int()]);
@@ -518,7 +522,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $forParam = $statsFor->string() . '/' . $statsOrderBy->string();
 
         try {
-            $srcs = $graphSources->array() ?: Config::$cfg['general']['sources'];
+            $srcs = $graphSources->array() ?: Config::$settings->sources;
             $processor = new Config::$processorClass();
             $processor->setOption('-M', implode(':', $srcs));
             $processor->setOption('-R', [$datestart->int(), $dateend->int()]);
@@ -566,7 +570,7 @@ $app->page('/', function (Context $c) use ($app): void {
     ): void {
         $srcs = $graphSources->array();
         if (\in_array('any', $srcs, true) || empty($srcs)) {
-            $srcs = Config::$cfg['general']['sources'] ?? [];
+            $srcs = Config::$settings->sources;
         }
         $nfcapdFileCount->setValue(
             $countNfcapdFiles($datestart->int(), $dateend->int(), $srcs),
@@ -759,6 +763,53 @@ $app->page('/', function (Context $c) use ($app): void {
         $c->sync();
     }, 'cancel-import');
 
+    // Save user preferences — persists to preferences.json and reloads defaults on all tabs.
+    $saveSettingsAction = $c->action(function (Context $c) use (
+        $app, $makeToast,
+        $settingsDefaultView, $settingsGraphDisplay, $settingsGraphDatatype,
+        $settingsGraphProtocols, $settingsFlowLimit, $settingsStatsOrderBy,
+        $settingsFiltersText, $settingsLogPriority, $settingsMessage
+    ): void {
+        // Parse filters: one per line, trim, drop blank lines
+        $rawFilters = array_values(array_filter(
+            array_map('trim', explode("\n", $settingsFiltersText->string()))
+        ));
+
+        try {
+            $prefs = UserPreferences::fromArray([
+                'defaultView'           => $settingsDefaultView->string(),
+                'defaultGraphDisplay'   => $settingsGraphDisplay->string(),
+                'defaultGraphDatatype'  => $settingsGraphDatatype->string(),
+                'defaultGraphProtocols' => $settingsGraphProtocols->array(),
+                'defaultFlowLimit'      => $settingsFlowLimit->int(),
+                'defaultStatsOrderBy'   => $settingsStatsOrderBy->string(),
+                'filters'               => $rawFilters,
+                'logPriority'           => Settings::logLevelFromString($settingsLogPriority->string()),
+            ]);
+
+            $prefs->save(Config::$prefsFile);
+            Config::$settings = $prefs->applyTo(Config::$settings);
+
+            // Update filter textarea to reflect normalised values (removes blank lines)
+            $settingsFiltersText->setValue(implode("\n", $prefs->filters), broadcast: false);
+
+            // Success toast is shown client-side immediately on click (no SSE needed)
+        } catch (\Throwable $e) {
+            $settingsMessage->setValue(
+                $makeToast('error', 'Failed to save: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES)),
+                broadcast: false
+            );
+        }
+
+        $c->sync();
+        // Reset message so subsequent re-renders don't re-show the error toast
+        $settingsMessage->setValue('', broadcast: false);
+        // Broadcast to all other tabs so their defaults refresh too
+        if (!empty($app->getClients())) {
+            $app->broadcast('settings:saved');
+        }
+    }, 'save-settings');
+
     // IP info: geo lookup + hostname resolution — pushes a rendered modal fragment,    // no full page re-render. The browser JS triggers this action; Datastar patches
     // the fragment into #ip-modal-placeholder and JS calls Bootstrap .show().
     $ipInfoAction = $c->action(function (Context $c): void {
@@ -867,7 +918,7 @@ $app->page('/', function (Context $c) use ($app): void {
         if (!$hasFatalError && !$isUpdate) {
             $srcs = $graphSources->array();
             if (\in_array('any', $srcs, true) || empty($srcs)) {
-                $srcs = Config::$cfg['general']['sources'] ?? [];
+                $srcs = Config::$settings->sources;
             }
             $nfcapdFileCount->setValue(
                 $countNfcapdFiles($datestart->int(), $dateend->int(), $srcs),
@@ -884,7 +935,7 @@ $app->page('/', function (Context $c) use ($app): void {
             $lastGraphFetch = $now;
 
             $cachedImportSources = [];
-            foreach (Config::$cfg['general']['sources'] ?? [] as $source) {
+            foreach (Config::$settings->sources as $source) {
                 $cachedImportSources[] = [
                     'name'        => $source,
                     'last_update' => Config::$db->last_update($source),
@@ -949,10 +1000,10 @@ $app->page('/', function (Context $c) use ($app): void {
             'importYears' => (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3),
 
             // ── Static config (non-reactive, drives option lists) ─────────
-            'sources' => Config::$cfg['general']['sources'] ?? [],
-            'ports'   => Config::$cfg['general']['ports'] ?? [],
-            'filters' => Config::$cfg['general']['filters'] ?? [],
-            'defaults' => Config::$cfg['frontend']['defaults'] ?? [],
+            'sources' => Config::$settings->sources,
+            'ports'   => Config::$settings->ports,
+            'filters' => Config::$settings->filters,
+            'defaults' => ['view' => Config::$settings->defaultView],
 
             // ── Signal objects — templates use bind(signal) and signal.id() ──
             // Date range
@@ -1002,6 +1053,23 @@ $app->page('/', function (Context $c) use ($app): void {
             'action_triggerImport' => $triggerImportAction->url(),
             'action_forceRescan'   => $forceRescanAction->url(),
             'action_cancelImport'  => $cancelImportAction->url(),
+            // ── Settings ─────────────────────────────────────────────────
+            'settingsDefaultView'    => $settingsDefaultView,
+            'settingsGraphDisplay'   => $settingsGraphDisplay,
+            'settingsGraphDatatype'  => $settingsGraphDatatype,
+            'settingsGraphProtocols' => $settingsGraphProtocols,
+            'settingsFlowLimit'      => $settingsFlowLimit,
+            'settingsStatsOrderBy'   => $settingsStatsOrderBy,
+            'settingsFiltersText'    => $settingsFiltersText,
+            'settingsLogPriority'    => $settingsLogPriority,
+            'settingsMessageHtml'   => $settingsMessage->string(),
+            'action_saveSettings'    => $saveSettingsAction->url(),
+            // ── Deployment config (read-only display in Settings tab) ─────
+            'deployDatasource'    => Config::$settings->datasourceName,
+            'deployImportYears'   => Config::$settings->importYears,
+            'deployNfdumpBinary'  => Config::$settings->nfdumpBinary,
+            'deployNfdumpProfiles' => Config::$settings->nfdumpProfilesData,
+            'deployPrefsFile'     => Config::$prefsFile,
             // ── Computed / pre-rendered data ──────────────────────────────
             'graphData'        => $graphData,
             'flowTableHtml'    => $flowTableHtml,

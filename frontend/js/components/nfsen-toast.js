@@ -6,7 +6,7 @@
 class NfsenToast extends HTMLElement {
     constructor() {
         super();
-        this.autoDismissDelay = 3000; // 3 seconds for success messages
+        this.autoDismissDelay = 5000; // 5 seconds for success messages
     }
 
     connectedCallback() {
@@ -71,6 +71,7 @@ class NfsenToast extends HTMLElement {
             alert.classList.remove('show');
         }
         setTimeout(() => {
+            this.dispatchEvent(new CustomEvent('nfsen-toast-dismissed', { bubbles: true }));
             this.remove();
         }, 150); // Match Bootstrap's fade transition time
     }
@@ -80,7 +81,8 @@ class NfsenToast extends HTMLElement {
 customElements.define('nfsen-toast', NfsenToast);
 
 // Global helper function for client-side usage
-window.showMessage = function (type, message, autoDismiss = false) {
+// containerSelector: optional CSS selector for the target container (should have data-ignore-morph)
+window.showMessage = function (type, message, autoDismiss = false, containerSelector = null) {
     // Create a new toast element
     const toast = document.createElement('nfsen-toast');
     toast.dataset.type = type;
@@ -89,7 +91,8 @@ window.showMessage = function (type, message, autoDismiss = false) {
         toast.dataset.autoDismiss = 'true';
     }
 
-    // Append to body or first available container
-    const container = document.querySelector('main') || document.body;
+    // Prefer the specified container, then fall back to body
+    const container =
+        (containerSelector && document.querySelector(containerSelector)) || document.body;
     container.appendChild(toast);
 };

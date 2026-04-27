@@ -1,0 +1,14 @@
+{
+    "defaultView": "graphs",
+    "defaultGraphDisplay": "ports",
+    "defaultGraphDatatype": "packets",
+    "defaultGraphProtocols": [],
+    "defaultFlowLimit": 100,
+    "defaultStatsOrderBy": "packets",
+    "filters": [
+        "proto tcp",
+        "dst port 443",
+        "src net 192.168.0.0\/16"
+    ],
+    "logPriority": 7
+}

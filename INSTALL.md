@@ -81,6 +81,6 @@ sudo -u www-data php backend/cli.php -v import
 sudo -u www-data php backend/app.php
 ```
 
-For TLS and compression, put Caddy in front of the OpenSwoole server. See [CADDY_SWOOLE_SETUP.md](./CADDY_SWOOLE_SETUP.md) for the Caddyfile configuration.
+For TLS and compression, put Caddy in front of the OpenSwoole server. See [HTTP_COMPRESSION.md](./HTTP_COMPRESSION.md) and the provided `Caddyfile` for configuration.
 
 For running the server as a systemd service, see the unit files in `systemd/` and [systemd/README.md](./systemd/README.md).

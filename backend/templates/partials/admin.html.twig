@@ -22,12 +22,17 @@
                 <table class="table table-sm mb-0">
                     <tbody>
                         {% for check in healthChecks %}
+                        {% if loop.first or check.group != healthChecks[loop.index0 - 1].group %}
+                        <tr class="table-light">
+                            <td colspan="2" class="ps-3 py-1 small fw-semibold text-muted text-uppercase" style="letter-spacing:.04em; font-size:.7rem">{{ check.group }}</td>
+                        </tr>
+                        {% endif %}
                         <tr class="{{ check.status == 'error' ? 'table-danger' : (check.status == 'warning' ? 'table-warning' : '') }}">
                             <td class="ps-3 text-nowrap" style="width:40%">
                                 <span class="text-{{ check.status == 'error' ? 'danger' : (check.status == 'warning' ? 'warning' : 'success') }}">●</span>
                                 {{ check.label }}
                             </td>
-                            <td class="text-muted small">{{ check.detail }}</td>
+                            <td class="text-muted small">{% if check.code %}<code>{{ check.detail }}</code>{% else %}{{ check.detail }}{% endif %}</td>
                         </tr>
                         {% else %}
                         <tr>

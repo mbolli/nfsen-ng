@@ -7,7 +7,6 @@
 import './nfsen-chart.js';
 import './nfsen-table.js';
 import './nfsen-daterange.js';
-import './dark-mode-toggle.js';
 import './nfsen-toast.js';
 import './nfsen-filter-manager.js';
 import './nfsen-tooltip.js';

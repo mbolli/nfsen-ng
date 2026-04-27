@@ -3,6 +3,9 @@
 
 set -e
 
+# Always run from the repository root regardless of where the script is called from
+cd "$(cd "$(dirname "$0")" && pwd)/.."
+
 echo "================================"
 echo "nfsen-ng VictoriaMetrics Setup"
 echo "================================"

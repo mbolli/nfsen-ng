@@ -39,7 +39,7 @@ This version includes major architectural improvements:
 
 ## Quick Start
 
-Docker is the recommended way to run nfsen-ng. See [QUICKSTART.md](./QUICKSTART.md) for the fastest path and [DOCKER_SETUP.md](./DOCKER_SETUP.md) for dev vs production details.
+Docker is the recommended way to run nfsen-ng. See [QUICKSTART.md](./QUICKSTART.md) for the fastest path and [DOCKER_SETUP.md](./docs/DOCKER_SETUP.md) for dev vs production details.
 
 For a bare-metal install (no Docker), see [INSTALL.md](./INSTALL.md).
 
@@ -72,7 +72,7 @@ Copy `backend/settings/settings.php.dist` to `backend/settings/settings.php` and
 
 ### Environment variables
 
-All settings can be overridden via environment variables. See [ENVIRONMENT_VARIABLES.md](./ENVIRONMENT_VARIABLES.md) for the full reference.
+All settings can be overridden via environment variables. See [ENVIRONMENT_VARIABLES.md](./docs/ENVIRONMENT_VARIABLES.md) for the full reference.
 
 ### Nfdump / nfcapd
 

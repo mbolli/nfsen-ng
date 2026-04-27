@@ -2,7 +2,7 @@
 
 ## Option A: Docker (recommended)
 
-Docker is the easiest way to get nfsen-ng running. See [QUICKSTART.md](./QUICKSTART.md) for the fastest path and [DOCKER_SETUP.md](./DOCKER_SETUP.md) for dev vs production details.
+Docker is the easiest way to get nfsen-ng running. See [QUICKSTART.md](./QUICKSTART.md) for the fastest path and [DOCKER_SETUP.md](./docs/DOCKER_SETUP.md) for dev vs production details.
 
 Prerequisites: Docker, Docker Compose, and nfcapd writing files to `/var/nfdump/profiles-data`.
 
@@ -81,6 +81,6 @@ sudo -u www-data php backend/cli.php -v import
 sudo -u www-data php backend/app.php
 ```
 
-For TLS and compression, put Caddy in front of the OpenSwoole server. See [HTTP_COMPRESSION.md](./HTTP_COMPRESSION.md) and the provided `Caddyfile` for configuration.
+For TLS and compression, put Caddy in front of the OpenSwoole server. See [HTTP_COMPRESSION.md](./docs/HTTP_COMPRESSION.md) and the provided `Caddyfile` for configuration.
 
 For running the server as a systemd service, see the unit files in `systemd/` and [systemd/README.md](./systemd/README.md).

@@ -1,8 +1,4 @@
 /* general */
-nfsen-daterange {
-    display: block;
-    width: 100%;
-}
 
 @media (prefers-color-scheme: light) {
     html {
@@ -229,4 +225,135 @@ th.sortable.sort-desc {
     to {
         filter: blur(5px);
     }
+}
+
+/* ── noUiSlider skin (replaces ion.rangeSlider / sprite-skin-nice) ─────────
+   Targets to match the previous "Nice" skin look-and-feel:
+   - Horizontal grey track, 8px tall
+   - Blue-grey filled bar between handles
+   - Circular white handles (22×22 px) with subtle shadow
+   - Small grid/pip labels below the track
+   - Floating tooltips above handles, styled like the old irs-from/irs-to bubbles
+   Dark mode: the page-level invert(0.85) on <html> inverts these automatically.
+──────────────────────────────────────────────────────────────────────────── */
+
+nfsen-daterange {
+    display: block;
+    width: 100%;
+    padding: 20px 12px 8px; /* top: tooltips above track; sides/bottom: breathing room */
+}
+
+nfsen-daterange .daterange-slider {
+    margin: 0 11px; /* compensate for handle overflow at track edges */
+}
+
+/* Base track */
+.noUi-target {
+    height: 8px;
+    border-radius: 4px;
+    background: #e8e8e8;
+    border: 1px solid #bbb;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.noUi-connects {
+    border-radius: 4px;
+    overflow: hidden; /* clip connect bar to track radius */
+}
+
+/* Filled bar between the two handles */
+.noUi-connect {
+    background: #8ca4b0; /* muted blue-grey, close to ion-slider bar colour */
+}
+
+/* Handles */
+.noUi-handle {
+    width: 22px !important;
+    height: 22px !important;
+    right: -11px !important;
+    top: -8px !important;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid #bbb;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    cursor: default;
+}
+/* Remove the default inner cross-hair lines */
+.noUi-handle::before,
+.noUi-handle::after {
+    display: none;
+}
+.noUi-handle:hover {
+    border-color: #999;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
+}
+.noUi-handle:focus {
+    outline: 2px solid #86b7fe;
+    outline-offset: 1px;
+}
+
+/* Floating tooltips above handles */
+.noUi-tooltip {
+    background: rgba(0, 0, 0, 0.3);
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    font-size: 10px;
+    line-height: 1.333;
+    padding: 1px 5px;
+    white-space: nowrap;
+    bottom: 26px; /* position above the handle */
+}
+
+/* Pip grid below track */
+.noUi-pips-horizontal {
+    padding: 6px 0 0;
+    height: 30px;
+    top: 100%;
+}
+.noUi-marker-horizontal.noUi-marker {
+    height: 8px;
+    background: #99a4ac;
+    width: 1px;
+}
+.noUi-marker-horizontal.noUi-marker-large,
+.noUi-marker-horizontal.noUi-marker-normal {
+    height: 12px;
+}
+.noUi-marker-horizontal.noUi-marker-sub {
+    height: 6px;
+}
+.noUi-value {
+    color: #99a4ac;
+    font-size: 9px;
+    line-height: 1;
+    padding: 0 3px;
+}
+
+/* ── Tooltip component (no-library replacement for bootstrap.Tooltip) ────── */
+.nfsen-tip-popup {
+    background: rgba(0, 0, 0, 0.75);
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    max-width: 260px;
+    white-space: normal;
+    line-height: 1.4;
+    pointer-events: none;
+}
+
+/* ── Native <dialog> modal (ip-info-modal, replaces Bootstrap JS Modal) ──── */
+dialog#ip-modal-inner {
+    border: none;
+    border-radius: 8px;
+    padding: 24px;
+    min-width: 400px;
+    max-width: 92vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+dialog#ip-modal-inner::backdrop {
+    background: rgba(0, 0, 0, 0.5);
 }

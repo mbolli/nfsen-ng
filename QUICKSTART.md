@@ -15,12 +15,12 @@ cp backend/settings/settings.php.dist backend/settings/settings.php
 
 **Production** (port 80/443, immutable container):
 ```bash
-docker-compose up -d
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
 **Development** (port 8080, source mounted, instant code changes):
 ```bash
-docker-compose -f docker-compose.dev.yml up -d
+docker compose -f deploy/docker-compose.dev.yml up -d
 ```
 
 See [DOCKER_SETUP.md](docs/DOCKER_SETUP.md) for the differences.
@@ -51,13 +51,13 @@ http://localhost:8080 # development Docker / bare-metal
 
 ```bash
 # Run a foreground import
-docker-compose exec nfsen php backend/cli.php -v import
+docker compose -f deploy/docker-compose.yml exec nfsen php backend/cli.php -v import
 
 # Daemon status
-docker-compose exec nfsen php backend/cli.php status
+docker compose -f deploy/docker-compose.yml exec nfsen php backend/cli.php status
 
 # Tail logs
-docker-compose logs -f nfsen
+docker compose -f deploy/docker-compose.yml logs -f nfsen
 ```
 
 ## Troubleshooting
@@ -73,7 +73,7 @@ docker-compose logs -f nfsen
 
 **Need to rebuild all data from scratch**
 ```bash
-docker-compose exec nfsen php backend/cli.php -f -p import
+docker compose -f deploy/docker-compose.yml exec nfsen php backend/cli.php -f -p import
 # or set NFSEN_FORCE_IMPORT=true in docker-compose and restart
 ```
 

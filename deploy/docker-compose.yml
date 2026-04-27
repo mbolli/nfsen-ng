@@ -15,8 +15,8 @@
 services:
   nfsen:
     build:
-      context: .
-      dockerfile: Dockerfile  # Use production Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile  # Use production Dockerfile
     container_name: nfsen-ng
     expose:
       - "9000"  # Swoole HTTP server (internal only, reachable as nfsen:9000 inside Docker)
@@ -41,21 +41,21 @@ services:
       # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 4, set to CPU cores)
       # - SWOOLE_MAX_REQUEST=50000        # Max requests per worker before restart (default: 10000)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
-    entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/docker/docker-entrypoint.sh"]
+    entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/deploy/docker-entrypoint.sh"]
     restart: unless-stopped
   
   caddy:
     build:
-      context: .
-      dockerfile: Dockerfile.caddy
+      context: ..
+      dockerfile: deploy/Dockerfile.caddy
     container_name: nfsen-caddy
     ports:
       - "80:80"  # External HTTP port
       - "443:443"  # HTTPS
       - "443:443/udp"  # HTTP/3
     volumes:
-      - ./docker/Caddyfile.prod:/etc/caddy/Caddyfile:ro
-      - ./frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - ../frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files
       - caddy_data:/data  # Certificate storage
       - caddy_config:/config  # Caddy config storage
     depends_on:

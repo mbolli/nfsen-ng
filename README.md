@@ -45,10 +45,10 @@ For a bare-metal install (no Docker), see [INSTALL.md](./INSTALL.md).
 
 ```bash
 # Production (port 80/443)
-docker-compose up -d
+docker compose -f deploy/docker-compose.yml up -d
 
 # Development (port 8080, source mounted)
-docker-compose -f docker-compose.dev.yml up -d
+docker compose -f deploy/docker-compose.dev.yml up -d
 ```
 
 ## Configuration
@@ -118,8 +118,8 @@ backend/cli.php start | stop | status
 **Inside Docker:**
 
 ```bash
-docker-compose exec nfsen php backend/cli.php -v import
-docker-compose exec nfsen php backend/cli.php start
+docker compose -f deploy/docker-compose.yml exec nfsen php backend/cli.php -v import
+docker compose -f deploy/docker-compose.yml exec nfsen php backend/cli.php start
 ```
 
 ### Daemon as a systemd service
@@ -135,7 +135,7 @@ nfsen-ng logs to syslog (`nfsen-ng:` prefix). Find logs with:
 journalctl -t nfsen-ng -f
 
 # Docker logs
-docker-compose logs -f nfsen
+docker compose -f deploy/docker-compose.yml logs -f nfsen
 ```
 
 Adjust verbosity via `NFSEN_LOG_LEVEL` env var or `log.priority` in `settings.php`.

@@ -17,9 +17,9 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Check if docker-compose is available
-if ! command -v docker-compose &> /dev/null; then
-    echo "Error: docker-compose is not installed"
+# Check if docker compose is available
+if ! docker compose version > /dev/null 2>&1; then
+    echo "Error: docker compose is not available"
     exit 1
 fi
 
@@ -35,7 +35,7 @@ fi
 # Step 2: Start VictoriaMetrics
 echo ""
 echo "Step 2: Starting VictoriaMetrics..."
-docker-compose -f docker-compose.victoriametrics.yml up -d victoriametrics
+docker compose -f deploy/docker-compose.victoriametrics.yml up -d victoriametrics
 
 # Wait for VictoriaMetrics to be ready
 echo "Waiting for VictoriaMetrics to be ready..."
@@ -54,7 +54,7 @@ done
 # Step 3: Start nfsen-ng
 echo ""
 echo "Step 3: Starting nfsen-ng..."
-docker-compose -f docker-compose.victoriametrics.yml up -d nfsen-ng
+docker compose -f deploy/docker-compose.victoriametrics.yml up -d nfsen-ng
 
 echo ""
 echo "================================"

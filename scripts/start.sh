@@ -8,7 +8,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR/.."
 
 # Colors
 GREEN='\033[0;32m'
@@ -29,15 +29,15 @@ if command -v docker-compose &> /dev/null || command -v docker &> /dev/null; the
     echo -e "${GREEN}✓${NC} Docker found"
     
     echo -e "\n${YELLOW}Starting with Docker Compose...${NC}"
-    docker-compose up -d
+    docker compose -f deploy/docker-compose.yml up -d
     
     echo -e "\n${GREEN}✓${NC} nfsen-ng started!"
     echo -e "\n${BLUE}Access the application:${NC}"
     echo -e "  • Frontend: ${GREEN}http://localhost:8080${NC}"
     echo -e "\n${BLUE}View logs:${NC}"
-    echo -e "  docker-compose logs -f"
+    echo -e "  docker compose -f deploy/docker-compose.yml logs -f"
     echo -e "\n${BLUE}Stop server:${NC}"
-    echo -e "  docker-compose down"
+    echo -e "  docker compose -f deploy/docker-compose.yml down"
     
     exit 0
 fi

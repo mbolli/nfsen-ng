@@ -4,8 +4,8 @@
 services:
   nfsen:
     build:
-      context: .
-      dockerfile: Dockerfile  # Use production Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile  # Use production Dockerfile
     container_name: nfsen-ng
     expose:
       - "9000"  # Swoole HTTP server (internal only)
@@ -13,7 +13,7 @@ services:
       - /var/nfdump/profiles-data:/data/nfsen-ng:ro
       - rrd-data:/var/nfsen-ng/rrd  # Persistent RRD database storage
       - nfsen-frontend:/var/www/html/nfsen-ng/frontend  # Share frontend with Caddy
-      - ./backend/settings/settings.php:/var/www/html/nfsen-ng/backend/settings/settings.php:ro  # Custom settings
+      - ../backend/settings/settings.php:/var/www/html/nfsen-ng/backend/settings/settings.php:ro  # Custom settings
     environment:
       - TZ=UTC
       - NFSEN_RRD_PATH=/var/nfsen-ng/rrd  # Store RRD files on separate volume
@@ -35,15 +35,15 @@ services:
   
   caddy:
     build:
-      context: .
-      dockerfile: Dockerfile.caddy
+      context: ..
+      dockerfile: deploy/Dockerfile.caddy
     container_name: nfsen-caddy
     ports:
       - "80:80"  # External HTTP port
       - "443:443"  # HTTPS
       - "443:443/udp"  # HTTP/3
     volumes:
-      - ./docker/Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
       - nfsen-frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files from nfsen container
       - caddy_data:/data  # Certificate storage
       - caddy_config:/config  # Caddy config storage

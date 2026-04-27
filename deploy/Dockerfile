@@ -1,10 +1,10 @@
-# Development Dockerfile for nfsen-ng with Swoole
-# Uses local source code (mounted volume) instead of git clone
+# Production Dockerfile for nfsen-ng with Swoole
+# Clones code from git and installs production dependencies
 
 FROM php:8.4-cli
 
 ENV TZ="UTC"
-WORKDIR /var/www/html/nfsen-ng
+WORKDIR /var/www/html
 
 # Install dependencies required for nfdump, nfsen-ng, and Swoole
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -13,7 +13,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     build-essential autoconf automake libtool \
     unzip wget curl \
     libssl-dev libcurl4-openssl-dev libnghttp2-dev \
-    entr \
     netbase bind9-host \
     && rm -rf /var/lib/apt/lists/*
 
@@ -44,20 +43,25 @@ RUN install-php-extensions openswoole inotify brotli
 RUN pecl install rrd \
     && docker-php-ext-enable rrd
 
-# Install composer
+# Setup volumes for persistent data and configuration
+VOLUME ["/data/nfsen-ng"]
+
+# Clone nfsen-ng from git (production) - v1 branch
+RUN git clone -b v1 https://github.com/mbolli/nfsen-ng.git /var/www/html/nfsen-ng \
+    && chmod +x /var/www/html/nfsen-ng/backend/cli.php
+
+# Install composer and production dependencies
 RUN curl -sS https://getcomposer.org/download/latest-stable/composer.phar -o /usr/local/bin/composer \
-    && chmod +x /usr/local/bin/composer
+    && chmod +x /usr/local/bin/composer \
+    && cd /var/www/html/nfsen-ng \
+    && composer install --no-dev --optimize-autoloader
 
-# Copy entrypoint scripts
-COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY docker/docker-entrypoint-dev.sh /usr/local/bin/docker-entrypoint-dev.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
-    && chmod +x /usr/local/bin/docker-entrypoint-dev.sh
-
-# Development: Source code will be mounted from host
-# Dependencies will be installed via entrypoint if vendor/ doesn't exist
+# Copy entrypoint script
+COPY deploy/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 9000
 
-ENTRYPOINT ["docker-entrypoint-dev.sh"]
-CMD []
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["php", "/var/www/html/nfsen-ng/backend/app.php"]
+

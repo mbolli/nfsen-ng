@@ -1,14 +1,14 @@
 services:
   nfsen:
     build:
-      context: .
-      dockerfile: Dockerfile.dev  # Use development Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile.dev  # Use development Dockerfile
     container_name: nfsen-ng
     expose:
       - "9000"  # OpenSwoole HTTP server (internal only)
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng
-      - .:/var/www/html/nfsen-ng  # Mount source for development
+      - ..:/var/www/html/nfsen-ng  # Mount source for development
       # Uncomment to use separate RRD volume (otherwise uses backend/datasources/data in mounted source)
       # - rrd-data:/var/nfsen-ng/rrd
     environment:
@@ -29,19 +29,19 @@ services:
       # OpenSwoole HTTP server performance tuning
       # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 1)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
-    entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/docker/docker-entrypoint-dev.sh"]
+    entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/deploy/docker-entrypoint-dev.sh"]
     restart: unless-stopped
 
   caddy:
     build:
-      context: .
-      dockerfile: Dockerfile.caddy
+      context: ..
+      dockerfile: deploy/Dockerfile.caddy
     container_name: nfsen-caddy
     ports:
       - "8080:80"  # External HTTP port
     volumes:
-      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files
     depends_on:
       - nfsen
     restart: unless-stopped
@@ -66,8 +66,8 @@ services:
   #
   nfcapd:
     build:
-      context: .
-      dockerfile: Dockerfile.dev
+      context: ..
+      dockerfile: deploy/Dockerfile.dev
     container_name: nfsen-nfcapd
     network_mode: host  # Must use host networking so softflowd's loopback UDP reaches the container
     volumes:

@@ -7,8 +7,8 @@ nfsen-ng is a modern web-based NetFlow analyzer (nfsen replacement).
 
 ```bash
 # Start development environment (port 8080, source mounted, auto-reload)
-docker compose -f docker-compose.dev.yml up -d
-docker compose -f docker-compose.dev.yml logs -f nfsen
+docker compose -f deploy/docker-compose.dev.yml up -d
+docker compose -f deploy/docker-compose.dev.yml logs -f nfsen
 
 # No restart needed for PHP/JS/CSS/.twig changes — entr watches mounted files
 ```

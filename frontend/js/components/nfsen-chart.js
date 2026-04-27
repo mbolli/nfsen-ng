@@ -14,9 +14,20 @@ export class NfsenChart extends HTMLElement {
         this.container = this.querySelector('.chart-canvas');
         // Initialize chart when data is provided via Datastar signals
         this.initializeChart();
+
+        // Resize Dygraph whenever the container changes dimensions (handles responsive
+        // layout changes and sidebar-toggling without a hard page reload)
+        this._resizeObserver = new ResizeObserver(() => {
+            if (this.dygraph) this.dygraph.resize();
+        });
+        this._resizeObserver.observe(this);
     }
 
     disconnectedCallback() {
+        if (this._resizeObserver) {
+            this._resizeObserver.disconnect();
+            this._resizeObserver = null;
+        }
         if (this.dygraph) {
             this.dygraph.destroy();
             this.dygraph = null;
@@ -181,6 +192,7 @@ export class NfsenChart extends HTMLElement {
 
         // Create new Dygraph instance
         this.config = {
+            width: 'auto',
             title: this.getTitle(config.display, config.sources, config.protocols, config.ports, type),
             labels: labels,
             ylabel: type !== 'traffic' ? type.toUpperCase() + '/s' : trafficUnit + '/s',

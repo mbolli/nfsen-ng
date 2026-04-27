@@ -186,6 +186,20 @@ class Import {
                         echo ProgressBar::next(1);
                     }
 
+                    // Yield to the event loop so a queued cancel request can be
+                    // processed before we loop to the next date. Without this, a long
+                    // series of missing directories (date gaps) would never reach the
+                    // per-file cancel check in the inner loop.
+                    if (\OpenSwoole\Coroutine::getCid() > 0) {
+                        \OpenSwoole\Coroutine::sleep(0);
+                    }
+
+                    if ($shouldCancel !== null && $shouldCancel()) {
+                        $this->d->log('Import cancelled by user.', LOG_WARNING);
+
+                        return;
+                    }
+
                     continue;
                 }
 

@@ -83,11 +83,10 @@ class ImportDaemon {
      * Note: If the Import class proves unsafe in a coroutine context, call this
      * directly in onStart() (blocking) before the server accepts connections.
      */
-    public function initialImport(?callable $onProgress = null): void {
+    public function initialImport(?callable $onProgress = null, ?callable $shouldCancel = null): void {
         $this->lock();
         try {
-            $datasource = Config::$cfg['general']['db'];
-            $importYears = Config::$cfg['db'][$datasource]['import_years'] ?? 3;
+            $importYears = Config::$settings->importYears();
 
             $this->debug->log("ImportDaemon: running initial import (last {$importYears} years)", LOG_INFO);
 
@@ -100,7 +99,7 @@ class ImportDaemon {
             $importer->setProcessPorts(true);
             $importer->setProcessPortsBySource(true);
             $importer->setCheckLastUpdate(true);
-            $importer->start($start, $onProgress);
+            $importer->start($start, $onProgress, null, $shouldCancel);
 
             $this->debug->log('ImportDaemon: initial import done', LOG_INFO);
         } finally {

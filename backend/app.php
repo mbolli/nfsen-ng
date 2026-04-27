@@ -117,16 +117,19 @@ $app->onStart(function () use ($app): void {
         };
 
         try {
-            $daemon->initialImport(function (array $progress) use ($app, $flushLog): void {
-                $app->setGlobalState('import_progress', $progress['pct']);
-                $app->setGlobalState('import_current_file', $progress['file']);
-                $app->setGlobalState('import_status_text', 'Initial import: ' . $progress['processed'] . ' / ' . $progress['total'] . ' files');
-                $app->setGlobalState('import_eta', $progress['eta']);
-                $flushLog();
-                if (!empty($app->getClients())) {
-                    $app->broadcast('admin:import');
-                }
-            });
+            $daemon->initialImport(
+                function (array $progress) use ($app, $flushLog): void {
+                    $app->setGlobalState('import_progress', $progress['pct']);
+                    $app->setGlobalState('import_current_file', $progress['file']);
+                    $app->setGlobalState('import_status_text', 'Initial import: ' . $progress['processed'] . ' / ' . $progress['total'] . ' files');
+                    $app->setGlobalState('import_eta', $progress['eta']);
+                    $flushLog();
+                    if (!empty($app->getClients())) {
+                        $app->broadcast('admin:import');
+                    }
+                },
+                static fn (): bool => (bool) $app->globalState('import_cancel', false)
+            );
             $flushLog();
             $app->setGlobalState('import_status_text', 'Initial import complete');
             $app->setGlobalState('import_progress', 100);
@@ -753,6 +756,7 @@ $app->page('/', function (Context $c) use ($app): void {
         if (!empty($app->getClients())) {
             $app->broadcast('admin:import');
         }
+        $c->sync();
     }, 'cancel-import');
 
     // IP info: geo lookup + hostname resolution — pushes a rendered modal fragment,    // no full page re-render. The browser JS triggers this action; Datastar patches

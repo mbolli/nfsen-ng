@@ -28,7 +28,7 @@ nfsen-ng now supports VictoriaMetrics as an alternative datasource to RRD. Victo
 
 ```bash
 # Use the VictoriaMetrics compose file
-docker-compose -f docker-compose.victoriametrics.yml up -d
+docker compose -f deploy/docker-compose.victoriametrics.yml up -d
 ```
 
 ### 2. Configure nfsen-ng

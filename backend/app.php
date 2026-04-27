@@ -260,6 +260,28 @@ $app->page('/', function (Context $c) use ($app): void {
     $importRunning = $c->signal($daemon !== null && $daemon->isLocked(), 'import_running');
     // Client-writable: browser toggles confirm panel without a round-trip
     $confirmRescan = $c->signal(false, 'confirm_rescan', clientWritable: true);
+    // Whether ports should be scanned during import (combined and per-source)
+    $importScanPorts = $c->signal(true, 'import_scan_ports', clientWritable: true);
+
+    // Settings signals — user preferences editable in the Settings tab
+    $settingsDefaultView      = $c->signal(Config::$settings->defaultView,           'settings_defaultView',      clientWritable: true);
+    $settingsGraphDisplay     = $c->signal(Config::$settings->defaultGraphDisplay,   'settings_graphDisplay',     clientWritable: true);
+    $settingsGraphDatatype    = $c->signal(Config::$settings->defaultGraphDatatype,  'settings_graphDatatype',    clientWritable: true);
+    $settingsGraphProtocols   = $c->signal(Config::$settings->defaultGraphProtocols, 'settings_graphProtocols',   clientWritable: true);
+    $settingsFlowLimit        = $c->signal(Config::$settings->defaultFlowLimit,      'settings_flowLimit',        clientWritable: true);
+    $settingsStatsOrderBy     = $c->signal(Config::$settings->defaultStatsOrderBy,   'settings_statsOrderBy',     clientWritable: true);
+    // Filters stored as newline-separated text (easier for a textarea; parsed on save)
+    $settingsFiltersText      = $c->signal(
+        implode("\n", Config::$settings->filters),
+        'settings_filtersText',
+        clientWritable: true
+    );
+    $settingsLogPriority      = $c->signal(
+        Settings::logLevelToString(Config::$settings->logPriority),
+        'settings_logPriority',
+        clientWritable: true
+    );
+    $settingsMessage          = $c->signal('', 'settings_message');
 
     // ── State containers (plain PHP — NOT signals, not sent to browser) ──────
     // These carry large result sets between the action and the view closure.
@@ -556,7 +578,7 @@ $app->page('/', function (Context $c) use ($app): void {
     // dropped SSE connection on the triggering tab cannot abort the import.
     $triggerImportAction = $c->action(function (Context $c) use (
         $app, $debug, $daemon,
-        $importRunning
+        $importRunning, $importScanPorts
     ): void {
         if ($daemon === null || $daemon->isLocked()) {
             return;
@@ -575,7 +597,8 @@ $app->page('/', function (Context $c) use ($app): void {
             $app->broadcast('admin:import');
         }
 
-        \OpenSwoole\Coroutine::create(function () use ($app, $debug, $daemon): void {
+        $scanPorts = $importScanPorts->bool();
+        \OpenSwoole\Coroutine::create(function () use ($app, $debug, $daemon, $scanPorts): void {
             $app->setGlobalState('import_cancel', false);
             /** Append new Debug WARNING+ entries to the global log state. */
             $flushLog = static function () use ($app): void {
@@ -589,14 +612,13 @@ $app->page('/', function (Context $c) use ($app): void {
                 }
             };
             try {
-                $datasource  = Config::$cfg['general']['db'];
-                $importYears = Config::$cfg['db'][$datasource]['import_years'] ?? 3;
+                $importYears = Config::$settings->importYears();
                 $start       = (new \DateTime())->modify('-' . $importYears . ' years');
 
                 $importer = new Import();
                 $importer->setQuiet(true);
-                $importer->setProcessPorts(true);
-                $importer->setProcessPortsBySource(true);
+                $importer->setProcessPorts($scanPorts);
+                $importer->setProcessPortsBySource($scanPorts);
                 $importer->setCheckLastUpdate(true);
 
                 $importer->start(
@@ -640,7 +662,7 @@ $app->page('/', function (Context $c) use ($app): void {
     // Force rescan — same as triggerImport but resets all RRD data first.
     $forceRescanAction = $c->action(function (Context $c) use (
         $app, $debug, $daemon,
-        $importRunning, $confirmRescan
+        $importRunning, $confirmRescan, $importScanPorts
     ): void {
         $confirmRescan->setValue(false);
 
@@ -661,7 +683,8 @@ $app->page('/', function (Context $c) use ($app): void {
             $app->broadcast('admin:import');
         }
 
-        \OpenSwoole\Coroutine::create(function () use ($app, $debug, $daemon): void {
+        $scanPorts = $importScanPorts->bool();
+        \OpenSwoole\Coroutine::create(function () use ($app, $debug, $daemon, $scanPorts): void {
             $app->setGlobalState('import_cancel', false);
             /** Append new Debug WARNING+ entries to the global log state. */
             $flushLog = static function () use ($app): void {
@@ -675,15 +698,14 @@ $app->page('/', function (Context $c) use ($app): void {
                 }
             };
             try {
-                $datasource  = Config::$cfg['general']['db'];
-                $importYears = Config::$cfg['db'][$datasource]['import_years'] ?? 3;
+                $importYears = Config::$settings->importYears();
                 $start       = (new \DateTime())->modify('-' . $importYears . ' years');
 
                 $importer = new Import();
                 $importer->setQuiet(true);
                 $importer->setForce(true);
-                $importer->setProcessPorts(true);
-                $importer->setProcessPortsBySource(true);
+                $importer->setProcessPorts($scanPorts);
+                $importer->setProcessPortsBySource($scanPorts);
 
                 $importer->start(
                     $start,
@@ -815,10 +837,14 @@ $app->page('/', function (Context $c) use ($app): void {
         $flowAggSrcIp, $flowAggSrcIpPrefix, $flowAggDstIp, $flowAggDstIpPrefix,
         $flowOrderByTstart, $flowCount, $flowMessage,
         $statsFilter, $statsCount, $statsFor, $statsOrderBy, $statsMessage,
-        $importRunning, $confirmRescan,
+        $importRunning, $confirmRescan, $importScanPorts,
         $refreshGraphsAction, $flowAction, $statsAction, $ipInfoAction,
         $triggerImportAction, $forceRescanAction, $cancelImportAction,
         $countNfcapdFiles, $nfcapdFileCount, $countFilesAction,
+        $settingsDefaultView, $settingsGraphDisplay, $settingsGraphDatatype,
+        $settingsGraphProtocols, $settingsFlowLimit, $settingsStatsOrderBy,
+        $settingsFiltersText, $settingsLogPriority, $settingsMessage,
+        $saveSettingsAction,
         &$flowTableHtml, &$statsTableHtml, &$lastGraphFetch, &$cachedGraphData, &$cachedImportSources,
         &$lastHealthFetch, &$cachedHealthChecks
     ): string {
@@ -981,6 +1007,8 @@ $app->page('/', function (Context $c) use ($app): void {
             // ── Admin / import ────────────────────────────────────────────
             'importRunning'       => $importRunning,
             'confirmRescan'       => $confirmRescan,
+            'importScanPorts'     => $importScanPorts,
+            'hasPorts'            => !empty(Config::$settings->ports),
             'importSources'       => $importSources,
             'importProgress'      => $app->globalState('import_progress', 0),
             'importCurrentFile'   => $app->globalState('import_current_file', ''),

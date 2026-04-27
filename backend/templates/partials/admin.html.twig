@@ -64,7 +64,18 @@
                     data-on:click="${{ confirmRescan.id() }} = false">
                 Cancel
             </button>
+            </div>
         </div>
+
+        {# Port-scanning toggle — only shown when ports are configured in settings #}
+        {% if hasPorts %}
+        <div class="form-check ms-2 my-auto">
+            <input type="checkbox" class="form-check-input" id="adminScanPorts"
+                   {{ bind(importScanPorts) }}
+                   data-attr:disabled="${{ importRunning.id() }}">
+            <label class="form-check-label small" for="adminScanPorts">Scan ports</label>
+        </div>
+        {% endif %}
 
     {% endif %}
 

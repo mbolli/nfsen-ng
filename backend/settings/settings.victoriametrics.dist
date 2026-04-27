@@ -40,16 +40,6 @@ $nfsen_config = [
         // 'processor' => 'Nfdump',
 
         /**
-         * Output formats for flows (optional)
-         */
-        'formats' => [
-            'auto',
-            'line',
-            'long',
-            'extended',
-        ],
-
-        /**
          * Predefined filters (optional)
          */
         'filters' => [

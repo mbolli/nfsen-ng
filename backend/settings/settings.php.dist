@@ -1,11 +1,24 @@
 <?php
 /**
- * config file for nfsen-ng.
+ * nfsen-ng optional settings file.
  *
- * remarks:
- * * database name = datasource class name (case-sensitive)
- * * log priority should be one of the predefined core constants prefixed with LOG_
- * * you can use getenv() to read environment variables for flexibility
+ * For standard Docker deployments you do NOT need this file — configure nfsen-ng
+ * entirely through environment variables (NFSEN_SOURCES, NFSEN_PORTS, NFSEN_NFDUMP_BINARY,
+ * NFSEN_NFDUMP_PROFILES, NFSEN_DATASOURCE, NFSEN_IMPORT_YEARS, …).
+ * See deploy/docker-compose.yml for the full list.
+ *
+ * Use this file when you need:
+ *   - Custom filter presets (the 'filters' key below)
+ *   - Non-standard datasource configs (Akumuli, custom RRD paths, etc.)
+ *   - A bare-metal / non-Docker install
+ *
+ * To activate: copy this file to settings.php (same directory) and edit it.
+ * Set NFSEN_SETTINGS_FILE to override the path.
+ *
+ * Notes:
+ *   - database name = datasource class name (case-sensitive)
+ *   - log priority should be one of the predefined core constants prefixed with LOG_
+ *   - you can use getenv() to read environment variables
  */
 
 $nfsen_config = [
@@ -41,9 +54,6 @@ $nfsen_config = [
             'flags R',                   // RST packets (connection resets)
             'packets > 100',             // Large packet counts
             'bytes > 1000000',           // Large transfers (>1MB)
-        ],
-        'formats' => [
-            'external_interfaces' => '%ts %td %pr %in %out %sa %sp %da %dp %ipkt %ibyt %opkt %obyt %flg',
         ],
         'db' => getenv('NFSEN_DATASOURCE') ?: 'RRD',
         'processor' => 'NfDump',

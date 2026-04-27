@@ -1,5 +1,16 @@
 # Production Docker Compose configuration
 # Uses production Dockerfile (clones from git, no dev dependencies)
+#
+# Two deployment modes:
+#
+#   1. With bundled Caddy (TLS, Brotli/zstd, static files):
+#        docker compose --profile proxy up -d
+#      Access at https://<your-domain>  (port 80/443)
+#
+#   2. Behind your own reverse proxy (Traefik, nginx, Caddy, …):
+#        docker compose up -d
+#      Proxy requests to http://nfsen:9000  (internal Docker hostname)
+#      Or uncomment the `ports` entry on the nfsen service to expose 9000 directly.
 
 services:
   nfsen:
@@ -8,7 +19,10 @@ services:
       dockerfile: Dockerfile  # Use production Dockerfile
     container_name: nfsen-ng
     expose:
-      - "9000"  # Swoole HTTP server (internal only)
+      - "9000"  # Swoole HTTP server (internal only, reachable as nfsen:9000 inside Docker)
+    # Uncomment to expose port 9000 directly to the host (useful when using your own reverse proxy):
+    # ports:
+    #   - "9000:9000"
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng
     environment:
@@ -46,6 +60,8 @@ services:
       - caddy_config:/config  # Caddy config storage
     depends_on:
       - nfsen
+    profiles:
+      - proxy
     restart: unless-stopped
 
 volumes:

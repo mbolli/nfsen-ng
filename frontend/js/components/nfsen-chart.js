@@ -149,7 +149,6 @@ export class NfsenChart extends HTMLElement {
 
         // If chart exists, just update it instead of recreating
         if (this.dygraph) {
-            // Merge new config with existing
             const updateConfig = {
                 title: this.getTitle(config.display, config.sources, config.protocols, config.ports, type),
                 labels: labels,
@@ -161,12 +160,20 @@ export class NfsenChart extends HTMLElement {
                 dateWindow: [chartData[0][0], chartData[chartData.length - 1][0]],
             };
 
-            this.dygraph.updateOptions(updateConfig);
+            const doUpdate = () => {
+                this.dygraph.updateOptions(updateConfig);
+                if (JSON.stringify(labels) !== JSON.stringify(this.currentLabels)) {
+                    this.currentLabels = labels;
+                    this.populateSeriesControls(labels.slice(1));
+                }
+            };
 
-            // Update series controls if labels changed
-            if (JSON.stringify(labels) !== JSON.stringify(this.currentLabels)) {
-                this.currentLabels = labels;
-                this.populateSeriesControls(labels.slice(1));
+            if (typeof this.container.startViewTransition === 'function') {
+                this.container.startViewTransition(doUpdate);
+            } else if (document.startViewTransition) {
+                document.startViewTransition(doUpdate);
+            } else {
+                doUpdate();
             }
 
             return;

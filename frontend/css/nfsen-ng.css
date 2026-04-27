@@ -76,6 +76,10 @@ pre,
 
 /* graph */
 
+/* View Transitions for chart updates: simple crossfade */
+::view-transition-old(nfsen-chart) { animation: 150ms ease-in  both fade-out; }
+::view-transition-new(nfsen-chart) { animation: 250ms ease-out both fade-in;  }
+
 #flowDiv .dygraph-title {
     font-size: 1.5rem;
     text-transform: uppercase;

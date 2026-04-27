@@ -78,7 +78,13 @@ abstract class Config {
         self::validateDirectoryStructure();
 
         // find data source
-        $dbClass = 'mbolli\\nfsen_ng\\datasources\\' . ucfirst(strtolower(self::$cfg['general']['db']));
+        $datasourceMap = [
+            'rrd'             => 'mbolli\\nfsen_ng\\datasources\\Rrd',
+            'akumuli'         => 'mbolli\\nfsen_ng\\datasources\\Akumuli',
+            'victoriametrics' => 'mbolli\\nfsen_ng\\datasources\\VictoriaMetrics',
+        ];
+        $dbKey = strtolower(self::$cfg['general']['db']);
+        $dbClass = $datasourceMap[$dbKey] ?? 'mbolli\\nfsen_ng\\datasources\\' . ucfirst($dbKey);
         if (class_exists($dbClass)) {
             self::$db = new $dbClass();
         } else {

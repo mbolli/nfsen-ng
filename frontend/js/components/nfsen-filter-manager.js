@@ -18,6 +18,10 @@
  */
 
 class NfsenFilterManager extends HTMLElement {
+    static get observedAttributes() {
+        return ['data-default-filters'];
+    }
+
     constructor() {
         super();
         this.targetTextarea = null;
@@ -25,6 +29,20 @@ class NfsenFilterManager extends HTMLElement {
         this.defaultFilters = [];
         // Generate unique ID for this instance
         this.instanceId = `filter-select-${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    attributeChangedCallback(name, oldValue, newValue) {
+        if (name === 'data-default-filters' && newValue !== oldValue) {
+            try {
+                this.defaultFilters = newValue ? JSON.parse(newValue) : [];
+            } catch (e) {
+                this.defaultFilters = [];
+            }
+            // Only reload if the component has already rendered
+            if (this.querySelector('select')) {
+                this.loadFilters();
+            }
+        }
     }
 
     connectedCallback() {
@@ -48,6 +66,20 @@ class NfsenFilterManager extends HTMLElement {
 
         // Set up event listeners
         this.setupEventListeners();
+
+        // Listen for global filter updates from settings
+        this._onGlobalFiltersUpdated = (e) => {
+            this.defaultFilters = e.detail?.filters ?? [];
+            this.loadFilters();
+        };
+        document.addEventListener('nfsen-global-filters-updated', this._onGlobalFiltersUpdated);
+    }
+
+    disconnectedCallback() {
+        if (this._onGlobalFiltersUpdated) {
+            document.removeEventListener('nfsen-global-filters-updated', this._onGlobalFiltersUpdated);
+            this._onGlobalFiltersUpdated = null;
+        }
     }
 
     render() {

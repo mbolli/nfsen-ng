@@ -14,9 +14,10 @@
         <p class="filter-label">Limit Flows
             <nfsen-tooltip data-ignore-morph text="Maximum number of flow records to display (-c option)." placement="top"></nfsen-tooltip>
         </p>
+        {% set _flowLimit = flowLimit.int() %}
         <select class="form-control form-select" {{ bind(flowLimit) }}>
             {% for n in [20, 50, 100, 500, 1000, 10000] %}
-            <option value="{{ n }}"{% if n == 50 %} selected{% endif %}>{{ n }}</option>
+            <option value="{{ n }}"{{ _flowLimit == n ? ' selected' : '' }}>{{ n }}</option>
             {% endfor %}
         </select>
         </div>
@@ -46,6 +47,7 @@
         <textarea class="form-control" id="filterNfdumpTextarea"
                   {{ bind(flowFilter) }} rows="3" autocomplete="on"></textarea>
         <nfsen-filter-manager
+            data-ignore-morph
             data-target-textarea="filterNfdumpTextarea"
             data-default-filters="{{ filters|json_encode }}">
         </nfsen-filter-manager>

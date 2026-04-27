@@ -8,9 +8,10 @@
         <p class="filter-label">Top records
             <nfsen-tooltip data-ignore-morph text="Number of top N statistics to display (-n option)." placement="top"></nfsen-tooltip>
         </p>
+        {% set _statsCount = statsCount.int() %}
         <select {{ bind(statsCount) }} class="form-control form-select">
             {% for n in [10, 20, 50, 100, 200, 500] %}
-            <option value="{{ n }}"{% if n == 10 %} selected{% endif %}>{{ n }}</option>
+            <option value="{{ n }}"{{ _statsCount == n ? ' selected' : '' }}>{{ n }}</option>
             {% endfor %}
         </select>
         </div>
@@ -40,6 +41,7 @@
         <textarea class="form-control" id="filterNfdumpTextareaStats"
                   {{ bind(statsFilter) }} rows="3" autocomplete="on"></textarea>
         <nfsen-filter-manager
+            data-ignore-morph
             data-target-textarea="filterNfdumpTextareaStats"
             data-default-filters="{{ filters|json_encode }}">
         </nfsen-filter-manager>
@@ -97,13 +99,14 @@
         </div>
         <div class="form-group">
             <label class="filter-sublabel" for="statsFilterOrderBySelection">Order by</label>
+            {% set _statsOrderBy = statsOrderBy.string() %}
             <select id="statsFilterOrderBySelection" class="form-control form-select" {{ bind(statsOrderBy) }}>
-                <option value="flows" selected>Flows</option>
-                <option value="packets">Packets</option>
-                <option value="bytes">Bytes</option>
-                <option value="pps">Packets per second</option>
-                <option value="bps">Bits per second</option>
-                <option value="bpp">Bytes per packet</option>
+                <option value="flows"{{ _statsOrderBy == 'flows' ? ' selected' : '' }}>Flows</option>
+                <option value="packets"{{ _statsOrderBy == 'packets' ? ' selected' : '' }}>Packets</option>
+                <option value="bytes"{{ _statsOrderBy == 'bytes' ? ' selected' : '' }}>Bytes</option>
+                <option value="pps"{{ _statsOrderBy == 'pps' ? ' selected' : '' }}>Packets per second</option>
+                <option value="bps"{{ _statsOrderBy == 'bps' ? ' selected' : '' }}>Bits per second</option>
+                <option value="bpp"{{ _statsOrderBy == 'bpp' ? ' selected' : '' }}>Bytes per packet</option>
             </select>
         </div>
         </div>

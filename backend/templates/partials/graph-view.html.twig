@@ -66,11 +66,12 @@
     </div>
 
     {# Graph options panel #}
-    <div class="row mt-3" id="graphOptions">
+    <div class="row g-3 mt-3" id="graphOptions">
 
         {# Resolution slider #}
         <div class="col-md-2">
-            <p class="h6">Resolution</p>
+            <div class="filter-group">
+            <p class="filter-label">Resolution</p>
             <div class="mb-2">
                 <label for="resolutionSlider" class="form-label">
                     Data Points: <strong data-text="${{ graphResolution.id() }}"></strong>
@@ -86,11 +87,13 @@
                     <span>50</span><span>2000</span>
                 </div>
             </div>
+            </div>
         </div>
 
         {# Graph scale #}
         <div class="col-md-2">
-            <p class="h6">Graph Scale</p>
+            <div class="filter-group">
+            <p class="filter-label">Graph Scale</p>
             <div class="btn-group" role="group" id="graph_linlog">
                 <input type="radio" class="btn-check" name="scale" value="linear" checked
                        id="graph_linlog_linear"
@@ -101,11 +104,13 @@
                        data-on:change__stop="$_graph_logscale = true; $graph._widget.updateOptions({logscale: true})">
                 <label for="graph_linlog_log" class="btn btn-outline-primary btn-sm">Logarithmic</label>
             </div>
+            </div>
         </div>
 
         {# Series display #}
         <div class="col-md-3">
-            <p class="h6">Series Display</p>
+            <div class="filter-group">
+            <p class="filter-label">Series Display</p>
             <div class="btn-group" role="group"
                  data-on:change__stop="const stacked = evt.target.value === 'stacked'; $_graph_stacked = stacked; $graph._widget.updateOptions({stackedGraph: stacked, fillGraph: stacked})">
                 <input type="radio" class="btn-check" name="type" value="stacked" id="graph_linestacked_stacked">
@@ -123,18 +128,23 @@
                        data-on:change__stop="$_graph_stepplot = false; $graph._widget.updateOptions({stepPlot: false})">
                 <label class="btn btn-outline-primary btn-sm" for="graph_lineplot_curve">Curve plot</label>
             </div>
+            </div>
         </div>
 
         {# Series visibility checkboxes — populated by nfsen-chart when it renders #}
         <div class="col-md-2">
-            <p class="h6">Series Visibility</p>
+            <div class="filter-group">
+            <p class="filter-label">Series Visibility</p>
             <div id="series"></div>
+            </div>
         </div>
 
         {# Dygraph legend #}
         <div class="col-md-3">
-            <p class="h6">Legend</p>
+            <div class="filter-group">
+            <p class="filter-label">Legend</p>
             <div id="legend"></div>
+            </div>
         </div>
 
     </div>

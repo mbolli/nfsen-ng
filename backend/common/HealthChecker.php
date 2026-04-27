@@ -17,6 +17,15 @@ namespace mbolli\nfsen_ng\common;
  * @phpstan-type DaemonInfo array{ready: bool, watchCount: int, lastAutoImport: int}
  */
 class HealthChecker {
+    /** Human-readable elapsed time — handles non-positive (clock skew) gracefully. */
+    public static function ageStr(int $seconds): string {
+        if ($seconds <= 0) return 'just now';
+        if ($seconds < 60) return "{$seconds}s";
+        if ($seconds < 3600) return round($seconds / 60) . 'min';
+        if ($seconds < 86400) return round($seconds / 3600, 1) . 'h';
+        return round($seconds / 86400) . 'd';
+    }
+
     /**
      * @param array{ready: bool, watchCount: int, lastAutoImport: int}|null $daemonInfo
      * @return list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}>
@@ -44,14 +53,7 @@ class HealthChecker {
                          'group' => $group, 'code' => $code, 'hint' => $hint, 'epoch' => $epoch];
         };
 
-        // Human-readable elapsed time — handles non-positive (clock skew) gracefully
-        $ageStr = static function (int $seconds): string {
-            if ($seconds <= 0) return 'just now';
-            if ($seconds < 60) return "{$seconds}s";
-            if ($seconds < 3600) return round($seconds / 60) . 'min';
-            if ($seconds < 86400) return round($seconds / 3600, 1) . 'h';
-            return round($seconds / 86400) . 'd';
-        };
+        $ageStr = static fn (int $s): string => self::ageStr($s);
 
         // ── 1. PHP Extensions ────────────────────────────────────────────────
         $phpVer = PHP_VERSION;

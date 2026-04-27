@@ -812,14 +812,13 @@ $app->page('/', function (Context $c) use ($app): void {
             $captureLabel  = 'nfcapd: no data yet';
         } elseif ($captureAge < 600) {
             $captureStatus = 'success';
-            $ageStr = $captureAge < 60 ? "{$captureAge}s" : round($captureAge / 60) . 'min';
-            $captureLabel  = "nfcapd: last capture {$ageStr} ago";
+            $captureLabel  = 'nfcapd: last capture ' . HealthChecker::ageStr($captureAge) . ' ago';
         } elseif ($captureAge < 3600) {
             $captureStatus = 'warning';
-            $captureLabel  = 'nfcapd: no capture in ' . round($captureAge / 60) . 'min';
+            $captureLabel  = 'nfcapd: no capture in ' . HealthChecker::ageStr($captureAge);
         } else {
             $captureStatus = 'danger';
-            $captureLabel  = 'nfcapd: no capture in ' . round($captureAge / 3600, 1) . 'h';
+            $captureLabel  = 'nfcapd: no capture in ' . HealthChecker::ageStr($captureAge);
         }
 
         // Daemon health

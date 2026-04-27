@@ -13,25 +13,44 @@ namespace mbolli\nfsen_ng\common;
  * Returns checks sorted by group (defined order), then errors-first within
  * each group, so the template can render with visual group separators.
  *
- * @phpstan-type HealthCheck array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool}
+ * @phpstan-type HealthCheck array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}
+ * @phpstan-type DaemonInfo array{ready: bool, watchCount: int, lastAutoImport: int}
  */
 class HealthChecker {
-    /** @return list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool}> */
-    public static function run(bool $daemonDisabled): array {
-        /** @var list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool}> $checks */
+    /**
+     * @param array{ready: bool, watchCount: int, lastAutoImport: int}|null $daemonInfo
+     * @return list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}>
+     */
+    public static function run(bool $daemonDisabled, ?array $daemonInfo = null): array {
+        /** @var list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}> $checks */
         $checks = [];
         $cfg = Config::$cfg;
 
         // Group display order (index = sort priority)
-        $groupOrder = array_flip(['PHP Extensions', 'nfdump', 'Sources', 'nfcapd Paths', 'RRD Storage']);
+        $groupOrder = array_flip(['PHP Extensions', 'nfdump', 'Sources', 'Import Daemon', 'nfcapd Paths', 'RRD Storage']);
 
         /**
          * @param 'ok'|'warning'|'error' $status
-         * @param bool $code  true → wrap detail in <code> in template (paths, identifiers)
+         * @param bool   $code   true → wrap detail in <code> in template (paths, identifiers)
+         * @param string $hint   optional advisory note shown below the detail
+         * @param int    $epoch  unix timestamp: when > 0, template renders a JS-formatted local date
          */
-        $add = static function (string $id, string $label, string $status, string $detail, string $group, bool $code = false) use (&$checks): void {
-            /** @var list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool}> $checks */
-            $checks[] = ['id' => $id, 'label' => $label, 'status' => $status, 'detail' => $detail, 'group' => $group, 'code' => $code];
+        $add = static function (
+            string $id, string $label, string $status, string $detail,
+            string $group, bool $code = false, string $hint = '', int $epoch = 0
+        ) use (&$checks): void {
+            /** @var list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}> $checks */
+            $checks[] = ['id' => $id, 'label' => $label, 'status' => $status, 'detail' => $detail,
+                         'group' => $group, 'code' => $code, 'hint' => $hint, 'epoch' => $epoch];
+        };
+
+        // Human-readable elapsed time — handles non-positive (clock skew) gracefully
+        $ageStr = static function (int $seconds): string {
+            if ($seconds <= 0) return 'just now';
+            if ($seconds < 60) return "{$seconds}s";
+            if ($seconds < 3600) return round($seconds / 60) . 'min';
+            if ($seconds < 86400) return round($seconds / 3600, 1) . 'h';
+            return round($seconds / 86400) . 'd';
         };
 
         // ── 1. PHP Extensions ────────────────────────────────────────────────
@@ -101,7 +120,30 @@ class HealthChecker {
             !empty($sources) ? implode(', ', $sources) : 'No sources in general.sources',
             'Sources', !empty($sources));
 
-        // ── 4. nfcapd Paths ──────────────────────────────────────────────────
+        // ── 4. Import Daemon ─────────────────────────────────────────────────
+        if ($daemonDisabled) {
+            $add('daemon_status', 'Daemon status', 'warning',
+                'Disabled', 'Import Daemon', false,
+                'Import must be triggered manually from this panel');
+        } elseif ($daemonInfo === null) {
+            $add('daemon_status', 'Daemon status', 'error',
+                'Not running — restart required', 'Import Daemon');
+        } elseif (!$daemonInfo['ready']) {
+            $add('daemon_status', 'Daemon status', 'warning',
+                'Initializing…', 'Import Daemon');
+        } else {
+            $n = $daemonInfo['watchCount'];
+            $add('daemon_status', 'Daemon status', 'ok',
+                'Watching ' . $n . ' dir' . ($n !== 1 ? 's' : ''), 'Import Daemon');
+                    if ($daemonInfo['lastAutoImport'] > 0) {
+                        $autoAge = time() - $daemonInfo['lastAutoImport'];
+                        $autoDetail = $autoAge <= 0 ? 'Just now' : $ageStr($autoAge) . ' ago';
+                        $add('daemon_last_import', 'Last auto-import', 'ok',
+                            $autoDetail, 'Import Daemon', false, '', $daemonInfo['lastAutoImport']);
+                    }
+        }
+
+        // ── 5. nfcapd Paths ──────────────────────────────────────────────────
         $profilesData = rtrim($cfg['nfdump']['profiles-data'] ?? '', '/\\');
         $profile      = $cfg['nfdump']['profile'] ?? 'live';
 
@@ -156,20 +198,23 @@ class HealthChecker {
                             $mtimes      = array_map('filemtime', $files);
                             $newestMtime = max($mtimes);
                             $age         = time() - $newestMtime;
-                            $ageStr      = $age < 60 ? "{$age}s" : round($age / 60) . 'min';
                             // nfcapd default rotation is 5 min; warn after 12 min (2.4×) to allow for slow systems
                             $status = $age > 720 ? 'warning' : 'ok';
-                            $detail = $age > 720
-                                ? "Last file {$ageStr} ago — nfcapd may have stopped"
-                                : "Last file {$ageStr} ago";
-                            $add("capture_fresh_{$source}", "Capture freshness: {$source}", $status, $detail, 'nfcapd Paths');
+                            if ($age <= 0) {
+                                $detail = 'Just captured';
+                            } elseif ($age > 720) {
+                                $detail = 'Last file ' . $ageStr($age) . ' ago — nfcapd may have stopped';
+                            } else {
+                                $detail = 'Last file ' . $ageStr($age) . ' ago';
+                            }
+                            $add("capture_fresh_{$source}", "Capture freshness: {$source}", $status, $detail, 'nfcapd Paths', false, '', $newestMtime);
                         }
                     }
                 }
             }
         }
 
-        // ── 5. RRD Storage ───────────────────────────────────────────────────
+        // ── 6. RRD Storage ───────────────────────────────────────────────────
         $datasource = $cfg['general']['db'] ?? 'RRD';
         $rrdPath    = $cfg['db']['RRD']['data_path']
             ?? (Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data');
@@ -186,7 +231,8 @@ class HealthChecker {
         $add('import_years', 'Import years',
             $importYears >= 1 ? 'ok' : 'error',
             $importYears >= 1 ? (string) $importYears : 'import_years must be ≥ 1',
-            'RRD Storage');
+            'RRD Storage', false,
+            'Set via NFSEN_IMPORT_YEARS env var (default: 3). Changing requires a force-rescan.');
 
         // Per-source RRD freshness (only meaningful for RRD datasource)
         if (strtolower($datasource) === 'rrd' && isset(Config::$db)) {
@@ -208,12 +254,15 @@ class HealthChecker {
                         'RRD exists but has never been written', 'RRD Storage');
                 } else {
                     $age    = time() - $lastUpdate;
-                    $ageStr = $age < 60 ? "{$age}s" : round($age / 60) . 'min';
                     $status = $age > 3600 ? 'warning' : 'ok';
-                    $detail = $age > 3600
-                        ? "Last write {$ageStr} ago — import may be stalled"
-                        : "Last write {$ageStr} ago";
-                    $add("rrd_data_{$source}", "RRD data: {$source}", $status, $detail, 'RRD Storage');
+                    if ($age <= 0) {
+                        $detail = 'Just imported';
+                    } elseif ($age > 3600) {
+                        $detail = 'Last import ' . $ageStr($age) . ' ago — may be stalled';
+                    } else {
+                        $detail = 'Last import ' . $ageStr($age) . ' ago';
+                    }
+                    $add("rrd_data_{$source}", "RRD data: {$source}", $status, $detail, 'RRD Storage', false, '', $lastUpdate);
                 }
             }
         }

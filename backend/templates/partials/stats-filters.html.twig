@@ -6,7 +6,7 @@
     {# Top N #}
     <div id="filterStatisticsTop" class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
         <p class="h6">Top records
-            <nfsen-tooltip text="Number of top N statistics to display (-n option)." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Number of top N statistics to display (-n option)." placement="top"></nfsen-tooltip>
         </p>
         <select {{ bind(statsCount) }} class="form-control form-select">
             {% for n in [10, 20, 50, 100, 200, 500] %}
@@ -18,7 +18,7 @@
     {# Sources #}
     <div id="filterStatsSources" class="col-xs-6 col-sm-3 col-md-2">
         <p class="h6">Sources
-            <nfsen-tooltip text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
         </p>
         <select {{ bind(graphSources) }} multiple class="form-control form-select">
             <option value="any">Any</option>
@@ -31,7 +31,7 @@
     {# NFDUMP filter #}
     <div class="col-xs-12 col-sm-7 col-md-5">
         <p class="h6">NFDUMP filter
-            <nfsen-tooltip text="Filter syntax like tcpdump. Examples: 'dst port 80', 'bytes > 10M'" placement="right"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Filter syntax like tcpdump. Examples: 'dst port 80', 'bytes > 10M'" placement="right"></nfsen-tooltip>
         </p>
         <textarea class="form-control" id="filterNfdumpTextareaStats"
                   {{ bind(statsFilter) }} rows="3" autocomplete="on"></textarea>
@@ -44,7 +44,7 @@
     {# Statistic properties #}
     <div id="filterStatsProperties" class="col-xs-6 col-sm-6 col-md-4 col-lg-2">
         <p class="h6">Statistic properties
-            <nfsen-tooltip text="Choose what to aggregate (-s option) and how to sort." placement="top"></nfsen-tooltip>
+            <nfsen-tooltip data-ignore-morph text="Choose what to aggregate (-s option) and how to sort." placement="top"></nfsen-tooltip>
         </p>
         <div class="form-group">
             <label for="statsFilterForSelection">Statistic for</label>
@@ -104,7 +104,7 @@
 
     {# Submit #}
     <div class="col-12 border-top mt-3 pt-3">
-        <nfsen-tooltip text="Generate statistics using nfdump -s with current filters" placement="top" no-icon>
+        <nfsen-tooltip data-ignore-morph text="Generate statistics using nfdump -s with current filters" placement="top" no-icon>
             <button type="button"
                     class="btn btn-primary"
                     data-indicator:stats._indicator

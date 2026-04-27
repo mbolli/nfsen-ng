@@ -204,10 +204,10 @@ class ImportDaemon {
 
     /** @return array<int, array{path: string, source: string}> */
     private function getCurrentPaths(): array {
-        $sources = Config::$cfg['general']['sources'];
-        $profilePath = Config::$cfg['nfdump']['profiles-data']
+        $sources = Config::$settings->sources;
+        $profilePath = Config::$settings->nfdumpProfilesData
             . \DIRECTORY_SEPARATOR
-            . Config::$cfg['nfdump']['profile'];
+            . Config::$settings->nfdumpProfile;
 
         $paths = [];
         $now = new \DateTime();
@@ -261,16 +261,16 @@ class ImportDaemon {
 
         $this->debug->log("ImportDaemon: new file {$filename} (source: {$eventSource})", LOG_INFO);
 
-        $profilePath = Config::$cfg['nfdump']['profiles-data']
+        $profilePath = Config::$settings->nfdumpProfilesData
             . \DIRECTORY_SEPARATOR
-            . Config::$cfg['nfdump']['profile'];
+            . Config::$settings->nfdumpProfile;
         $relativePath = str_replace(
             $profilePath . \DIRECTORY_SEPARATOR . $eventSource . \DIRECTORY_SEPARATOR,
             '',
             $fullPath
         );
 
-        $sources = Config::$cfg['general']['sources'];
+        $sources = Config::$settings->sources;
         $isLastSource = $eventSource === end($sources);
 
         try {

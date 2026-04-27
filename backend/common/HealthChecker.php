@@ -33,7 +33,7 @@ class HealthChecker {
     public static function run(bool $daemonDisabled, ?array $daemonInfo = null): array {
         /** @var list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}> $checks */
         $checks = [];
-        $cfg = Config::$cfg;
+        $settings = Config::$settings;
 
         // Group display order (index = sort priority)
         $groupOrder = array_flip(['PHP Extensions', 'nfdump', 'Sources', 'Import Daemon', 'nfcapd Paths', 'RRD Storage']);
@@ -80,7 +80,7 @@ class HealthChecker {
             'PHP Extensions');
 
         // ── 2. nfdump ────────────────────────────────────────────────────────
-        $binary = $cfg['nfdump']['binary'] ?? '';
+        $binary = $settings->nfdumpBinary;
         if ($binary === '') {
             $add('nfdump_binary', 'nfdump binary', 'error', 'nfdump.binary not set in config', 'nfdump');
         } elseif (!file_exists($binary)) {
@@ -109,14 +109,14 @@ class HealthChecker {
                 'nfdump');
         }
 
-        $maxProc = (int) ($cfg['nfdump']['max-processes'] ?? 0);
+        $maxProc = $settings->nfdumpMaxProcesses;
         $add('nfdump_max_processes', 'Max processes',
             $maxProc >= 1 ? 'ok' : 'error',
             $maxProc >= 1 ? (string) $maxProc : 'max-processes must be ≥ 1',
             'nfdump');
 
         // ── 3. Sources ───────────────────────────────────────────────────────
-        $sources = $cfg['general']['sources'] ?? [];
+        $sources = $settings->sources;
         $add('sources_nonempty', 'Sources configured',
             !empty($sources) ? 'ok' : 'error',
             !empty($sources) ? implode(', ', $sources) : 'No sources in general.sources',
@@ -146,8 +146,8 @@ class HealthChecker {
         }
 
         // ── 5. nfcapd Paths ──────────────────────────────────────────────────
-        $profilesData = rtrim($cfg['nfdump']['profiles-data'] ?? '', '/\\');
-        $profile      = $cfg['nfdump']['profile'] ?? 'live';
+        $profilesData = rtrim($settings->nfdumpProfilesData, '/\\');
+        $profile      = $settings->nfdumpProfile;
 
         if ($profilesData === '') {
             $add('profiles_data', 'profiles-data dir', 'error', 'nfdump.profiles-data not set in config', 'nfcapd Paths');
@@ -217,8 +217,8 @@ class HealthChecker {
         }
 
         // ── 6. RRD Storage ───────────────────────────────────────────────────
-        $datasource = $cfg['general']['db'] ?? 'RRD';
-        $rrdPath    = $cfg['db']['RRD']['data_path']
+        $datasource = $settings->datasourceName;
+        $rrdPath    = $settings->datasourceConfig('RRD')['data_path']
             ?? (Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data');
 
         if (!is_dir($rrdPath)) {
@@ -229,7 +229,7 @@ class HealthChecker {
             $add('rrd_dir', 'RRD data dir', 'ok', $rrdPath, 'RRD Storage', true);
         }
 
-        $importYears = (int) ($cfg['db'][$datasource]['import_years'] ?? 0);
+        $importYears = $settings->importYears();
         $add('import_years', 'Import years',
             $importYears >= 1 ? 'ok' : 'error',
             $importYears >= 1 ? (string) $importYears : 'import_years must be ≥ 1',

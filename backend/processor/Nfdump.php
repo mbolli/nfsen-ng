@@ -44,7 +44,7 @@ class Nfdump implements Processor {
                 // only sources specified in settings allowed
                 $queried_sources = explode(':', (string) $value);
                 foreach ($queried_sources as $s) {
-                    if (!\in_array($s, Config::$cfg['general']['sources'], true)) {
+                    if (!\in_array($s, Config::$settings->sources, true)) {
                         continue;
                     }
                     $this->cfg['env']['sources'][] = $s;
@@ -132,7 +132,7 @@ class Nfdump implements Processor {
         $bin_name = basename((string) $this->cfg['env']['bin']);
         $process_count = Misc::countProcessesByName($bin_name);
 
-        if ($process_count > (int) Config::$cfg['nfdump']['max-processes']) {
+        if ($process_count > Config::$settings->nfdumpMaxProcesses) {
             throw new \Exception('There already are ' . $process_count . ' processes of NfDump running!');
         }
 
@@ -156,8 +156,8 @@ class Nfdump implements Processor {
         fclose($pipes[0]);
 
         // Read stdout and stderr
-        $stdout = stream_get_contents($pipes[1]);
-        $stderr = stream_get_contents($pipes[2]);
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
 
         fclose($pipes[1]);
         fclose($pipes[2]);
@@ -411,9 +411,9 @@ class Nfdump implements Processor {
      */
     public function reset(): void {
         $this->clean['env'] = [
-            'bin' => Config::$cfg['nfdump']['binary'],
-            'profiles-data' => Config::$cfg['nfdump']['profiles-data'],
-            'profile' => Config::$cfg['nfdump']['profile'],
+            'bin'           => Config::$settings->nfdumpBinary,
+            'profiles-data' => Config::$settings->nfdumpProfilesData,
+            'profile'       => Config::$settings->nfdumpProfile,
             'sources' => [],
         ];
         $this->cfg = $this->clean;

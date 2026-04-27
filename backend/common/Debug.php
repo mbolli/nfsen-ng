@@ -32,8 +32,8 @@ class Debug {
      * Guards against Config not being initialised yet (early-boot calls).
      */
     public function log(string $message, int $priority): void {
-        // Config::$cfg may be empty before Config::initialize() is called.
-        $cfgPriority = Config::$cfg['log']['priority'] ?? \LOG_INFO;
+        // Config::$settings may not be initialized before Config::initialize() is called.
+        $cfgPriority = isset(Config::$settings) ? Config::$settings->logPriority : \LOG_INFO;
         if ($cfgPriority >= $priority) {
             syslog($priority, 'nfsen-ng: ' . $message);
 

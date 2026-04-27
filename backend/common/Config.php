@@ -10,17 +10,9 @@ use mbolli\nfsen_ng\processor\Processor;
 abstract class Config {
     public const VERSION = 'v1.0-alpha';
 
-    /**
-     * @var array{
-     *     general: array{ports: int[], sources: string[], db: string, processor?: string, formats?: array<string>, filters?: array<string>},
-     *     frontend: array{reload_interval: int, defaults: array<string, array>},
-     *     nfdump: array{binary: string, profiles-data: string, profile: string, max-processes: int},
-     *     db: array<string, array>,
-     *     log: array{priority: int}
-     *     }|array{}
-     */
-    public static array $cfg = [];
+    public static Settings $settings;
     public static string $path;
+    public static string $prefsFile;
     public static Datasource $db;
     public static Processor $processorClass;
     private static bool $initialized = false;
@@ -34,66 +26,46 @@ abstract class Config {
         }
 
         // Allow custom settings file via environment variable
-        $settingsFile = getenv('NFSEN_SETTINGS_FILE')
-            ?: \dirname(__DIR__) . \DIRECTORY_SEPARATOR . 'settings' . \DIRECTORY_SEPARATOR . 'settings.php';
+        $explicitFile = getenv('NFSEN_SETTINGS_FILE');
+        $defaultFile  = \dirname(__DIR__) . \DIRECTORY_SEPARATOR . 'settings' . \DIRECTORY_SEPARATOR . 'settings.php';
+        $settingsFile = $explicitFile ?: $defaultFile;
 
         if (!file_exists($settingsFile)) {
-            throw new \Exception('No settings.php found at: ' . $settingsFile . '. Did you rename the distributed settings correctly or set NFSEN_SETTINGS_FILE correctly?');
+            if ($explicitFile !== false && $explicitFile !== '') {
+                throw new \Exception('Settings file not found: ' . $settingsFile . '. Check NFSEN_SETTINGS_FILE.');
+            }
+            // No settings file — use environment variables (standard Docker deployment)
+            self::$settings = Settings::fromEnv();
+        } else {
+            include $settingsFile;
+            self::$settings = Settings::fromArray($nfsen_config);
         }
 
-        include $settingsFile;
-
-        self::$cfg = $nfsen_config;
-        self::$path = \dirname(__DIR__);
+        self::$path        = \dirname(__DIR__);
         self::$initialized = true;
 
-        // Override log level from environment variable if set
-        if (getenv('NFSEN_LOG_LEVEL')) {
-            $logLevelMap = [
-                'LOG_EMERG' => LOG_EMERG,
-                'LOG_ALERT' => LOG_ALERT,
-                'LOG_CRIT' => LOG_CRIT,
-                'LOG_ERR' => LOG_ERR,
-                'LOG_WARNING' => LOG_WARNING,
-                'LOG_NOTICE' => LOG_NOTICE,
-                'LOG_INFO' => LOG_INFO,
-                'LOG_DEBUG' => LOG_DEBUG,
-                'EMERG' => LOG_EMERG,
-                'ALERT' => LOG_ALERT,
-                'CRIT' => LOG_CRIT,
-                'ERR' => LOG_ERR,
-                'ERROR' => LOG_ERR,
-                'WARNING' => LOG_WARNING,
-                'NOTICE' => LOG_NOTICE,
-                'INFO' => LOG_INFO,
-                'DEBUG' => LOG_DEBUG,
-            ];
-            $envLogLevel = getenv('NFSEN_LOG_LEVEL');
-            if (isset($logLevelMap[$envLogLevel])) {
-                self::$cfg['log']['priority'] = $logLevelMap[$envLogLevel];
-            }
+        // Load user preferences (preferences.json) and overlay on base settings.
+        // Silently ignored if the file doesn't exist yet.
+        self::$prefsFile = getenv('NFSEN_PREFERENCES_FILE')
+            ?: self::$path . \DIRECTORY_SEPARATOR . 'settings' . \DIRECTORY_SEPARATOR . 'preferences.json';
+        $prefs = UserPreferences::load(self::$prefsFile);
+        if ($prefs !== null) {
+            self::$settings = $prefs->applyTo(self::$settings);
         }
 
         // Validate directory structure for nfcapd files
         self::validateDirectoryStructure();
 
         // find data source
-        $datasourceMap = [
-            'rrd'             => 'mbolli\\nfsen_ng\\datasources\\Rrd',
-            'akumuli'         => 'mbolli\\nfsen_ng\\datasources\\Akumuli',
-            'victoriametrics' => 'mbolli\\nfsen_ng\\datasources\\VictoriaMetrics',
-        ];
-        $dbKey = strtolower(self::$cfg['general']['db']);
-        $dbClass = $datasourceMap[$dbKey] ?? 'mbolli\\nfsen_ng\\datasources\\' . ucfirst($dbKey);
+        $dbClass = self::$settings->datasourceClass();
         if (class_exists($dbClass)) {
             self::$db = new $dbClass();
         } else {
-            throw new \Exception('Failed loading class ' . self::$cfg['general']['db'] . '. The class doesn\'t exist.');
+            throw new \Exception('Failed loading class ' . self::$settings->datasourceName . '. The class doesn\'t exist.');
         }
 
         // find processor
-        $processorClass = \array_key_exists('processor', self::$cfg['general']) ? ucfirst(strtolower(self::$cfg['general']['processor'])) : 'Nfdump';
-        $processorClass = 'mbolli\\nfsen_ng\\processor\\' . $processorClass;
+        $processorClass = self::$settings->processorClass();
         if (!class_exists($processorClass)) {
             throw new \Exception('Failed loading class ' . $processorClass . '. The class doesn\'t exist.');
         }
@@ -118,9 +90,9 @@ abstract class Config {
      * @throws \Exception if directory structure is invalid
      */
     private static function validateDirectoryStructure(): void {
-        $profilesData = self::$cfg['nfdump']['profiles-data'] ?? null;
-        $profile = self::$cfg['nfdump']['profile'] ?? 'live';
-        $sources = self::$cfg['general']['sources'] ?? [];
+        $profilesData = self::$settings->nfdumpProfilesData;
+        $profile      = self::$settings->nfdumpProfile;
+        $sources      = self::$settings->sources;
 
         if (empty($profilesData) || empty($sources)) {
             return; // Skip validation if config is incomplete

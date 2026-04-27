@@ -17,15 +17,14 @@ class VictoriaMetrics implements Datasource {
     public function __construct() {
         $this->d = Debug::getInstance();
 
-        // Get VictoriaMetrics configuration from settings
-        $vmHost = Config::$cfg['db']['VictoriaMetrics']['host'] ?? 'victoriametrics';
-        $vmPort = Config::$cfg['db']['VictoriaMetrics']['port'] ?? 8428;
+        $vmCfg = Config::$settings->datasourceConfig('VictoriaMetrics');
+        $vmHost = $vmCfg['host'] ?? 'victoriametrics';
+        $vmPort = $vmCfg['port'] ?? 8428;
 
         $this->writeUrl = "http://{$vmHost}:{$vmPort}/api/v1/import/prometheus";
         $this->queryUrl = "http://{$vmHost}:{$vmPort}/api/v1/query_range";
 
-        // Get import years from config (which reads from env var with default of 3)
-        $this->importYears = Config::$cfg['db']['VictoriaMetrics']['import_years'] ?? 3;
+        $this->importYears = Config::$settings->importYears();
 
         $this->d->log('VictoriaMetrics datasource initialized: ' . $this->queryUrl, LOG_DEBUG);
     }
@@ -138,10 +137,10 @@ class VictoriaMetrics implements Datasource {
             $protocols = ['tcp', 'udp', 'icmp', 'other'];
         }
         if (empty($sources)) {
-            $sources = Config::$cfg['general']['sources'];
+            $sources = Config::$settings->sources;
         }
         if (empty($ports)) {
-            $ports = Config::$cfg['general']['ports'];
+            $ports = Config::$settings->ports;
         }
 
         // Calculate step (resolution)

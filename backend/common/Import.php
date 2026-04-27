@@ -31,10 +31,10 @@ class Import {
      * counts only files after each source's last_update.
      */
     public function countFiles(\DateTime $dateStart): int {
-        $sources = Config::$cfg['general']['sources'];
-        $sourcePath = Config::$cfg['nfdump']['profiles-data']
+        $sources = Config::$settings->sources;
+        $sourcePath = Config::$settings->nfdumpProfilesData
             . \DIRECTORY_SEPARATOR
-            . Config::$cfg['nfdump']['profile'];
+            . Config::$settings->nfdumpProfile;
         $count = 0;
 
         foreach ($sources as $source) {
@@ -96,7 +96,7 @@ class Import {
      * @throws \Exception
      */
     public function start(\DateTime $dateStart, ?callable $onProgress = null, ?callable $onTick = null, ?callable $shouldCancel = null): void {
-        $sources = Config::$cfg['general']['sources'];
+        $sources = Config::$settings->sources;
         $processedSources = 0;
 
         // Progress tracking
@@ -129,7 +129,7 @@ class Import {
 
         // process each source, e.g. gateway, mailserver, etc.
         foreach ($sources as $nr => $source) {
-            $sourcePath = Config::$cfg['nfdump']['profiles-data'] . \DIRECTORY_SEPARATOR . Config::$cfg['nfdump']['profile'];
+            $sourcePath = Config::$settings->nfdumpProfilesData . \DIRECTORY_SEPARATOR . Config::$settings->nfdumpProfile;
             if (!file_exists($sourcePath)) {
                 throw new \Exception('Could not read nfdump profile directory ' . $sourcePath);
             }
@@ -463,7 +463,7 @@ class Import {
      * @throws \Exception
      */
     private function writePortsData(string $statsPath, string $source = ''): bool {
-        $ports = Config::$cfg['general']['ports'];
+        $ports = Config::$settings->ports;
 
         foreach ($ports as $port) {
             $this->writePortData($port, $statsPath, $source);
@@ -476,7 +476,7 @@ class Import {
      * @throws \Exception
      */
     private function writePortData(int $port, string $statsPath, string $source = ''): bool {
-        $sources = Config::$cfg['general']['sources'];
+        $sources = Config::$settings->sources;
 
         // set options and get netflow statistics
         $nfdump = Nfdump::getInstance();

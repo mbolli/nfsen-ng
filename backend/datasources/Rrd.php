@@ -37,8 +37,7 @@ class Rrd implements Datasource {
             throw new \Exception('Please install the PECL rrd library.');
         }
 
-        // Get import years from config (which reads from env var with default of 3)
-        $this->importYears = Config::$cfg['db']['RRD']['import_years'] ?? 3;
+        $this->importYears = Config::$settings->importYears();
 
         // Calculate layout based on import years
         // Structure maintains same resolution levels but extends daily samples
@@ -302,10 +301,10 @@ WARNING;
             $protocols = ['tcp', 'udp', 'icmp', 'other'];
         }
         if (empty($sources)) {
-            $sources = Config::$cfg['general']['sources'];
+            $sources = Config::$settings->sources;
         }
         if (empty($ports)) {
-            $ports = Config::$cfg['general']['ports'];
+            $ports = Config::$settings->ports;
         }
 
         switch ($display) {
@@ -388,9 +387,9 @@ WARNING;
     public function reset(array $sources): bool {
         $return = true;
         if (empty($sources)) {
-            $sources = Config::$cfg['general']['sources'];
+            $sources = Config::$settings->sources;
         }
-        $ports = Config::$cfg['general']['ports'];
+        $ports = Config::$settings->ports;
         $ports[] = 0;
         foreach ($ports as $port) {
             if ($port !== 0) {
@@ -422,7 +421,7 @@ WARNING;
         }
 
         // Get RRD data path from config or use default
-        $rrdPath = Config::$cfg['db']['RRD']['data_path']
+        $rrdPath = Config::$settings->datasourceConfig('RRD')['data_path']
             ?? Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data';
 
         $path = $rrdPath . \DIRECTORY_SEPARATOR . $source . $port . '.rrd';

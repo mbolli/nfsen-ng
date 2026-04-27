@@ -27,7 +27,8 @@ class Akumuli implements Datasource {
      */
     public function connect(): void {
         try {
-            $this->client = stream_socket_client('tcp://' . Config::$cfg['db']['akumuli']['host'] . ':' . Config::$cfg['db']['akumuli']['port'], $errno, $errmsg);
+            $akumuCfg     = Config::$settings->datasourceConfig('akumuli');
+            $this->client = stream_socket_client('tcp://' . $akumuCfg['host'] . ':' . $akumuCfg['port'], $errno, $errmsg);
 
             if ($this->client === false) {
                 throw new \Exception('Failed to connect to Akumuli: ' . $errmsg);

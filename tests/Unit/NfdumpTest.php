@@ -3,12 +3,13 @@
 declare(strict_types=1);
 
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\processor\Nfdump;
 
 // Nfdump requires Config to be initialized, so we set up minimal config
 beforeAll(function () {
     // Set up minimal config for Nfdump to work
-    Config::$cfg = [
+    Config::$settings = Settings::fromArray([
         'general' => [
             'ports' => [80, 443],
             'sources' => ['gateway'],
@@ -24,7 +25,7 @@ beforeAll(function () {
         'log' => [
             'priority' => LOG_WARNING,
         ],
-    ];
+    ]);
 });
 
 describe('Nfdump', function () {

@@ -11,6 +11,9 @@ importers:
       datastar:
         specifier: github:starfederation/datastar
         version: https://codeload.github.com/starfederation/datastar/tar.gz/1f919a9ce73f06e0ca7d9ccb7dc7e83534f172ca
+      nouislider:
+        specifier: ^15.8.1
+        version: 15.8.1
     devDependencies:
       eslint:
         specifier: ^9.38.0
@@ -289,6 +292,9 @@ packages:
 
   natural-compare@1.4.0:
     resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
+
+  nouislider@15.8.1:
+    resolution: {integrity: sha512-93TweAi8kqntHJSPiSWQ1o/uZ29VWOmal9YKb6KKGGlCkugaNfAupT7o1qTHqdJvNQ7S0su5rO6qRFCjP8fxtw==}
 
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
@@ -636,6 +642,8 @@ snapshots:
   ms@2.1.3: {}
 
   natural-compare@1.4.0: {}
+
+  nouislider@15.8.1: {}
 
   optionator@0.9.4:
     dependencies:

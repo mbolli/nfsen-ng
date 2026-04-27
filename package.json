@@ -6,10 +6,11 @@
   "scripts": {
     "lint": "eslint frontend/js/nfsen-ng.js frontend/components frontend/css/nfsen-ng.css",
     "format": "prettier --write frontend/js/nfsen-ng.js frontend/components frontend/css/nfsen-ng.css",
-    "postinstall": "cp node_modules/datastar/bundles/datastar.* frontend/js"
+    "postinstall": "cp node_modules/datastar/bundles/datastar.* frontend/js && cp node_modules/nouislider/dist/nouislider.min.js frontend/js/ && cp node_modules/nouislider/dist/nouislider.min.css frontend/css/"
   },
   "dependencies": {
-    "datastar": "github:starfederation/datastar"
+    "datastar": "github:starfederation/datastar",
+    "nouislider": "^15.8.1"
   },
   "devDependencies": {
     "eslint": "^9.38.0",

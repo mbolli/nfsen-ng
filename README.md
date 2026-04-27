@@ -23,7 +23,7 @@ This version includes major architectural improvements:
 
 ## Components
 
-* Front end: [Datastar](https://data-star.dev), [dygraphs](http://dygraphs.com), [ion.rangeSlider](http://ionden.com/a/plugins/ion.rangeSlider/en.html)
+* Front end: [Datastar](https://data-star.dev), [dygraphs](http://dygraphs.com), [noUiSlider](https://refreshless.com/nouislider/)
 * Back end: [RRDtool](http://oss.oetiker.ch/rrdtool/), [nfdump tools](https://github.com/phaag/nfdump), [OpenSwoole](https://openswoole.com), [php-via](https://github.com/mbolli/php-via)
 
 ## TOC

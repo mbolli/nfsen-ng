@@ -40,6 +40,7 @@ use mbolli\nfsen_ng\common\UserPreferences;
 
 $isDev = (bool) (getenv('NFSEN_DEV_MODE') ?: false);
 $workerNum = (int) (getenv('SWOOLE_WORKER_NUM') ?: 1);  // php-via is single-worker
+$maxRequest = (int) (getenv('SWOOLE_MAX_REQUEST') ?: 0);    // 0 = unlimited (default for long-lived SSE servers)
 $maxCoroutine = (int) (getenv('SWOOLE_MAX_COROUTINE') ?: 10000);
 $logLevel = strtolower((string) (getenv('NFSEN_LOG_LEVEL') ?: 'info'));
 $logLevel = preg_replace('/^log_/i', '', $logLevel) ?: 'info';
@@ -55,6 +56,7 @@ $viaConfig = (new ViaConfig())
     ->withTrustProxy(true)
     ->withSwooleSettings([
         'worker_num'    => $workerNum,
+        'max_request'   => $maxRequest,
         'max_coroutine' => $maxCoroutine,
         'hook_flags'    => SWOOLE_HOOK_ALL,
         'max_conn'      => 10000,
@@ -1031,7 +1033,7 @@ $app->page('/', function (Context $c) use ($app): void {
             'version'     => Config::VERSION,
             'fatalError'  => $app->globalState('_fatalError', null),
             'connections' => count($app->getClients()),
-            'importYears' => (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3),
+            'importYears' => Config::$settings->importYears,
 
             // ── Static config (non-reactive, drives option lists) ─────────
             'sources' => Config::$settings->sources,

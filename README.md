@@ -53,13 +53,13 @@ docker compose -f deploy/docker-compose.dev.yml up -d
 
 ## Configuration
 
-> nfsen-ng expects nfcapd files organised as:
-> `<profiles-data>/<profile>/<source>/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`
-> e.g. `/var/nfdump/profiles-data/live/source1/2024/12/01/nfcapd.202412010025`
+### Environment variables
+
+For Docker deployments (the primary use case), environment variables are all you need. Set `NFSEN_SOURCES`, `NFSEN_PORTS`, `NFSEN_NFDUMP_PROFILES`, and any other options directly in your `docker-compose.yml`. See [ENVIRONMENT_VARIABLES.md](./docs/ENVIRONMENT_VARIABLES.md) for the full reference.
 
 ### Settings file
 
-Copy `backend/settings/settings.php.dist` to `backend/settings/settings.php` and edit it. Key options:
+`settings.php` is **optional** — the app runs purely from env vars without it. It is mainly useful for bare-metal installs or complex setups (many sources, custom filters, multiple datasources). Copy `backend/settings/settings.php.dist` and edit it. Key options:
 
 * **general.sources** — list of nfcapd source names, e.g. `['source1', 'source2']`
 * **general.ports** — port numbers to track in RRD
@@ -70,11 +70,13 @@ Copy `backend/settings/settings.php.dist` to `backend/settings/settings.php` and
 * **nfdump.max-processes** — max concurrent nfdump processes (default: `1`)
 * **log.priority** — syslog level constant, e.g. `LOG_INFO`
 
-### Environment variables
-
-All settings can be overridden via environment variables. See [ENVIRONMENT_VARIABLES.md](./docs/ENVIRONMENT_VARIABLES.md) for the full reference.
+> **Note:** When `settings.php` is present, `NFSEN_SOURCES`, `NFSEN_PORTS`, `NFSEN_FILTERS`, and `NFSEN_PROCESSOR` env vars are **not** read — the file takes over entirely for those keys. A warning is logged if you set them while a settings file is present.
 
 ### Nfdump / nfcapd
+
+> nfsen-ng expects nfcapd files organised as:
+> `<profiles-data>/<profile>/<source>/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`
+> e.g. `/var/nfdump/profiles-data/live/source1/2024/12/01/nfcapd.202412010025`
 
 nfsen-ng reads nfcapd files produced by nfdump's capture daemon. An example nfcapd invocation:
 
@@ -89,6 +91,8 @@ options='-z -S 1 -T all -l /var/nfdump/profiles-data/live/<source> -p <port>'
 * `-p` — listening port
 
 To use **sfcapd** instead of nfcapd, update your systemd unit's `ExecStart` to point to the `sfcapd` binary with the same arguments.
+
+If your existing files are in a **flat directory** (no subdirectory structure), `scripts/reorganize_nfcapd.sh` will migrate them into the expected `YYYY/MM/DD/` hierarchy. Edit the `SOURCE_DIR` and `TARGET_BASE` variables at the top of the script before running it.
 
 ## Import & Daemon
 

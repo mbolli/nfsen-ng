@@ -101,8 +101,8 @@ environment:
 
 ### `SWOOLE_MAX_REQUEST`
 **Type:** Integer  
-**Default:** `10000`  
-**Description:** Maximum number of requests a worker will handle before being restarted. Helps prevent memory leaks in long-running processes.
+**Default:** `0` (unlimited)  
+**Description:** Maximum number of requests a worker will handle before being restarted. The default of `0` disables restarts, which is correct for long-lived SSE servers. Increase only if you observe memory growth over time.
 
 **Example:**
 ```yaml
@@ -178,11 +178,6 @@ These environment variables are read by the default `settings.php.dist` file. Yo
 **Default:** `RRD`  
 **Options:** `RRD`, `VictoriaMetrics`  
 **Description:** Which database backend to use.
-
-#### `NFSEN_RELOAD_INTERVAL`
-**Type:** Integer (seconds)  
-**Default:** `60`  
-**Description:** Frontend graph auto-refresh interval.
 
 #### `NFSEN_NFDUMP_BINARY`
 **Type:** String (path)  
@@ -310,7 +305,6 @@ environment:
   - TZ=UTC
   - SWOOLE_WORKER_NUM=16
   - SWOOLE_MAX_COROUTINE=50000
-  - SWOOLE_MAX_REQUEST=100000
   - NFSEN_LOG_LEVEL=WARNING
 ```
 
@@ -359,7 +353,6 @@ environment:
 
 **Application (via settings.php):**
 - `NFSEN_DATASOURCE` - Database backend selection
-- `NFSEN_RELOAD_INTERVAL` - Frontend refresh rate
 - `NFSEN_RRD_PATH` - RRD data storage path
 - `NFSEN_NFDUMP_BINARY` - nfdump binary path
 - `NFSEN_NFDUMP_PROFILES` - nfcapd data path

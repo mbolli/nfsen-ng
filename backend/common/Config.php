@@ -39,6 +39,20 @@ abstract class Config {
         } else {
             include $settingsFile;
             self::$settings = Settings::fromArray($nfsen_config);
+
+            // Warn when env vars that are only honoured via Settings::fromEnv() are set
+            // while a settings file is also present — they will be silently ignored.
+            $envOnlyVars = ['NFSEN_SOURCES', 'NFSEN_PORTS', 'NFSEN_FILTERS', 'NFSEN_PROCESSOR'];
+            foreach ($envOnlyVars as $var) {
+                $val = getenv($var);
+                if ($val !== false && $val !== '') {
+                    trigger_error(
+                        "$var is set but a settings file is also loaded ($settingsFile) — " .
+                        "the env var will be ignored. Remove settings.php or wire $var in it.",
+                        \E_USER_WARNING,
+                    );
+                }
+            }
         }
 
         self::$path        = \dirname(__DIR__);

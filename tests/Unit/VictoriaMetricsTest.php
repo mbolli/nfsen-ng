@@ -23,9 +23,16 @@ class TestVM extends VictoriaMetrics
     public string $nextGetResponse = '{"status":"success","data":{"result":[]}}';
     public bool $nextSendResult    = true;
 
+    /** @var list<string> Optional queue of responses for sequential calls; falls back to nextGetResponse */
+    public array $getResponseQueue = [];
+
     protected function httpGet(string $url): string
     {
         $this->capturedGetUrls[] = $url;
+
+        if (!empty($this->getResponseQueue)) {
+            return array_shift($this->getResponseQueue);
+        }
 
         return $this->nextGetResponse;
     }
@@ -439,20 +446,14 @@ describe('VictoriaMetrics::date_boundaries() and last_update()', function () {
     });
 
     test('date_boundaries() returns [firstTs, lastTs] from VM response', function () {
-        // The fixture is shared across both httpGet calls in date_boundaries().
-        // First call (range query): reads result[0]['values'][0][0] → first timestamp.
-        // Second call (instant query with timestamp wrapper): reads result[0]['value'][1]
-        //   which is the last-sample timestamp returned as the metric value.
-        $this->vm->nextGetResponse = json_encode([
+        // Both calls are now instant queries returning value[1] as the timestamp.
+        // First call: tfirst_over_time → first data timestamp
+        // Second call: tlast_over_time → last data timestamp
+        $makeFixture = static fn (int $ts) => json_encode([
             'status' => 'success',
-            'data'   => [
-                'result' => [[
-                    'metric' => [],
-                    'values' => [[1700000000, '1']],
-                    'value'  => [time(), '1700005000'], // [eval_now, last_data_ts]
-                ]],
-            ],
+            'data'   => ['result' => [['metric' => [], 'value' => [time(), (string) $ts]]]],
         ]);
+        $this->vm->getResponseQueue = [$makeFixture(1700000000), $makeFixture(1700005000)];
 
         [$first, $last] = $this->vm->date_boundaries('gw');
         expect($first)->toBeInt()->toBe(1700000000);
@@ -466,20 +467,27 @@ describe('VictoriaMetrics::date_boundaries() and last_update()', function () {
         expect($last)->toBe(0);
     });
 
-    test('last_update() returns actual data timestamp from timestamp() wrapper response', function () {
-        // The new implementation uses timestamp(last_over_time(metric[Nd])) instant query.
-        // VM responds with value=[eval_now, last_data_ts_as_string].
+    test('last_update() returns actual data timestamp from tlast_over_time response', function () {
+        // tlast_over_time instant query: VM responds with value=[eval_now, last_raw_ts_as_string].
+        // value[1] is the actual last raw-sample timestamp (NOT the query eval time).
         $this->vm->nextGetResponse = json_encode([
             'status' => 'success',
             'data'   => [
                 'result' => [[
                     'metric' => [],
-                    'value'  => [time(), '1714000000'], // value[1] is the actual last write ts
+                    'value'  => [time(), '1714000000'],
                 ]],
             ],
         ]);
 
         expect($this->vm->last_update('gw'))->toBe(1714000000);
+    });
+
+    test('date_boundaries() query uses tfirst_over_time and tlast_over_time', function () {
+        $this->vm->date_boundaries('gw');
+        expect(count($this->vm->capturedGetUrls))->toBe(2);
+        expect(urldecode($this->vm->capturedGetUrls[0]))->toContain('tfirst_over_time');
+        expect(urldecode($this->vm->capturedGetUrls[1]))->toContain('tlast_over_time');
     });
 
     test('last_update() returns 0 when httpGet throws', function () {

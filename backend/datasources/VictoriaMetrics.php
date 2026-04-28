@@ -384,37 +384,20 @@ class VictoriaMetrics implements Datasource {
     }
 
     /**
-     * Query for a single value (first or last timestamp).
+     * Query for the first or last actual raw-sample timestamp of a metric.
+     *
+     * Uses VictoriaMetrics MetricsQL functions:
+     *   tfirst_over_time(v[d]) — timestamp of the oldest raw sample in the window
+     *   tlast_over_time(v[d])  — timestamp of the newest raw sample in the window
+     *
+     * Both return the real data timestamp as value[1], not the query evaluation
+     * time (unlike `timestamp(last_over_time(...))` which returns ~eval_time).
      */
     private function querySingleValue(string $query, string $field = 'timestamp', bool $first = true): int {
-        if ($first) {
-            // Get the oldest data point via range query
-            $url = $this->queryUrl . '?' . http_build_query([
-                'query' => $query,
-                'start' => strtotime('-' . $this->importYears . ' years'),
-                'end' => time(),
-                'step' => '1h',
-            ]);
+        $windowDays  = $this->importYears * 365;
+        $fn          = $first ? 'tfirst_over_time' : 'tlast_over_time';
+        $wrappedQuery = "{$fn}({$query}[{$windowDays}d])";
 
-            $response = $this->httpGet($url);
-            $data = json_decode($response, true);
-
-            if (!isset($data['status']) || $data['status'] !== 'success' || empty($data['data']['result'])) {
-                return 0;
-            }
-
-            return isset($data['data']['result'][0]['values'][0][0])
-                ? (int) $data['data']['result'][0]['values'][0][0]
-                : 0;
-        }
-
-        // Get the timestamp of the most recent data point.
-        // Wrap in timestamp(last_over_time(...[Nd])) so that:
-        //   - last_over_time finds the last sample even across historical imports
-        //   - timestamp() returns that sample's Unix timestamp as the metric value
-        // value[1] is the last-write timestamp; value[0] is the eval time (≈ now).
-        $windowDays = $this->importYears * 365;
-        $wrappedQuery = "timestamp(last_over_time({$query}[{$windowDays}d]))";
         $url = str_replace('query_range', 'query', $this->queryUrl) . '?' . http_build_query([
             'query' => $wrappedQuery,
         ]);
@@ -426,7 +409,7 @@ class VictoriaMetrics implements Datasource {
             return 0;
         }
 
-        // value[1] is the timestamp of the last sample (as a float string)
+        // value[1] is the actual data timestamp (float string)
         return isset($data['data']['result'][0]['value'][1])
             ? (int) (float) $data['data']['result'][0]['value'][1]
             : 0;

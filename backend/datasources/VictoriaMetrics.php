@@ -268,7 +268,7 @@ class VictoriaMetrics implements Datasource {
                     $status = $age > 3600 ? 'warning' : 'ok';
                     $ageStr = \mbolli\nfsen_ng\common\HealthChecker::ageStr($age);
                     $detail = $age <= 0 ? 'Just imported'
-                        : ($age > 3600 ? "Last import {$ageStr} ago \u2014 may be stalled"
+                        : ($age > 3600 ? "Last import {$ageStr} ago — may be stalled"
                                        : "Last import {$ageStr} ago");
                     $checks[] = ['id' => "vm_data_{$source}", 'label' => "VM data: {$source}",
                         'status' => $status, 'detail' => $detail,

@@ -467,7 +467,7 @@ WARNING;
                 $status = $age > 3600 ? 'warning' : 'ok';
                 $ageStr = \mbolli\nfsen_ng\common\HealthChecker::ageStr($age);
                 $detail = $age <= 0 ? 'Just imported'
-                    : ($age > 3600 ? "Last import {$ageStr} ago \u2014 may be stalled"
+                    : ($age > 3600 ? "Last import {$ageStr} ago — may be stalled"
                                    : "Last import {$ageStr} ago");
                 $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
                     'status' => $status, 'detail' => $detail,

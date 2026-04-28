@@ -81,10 +81,6 @@ $nfsen_config = [
         'max-processes' => (int) (getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 1),
     ],
     'db' => [
-        'Akumuli' => [
-            // 'host' => 'localhost',
-            // 'port' => 8282,
-        ],
         'RRD' => [
             'data_path' => getenv('NFSEN_RRD_PATH') ?: null,  // null = use default (backend/datasources/data)
             'import_years' => (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3),  // Number of years to import

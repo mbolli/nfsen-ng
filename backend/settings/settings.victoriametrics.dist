@@ -30,7 +30,7 @@ $nfsen_config = [
 
         /**
          * Datasource - VictoriaMetrics
-         * Other options: 'Rrd', 'Akumuli'
+         * Other options: 'Rrd'
          */
         'db' => 'VictoriaMetrics',
 

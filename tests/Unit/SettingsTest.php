@@ -206,9 +206,6 @@ describe('Settings computed methods', function () {
 
         expect(Settings::fromArray(['general' => ['db' => 'VictoriaMetrics']])->datasourceClass())
             ->toBe('mbolli\\nfsen_ng\\datasources\\VictoriaMetrics');
-
-        expect(Settings::fromArray(['general' => ['db' => 'Akumuli']])->datasourceClass())
-            ->toBe('mbolli\\nfsen_ng\\datasources\\Akumuli');
     });
 
     test('datasourceClass() is case-insensitive', function () {

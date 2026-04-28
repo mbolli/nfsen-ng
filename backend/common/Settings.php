@@ -43,7 +43,6 @@ final class Settings {
     // ─── Datasource class name map ────────────────────────────────────────────
     private const DATASOURCE_MAP = [
         'rrd'             => 'mbolli\\nfsen_ng\\datasources\\Rrd',
-        'akumuli'         => 'mbolli\\nfsen_ng\\datasources\\Akumuli',
         'victoriametrics' => 'mbolli\\nfsen_ng\\datasources\\VictoriaMetrics',
     ];
 

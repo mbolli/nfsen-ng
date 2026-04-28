@@ -210,7 +210,7 @@ These environment variables are read by the default `settings.php.dist` file. Yo
 #### `NFSEN_DATASOURCE`
 **Type:** String  
 **Default:** `RRD`  
-**Options:** `RRD`, `VictoriaMetrics`, `Akumuli`  
+**Options:** `RRD`, `VictoriaMetrics`  
 **Description:** Which database backend to use.
 
 #### `NFSEN_RELOAD_INTERVAL`

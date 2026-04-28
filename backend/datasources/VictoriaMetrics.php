@@ -33,15 +33,13 @@ class VictoriaMetrics implements Datasource {
      * Gets the timestamps of the first and last entry of this specific source.
      */
     public function date_boundaries(string $source): array {
-        // Query for first and last timestamp
+        // Query for first and last timestamp of the aggregate (no-port) series.
         $metric = $this->buildMetricName('flows', '');
+        $labels = $this->buildLabels($source, 0, null, forQuery: true);
+        $query  = "{$metric}{$labels}";
 
-        // Get first timestamp
-        $firstQuery = "{$metric}{source=\"{$source}\"}";
-        $first = $this->querySingleValue($firstQuery, 'timestamp', true);
-
-        // Get last timestamp
-        $last = $this->querySingleValue($firstQuery, 'timestamp', false);
+        $first = $this->querySingleValue($query, 'timestamp', true);
+        $last  = $this->querySingleValue($query, 'timestamp', false);
 
         return [(int) $first, (int) $last];
     }
@@ -53,8 +51,8 @@ class VictoriaMetrics implements Datasource {
      */
     public function last_update(string $source = '', int $port = 0): int {
         $metric = $this->buildMetricName('flows', '');
-        $labels = $this->buildLabels($source, $port);
-        $query = "{$metric}{$labels}";
+        $labels = $this->buildLabels($source, $port, null, forQuery: true);
+        $query  = "{$metric}{$labels}";
 
         try {
             $timestamp = $this->querySingleValue($query, 'timestamp', false);
@@ -143,8 +141,9 @@ class VictoriaMetrics implements Datasource {
             $ports = Config::$settings->ports;
         }
 
-        // Calculate step (resolution)
-        $step = max(300, (int) (($end - $start) / $maxrows));
+        // Calculate step (resolution). Fall back to 500 rows when maxrows is null
+        // (matches RRD's default behaviour and avoids division by zero).
+        $step = max(300, (int) (($end - $start) / ($maxrows ?? 500)));
 
         $queries = [];
         $legends = [];
@@ -154,7 +153,7 @@ class VictoriaMetrics implements Datasource {
                 foreach ($protocols as $protocol) {
                     $proto = ($protocol === 'any') ? null : $protocol;
                     $metricName = $this->buildMetricName($type, $proto);
-                    $labels = $this->buildLabels($sources[0], 0, $proto);
+                    $labels = $this->buildLabels($sources[0], 0, $proto, forQuery: true);
                     $queries[] = "{$metricName}{$labels}";
                     $legends[] = implode('_', array_filter([$protocol, $type, $sources[0]]));
                 }
@@ -165,7 +164,7 @@ class VictoriaMetrics implements Datasource {
                 foreach ($sources as $source) {
                     $proto = ($protocols[0] === 'any') ? null : $protocols[0];
                     $metricName = $this->buildMetricName($type, $proto);
-                    $labels = $this->buildLabels($source, 0, $proto);
+                    $labels = $this->buildLabels($source, 0, $proto, forQuery: true);
                     $queries[] = "{$metricName}{$labels}";
                     $legends[] = implode('_', array_filter([$source, $type, $protocols[0]]));
                 }
@@ -177,7 +176,8 @@ class VictoriaMetrics implements Datasource {
                     $source = ($sources[0] === 'any') ? '' : $sources[0];
                     $proto = ($protocols[0] === 'any') ? null : $protocols[0];
                     $metricName = $this->buildMetricName($type, $proto);
-                    $labels = $this->buildLabels($source, $port, $proto);
+                    // forQuery: true still needed here; port > 0 so port="" is not emitted.
+                    $labels = $this->buildLabels($source, $port, $proto, forQuery: true);
                     $queries[] = "{$metricName}{$labels}";
                     $legends[] = implode('_', array_filter([$port, $type, $source, $protocols[0]]));
                 }
@@ -318,9 +318,14 @@ class VictoriaMetrics implements Datasource {
     }
 
     /**
-     * Build label selector for VictoriaMetrics query.
+     * Build a label selector for VictoriaMetrics.
+     *
+     * @param bool $forQuery When true (read path), port=0 emits `port=""` which in
+     *                       PromQL matches series where the label is absent — i.e. the
+     *                       aggregate total — and excludes port-specific series that
+     *                       would otherwise also match a plain `{source="…"}` selector.
      */
-    private function buildLabels(string $source = '', int $port = 0, ?string $protocol = null): string {
+    private function buildLabels(string $source = '', int $port = 0, ?string $protocol = null, bool $forQuery = false): string {
         $labels = [];
 
         if (!empty($source)) {
@@ -329,6 +334,10 @@ class VictoriaMetrics implements Datasource {
 
         if ($port > 0) {
             $labels[] = "port=\"{$port}\"";
+        } elseif ($forQuery) {
+            // `port=""` selects only series where the port label is absent,
+            // preventing port-specific (sparse) series from shadowing the total.
+            $labels[] = 'port=""';
         }
 
         if ($protocol !== null && $protocol !== 'total') {

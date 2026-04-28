@@ -105,6 +105,19 @@ describe('VictoriaMetrics::write()', function () {
         $this->ts = 1700000000; // arbitrary fixed Unix epoch
     });
 
+    test('write() with port=0 does NOT include port label in stored metric (aggregate total)', function () {
+        $this->vm->write([
+            'source'         => 'gw',
+            'port'           => 0,
+            'date_timestamp' => $this->ts,
+            'fields'         => ['flows' => 100],
+        ]);
+
+        $body = $this->vm->capturedPostBodies[0] ?? '';
+        // The stored aggregate must have no port label at all
+        expect($body)->not->toContain('port=');
+    });
+
     test('flows_tcp field emits correct Prometheus line', function () {
         $this->vm->write([
             'source'         => 'gw',
@@ -209,6 +222,48 @@ describe('VictoriaMetrics::get_graph_data()', function () {
         expect($this->vm->capturedGetUrls)->toHaveCount(2);
         expect($this->vm->capturedGetUrls[0])->toContain('nfsen_flows_tcp');
         expect($this->vm->capturedGetUrls[1])->toContain('nfsen_flows_udp');
+    });
+
+    test('display=sources includes port="" selector to exclude port-specific series', function () {
+        $this->vm->get_graph_data(
+            $this->start,
+            $this->end,
+            sources: ['gw'],
+            protocols: ['any'],
+            ports: [],
+            display: 'sources',
+        );
+
+        // port="" must appear in the query so VM doesn't return sparse port-specific series
+        expect(urldecode($this->vm->capturedGetUrls[0]))->toContain('port=""');
+    });
+
+    test('display=protocols includes port="" selector to exclude port-specific series', function () {
+        $this->vm->get_graph_data(
+            $this->start,
+            $this->end,
+            sources: ['gw'],
+            protocols: ['tcp'],
+            ports: [],
+            display: 'protocols',
+        );
+
+        expect(urldecode($this->vm->capturedGetUrls[0]))->toContain('port=""');
+    });
+
+    test('display=ports uses explicit port label and does NOT add port="" selector', function () {
+        $this->vm->get_graph_data(
+            $this->start,
+            $this->end,
+            sources: ['gw'],
+            protocols: ['tcp'],
+            ports: [80],
+            display: 'ports',
+        );
+
+        $url = urldecode($this->vm->capturedGetUrls[0]);
+        expect($url)->toContain('port="80"');
+        expect($url)->not->toContain('port=""');
     });
 
     test('display=sources issues one GET per source', function () {

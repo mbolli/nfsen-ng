@@ -154,6 +154,10 @@ export class NfsenChart extends HTMLElement {
         const trafficUnit = config.trafficUnit || 'bits';
 
         if (!chartData || chartData.length === 0) {
+            if (this.dygraph) {
+                this.dygraph.destroy();
+                this.dygraph = null;
+            }
             this.showMessage('No data available for the selected range.', 'info');
             return;
         }

@@ -1,0 +1,15 @@
+[Unit]
+Description=nfsen-ng (Docker)
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/var/www/nfsen-ng
+ExecStart=/usr/bin/docker compose -f deploy/docker-compose.yml --profile proxy up -d
+ExecStop=/usr/bin/docker compose -f deploy/docker-compose.yml --profile proxy down
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

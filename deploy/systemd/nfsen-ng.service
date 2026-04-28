@@ -9,7 +9,7 @@ Restart=always
 StartLimitIntervalSec=0
 RestartSec=2
 User=www-data
-ExecStart=php /var/www/html/nfsen-ng/backend/app.php
+ExecStart=php /var/www/nfsen-ng/backend/app.php
 
 [Install]
 WantedBy=multi-user.target

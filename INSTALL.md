@@ -80,4 +80,4 @@ sudo -u www-data php backend/app.php
 
 For TLS and compression, put Caddy in front of the OpenSwoole server. See [HTTP_COMPRESSION.md](./docs/HTTP_COMPRESSION.md) and the provided `Caddyfile` for configuration.
 
-For running the server as a systemd service, see the unit files in `systemd/` and [systemd/README.md](./systemd/README.md).
+For running the server as a systemd service, see the unit files in `deploy/systemd/` and [deploy/systemd/README.md](./deploy/systemd/README.md).

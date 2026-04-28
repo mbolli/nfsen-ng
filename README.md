@@ -107,7 +107,7 @@ To skip the startup gap-fill entirely (e.g. shared database across containers), 
 
 ### Daemon as a systemd service
 
-Pre-built unit files are in `systemd/`. See [systemd/README.md](./systemd/README.md) for installation instructions. For Docker-based deployments use the `nfsen-ng-docker.service` file.
+Pre-built unit files are in `deploy/systemd/`. See [deploy/systemd/README.md](./deploy/systemd/README.md) for installation instructions — separate sections cover Docker and bare-metal deployments.
 
 ## Logs
 

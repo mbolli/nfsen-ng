@@ -700,7 +700,7 @@ $app->page('/', function (Context $c) use ($app): void {
         });
     }, 'trigger-import');
 
-    // Force rescan — same as triggerImport but resets all RRD data first.
+    // Force rescan — same as triggerImport but resets all datasource data first.
     $forceRescanAction = $c->action(function (Context $c) use (
         $app, $debug, $daemon,
         $importRunning, $confirmRescan, $importScanPorts

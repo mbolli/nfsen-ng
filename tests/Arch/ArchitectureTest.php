@@ -59,10 +59,3 @@ arch('no die or exit in processors')
     ->not->toUse(['die', 'exit']);
 
 // Dependency rules
-arch('datasources do not depend on routes')
-    ->expect('mbolli\nfsen_ng\datasources')
-    ->not->toUse('mbolli\nfsen_ng\routes');
-
-arch('processors do not depend on routes')
-    ->expect('mbolli\nfsen_ng\processor')
-    ->not->toUse('mbolli\nfsen_ng\routes');

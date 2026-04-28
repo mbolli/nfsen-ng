@@ -8,7 +8,7 @@ nfsen-ng is an in-place replacement for the ageing nfsen.
 
 ![nfsen-ng dashboard overview](https://github.com/mbolli/nfsen-ng/assets/722725/c3df942e-3d3c-4ef9-86ad-4e5780c7b6d8)
 
-## v1 Changes
+## What's New
 
 This version includes major architectural improvements:
 
@@ -33,7 +33,7 @@ This version includes major architectural improvements:
   * [Settings file](#settings-file)
   * [Environment variables](#environment-variables)
   * [Nfdump / nfcapd](#nfdump--nfcapd)
-* [CLI + Daemon](#cli--daemon)
+* [Import & Daemon](#import--daemon)
   * [Daemon as a systemd service](#daemon-as-a-systemd-service)
 * [Logs](#logs)
 
@@ -44,8 +44,8 @@ Docker is the recommended way to run nfsen-ng. See [QUICKSTART.md](./QUICKSTART.
 For a bare-metal install (no Docker), see [INSTALL.md](./INSTALL.md).
 
 ```bash
-# Production (port 80/443)
-docker compose -f deploy/docker-compose.yml up -d
+# Production (port 80/443, with bundled Caddy reverse proxy)
+docker compose -f deploy/docker-compose.yml --profile proxy up -d
 
 # Development (port 8080, source mounted)
 docker compose -f deploy/docker-compose.dev.yml up -d
@@ -90,37 +90,16 @@ options='-z -S 1 -T all -l /var/nfdump/profiles-data/live/<source> -p <port>'
 
 To use **sfcapd** instead of nfcapd, update your systemd unit's `ExecStart` to point to the `sfcapd` binary with the same arguments.
 
-## CLI + Daemon
+## Import & Daemon
 
-```
-backend/cli.php [ options ] import
-backend/cli.php start | stop | status
-```
+`app.php` manages the import daemon internally. On startup:
 
-**Options:**
+- **Existing data** — a gap-fill runs automatically to catch up on any nfcapd files written while the server was offline.
+- **Fresh install (no data)** — startup import is skipped. Use **Admin panel → Initial Import** to trigger the first full scan.
 
-| Flag | Description |
-|------|-------------|
-| `-v` | Verbose output |
-| `-p` | Import port-level data (slower) |
-| `-ps` | Import port-per-source data (slower) |
-| `-f` | Force fresh import (deletes existing RRD files) |
+To force a complete rescan or rebuild from scratch, use **Admin panel → Force Rescan**.
 
-**Commands:**
-
-| Command | Description |
-|---------|-------------|
-| `import` | Import existing nfcapd files into RRD |
-| `start` | Start the inotify-based daemon |
-| `stop` | Stop the daemon |
-| `status` | Show daemon status |
-
-**Inside Docker:**
-
-```bash
-docker compose -f deploy/docker-compose.yml exec nfsen php backend/cli.php -v import
-docker compose -f deploy/docker-compose.yml exec nfsen php backend/cli.php start
-```
+To skip the startup gap-fill entirely (e.g. shared database across containers), set `NFSEN_SKIP_INITIAL_IMPORT=true`.
 
 ### Daemon as a systemd service
 

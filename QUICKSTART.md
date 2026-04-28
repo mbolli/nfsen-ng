@@ -13,10 +13,12 @@ cp backend/settings/settings.php.dist backend/settings/settings.php
 
 ### Option A: Docker (recommended)
 
-**Production** (port 80/443, immutable container):
+**Production** (port 80/443, with bundled Caddy reverse proxy):
 ```bash
-docker compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml --profile proxy up -d
 ```
+
+> Without `--profile proxy`, nfsen listens on port 9000 internally — use this when you have your own Traefik/nginx/Caddy in front.
 
 **Development** (port 8080, source mounted, instant code changes):
 ```bash
@@ -33,10 +35,8 @@ Requires PHP 8.4+, OpenSwoole, inotify, and rrd extensions installed. See [INSTA
 # Install Composer dependencies
 composer install --no-dev
 
-# Run initial import
-php backend/cli.php -v import
-
 # Start the HTTP server (port 9000; put Caddy in front for compression/TLS)
+# On startup, app.php runs a gap-fill automatically; use Admin panel → Initial Import for a fresh install.
 php backend/app.php
 ```
 
@@ -50,12 +50,6 @@ http://localhost:8080 # development Docker / bare-metal
 ## Useful commands (Docker)
 
 ```bash
-# Run a foreground import
-docker compose -f deploy/docker-compose.yml exec nfsen php backend/cli.php -v import
-
-# Daemon status
-docker compose -f deploy/docker-compose.yml exec nfsen php backend/cli.php status
-
 # Tail logs
 docker compose -f deploy/docker-compose.yml logs -f nfsen
 ```
@@ -64,7 +58,7 @@ docker compose -f deploy/docker-compose.yml logs -f nfsen
 
 **No data showing**
 - Check nfcapd files exist in the expected path structure: `<profiles-data>/<profile>/<source>/YYYY/MM/DD/nfcapd.*`
-- Run a manual import: `php backend/cli.php -v import`
+- Trigger a manual import: use **Admin panel → Initial Import** in the web UI
 - Check RRD files: `ls backend/datasources/data/`
 
 **SSE not connecting**
@@ -72,13 +66,11 @@ docker compose -f deploy/docker-compose.yml logs -f nfsen
 - Ensure Caddy's `flush_interval -1` is set (already in the provided Caddyfile)
 
 **Need to rebuild all data from scratch**
-```bash
-docker compose -f deploy/docker-compose.yml exec nfsen php backend/cli.php -f -p import
-# or set NFSEN_FORCE_IMPORT=true in docker-compose and restart
-```
+
+Use **Admin panel → Force Rescan** in the web UI.
 
 ## Next steps
 
 - Review all env vars: [ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md)
 - VictoriaMetrics datasource: [VICTORIAMETRICS.md](docs/VICTORIAMETRICS.md)
-- Caddy + compression details: [CADDY_SWOOLE_SETUP.md](CADDY_SWOOLE_SETUP.md)
+- Caddy + compression details: [HTTP_COMPRESSION.md](docs/HTTP_COMPRESSION.md)

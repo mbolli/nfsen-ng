@@ -198,7 +198,7 @@ This mismatch can cause:
   • Import errors or incomplete data coverage
 
 \033[1mTo fix this:\033[0m
-  1. Set NFSEN_FORCE_IMPORT=true to recreate RRD files, OR
+  1. Use Admin panel → Force Rescan to recreate RRD files, OR
   2. Adjust import_years in settings.php to match existing structure (~{$actualYears})
 
 Continuing import with existing structure...

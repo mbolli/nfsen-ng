@@ -30,7 +30,6 @@ services:
       # - rrd-data:/var/nfsen-ng/rrd        # Uncomment volume above too
 
       # ── Import (see ENVIRONMENT_VARIABLES.md for details) ──────────────────
-      # - NFSEN_FORCE_IMPORT=true         # Reset database and import from scratch
       # - NFSEN_IMPORT_VERBOSE=true       # Show verbose import output
       # - NFSEN_SKIP_INITIAL_IMPORT=true  # Skip initial import on startup
       - NFSEN_IMPORT_YEARS=1            # Import last N years (default: 3)

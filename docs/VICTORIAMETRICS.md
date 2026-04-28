@@ -70,13 +70,7 @@ NFSEN_IMPORT_YEARS=3
 
 ### 4. Import Existing Data
 
-```bash
-# Force re-import (will write to VictoriaMetrics)
-docker exec nfsen-ng php backend/cli.php -f -p -ps import
-
-# Or start fresh import
-docker exec nfsen-ng php backend/cli.php -p -ps import
-```
+Use **Admin panel → Force Rescan** in the web UI to trigger a full re-import into VictoriaMetrics.
 
 ## Architecture
 
@@ -199,10 +193,7 @@ Change `settings.php`:
 
 ### Step 3: Import
 
-```bash
-# Import will now write to VictoriaMetrics
-docker exec nfsen-ng php backend/cli.php -p import
-```
+Use **Admin panel → Initial Import** (fresh install) or **Admin panel → Force Rescan** (existing data) in the web UI to populate VictoriaMetrics.
 
 ## Performance Tuning
 

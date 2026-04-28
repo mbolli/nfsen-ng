@@ -34,31 +34,10 @@ environment:
 
 ## Import Configuration
 
-### `NFSEN_FORCE_IMPORT`
-**Type:** Boolean (`true`, `1`, `false`, `0`)  
-**Default:** `false`  
-**Description:** Forces a complete database reset and fresh import from scratch. Equivalent to `cli.php -f import`. This will **recreate all RRD files** with the current `NFSEN_IMPORT_YEARS` structure.
-
-**Example:**
-```yaml
-environment:
-  - NFSEN_FORCE_IMPORT=true
-```
-
-**Warning:** This will DELETE all existing data and re-import everything!
-
-**Use cases:**
-- Initial setup with custom `NFSEN_IMPORT_YEARS` value
-- Changing `NFSEN_IMPORT_YEARS` to a different value (requires recreating RRD structure)
-- Corrupted database or RRD files
-- Need to rebuild from scratch for any reason
-
----
-
 ### `NFSEN_IMPORT_VERBOSE`
 **Type:** Boolean (`true`, `1`, `false`, `0`)  
 **Default:** `false`  
-**Description:** Shows verbose output during initial import. Equivalent to `cli.php -v import`.
+**Description:** Shows verbose output during initial import.
 
 **Example:**
 ```yaml
@@ -98,21 +77,8 @@ environment:
 **Important Notes:**
 - This setting affects the **RRD database structure** (daily sample storage capacity)
 - RRD files are created with a fixed structure based on this value
-- **Changing this value requires recreating the RRD files** using `NFSEN_FORCE_IMPORT=true`
-- If you change `NFSEN_IMPORT_YEARS` without force import, you'll see a warning about structure mismatch
+- If you change `NFSEN_IMPORT_YEARS` after data has been imported, you'll see a warning about structure mismatch; use **Admin panel → Force Rescan** to rebuild.
 - Larger values will increase initial startup time and database size
-
-**When to use NFSEN_FORCE_IMPORT:**
-- When changing `NFSEN_IMPORT_YEARS` to a different value
-- First-time setup with custom years value
-- After corrupting RRD files
-
-**Example (changing from 3 to 5 years):**
-```yaml
-environment:
-  - NFSEN_IMPORT_YEARS=5
-  - NFSEN_FORCE_IMPORT=true  # Required to recreate RRD structure
-```
 
 ---
 
@@ -330,11 +296,10 @@ environment:
   - NFSEN_LOG_LEVEL=DEBUG
 ```
 
-### Fresh Start (reset everything)
+### Extended import retention
 ```yaml
 environment:
   - TZ=UTC
-  - NFSEN_FORCE_IMPORT=true
   - NFSEN_IMPORT_VERBOSE=true
   - NFSEN_IMPORT_YEARS=5
 ```
@@ -388,7 +353,6 @@ environment:
 - `NFSEN_SETTINGS_FILE` - Custom settings file path
 
 **Import Control:**
-- `NFSEN_FORCE_IMPORT` - Force fresh database import
 - `NFSEN_IMPORT_VERBOSE` - Verbose import output
 - `NFSEN_SKIP_INITIAL_IMPORT` - Skip startup import
 - `NFSEN_IMPORT_YEARS` - Configurable import timeframe

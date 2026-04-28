@@ -64,7 +64,6 @@ phpenmod openswoole inotify rrd mbstring
 cd /var/www
 git clone https://github.com/mbolli/nfsen-ng
 chown -R www-data:www-data nfsen-ng
-chmod +x nfsen-ng/backend/cli.php
 
 cd nfsen-ng
 # install Composer: https://getcomposer.org/download/
@@ -74,10 +73,8 @@ php composer.phar install --no-dev
 cp backend/settings/settings.php.dist backend/settings/settings.php
 # vi backend/settings/settings.php
 
-# run initial import
-sudo -u www-data php backend/cli.php -v import
-
 # start the HTTP server (listens on port 9000)
+# app.php runs a gap-fill on startup; use Admin panel → Initial Import for a fresh install.
 sudo -u www-data php backend/app.php
 ```
 

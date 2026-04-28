@@ -46,15 +46,14 @@ fi
 if php -m | grep -q swoole; then
     echo -e "${GREEN}✓${NC} Swoole extension found"
     
-    echo -e "\n${YELLOW}Starting Swoole HTTP server...${NC}"
+    echo -e "\n${YELLOW}Starting nfsen-ng HTTP server...${NC}"
     
-    php backend/server.php &
+    php backend/app.php &
     PID=$!
     
     echo -e "\n${GREEN}✓${NC} nfsen-ng started (PID: $PID)!"
     echo -e "\n${BLUE}Access the application:${NC}"
-    echo -e "  • Frontend: ${GREEN}http://localhost:8080${NC}"
-    echo -e "  • SSE Streams: ${GREEN}http://localhost:8080/stream/*${NC}"
+    echo -e "  • Frontend: ${GREEN}http://localhost:9000${NC} (or via Caddy at :8080)"
     echo -e "\n${BLUE}Stop server:${NC}"
     echo -e "  kill $PID"
     

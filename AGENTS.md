@@ -143,5 +143,5 @@ docker compose exec nfsen pest # inside container
 - **Broadcast scope**: Only contexts that called `$c->addScope('rrd:live')` receive broadcasts
 - **Config**: `Config::$cfg` is empty until `Config::initialize()` runs — don't read config at module load
 - **nfcapd path structure**: `<profile>/<source>/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`
-- **Import daemon**: Not coroutine-safe — runs in a dedicated background process via `cli.php start`
+- **Import daemon**: Embedded in `app.php`; runs as an inotify-based coroutine loop started in `onStart()`.
 - **`{{ bind() }}` in event handlers**: `{{ bind(signal) }}` expands to `data-bind="hash"` (an HTML attribute). Using it inside a `data-on:*` JS expression generates invalid JS (e.g. `data - bind = "…"`) and silently breaks the entire handler. Use `${{ signal.id() }}` for direct signal assignment inside event expressions.

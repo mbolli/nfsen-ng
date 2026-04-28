@@ -106,7 +106,7 @@ inotify_add_watch($inotify, $path, IN_CLOSE_WRITE);
 For nfsen-ng, I recommend **Option 1 (Polling)** with these settings:
 
 ```php
-// In server.php.php or similar
+// In app.php or similar
 
 // Create watcher
 $vmHost = getenv('VM_HOST') ?: 'victoriametrics';

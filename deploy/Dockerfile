@@ -46,9 +46,8 @@ RUN pecl install rrd \
 # Setup volumes for persistent data and configuration
 VOLUME ["/data/nfsen-ng"]
 
-# Clone nfsen-ng from git (production) - v1 branch
-RUN git clone -b v1 https://github.com/mbolli/nfsen-ng.git /var/www/html/nfsen-ng \
-    && chmod +x /var/www/html/nfsen-ng/backend/cli.php
+# Clone nfsen-ng from git (production)
+RUN git clone https://github.com/mbolli/nfsen-ng.git /var/www/html/nfsen-ng
 
 # Install composer and production dependencies
 RUN curl -sS https://getcomposer.org/download/latest-stable/composer.phar -o /usr/local/bin/composer \

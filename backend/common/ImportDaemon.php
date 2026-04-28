@@ -117,6 +117,21 @@ class ImportDaemon {
     }
 
     /**
+     * Set up inotify watches without running any import.
+     * Used on startup when the database already has data (gap-fill handled by
+     * initialImport) OR when the user has explicitly skipped the initial import.
+     * After this returns, pollOnce() will begin responding to inotify events.
+     */
+    public function setupWatchesOnly(): void {
+        $this->importer = new Import();
+        $this->importer->setQuiet(true);
+        $this->importer->setVerbose(false);
+
+        $this->initWatches();
+        $this->debug->log('ImportDaemon: inotify watches ready (startup import skipped)', LOG_INFO);
+    }
+
+    /**
      * Process one inotify poll tick. Call this from $app->setInterval(..., 1000).
      *
      * @param callable $onImportDone Invoked after each successfully imported file.

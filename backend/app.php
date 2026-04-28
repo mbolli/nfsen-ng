@@ -99,16 +99,18 @@ $app->onStart(function () use ($app): void {
     $app->setGlobalState('import_log', []);
     $app->setGlobalState('import_cancel', false);
 
-    // Initial bulk import runs in a coroutine — does not block the event loop.
+    // Startup import logic — only runs a gap fill when the database already has
+    // data. A fresh install skips the import entirely so the user can configure
+    // and trigger "Initial Import" manually from the Admin panel.
+    //
+    // NFSEN_SKIP_INITIAL_IMPORT=true  → always skip; only set up inotify watches.
+    // Existing data (any source last_update > 0) → gap fill (catch up missed files).
+    // No data at all                  → skip; user must run Initial Import manually.
+    //
     // NOTE: Import::start() is not coroutine-safe per the original comment in
     // listen.php. If problems arise, move this call before $app->start() so it
     // runs synchronously before the server accepts connections.
     \OpenSwoole\Coroutine::create(function () use ($app, $daemon, $debug): void {
-        $app->setGlobalState('import_status_text', 'Initial import…');
-        if (!empty($app->getClients())) {
-            $app->broadcast('admin:import');
-        }
-
         /** Append new Debug WARNING+ entries to the global log state. */
         $flushLog = static function () use ($app): void {
             $new = Debug::drainBuffer();
@@ -118,12 +120,44 @@ $app->onStart(function () use ($app): void {
             }
         };
 
+        // NFSEN_SKIP_INITIAL_IMPORT: skip gap fill, just set up inotify watches.
+        $skipEnv = getenv('NFSEN_SKIP_INITIAL_IMPORT');
+        if ($skipEnv === '1' || $skipEnv === 'true') {
+            $debug->log('ImportDaemon: startup import skipped (NFSEN_SKIP_INITIAL_IMPORT)', LOG_INFO);
+            $daemon->setupWatchesOnly();
+
+            return;
+        }
+
+        // Detect whether any source already has data in the database.
+        $hasExistingData = false;
+        foreach (Config::$settings->sources as $source) {
+            if (Config::$db->last_update($source) > 0) {
+                $hasExistingData = true;
+                break;
+            }
+        }
+
+        if (!$hasExistingData) {
+            // Fresh install — no data yet. Skip the import; user triggers it manually.
+            $debug->log('ImportDaemon: no existing data — startup import skipped; use Admin panel to run Initial Import', LOG_INFO);
+            $daemon->setupWatchesOnly();
+
+            return;
+        }
+
+        // Existing database — run a gap fill to catch up on any missed files.
+        $app->setGlobalState('import_status_text', 'Catching up on missed files…');
+        if (!empty($app->getClients())) {
+            $app->broadcast('admin:import');
+        }
+
         try {
             $daemon->initialImport(
                 function (array $progress) use ($app, $flushLog): void {
                     $app->setGlobalState('import_progress', $progress['pct']);
                     $app->setGlobalState('import_current_file', $progress['file']);
-                    $app->setGlobalState('import_status_text', 'Initial import: ' . $progress['processed'] . ' / ' . $progress['total'] . ' files');
+                    $app->setGlobalState('import_status_text', 'Catching up: ' . $progress['processed'] . ' / ' . $progress['total'] . ' files');
                     $app->setGlobalState('import_eta', $progress['eta']);
                     $flushLog();
                     if (!empty($app->getClients())) {
@@ -133,13 +167,13 @@ $app->onStart(function () use ($app): void {
                 static fn (): bool => (bool) $app->globalState('import_cancel', false)
             );
             $flushLog();
-            $app->setGlobalState('import_status_text', 'Initial import complete');
+            $app->setGlobalState('import_status_text', 'Up to date');
             $app->setGlobalState('import_progress', 100);
             $app->setGlobalState('import_current_file', '');
             $app->setGlobalState('import_eta', '');
         } catch (\Throwable $e) {
-            $debug->log('ImportDaemon: initial import failed: ' . $e->getMessage(), LOG_ERR);
-            $app->setGlobalState('import_status_text', 'Initial import failed: ' . $e->getMessage());
+            $debug->log('ImportDaemon: catch-up import failed: ' . $e->getMessage(), LOG_ERR);
+            $app->setGlobalState('import_status_text', 'Catch-up failed: ' . $e->getMessage());
         }
 
         if (!empty($app->getClients())) {

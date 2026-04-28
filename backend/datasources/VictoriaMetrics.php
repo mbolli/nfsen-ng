@@ -240,13 +240,13 @@ class VictoriaMetrics implements Datasource {
         // TCP connectivity check — 2 s timeout
         $errNo  = 0;
         $errStr = '';
-        $sock   = @fsockopen($vmHost, $vmPort, $errNo, $errStr, 2.0);
+        $sock   = $this->tcpConnect($vmHost, $vmPort, $errNo, $errStr);
         if ($sock === false) {
             $checks[] = ['id' => 'vm_reachable', 'label' => 'VictoriaMetrics reachable',
                 'status' => 'error', 'detail' => "Cannot connect: {$errStr} (errno {$errNo})",
                 'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
         } else {
-            fclose($sock);
+            fclose($sock); // @phpstan-ignore argument.type
             $checks[] = ['id' => 'vm_reachable', 'label' => 'VictoriaMetrics reachable',
                 'status' => 'ok', 'detail' => 'Connected', 'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
 
@@ -292,6 +292,17 @@ class VictoriaMetrics implements Datasource {
      */
     public function get_data_path(string $source = '', int $port = 0): string {
         return $this->queryUrl;
+    }
+
+    /**
+     * Open a TCP connection for health-check probing.
+     * Extracted to a protected method so tests can override it.
+     *
+     * @return resource|false
+     */
+    protected function tcpConnect(string $host, int $port, int &$errNo, string &$errStr): mixed
+    {
+        return @fsockopen($host, $port, $errNo, $errStr, 2.0);
     }
 
     /**
@@ -367,21 +378,37 @@ class VictoriaMetrics implements Datasource {
      * Query for a single value (first or last timestamp).
      */
     private function querySingleValue(string $query, string $field = 'timestamp', bool $first = true): int {
-        // Use instant query to get last value, or range query for first
         if ($first) {
-            // Get oldest data point
+            // Get the oldest data point via range query
             $url = $this->queryUrl . '?' . http_build_query([
                 'query' => $query,
                 'start' => strtotime('-' . $this->importYears . ' years'),
                 'end' => time(),
                 'step' => '1h',
             ]);
-        } else {
-            // Get latest data point using instant query
-            $url = str_replace('query_range', 'query', $this->queryUrl) . '?' . http_build_query([
-                'query' => $query,
-            ]);
+
+            $response = $this->httpGet($url);
+            $data = json_decode($response, true);
+
+            if (!isset($data['status']) || $data['status'] !== 'success' || empty($data['data']['result'])) {
+                return 0;
+            }
+
+            return isset($data['data']['result'][0]['values'][0][0])
+                ? (int) $data['data']['result'][0]['values'][0][0]
+                : 0;
         }
+
+        // Get the timestamp of the most recent data point.
+        // Wrap in timestamp(last_over_time(...[Nd])) so that:
+        //   - last_over_time finds the last sample even across historical imports
+        //   - timestamp() returns that sample's Unix timestamp as the metric value
+        // value[1] is the last-write timestamp; value[0] is the eval time (≈ now).
+        $windowDays = $this->importYears * 365;
+        $wrappedQuery = "timestamp(last_over_time({$query}[{$windowDays}d]))";
+        $url = str_replace('query_range', 'query', $this->queryUrl) . '?' . http_build_query([
+            'query' => $wrappedQuery,
+        ]);
 
         $response = $this->httpGet($url);
         $data = json_decode($response, true);
@@ -390,14 +417,10 @@ class VictoriaMetrics implements Datasource {
             return 0;
         }
 
-        if ($first && isset($data['data']['result'][0]['values'][0][0])) {
-            return (int) $data['data']['result'][0]['values'][0][0];
-        }
-        if (!$first && isset($data['data']['result'][0]['value'][0])) {
-            return (int) $data['data']['result'][0]['value'][0];
-        }
-
-        return 0;
+        // value[1] is the timestamp of the last sample (as a float string)
+        return isset($data['data']['result'][0]['value'][1])
+            ? (int) (float) $data['data']['result'][0]['value'][1]
+            : 0;
     }
 
     /**
@@ -434,7 +457,7 @@ class VictoriaMetrics implements Datasource {
     /**
      * Send data to VictoriaMetrics.
      */
-    private function sendToVM(string $url, string $body): bool {
+    protected function sendToVM(string $url, string $body): bool {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
@@ -459,7 +482,7 @@ class VictoriaMetrics implements Datasource {
     /**
      * HTTP GET request.
      */
-    private function httpGet(string $url): string {
+    protected function httpGet(string $url): string {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);

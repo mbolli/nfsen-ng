@@ -81,7 +81,7 @@ Both configurations include:
 ## Shared Components
 
 Both use:
-- PHP 8.3 CLI base image
+- PHP 8.4 CLI base image
 - nfdump 1.7.6 (compiled from source)
 - Same exposed port (9000 for OpenSwoole HTTP server)
 - Caddy reverse proxy (port 80/8080)

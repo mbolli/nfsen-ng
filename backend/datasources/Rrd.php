@@ -437,7 +437,7 @@ WARNING;
 
         $checks[] = ['id' => 'import_years', 'label' => 'Import years',
             'status' => $importYears >= 1 ? 'ok' : 'error',
-            'detail' => $importYears >= 1 ? (string) $importYears : 'import_years must be \u2265 1',
+            'detail' => $importYears >= 1 ? (string) $importYears : 'import_years must be ≥ 1',
             'group' => $group, 'code' => false,
             'hint' => 'Set via NFSEN_IMPORT_YEARS env var (default: 3). Changing requires a force-rescan.',
             'epoch' => 0];
@@ -447,7 +447,7 @@ WARNING;
             if (!file_exists($rrdFile)) {
                 $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
                     'status' => 'warning', 'detail' => 'No RRD file yet', 'group' => $group,
-                    'code' => false, 'hint' => 'Go to Admin \u2192 click "Initial Import" to populate the database', 'epoch' => 0];
+                    'code' => false, 'hint' => 'Go to Admin → click "Initial Import" to populate the database', 'epoch' => 0];
                 continue;
             }
             try {

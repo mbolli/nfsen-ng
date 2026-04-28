@@ -123,6 +123,24 @@ class Akumuli implements Datasource {
     }
 
     /**
+     * Returns health check entries for this datasource.
+     *
+     * @param string   $group
+     * @param string[] $sources
+     * @return list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}>
+     */
+    public function healthChecks(string $group, array $sources): array {
+        $importYears = Config::$settings->importYears();
+
+        return [['id' => 'import_years', 'label' => 'Import years',
+            'status' => $importYears >= 1 ? 'ok' : 'error',
+            'detail' => $importYears >= 1 ? (string) $importYears : 'import_years must be \u2265 1',
+            'group' => $group, 'code' => false,
+            'hint' => 'Set via NFSEN_IMPORT_YEARS env var (default: 3).',
+            'epoch' => 0]];
+    }
+
+    /**
      * Removes all existing data for every source in $sources.
      * If $sources is empty, remove all existing data.
      */

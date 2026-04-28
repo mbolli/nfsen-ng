@@ -411,6 +411,74 @@ WARNING;
     }
 
     /**
+     * Returns health check entries for this datasource.
+     *
+     * @param string   $group
+     * @param string[] $sources
+     * @return list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}>
+     */
+    public function healthChecks(string $group, array $sources): array {
+        $checks      = [];
+        $importYears = Config::$settings->importYears();
+
+        $rrdPath = Config::$settings->datasourceConfig('RRD')['data_path']
+            ?? (Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data');
+
+        if (!is_dir($rrdPath)) {
+            $checks[] = ['id' => 'rrd_dir', 'label' => 'RRD data dir', 'status' => 'error',
+                'detail' => "Not found: {$rrdPath}", 'group' => $group, 'code' => true, 'hint' => '', 'epoch' => 0];
+        } elseif (!is_writable($rrdPath)) {
+            $checks[] = ['id' => 'rrd_dir', 'label' => 'RRD data dir', 'status' => 'error',
+                'detail' => "Not writable: {$rrdPath}", 'group' => $group, 'code' => true, 'hint' => '', 'epoch' => 0];
+        } else {
+            $checks[] = ['id' => 'rrd_dir', 'label' => 'RRD data dir', 'status' => 'ok',
+                'detail' => $rrdPath, 'group' => $group, 'code' => true, 'hint' => '', 'epoch' => 0];
+        }
+
+        $checks[] = ['id' => 'import_years', 'label' => 'Import years',
+            'status' => $importYears >= 1 ? 'ok' : 'error',
+            'detail' => $importYears >= 1 ? (string) $importYears : 'import_years must be \u2265 1',
+            'group' => $group, 'code' => false,
+            'hint' => 'Set via NFSEN_IMPORT_YEARS env var (default: 3). Changing requires a force-rescan.',
+            'epoch' => 0];
+
+        foreach ($sources as $source) {
+            $rrdFile = $this->get_data_path($source);
+            if (!file_exists($rrdFile)) {
+                $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
+                    'status' => 'warning', 'detail' => 'No RRD file yet', 'group' => $group,
+                    'code' => false, 'hint' => 'Go to Admin \u2192 click "Initial Import" to populate the database', 'epoch' => 0];
+                continue;
+            }
+            try {
+                $lastUpdate = $this->last_update($source);
+            } catch (\Throwable) {
+                $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
+                    'status' => 'warning', 'detail' => 'Could not read last_update',
+                    'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+                continue;
+            }
+            if ($lastUpdate === 0) {
+                $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
+                    'status' => 'warning', 'detail' => 'RRD exists but has never been written',
+                    'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+            } else {
+                $age    = time() - $lastUpdate;
+                $status = $age > 3600 ? 'warning' : 'ok';
+                $ageStr = \mbolli\nfsen_ng\common\HealthChecker::ageStr($age);
+                $detail = $age <= 0 ? 'Just imported'
+                    : ($age > 3600 ? "Last import {$ageStr} ago \u2014 may be stalled"
+                                   : "Last import {$ageStr} ago");
+                $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
+                    'status' => $status, 'detail' => $detail,
+                    'group' => $group, 'code' => false, 'hint' => '', 'epoch' => $lastUpdate];
+            }
+        }
+
+        return $checks;
+    }
+
+    /**
      * Concatenates the path to the source's rrd file.
      */
     public function get_data_path(string $source = '', int $port = 0): string {

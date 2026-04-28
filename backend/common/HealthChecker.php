@@ -35,9 +35,6 @@ class HealthChecker {
         $checks = [];
         $settings = Config::$settings;
 
-        // Group display order (index = sort priority)
-        $groupOrder = array_flip(['PHP Extensions', 'nfdump', 'Sources', 'Import Daemon', 'nfcapd Paths', 'RRD Storage']);
-
         /**
          * @param 'ok'|'warning'|'error' $status
          * @param bool   $code   true → wrap detail in <code> in template (paths, identifiers)
@@ -55,6 +52,13 @@ class HealthChecker {
 
         $ageStr = static fn (int $s): string => self::ageStr($s);
 
+        // Determine active datasource once — used throughout all checks below.
+        $datasource   = strtolower($settings->datasourceName);
+        $storageGroup = $datasource === 'victoriametrics' ? 'VictoriaMetrics' : 'RRD Storage';
+
+        // Group display order (index = sort priority)
+        $groupOrder = array_flip(['PHP Extensions', 'nfdump', 'Sources', 'Import Daemon', 'nfcapd Paths', $storageGroup]);
+
         // ── 1. PHP Extensions ────────────────────────────────────────────────
         $phpVer = PHP_VERSION;
         $phpOk  = version_compare($phpVer, '8.4.0', '>=');
@@ -67,10 +71,14 @@ class HealthChecker {
             $swVer !== null ? "Loaded ({$swVer})" : 'Not loaded — OpenSwoole is required',
             'PHP Extensions');
 
+        // ext_rrd is only required when the RRD datasource is active.
         $rrdOk = function_exists('rrd_version');
-        $add('ext_rrd', 'PHP ext-rrd', $rrdOk ? 'ok' : 'error',
+        $add('ext_rrd', 'PHP ext-rrd',
+            $rrdOk ? 'ok' : ($datasource === 'rrd' ? 'error' : 'warning'),
             // @phpstan-ignore-next-line (rrd_version is a dynamic extension function)
-            $rrdOk ? 'Loaded (' . \rrd_version() . ')' : 'Not loaded — install php-rrd',
+            $rrdOk ? 'Loaded (' . \rrd_version() . ')'
+                   : ($datasource === 'rrd' ? 'Not loaded — install php-rrd'
+                                           : 'Not loaded (not required for ' . $settings->datasourceName . ')'),
             'PHP Extensions');
 
         $inotifyOk = function_exists('inotify_init');
@@ -216,57 +224,11 @@ class HealthChecker {
             }
         }
 
-        // ── 6. RRD Storage ───────────────────────────────────────────────────
-        $datasource = $settings->datasourceName;
-        $rrdPath    = $settings->datasourceConfig('RRD')['data_path']
-            ?? (Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data');
-
-        if (!is_dir($rrdPath)) {
-            $add('rrd_dir', 'RRD data dir', 'error', "Not found: {$rrdPath}", 'RRD Storage', true);
-        } elseif (!is_writable($rrdPath)) {
-            $add('rrd_dir', 'RRD data dir', 'error', "Not writable: {$rrdPath}", 'RRD Storage', true);
-        } else {
-            $add('rrd_dir', 'RRD data dir', 'ok', $rrdPath, 'RRD Storage', true);
-        }
-
-        $importYears = $settings->importYears();
-        $add('import_years', 'Import years',
-            $importYears >= 1 ? 'ok' : 'error',
-            $importYears >= 1 ? (string) $importYears : 'import_years must be ≥ 1',
-            'RRD Storage', false,
-            'Set via NFSEN_IMPORT_YEARS env var (default: 3). Changing requires a force-rescan.');
-
-        // Per-source RRD freshness (only meaningful for RRD datasource)
-        if (strtolower($datasource) === 'rrd' && isset(Config::$db)) {
-            foreach ($sources as $source) {
-                $rrdFile = Config::$db->get_data_path($source);
-                if (!file_exists($rrdFile)) {
-                    $add("rrd_data_{$source}", "RRD data: {$source}", 'warning',
-                        'No RRD file yet — has the import run?', 'RRD Storage');
-                    continue;
-                }
-                try {
-                    $lastUpdate = Config::$db->last_update($source);
-                } catch (\Throwable) {
-                    $add("rrd_data_{$source}", "RRD data: {$source}", 'warning', 'Could not read last_update', 'RRD Storage');
-                    continue;
-                }
-                if ($lastUpdate === 0) {
-                    $add("rrd_data_{$source}", "RRD data: {$source}", 'warning',
-                        'RRD exists but has never been written', 'RRD Storage');
-                } else {
-                    $age    = time() - $lastUpdate;
-                    $status = $age > 3600 ? 'warning' : 'ok';
-                    if ($age <= 0) {
-                        $detail = 'Just imported';
-                    } elseif ($age > 3600) {
-                        $detail = 'Last import ' . $ageStr($age) . ' ago — may be stalled';
-                    } else {
-                        $detail = 'Last import ' . $ageStr($age) . ' ago';
-                    }
-                    $add("rrd_data_{$source}", "RRD data: {$source}", $status, $detail, 'RRD Storage', false, '', $lastUpdate);
-                }
-            }
+        // ── 6. Storage ───────────────────────────────────────────────────────
+        // Delegated to the active datasource implementation — each knows its
+        // own connectivity checks, file paths, and per-source freshness logic.
+        if (isset(Config::$db)) {
+            array_push($checks, ...Config::$db->healthChecks($storageGroup, $sources));
         }
 
         // Sort: group order first, then errors-before-warnings-before-ok within each group

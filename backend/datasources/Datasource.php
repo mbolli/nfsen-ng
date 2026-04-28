@@ -98,4 +98,15 @@ interface Datasource {
      * Gets the path where the datasource's data is stored.
      */
     public function get_data_path(string $source = '', int $port = 0): string;
+
+    /**
+     * Returns health check entries for this datasource to be included in the
+     * Admin health panel. The caller supplies the group name so entries appear
+     * under the correct section heading.
+     *
+     * @param string   $group   Health check group label (e.g. 'RRD Storage')
+     * @param string[] $sources Configured source names
+     * @return list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}>
+     */
+    public function healthChecks(string $group, array $sources): array;
 }

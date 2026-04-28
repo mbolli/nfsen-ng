@@ -220,6 +220,74 @@ class VictoriaMetrics implements Datasource {
     }
 
     /**
+     * Returns health check entries for this datasource.
+     *
+     * @param string   $group
+     * @param string[] $sources
+     * @return list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}>
+     */
+    public function healthChecks(string $group, array $sources): array {
+        $checks      = [];
+        $importYears = Config::$settings->importYears();
+
+        $vmCfg  = Config::$settings->datasourceConfig('VictoriaMetrics');
+        $vmHost = (string) ($vmCfg['host'] ?? 'victoriametrics');
+        $vmPort = (int) ($vmCfg['port'] ?? 8428);
+
+        $checks[] = ['id' => 'vm_config', 'label' => 'VictoriaMetrics config', 'status' => 'ok',
+            'detail' => "{$vmHost}:{$vmPort}", 'group' => $group, 'code' => true, 'hint' => '', 'epoch' => 0];
+
+        // TCP connectivity check — 2 s timeout
+        $errNo  = 0;
+        $errStr = '';
+        $sock   = @fsockopen($vmHost, $vmPort, $errNo, $errStr, 2.0);
+        if ($sock === false) {
+            $checks[] = ['id' => 'vm_reachable', 'label' => 'VictoriaMetrics reachable',
+                'status' => 'error', 'detail' => "Cannot connect: {$errStr} (errno {$errNo})",
+                'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+        } else {
+            fclose($sock);
+            $checks[] = ['id' => 'vm_reachable', 'label' => 'VictoriaMetrics reachable',
+                'status' => 'ok', 'detail' => 'Connected', 'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+
+            foreach ($sources as $source) {
+                try {
+                    $lastUpdate = $this->last_update($source);
+                } catch (\Throwable) {
+                    $checks[] = ['id' => "vm_data_{$source}", 'label' => "VM data: {$source}",
+                        'status' => 'warning', 'detail' => 'Could not query last_update',
+                        'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+                    continue;
+                }
+                if ($lastUpdate === 0) {
+                    $checks[] = ['id' => "vm_data_{$source}", 'label' => "VM data: {$source}",
+                        'status' => 'warning', 'detail' => 'No data yet', 'group' => $group,
+                        'code' => false, 'hint' => 'Go to Admin \u2192 click "Initial Import" to populate the database', 'epoch' => 0];
+                } else {
+                    $age    = time() - $lastUpdate;
+                    $status = $age > 3600 ? 'warning' : 'ok';
+                    $ageStr = \mbolli\nfsen_ng\common\HealthChecker::ageStr($age);
+                    $detail = $age <= 0 ? 'Just imported'
+                        : ($age > 3600 ? "Last import {$ageStr} ago \u2014 may be stalled"
+                                       : "Last import {$ageStr} ago");
+                    $checks[] = ['id' => "vm_data_{$source}", 'label' => "VM data: {$source}",
+                        'status' => $status, 'detail' => $detail,
+                        'group' => $group, 'code' => false, 'hint' => '', 'epoch' => $lastUpdate];
+                }
+            }
+        }
+
+        $checks[] = ['id' => 'import_years', 'label' => 'Import years',
+            'status' => $importYears >= 1 ? 'ok' : 'error',
+            'detail' => $importYears >= 1 ? (string) $importYears : 'import_years must be \u2265 1',
+            'group' => $group, 'code' => false,
+            'hint' => 'Set via NFSEN_IMPORT_YEARS env var (default: 3).',
+            'epoch' => 0];
+
+        return $checks;
+    }
+
+    /**
      * Gets the path where the datasource's data is stored.
      */
     public function get_data_path(string $source = '', int $port = 0): string {

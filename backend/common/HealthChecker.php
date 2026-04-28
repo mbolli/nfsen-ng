@@ -57,9 +57,9 @@ class HealthChecker {
 
         // ── 1. PHP Extensions ────────────────────────────────────────────────
         $phpVer = PHP_VERSION;
-        $phpOk  = version_compare($phpVer, '8.1.0', '>=');
+        $phpOk  = version_compare($phpVer, '8.4.0', '>=');
         $add('php_version', 'PHP version', $phpOk ? 'ok' : 'error',
-            $phpOk ? $phpVer : "{$phpVer} — nfsen-ng requires PHP ≥ 8.1",
+            $phpOk ? $phpVer : "{$phpVer} — nfsen-ng requires PHP ≥ 8.4",
             'PHP Extensions');
 
         $swVer = phpversion('openswoole') ?: null;

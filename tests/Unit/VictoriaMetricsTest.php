@@ -26,7 +26,7 @@ class TestVM extends VictoriaMetrics
     /** @var list<string> Optional queue of responses for sequential calls; falls back to nextGetResponse */
     public array $getResponseQueue = [];
 
-    protected function httpGet(string $url): string
+    protected function httpGet(string $url, int $timeout = 30): string
     {
         $this->capturedGetUrls[] = $url;
 
@@ -397,7 +397,7 @@ describe('VictoriaMetrics output format alignment', function () {
                 $this->responses = $responses;
             }
 
-            protected function httpGet(string $url): string
+            protected function httpGet(string $url, int $timeout = 30): string
             {
                 return $this->responses[$this->callCount++] ?? '{"status":"success","data":{"result":[]}}';
             }
@@ -481,7 +481,7 @@ describe('VictoriaMetrics::date_boundaries() and last_update()', function () {
 
     test('last_update() returns 0 when httpGet throws', function () {
         $vm = new class extends VictoriaMetrics {
-            protected function httpGet(string $url): string
+            protected function httpGet(string $url, int $timeout = 30): string
             {
                 throw new \Exception('connection refused');
             }

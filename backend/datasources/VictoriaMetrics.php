@@ -241,7 +241,7 @@ class VictoriaMetrics implements Datasource {
 
         // HTTP health check — VictoriaMetrics /health returns 'OK' when ready
         try {
-            $healthResponse = trim($this->httpGet("http://{$vmHost}:{$vmPort}/health"));
+            $healthResponse = trim($this->httpGet("http://{$vmHost}:{$vmPort}/health", 2));
         } catch (\Throwable $e) {
             $healthResponse = '';
             $checks[] = ['id' => 'vm_reachable', 'label' => 'VictoriaMetrics reachable',
@@ -471,10 +471,10 @@ class VictoriaMetrics implements Datasource {
     /**
      * HTTP GET request.
      */
-    protected function httpGet(string $url): string {
+    protected function httpGet(string $url, int $timeout = 30): string {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);

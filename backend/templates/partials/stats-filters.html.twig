@@ -143,6 +143,11 @@
                 <span data-show="$stats._indicator">Processing…</span>
             </button>
         </nfsen-tooltip>
+        <button type="button"
+                class="btn btn-outline-danger btn-sm ms-1"
+                style="display:none"
+                data-show="$stats._indicator"
+                data-on:click="@post('{{ action_killNfdump }}')">Kill</button>
         {# nfcapd file count info — reactive to date range and source changes #}
         <span class="text-muted small align-items-center gap-1" style="display: flex" data-show="$nfcapd._counting">
             <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>

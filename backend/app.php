@@ -32,6 +32,7 @@ use mbolli\nfsen_ng\common\ImportDaemon;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\Table;
 use mbolli\nfsen_ng\common\UserPreferences;
+use mbolli\nfsen_ng\processor\Nfdump;
 use Mbolli\PhpVia\Config as ViaConfig;
 use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
@@ -1054,6 +1055,20 @@ $app->page('/', function (Context $c) use ($app): void {
         $c->execScript('document.getElementById("ip-modal-inner").showModal()');
     }, 'ip-info');
 
+    // Kill the running nfdump process — sends SIGTERM to the PID tracked in Nfdump::$runningPid.
+    // Safe because OpenSwoole SWOOLE_HOOK_ALL makes stream_get_contents coroutine-yielding,
+    // so this action runs concurrently with a blocked flow/stats action.
+    $killNfdumpAction = $c->action(function (Context $c) use (&$flowNotifications, &$statsNotifications): void {
+        $pid = Nfdump::$runningPid;
+        if ($pid !== null && $pid > 0) {
+            posix_kill($pid, SIGTERM);
+            $msg = 'nfdump process (PID ' . $pid . ') was killed.';
+            $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $msg]];
+            $statsNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $msg]];
+        }
+        $c->sync();
+    }, 'kill-nfdump');
+
     // ── View ─────────────────────────────────────────────────────────────────
     // Re-renders the full page on every $c->sync() (actions) and every
     // $app->broadcast('rrd:live') (import daemon). Brotli + Datastar DOM morphing
@@ -1141,6 +1156,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $settingsLogPriority,
         $settingsMessage,
         $saveSettingsAction,
+        $killNfdumpAction,
         &$flowTableHtml,
         &$statsTableHtml,
         &$lastGraphFetch,
@@ -1316,6 +1332,7 @@ $app->page('/', function (Context $c) use ($app): void {
             'settingsLogPriority' => $settingsLogPriority,
             'settingsMessageHtml' => $settingsMessage->string(),
             'action_saveSettings' => $saveSettingsAction->url(),
+            'action_killNfdump' => $killNfdumpAction->url(),
             // ── Deployment config (read-only display in Settings tab) ─────
             'deployDatasource' => Config::$settings->datasourceName,
             'deployImportYears' => Config::$settings->importYears,

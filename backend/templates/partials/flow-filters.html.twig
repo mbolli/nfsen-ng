@@ -164,6 +164,11 @@
                 <span data-show="$flows._indicator">Processing…</span>
             </button>
         </nfsen-tooltip>
+        <button type="button"
+                class="btn btn-outline-danger btn-sm ms-1"
+                style="display:none"
+                data-show="$flows._indicator"
+                data-on:click="@post('{{ action_killNfdump }}')">Kill</button>
     </div>
 
 </div>

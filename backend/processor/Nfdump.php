@@ -10,6 +10,9 @@ use mbolli\nfsen_ng\common\Misc;
 
 class Nfdump implements Processor {
     public static ?self $_instance = null;
+
+    /** PID of the currently running nfdump process, or null if idle. Safe as static in single-worker OpenSwoole. */
+    public static ?int $runningPid = null;
     private array $cfg = [
         'env' => [],
         'option' => [],
@@ -155,6 +158,9 @@ class Nfdump implements Processor {
         // Close stdin as we don't need it
         fclose($pipes[0]);
 
+        // Track running PID so the kill-nfdump action can send SIGTERM
+        self::$runningPid = proc_get_status($process)['pid'];
+
         // Read stdout and stderr
         $stdout = (string) stream_get_contents($pipes[1]);
         $stderr = (string) stream_get_contents($pipes[2]);
@@ -164,6 +170,7 @@ class Nfdump implements Processor {
 
         // Get return code
         $return = proc_close($process);
+        self::$runningPid = null;
 
         // Log stderr if present (but don't fail on benign messages)
         if (!empty($stderr)) {

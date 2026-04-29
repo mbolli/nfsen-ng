@@ -20,10 +20,10 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
 # Add nfdump to PATH
 ENV PATH="/usr/local/nfdump/bin:${PATH}"
 
-# Compile and install nfdump 1.7.6
-RUN wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.6.zip \
-    && unzip v1.7.6.zip \
-    && cd nfdump-1.7.6 \
+# Compile and install nfdump 1.7.8
+RUN wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.8.zip \
+    && unzip v1.7.8.zip \
+    && cd nfdump-1.7.8 \
     && ./autogen.sh \
     && ./configure --prefix=/usr/local/nfdump \
     && make \
@@ -31,7 +31,7 @@ RUN wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.6.zip \
     && ldconfig \
     && nfdump -V \
     && cd .. \
-    && rm -rf nfdump-1.7.6 v1.7.6.zip
+    && rm -rf nfdump-1.7.8 v1.7.8.zip
 
 # Install PHP extension installer helper
 ADD --chmod=0755 https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/

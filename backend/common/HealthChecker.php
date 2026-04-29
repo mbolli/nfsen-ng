@@ -148,6 +148,27 @@ class HealthChecker {
                 $nfdumpVer !== '' ? $vDetail : 'Execution failed',
                 'nfdump'
             );
+
+            // Minimum version check.
+            // -o json field names (ts, td, pr, sa, …) changed completely in 1.7.0
+            // vs the 1.6.x scheme (t_first, t_last, …). 1.7.2 was the first
+            // production-recommended 1.7.x release.
+            $minNfdump = '1.7.2';
+            if ($nfdumpVer !== '' && isset($vm[1])) {
+                $numericVer = (string) preg_replace('/-.*$/', '', $vm[1]); // strip -release suffix
+                $meetsMin = version_compare($numericVer, $minNfdump, '>=');
+                $add(
+                    'nfdump_version',
+                    'Minimum version',
+                    $meetsMin ? 'ok' : 'error',
+                    $meetsMin
+                        ? "≥ {$minNfdump}"
+                        : "v{$numericVer} — nfsen-ng requires nfdump ≥ {$minNfdump}",
+                    'nfdump',
+                    false,
+                    $meetsMin ? '' : 'JSON output field names differ in 1.6.x; upgrade to nfdump ≥ 1.7.2'
+                );
+            }
         }
 
         $maxProc = $settings->nfdumpMaxProcesses;

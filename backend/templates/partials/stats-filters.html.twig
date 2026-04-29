@@ -48,6 +48,24 @@
         </div>
     </div>
 
+    {# Byte thresholds — prepended to the nfdump filter expression #}
+    <div class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
+        <div class="filter-group">
+        <p class="filter-label">Min bytes
+            <nfsen-tooltip data-ignore-morph text="Only aggregate flows with at least this many bytes. Prepended as 'bytes &gt; value' filter. Accepts SI suffixes: k, M, G. E.g. '1M'." placement="top"></nfsen-tooltip>
+        </p>
+        <input type="text" {{ bind(statsLowerLimit) }} class="form-control" placeholder="e.g. 1M">
+        </div>
+    </div>
+    <div class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
+        <div class="filter-group">
+        <p class="filter-label">Max bytes
+            <nfsen-tooltip data-ignore-morph text="Only aggregate flows with at most this many bytes. Prepended as 'bytes &lt; value' filter. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
+        </p>
+        <input type="text" {{ bind(statsUpperLimit) }} class="form-control" placeholder="e.g. 100M">
+        </div>
+    </div>
+
     {# Statistic properties #}
     <div id="filterStatsProperties" class="col-xs-6 col-sm-6 col-md-4 col-lg-2">
         <div class="filter-group">

@@ -54,6 +54,24 @@
         </div>
     </div>
 
+    {# Byte thresholds — prepended to the nfdump filter expression #}
+    <div class="col-auto">
+        <div class="filter-group">
+        <p class="filter-label">Min bytes
+            <nfsen-tooltip data-ignore-morph text="Only show flows with at least this many bytes. Prepended as 'bytes &gt; value'. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
+        </p>
+        <input type="text" {{ bind(flowLowerLimit) }} class="form-control" style="width:7rem" placeholder="e.g. 1M">
+        </div>
+    </div>
+    <div class="col-auto">
+        <div class="filter-group">
+        <p class="filter-label">Max bytes
+            <nfsen-tooltip data-ignore-morph text="Only show flows with at most this many bytes. Prepended as 'bytes &lt; value'. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
+        </p>
+        <input type="text" {{ bind(flowUpperLimit) }} class="form-control" style="width:7rem" placeholder="e.g. 100M">
+        </div>
+    </div>
+
     {# Aggregation & output #}
     <div id="filterFlowAggregation" class="col-12 col-xl">
         <div class="filter-group">

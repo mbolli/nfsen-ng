@@ -286,6 +286,9 @@ $app->page('/', function (Context $c) use ($app): void {
     $flowAggDstIp = $c->signal('none', 'flows_agg_dstip', clientWritable: true);
     $flowAggDstIpPrefix = $c->signal('', 'flows_agg_dstip_prefix', clientWritable: true);
     $flowOrderByTstart = $c->signal(false, 'flows_orderByTstart', clientWritable: true);
+    // Byte thresholds for flows — prepended as filter expressions (bytes > / bytes <)
+    $flowLowerLimit = $c->signal('', 'flows_lower_limit', clientWritable: true);
+    $flowUpperLimit = $c->signal('', 'flows_upper_limit', clientWritable: true);
     $flowCount = $c->signal(0, 'flows_count');
     $flowMessage = $c->signal('', 'flowMessage');
 
@@ -298,6 +301,10 @@ $app->page('/', function (Context $c) use ($app): void {
         'stats_orderBy',
         clientWritable: true
     );
+    // Byte thresholds applied as nfdump filter expressions prepended to $statsFilter.
+    // nfdump -l/-L flags are only valid for line/packed output, not for -s statistics mode.
+    $statsLowerLimit = $c->signal('', 'stats_lower_limit', clientWritable: true);
+    $statsUpperLimit = $c->signal('', 'stats_upper_limit', clientWritable: true);
     $statsMessage = $c->signal('', 'statsMessage');
     // nfcapd file count — updated by count-files action and on initial render
     $nfcapdFileCount = $c->signal(0, 'nfcapd_file_count');
@@ -506,6 +513,8 @@ $app->page('/', function (Context $c) use ($app): void {
         $datestart,
         $dateend,
         $flowFilter,
+        $flowLowerLimit,
+        $flowUpperLimit,
         $flowLimit,
         $flowAggBidirectional,
         $flowAggProto,
@@ -573,7 +582,18 @@ $app->page('/', function (Context $c) use ($app): void {
                     $aggregate === 'bidirectional' ? '' : '-A' . $aggregate
                 );
             }
-            $processor->setFilter($flowFilter->string());
+            $thresholdFilter = '';
+            if (($fll = trim($flowLowerLimit->string())) !== '' && preg_match('/^\d+[kMG]?$/i', $fll)) {
+                $thresholdFilter .= 'bytes > ' . $fll;
+            }
+            if (($ful = trim($flowUpperLimit->string())) !== '' && preg_match('/^\d+[kMG]?$/i', $ful)) {
+                $thresholdFilter .= ($thresholdFilter !== '' ? ' and ' : '') . 'bytes < ' . $ful;
+            }
+            $combinedFlowFilter = trim($flowFilter->string());
+            if ($thresholdFilter !== '') {
+                $combinedFlowFilter = $thresholdFilter . ($combinedFlowFilter !== '' ? ' and ' . $combinedFlowFilter : '');
+            }
+            $processor->setFilter($combinedFlowFilter);
             $result = $processor->execute();
 
             $flowData = $result['decoded'] ?? [];
@@ -619,6 +639,8 @@ $app->page('/', function (Context $c) use ($app): void {
         $statsCount,
         $statsFor,
         $statsOrderBy,
+        $statsLowerLimit,
+        $statsUpperLimit,
         $graphSources,
         $statsMessage,
         &$statsTableHtml,
@@ -635,7 +657,21 @@ $app->page('/', function (Context $c) use ($app): void {
             $processor->setOption('-n', $statsCount->int());
             $processor->setOption('-o', 'json');
             $processor->setOption('-s', $forParam);
-            $processor->setFilter($statsFilter->string());
+            // Byte thresholds are prepended to the filter expression.
+            // nfdump -l/-L only work for line/packed output, not for -s stats mode.
+            // setFilter() wraps the whole expression in escapeshellarg(), so values must NOT be pre-quoted.
+            $thresholdFilter = '';
+            if (($ll = trim($statsLowerLimit->string())) !== '' && preg_match('/^\d+[kMG]?$/i', $ll)) {
+                $thresholdFilter .= 'bytes > ' . $ll;
+            }
+            if (($ul = trim($statsUpperLimit->string())) !== '' && preg_match('/^\d+[kMG]?$/i', $ul)) {
+                $thresholdFilter .= ($thresholdFilter !== '' ? ' and ' : '') . 'bytes < ' . $ul;
+            }
+            $combinedFilter = trim($statsFilter->string());
+            if ($thresholdFilter !== '') {
+                $combinedFilter = $thresholdFilter . ($combinedFilter !== '' ? ' and ' . $combinedFilter : '');
+            }
+            $processor->setFilter($combinedFilter);
             $result = $processor->execute();
 
             $statsData = $result['decoded'] ?? [];
@@ -1048,11 +1084,15 @@ $app->page('/', function (Context $c) use ($app): void {
         $flowAggDstIpPrefix,
         $flowOrderByTstart,
         $flowCount,
+        $flowLowerLimit,
+        $flowUpperLimit,
         $flowMessage,
         $statsFilter,
         $statsCount,
         $statsFor,
         $statsOrderBy,
+        $statsLowerLimit,
+        $statsUpperLimit,
         $statsMessage,
         $importRunning,
         $confirmRescan,
@@ -1220,12 +1260,16 @@ $app->page('/', function (Context $c) use ($app): void {
             'flowAggDstIpPrefix' => $flowAggDstIpPrefix,
             'flowOrderByTstart' => $flowOrderByTstart,
             'flowCount' => $flowCount,
+            'flowLowerLimit' => $flowLowerLimit,
+            'flowUpperLimit' => $flowUpperLimit,
             'flowMessage' => $flowMessage,
             // Stats filter signals
             'statsFilter' => $statsFilter,
             'statsCount' => $statsCount,
             'statsFor' => $statsFor,
             'statsOrderBy' => $statsOrderBy,
+            'statsLowerLimit' => $statsLowerLimit,
+            'statsUpperLimit' => $statsUpperLimit,
             'statsMessage' => $statsMessage,
             // nfcapd file count (for Flows/Statistics tabs)
             'nfcapdFileCount' => $nfcapdFileCount,

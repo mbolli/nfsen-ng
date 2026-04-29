@@ -359,7 +359,7 @@ class Nfdump implements Processor {
         $this->d->log('CSV delimiter detected: ' . ($delimiter === ',' ? 'comma' : 'tab') . $aggregationNote, LOG_DEBUG);
 
         foreach ($output as $i => $line) {
-            $fields = str_getcsv($line, $delimiter);
+            $fields = str_getcsv($line, $delimiter, '"', '');
 
             if (\count($fields) === 1 || str_contains((string) $fields[0], 'limit') || str_contains((string) $fields[0], 'error')) {
                 // probably an error message or warning. add to command

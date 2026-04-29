@@ -1,10 +1,10 @@
 {
     "defaultView": "graphs",
-    "defaultGraphDisplay": "ports",
-    "defaultGraphDatatype": "packets",
+    "defaultGraphDisplay": "sources",
+    "defaultGraphDatatype": "traffic",
     "defaultGraphProtocols": [],
     "defaultFlowLimit": 100,
-    "defaultStatsOrderBy": "packets",
+    "defaultStatsOrderBy": "bytes",
     "filters": [
         "proto tcp",
         "dst port 443",

@@ -371,7 +371,7 @@ export class NfsenChart extends HTMLElement {
             checkbox.className = 'form-check-input';
             checkbox.id = id;
             checkbox.checked = true;
-            checkbox.setAttribute('data-on:change', `$_graphWidget.setVisibility(${index}, event.target.checked)`);
+            checkbox.setAttribute('data-on:change', `$graph._widget.setVisibility(${index}, event.target.checked)`);
 
             const labelEl = document.createElement('label');
             labelEl.className = 'form-check-label';

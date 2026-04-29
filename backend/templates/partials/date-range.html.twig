@@ -73,7 +73,7 @@
             <button type="button"
                     class="btn btn-outline-primary sync-date"
                     disabled
-                    data-on:click="const range = $_graphWidget.getCurrentRange(); $_daterangeWidget.updateRange(range.from, range.to); el.disabled = true;"
+                    data-on:click="const range = $graph._widget.getCurrentRange(); $_daterangeWidget.updateRange(range.from, range.to); el.disabled = true;"
                     data-show="$_currentView == 'graphs'">
                 Copy from graph
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-repeat" viewBox="0 0 16 16">

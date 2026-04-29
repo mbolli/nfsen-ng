@@ -28,6 +28,7 @@ class TableFormatter {
     private const PATTERN_ICMP_FIELDS = '/^(icmp_type|icmptype)$/i';
     private const PATTERN_FWD_STATUS_FIELDS = '/^(fwd_status|fwdstatus|forwarding_status)$/i';
     private const PATTERN_PROTO_FIELDS = '/^(proto|protocol)$/i';
+    private const PATTERN_PORT_FIELDS = '/^(srcport|dstport|src_port|dst_port|sp|dp|port)$/i';
     private const PATTERN_PERCENTAGE_SUFFIX = '/(percent|pct|ratio)$/i';
     private const PATTERN_IP_SUFFIX = '/(?:ip|addr)$/i';
 
@@ -168,6 +169,11 @@ class TableFormatter {
         // Format protocol numbers to names
         if (preg_match(self::PATTERN_PROTO_FIELDS, $fieldLower) && is_numeric($value)) {
             return self::formatProtocol($value);
+        }
+
+        // Format port numbers with service names
+        if (preg_match(self::PATTERN_PORT_FIELDS, $fieldLower) && is_numeric($value)) {
+            return self::formatPort($value);
         }
 
         // Format percentage values
@@ -637,6 +643,30 @@ class TableFormatter {
         }
 
         return (string) $value;
+    }
+
+    /**
+     * Format port number with service name annotation.
+     *
+     * @param mixed $value
+     */
+    private static function formatPort($value): string {
+        if (!is_numeric($value)) {
+            return (string) $value;
+        }
+
+        $port = (int) $value;
+        $service = getservbyport($port, 'tcp') ?: getservbyport($port, 'udp');
+
+        if ($service !== false) {
+            return \sprintf(
+                '%d <span class="text-muted small">(%s)</span>',
+                $port,
+                htmlspecialchars($service, ENT_QUOTES | ENT_HTML5)
+            );
+        }
+
+        return (string) $port;
     }
 
     /**

@@ -7,6 +7,7 @@ namespace mbolli\nfsen_ng\datasources;
 use JetBrains\PhpStorm\ExpectedValues;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\HealthChecker;
 
 class Rrd implements Datasource {
     private readonly Debug $d;
@@ -239,24 +240,22 @@ WARNING;
             $this->create($data['source'], $data['port'], false);
         } else {
             $lastTs = rrd_last($rrdFile);
-            if (\is_int($lastTs)) {
-                if ($lastTs > time() + 86400 * 365) {
-                    // Corrupted far-future timestamp — recreate the file.
-                    $this->d->log('Recreating RRD with corrupted timestamp (' . $lastTs . '): ' . $rrdFile, \LOG_WARNING);
-                    $this->create($data['source'], $data['port'], true);
-                } else {
-                    $nearest = (int) $data['date_timestamp'] - ($data['date_timestamp'] % 300);
-                    if ($nearest <= $lastTs) {
-                        // Timestamp already covered — silently skip to avoid "illegal attempt to update" noise
-                        // when the import restarts mid-way and port RRDs are already ahead.
-                        return true;
-                    }
+            if ($lastTs > time() + 86400 * 365) {
+                // Corrupted far-future timestamp — recreate the file.
+                $this->d->log('Recreating RRD with corrupted timestamp (' . $lastTs . '): ' . $rrdFile, LOG_WARNING);
+                $this->create($data['source'], $data['port'], true);
+            } else {
+                $nearest = (int) $data['date_timestamp'] - ($data['date_timestamp'] % 300);
+                if ($nearest <= $lastTs) {
+                    // Timestamp already covered — silently skip to avoid "illegal attempt to update" noise
+                    // when the import restarts mid-way and port RRDs are already ahead.
+                    return true;
                 }
             }
         }
 
         $nearest = (int) $data['date_timestamp'] - ($data['date_timestamp'] % 300);
-        $this->d->log('Writing to file ' . $rrdFile, \LOG_DEBUG);
+        $this->d->log('Writing to file ' . $rrdFile, LOG_DEBUG);
 
         // write data
         return (new \RRDUpdater($rrdFile))->update($data['fields'], (string) $nearest);
@@ -413,12 +412,12 @@ WARNING;
     /**
      * Returns health check entries for this datasource.
      *
-     * @param string   $group
      * @param string[] $sources
-     * @return list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}>
+     *
+     * @return list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}>
      */
     public function healthChecks(string $group, array $sources): array {
-        $checks      = [];
+        $checks = [];
         $importYears = Config::$settings->importYears();
 
         $rrdPath = Config::$settings->datasourceConfig('RRD')['data_path']
@@ -448,14 +447,17 @@ WARNING;
                 $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
                     'status' => 'warning', 'detail' => 'No RRD file yet', 'group' => $group,
                     'code' => false, 'hint' => 'Go to Admin → click "Initial Import" to populate the database', 'epoch' => 0];
+
                 continue;
             }
+
             try {
                 $lastUpdate = $this->last_update($source);
             } catch (\Throwable) {
                 $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
                     'status' => 'warning', 'detail' => 'Could not read last_update',
                     'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+
                 continue;
             }
             if ($lastUpdate === 0) {
@@ -463,9 +465,9 @@ WARNING;
                     'status' => 'warning', 'detail' => 'RRD exists but has never been written',
                     'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
             } else {
-                $age    = time() - $lastUpdate;
+                $age = time() - $lastUpdate;
                 $status = $age > 3600 ? 'warning' : 'ok';
-                $ageStr = \mbolli\nfsen_ng\common\HealthChecker::ageStr($age);
+                $ageStr = HealthChecker::ageStr($age);
                 $detail = $age <= 0 ? 'Just imported'
                     : ($age > 3600 ? "Last import {$ageStr} ago — may be stalled"
                                    : "Last import {$ageStr} ago");

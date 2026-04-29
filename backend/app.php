@@ -24,9 +24,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use Mbolli\PhpVia\Config as ViaConfig;
-use Mbolli\PhpVia\Context;
-use Mbolli\PhpVia\Via;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\HealthChecker;
@@ -35,6 +32,10 @@ use mbolli\nfsen_ng\common\ImportDaemon;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\Table;
 use mbolli\nfsen_ng\common\UserPreferences;
+use Mbolli\PhpVia\Config as ViaConfig;
+use Mbolli\PhpVia\Context;
+use Mbolli\PhpVia\Via;
+use OpenSwoole\Coroutine;
 
 // ─── Via configuration ───────────────────────────────────────────────────────
 
@@ -55,16 +56,17 @@ $viaConfig = (new ViaConfig())
     ->withBrotli()
     ->withTrustProxy(true)
     ->withSwooleSettings([
-        'worker_num'    => $workerNum,
-        'max_request'   => $maxRequest,
+        'worker_num' => $workerNum,
+        'max_request' => $maxRequest,
         'max_coroutine' => $maxCoroutine,
-        'hook_flags'    => SWOOLE_HOOK_ALL,
-        'max_conn'      => 10000,
-        'send_yield'    => true,
-        'log_file'      => '/tmp/swoole.log',
-        'reload_async'  => true,
+        'hook_flags' => SWOOLE_HOOK_ALL,
+        'max_conn' => 10000,
+        'send_yield' => true,
+        'log_file' => '/tmp/swoole.log',
+        'reload_async' => true,
         'max_wait_time' => 3,
-    ]);
+    ])
+;
 
 $app = new Via($viaConfig);
 
@@ -73,7 +75,7 @@ $app = new Via($viaConfig);
 $app->onStart(function () use ($app): void {
     try {
         Config::initialize(true);
-    } catch (\Throwable $e) {
+    } catch (Throwable $e) {
         $app->setGlobalState('_fatalError', $e->getMessage());
         error_log('[nfsen-ng] FATAL: ' . $e->getMessage());
 
@@ -112,7 +114,7 @@ $app->onStart(function () use ($app): void {
     // NOTE: Import::start() is not coroutine-safe per the original comment in
     // listen.php. If problems arise, move this call before $app->start() so it
     // runs synchronously before the server accepts connections.
-    \OpenSwoole\Coroutine::create(function () use ($app, $daemon, $debug): void {
+    Coroutine::create(function () use ($app, $daemon, $debug): void {
         /** Append new Debug WARNING+ entries to the global log state. */
         $flushLog = static function () use ($app): void {
             $new = Debug::drainBuffer();
@@ -136,6 +138,7 @@ $app->onStart(function () use ($app): void {
         foreach (Config::$settings->sources as $source) {
             if (Config::$db->last_update($source) > 0) {
                 $hasExistingData = true;
+
                 break;
             }
         }
@@ -173,7 +176,7 @@ $app->onStart(function () use ($app): void {
             $app->setGlobalState('import_progress', 100);
             $app->setGlobalState('import_current_file', '');
             $app->setGlobalState('import_eta', '');
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $debug->log('ImportDaemon: catch-up import failed: ' . $e->getMessage(), LOG_ERR);
             $app->setGlobalState('import_status_text', 'Catch-up failed: ' . $e->getMessage());
         }
@@ -208,7 +211,7 @@ $app->onStart(function () use ($app): void {
                     $app->broadcast('rrd:live');
                 }
             });
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $debug->log('ImportDaemon: poll error: ' . $e->getMessage(), LOG_ERR);
         }
     }, 1000);
@@ -235,68 +238,68 @@ $app->page('/', function (Context $c) use ($app): void {
     // _currentView is a browser-local signal (underscore prefix = never posted to server).
     // It is initialised client-side via data-signals in the template; no server registration.
     $datestart = $c->signal(time() - 86400, 'datestart', clientWritable: true);
-    $dateend   = $c->signal(time(), 'dateend',   clientWritable: true);
-    $error     = $c->signal($fatalError, '_error');
+    $dateend = $c->signal(time(), 'dateend', clientWritable: true);
+    $error = $c->signal($fatalError, '_error');
 
     // Graph filter signals (client-writable — filter UI updates these)
-    $graphDisplay     = $c->signal(
+    $graphDisplay = $c->signal(
         Config::$settings->defaultGraphDisplay,
         'graph_display',
         clientWritable: true
     );
-    $graphSources     = $c->signal(Config::$settings->sources, 'graph_sources', clientWritable: true);
-    $graphPorts       = $c->signal(Config::$settings->ports, 'graph_ports', clientWritable: true);
-    $graphProtocols   = $c->signal(
+    $graphSources = $c->signal(Config::$settings->sources, 'graph_sources', clientWritable: true);
+    $graphPorts = $c->signal(Config::$settings->ports, 'graph_ports', clientWritable: true);
+    $graphProtocols = $c->signal(
         Config::$settings->defaultGraphProtocols,
         'graph_protocols',
         clientWritable: true
     );
-    $graphDatatype    = $c->signal(
+    $graphDatatype = $c->signal(
         Config::$settings->defaultGraphDatatype,
         'graph_datatype',
         clientWritable: true
     );
     $graphTrafficUnit = $c->signal('bits', 'graph_trafficUnit', clientWritable: true);
-    $graphResolution  = $c->signal(500,    'graph_resolution',  clientWritable: true);
+    $graphResolution = $c->signal(500, 'graph_resolution', clientWritable: true);
     // Server-side graph metadata (read-only for browser)
-    $graphIsLive      = $c->signal(false, 'graph_isLive');
-    $graphActualRes   = $c->signal(0,     'graph_actualResolution');
-    $graphLastUpdate  = $c->signal(0,     'graph_lastUpdate');
+    $graphIsLive = $c->signal(false, 'graph_isLive');
+    $graphActualRes = $c->signal(0, 'graph_actualResolution');
+    $graphLastUpdate = $c->signal(0, 'graph_lastUpdate');
 
     // Flow signals
-    $flowFilter      = $c->signal('', 'flows_filter', clientWritable: true);
-    $flowLimit       = $c->signal(
+    $flowFilter = $c->signal('', 'flows_filter', clientWritable: true);
+    $flowLimit = $c->signal(
         Config::$settings->defaultFlowLimit,
         'flows_limit',
         clientWritable: true
     );
-    $flowAggBidirectional  = $c->signal(false,  'flows_agg_bidirectional',  clientWritable: true);
-    $flowAggProto          = $c->signal(false,  'flows_agg_proto',          clientWritable: true);
-    $flowAggSrcPort        = $c->signal(false,  'flows_agg_srcport',        clientWritable: true);
-    $flowAggDstPort        = $c->signal(false,  'flows_agg_dstport',        clientWritable: true);
-    $flowAggSrcIp          = $c->signal('none', 'flows_agg_srcip',          clientWritable: true);
-    $flowAggSrcIpPrefix    = $c->signal('',     'flows_agg_srcip_prefix',   clientWritable: true);
-    $flowAggDstIp          = $c->signal('none', 'flows_agg_dstip',          clientWritable: true);
-    $flowAggDstIpPrefix    = $c->signal('',     'flows_agg_dstip_prefix',   clientWritable: true);
+    $flowAggBidirectional = $c->signal(false, 'flows_agg_bidirectional', clientWritable: true);
+    $flowAggProto = $c->signal(false, 'flows_agg_proto', clientWritable: true);
+    $flowAggSrcPort = $c->signal(false, 'flows_agg_srcport', clientWritable: true);
+    $flowAggDstPort = $c->signal(false, 'flows_agg_dstport', clientWritable: true);
+    $flowAggSrcIp = $c->signal('none', 'flows_agg_srcip', clientWritable: true);
+    $flowAggSrcIpPrefix = $c->signal('', 'flows_agg_srcip_prefix', clientWritable: true);
+    $flowAggDstIp = $c->signal('none', 'flows_agg_dstip', clientWritable: true);
+    $flowAggDstIpPrefix = $c->signal('', 'flows_agg_dstip_prefix', clientWritable: true);
     $flowOrderByTstart = $c->signal(false, 'flows_orderByTstart', clientWritable: true);
-    $flowCount       = $c->signal(0, 'flows_count');
-    $flowMessage     = $c->signal('', 'flowMessage');
+    $flowCount = $c->signal(0, 'flows_count');
+    $flowMessage = $c->signal('', 'flowMessage');
 
     // Stats signals
-    $statsFilter  = $c->signal('', 'stats_filter', clientWritable: true);
-    $statsCount   = $c->signal(10, 'stats_count', clientWritable: true);
-    $statsFor     = $c->signal('record', 'stats_for', clientWritable: true);
+    $statsFilter = $c->signal('', 'stats_filter', clientWritable: true);
+    $statsCount = $c->signal(10, 'stats_count', clientWritable: true);
+    $statsFor = $c->signal('record', 'stats_for', clientWritable: true);
     $statsOrderBy = $c->signal(
         Config::$settings->defaultStatsOrderBy,
         'stats_orderBy',
         clientWritable: true
     );
-    $statsMessage  = $c->signal('', 'statsMessage');
+    $statsMessage = $c->signal('', 'statsMessage');
     // nfcapd file count — updated by count-files action and on initial render
     $nfcapdFileCount = $c->signal(0, 'nfcapd_file_count');
 
     // Admin / import signals
-    /** @var \mbolli\nfsen_ng\common\ImportDaemon|null $daemon */
+    /** @var null|ImportDaemon $daemon */
     $daemon = $app->globalState('daemon', null);
     $importRunning = $c->signal($daemon !== null && $daemon->isLocked(), 'import_running');
     // Client-writable: browser toggles confirm panel without a round-trip
@@ -305,28 +308,28 @@ $app->page('/', function (Context $c) use ($app): void {
     $importScanPorts = $c->signal(true, 'import_scan_ports', clientWritable: true);
 
     // Settings signals — user preferences editable in the Settings tab
-    $settingsDefaultView      = $c->signal(Config::$settings->defaultView,           'settings_defaultView',      clientWritable: true);
-    $settingsGraphDisplay     = $c->signal(Config::$settings->defaultGraphDisplay,   'settings_graphDisplay',     clientWritable: true);
-    $settingsGraphDatatype    = $c->signal(Config::$settings->defaultGraphDatatype,  'settings_graphDatatype',    clientWritable: true);
-    $settingsGraphProtocols   = $c->signal(Config::$settings->defaultGraphProtocols, 'settings_graphProtocols',   clientWritable: true);
-    $settingsFlowLimit        = $c->signal(Config::$settings->defaultFlowLimit,      'settings_flowLimit',        clientWritable: true);
-    $settingsStatsOrderBy     = $c->signal(Config::$settings->defaultStatsOrderBy,   'settings_statsOrderBy',     clientWritable: true);
+    $settingsDefaultView = $c->signal(Config::$settings->defaultView, 'settings_defaultView', clientWritable: true);
+    $settingsGraphDisplay = $c->signal(Config::$settings->defaultGraphDisplay, 'settings_graphDisplay', clientWritable: true);
+    $settingsGraphDatatype = $c->signal(Config::$settings->defaultGraphDatatype, 'settings_graphDatatype', clientWritable: true);
+    $settingsGraphProtocols = $c->signal(Config::$settings->defaultGraphProtocols, 'settings_graphProtocols', clientWritable: true);
+    $settingsFlowLimit = $c->signal(Config::$settings->defaultFlowLimit, 'settings_flowLimit', clientWritable: true);
+    $settingsStatsOrderBy = $c->signal(Config::$settings->defaultStatsOrderBy, 'settings_statsOrderBy', clientWritable: true);
     // Filters stored as newline-separated text (easier for a textarea; parsed on save)
-    $settingsFiltersText      = $c->signal(
+    $settingsFiltersText = $c->signal(
         implode("\n", Config::$settings->filters),
         'settings_filtersText',
         clientWritable: true
     );
-    $settingsLogPriority      = $c->signal(
+    $settingsLogPriority = $c->signal(
         Settings::logLevelToString(Config::$settings->logPriority),
         'settings_logPriority',
         clientWritable: true
     );
-    $settingsMessage          = $c->signal('', 'settings_message');
+    $settingsMessage = $c->signal('', 'settings_message');
 
     // ── State containers (plain PHP — NOT signals, not sent to browser) ──────
     // These carry large result sets between the action and the view closure.
-    $flowTableHtml  = '';
+    $flowTableHtml = '';
     $statsTableHtml = '';
 
     // ── Subscribe to import and RRD broadcasts ──────────────────────────────
@@ -339,10 +342,19 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // ── Helper: fetch graph data from datasource ─────────────────────────────
     $fetchGraphData = function () use (
-        $datestart, $dateend,
-        $graphDisplay, $graphSources, $graphPorts, $graphProtocols,
-        $graphDatatype, $graphTrafficUnit, $graphResolution,
-        $graphIsLive, $graphActualRes, $graphLastUpdate, $error
+        $datestart,
+        $dateend,
+        $graphDisplay,
+        $graphSources,
+        $graphPorts,
+        $graphProtocols,
+        $graphDatatype,
+        $graphTrafficUnit,
+        $graphResolution,
+        $graphIsLive,
+        $graphActualRes,
+        $graphLastUpdate,
+        $error
     ): array {
         $ds = $datestart->int();
         $de = $dateend->int();
@@ -364,7 +376,7 @@ $app->page('/', function (Context $c) use ($app): void {
                 $graphDisplay->string(),
                 $graphResolution->int()
             );
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $error->setValue('Graph error: ' . $e->getMessage(), broadcast: false);
 
             return [];
@@ -376,7 +388,7 @@ $app->page('/', function (Context $c) use ($app): void {
         // Use the actual RRD last-write time rather than wall-clock "now"
         $activeSources = $graphSources->array() ?: Config::$settings->sources;
         $lastWrite = empty($activeSources) ? 0 : max(array_map(
-            fn($s) => Config::$db->last_update($s),
+            fn ($s) => Config::$db->last_update($s),
             $activeSources
         ));
         $graphLastUpdate->setValue($lastWrite > 0 ? $lastWrite : time(), broadcast: false);
@@ -393,8 +405,8 @@ $app->page('/', function (Context $c) use ($app): void {
         $count = 0;
 
         foreach ($sources as $source) {
-            $cur = (new \DateTime())->setTimestamp($ds);
-            $end = (new \DateTime())->setTimestamp($de);
+            $cur = (new DateTime())->setTimestamp($ds);
+            $end = (new DateTime())->setTimestamp($de);
 
             while ($cur->format('Ymd') <= $end->format('Ymd')) {
                 $dayPath = $sourcePath
@@ -412,9 +424,10 @@ $app->page('/', function (Context $c) use ($app): void {
                     if (!preg_match('/^nfcapd\.(\d{12})$/', (string) $file, $m)) {
                         continue;
                     }
+
                     try {
-                        $ft = (new \DateTime($m[1]))->getTimestamp();
-                    } catch (\Exception) {
+                        $ft = (new DateTime($m[1]))->getTimestamp();
+                    } catch (Exception) {
                         continue;
                     }
                     if ($ft >= $ds && $ft <= $de) {
@@ -428,14 +441,12 @@ $app->page('/', function (Context $c) use ($app): void {
     };
 
     // ── Helper: build an nfsen-toast HTML snippet ────────────────────────────
-    $makeToast = static function (string $type, string $message, bool $autoDismiss = false): string {
-        return sprintf(
-            '<nfsen-toast data-type="%s" data-message="%s"%s></nfsen-toast>',
-            htmlspecialchars($type, ENT_QUOTES),
-            htmlspecialchars($message, ENT_QUOTES),
-            $autoDismiss ? ' data-auto-dismiss="true"' : ''
-        );
-    };
+    $makeToast = static fn (string $type, string $message, bool $autoDismiss = false): string => sprintf(
+        '<nfsen-toast data-type="%s" data-message="%s"%s></nfsen-toast>',
+        htmlspecialchars($type, ENT_QUOTES),
+        htmlspecialchars($message, ENT_QUOTES),
+        $autoDismiss ? ' data-auto-dismiss="true"' : ''
+    );
 
     // ── Actions ──────────────────────────────────────────────────────────────
 
@@ -444,7 +455,7 @@ $app->page('/', function (Context $c) use ($app): void {
         // If the end date is within the live window (< 10 min old), slide the range
         // forward to keep the "LIVE" badge active across repeated 15-second refreshes.
         $now = time();
-        $de  = $dateend->int();
+        $de = $dateend->int();
         if ($now - $de < 600) {
             $window = $de - $datestart->int();   // preserve the user's chosen window width
             $dateend->setValue($now, broadcast: false);
@@ -457,13 +468,25 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // Flow actions — run nfdump, render result table into $flowTableHtml
     $flowAction = $c->action(function (Context $c) use (
-        $debug, $makeToast,
-        $datestart, $dateend, $flowFilter, $flowLimit,
-        $flowAggBidirectional, $flowAggProto, $flowAggSrcPort, $flowAggDstPort,
-        $flowAggSrcIp, $flowAggSrcIpPrefix, $flowAggDstIp, $flowAggDstIpPrefix,
+        $debug,
+        $makeToast,
+        $datestart,
+        $dateend,
+        $flowFilter,
+        $flowLimit,
+        $flowAggBidirectional,
+        $flowAggProto,
+        $flowAggSrcPort,
+        $flowAggDstPort,
+        $flowAggSrcIp,
+        $flowAggSrcIpPrefix,
+        $flowAggDstIp,
+        $flowAggDstIpPrefix,
         $flowOrderByTstart,
-        $flowCount, $flowMessage,
-        &$flowTableHtml, &$ipInfoAction
+        $flowCount,
+        $flowMessage,
+        &$flowTableHtml,
+        &$ipInfoAction
     ): void {
         $time = microtime(true);
 
@@ -473,9 +496,15 @@ $app->page('/', function (Context $c) use ($app): void {
             $aggregate = 'bidirectional';
         } else {
             $parts = [];
-            if ($flowAggProto->bool())   { $parts[] = 'proto'; }
-            if ($flowAggSrcPort->bool()) { $parts[] = 'srcport'; }
-            if ($flowAggDstPort->bool()) { $parts[] = 'dstport'; }
+            if ($flowAggProto->bool()) {
+                $parts[] = 'proto';
+            }
+            if ($flowAggSrcPort->bool()) {
+                $parts[] = 'srcport';
+            }
+            if ($flowAggDstPort->bool()) {
+                $parts[] = 'dstport';
+            }
             $srcIp = $flowAggSrcIp->string();
             if ($srcIp !== 'none' && $srcIp !== '') {
                 if (in_array($srcIp, ['srcip4', 'srcip6'], true) && ($p = trim($flowAggSrcIpPrefix->string())) !== '') {
@@ -515,8 +544,8 @@ $app->page('/', function (Context $c) use ($app): void {
             $result = $processor->execute();
 
             $flowData = $result['decoded'] ?? [];
-            if (!\is_array($flowData)) {
-                throw new \RuntimeException('Invalid data from nfdump processor');
+            if (!is_array($flowData)) {
+                throw new RuntimeException('Invalid data from nfdump processor');
             }
 
             $flowCount->setValue(count($flowData), broadcast: false);
@@ -532,12 +561,13 @@ $app->page('/', function (Context $c) use ($app): void {
             $flowMessage->setValue($msg, broadcast: false);
 
             $flowTableHtml = Table::generate($flowData, 'flowTable', [
-                'hiddenFields'      => [],
-                'linkIpAddresses'   => true,
-                'ipInfoActionUrl'   => $ipInfoAction->url(),
-                'originalData'      => $result['rawOutput'] ?? null,
+                'hiddenFields' => [],
+                'linkIpAddresses' => true,
+                // @phpstan-ignore notIdentical.alwaysFalse ($ipInfoAction is set by reference later in the same page closure)
+                'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
+                'originalData' => $result['rawOutput'] ?? null,
             ]);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $debug->log('Flow action error: ' . $e->getMessage(), LOG_ERR);
             $flowMessage->setValue($makeToast('error', 'Error: ' . $e->getMessage()), broadcast: false);
             $flowTableHtml = '';
@@ -548,11 +578,18 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // Stats actions
     $statsAction = $c->action(function (Context $c) use (
-        $debug, $makeToast,
-        $datestart, $dateend, $statsFilter, $statsCount,
-        $statsFor, $statsOrderBy, $graphSources,
+        $debug,
+        $makeToast,
+        $datestart,
+        $dateend,
+        $statsFilter,
+        $statsCount,
+        $statsFor,
+        $statsOrderBy,
+        $graphSources,
         $statsMessage,
-        &$statsTableHtml, &$ipInfoAction
+        &$statsTableHtml,
+        &$ipInfoAction
     ): void {
         $time = microtime(true);
         $forParam = $statsFor->string() . '/' . $statsOrderBy->string();
@@ -569,8 +606,8 @@ $app->page('/', function (Context $c) use ($app): void {
             $result = $processor->execute();
 
             $statsData = $result['decoded'] ?? [];
-            if (!\is_array($statsData)) {
-                throw new \RuntimeException('Invalid data from nfdump processor');
+            if (!is_array($statsData)) {
+                throw new RuntimeException('Invalid data from nfdump processor');
             }
 
             $elapsed = round(microtime(true) - $time, 3);
@@ -585,12 +622,13 @@ $app->page('/', function (Context $c) use ($app): void {
             $statsMessage->setValue($msg, broadcast: false);
 
             $statsTableHtml = Table::generate($statsData, 'statsTable', [
-                'hiddenFields'      => [],
-                'linkIpAddresses'   => true,
-                'ipInfoActionUrl'   => $ipInfoAction->url(),
-                'originalData'      => $result['rawOutput'] ?? null,
+                'hiddenFields' => [],
+                'linkIpAddresses' => true,
+                // @phpstan-ignore notIdentical.alwaysFalse ($ipInfoAction is set by reference later in the same page closure)
+                'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
+                'originalData' => $result['rawOutput'] ?? null,
             ]);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $debug->log('Stats action error: ' . $e->getMessage(), LOG_ERR);
             $statsMessage->setValue($makeToast('error', 'Error: ' . $e->getMessage()), broadcast: false);
             $statsTableHtml = '';
@@ -602,10 +640,14 @@ $app->page('/', function (Context $c) use ($app): void {
     // Count nfcapd files — lightweight scan triggered by date/source filter changes
     // in the Flows and Statistics tabs. Only updates $nfcapdFileCount; no heavy work.
     $countFilesAction = $c->action(function (Context $c) use (
-        $datestart, $dateend, $graphSources, $nfcapdFileCount, $countNfcapdFiles
+        $datestart,
+        $dateend,
+        $graphSources,
+        $nfcapdFileCount,
+        $countNfcapdFiles
     ): void {
         $srcs = $graphSources->array();
-        if (\in_array('any', $srcs, true) || empty($srcs)) {
+        if (in_array('any', $srcs, true) || empty($srcs)) {
             $srcs = Config::$settings->sources;
         }
         $nfcapdFileCount->setValue(
@@ -620,8 +662,11 @@ $app->page('/', function (Context $c) use ($app): void {
     // ALL admin tabs see live updates. The coroutine never calls $c->sync(), so a
     // dropped SSE connection on the triggering tab cannot abort the import.
     $triggerImportAction = $c->action(function (Context $c) use (
-        $app, $debug, $daemon,
-        $importRunning, $importScanPorts
+        $app,
+        $debug,
+        $daemon,
+        $importRunning,
+        $importScanPorts
     ): void {
         if ($daemon === null || $daemon->isLocked()) {
             return;
@@ -641,8 +686,9 @@ $app->page('/', function (Context $c) use ($app): void {
         }
 
         $scanPorts = $importScanPorts->bool();
-        \OpenSwoole\Coroutine::create(function () use ($app, $debug, $daemon, $scanPorts): void {
+        Coroutine::create(function () use ($app, $debug, $daemon, $scanPorts): void {
             $app->setGlobalState('import_cancel', false);
+
             /** Append new Debug WARNING+ entries to the global log state. */
             $flushLog = static function () use ($app): void {
                 $new = Debug::drainBuffer();
@@ -654,9 +700,10 @@ $app->page('/', function (Context $c) use ($app): void {
                     }
                 }
             };
+
             try {
                 $importYears = Config::$settings->importYears();
-                $start       = (new \DateTime())->modify('-' . $importYears . ' years');
+                $start = (new DateTime())->modify('-' . $importYears . ' years');
 
                 $importer = new Import();
                 $importer->setQuiet(true);
@@ -670,9 +717,11 @@ $app->page('/', function (Context $c) use ($app): void {
                         $flushLog();
                         $app->setGlobalState('import_progress', $progress['pct']);
                         $app->setGlobalState('import_current_file', $progress['file']);
-                        $app->setGlobalState('import_status_text',
+                        $app->setGlobalState(
+                            'import_status_text',
                             'Scanning ' . number_format($progress['processed'])
-                            . ' / ' . number_format($progress['total']) . ' files');
+                            . ' / ' . number_format($progress['total']) . ' files'
+                        );
                         $app->setGlobalState('import_eta', $progress['eta']);
                         if (!empty($app->getClients())) {
                             $app->broadcast('admin:import');
@@ -686,7 +735,7 @@ $app->page('/', function (Context $c) use ($app): void {
                 $app->setGlobalState('import_status_text', $cancelled ? 'Import cancelled.' : 'Import complete.');
                 $app->setGlobalState('import_current_file', '');
                 $app->setGlobalState('import_eta', '');
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $debug->log('Import failed: ' . $e->getMessage(), LOG_ERR);
                 $app->setGlobalState('import_status_text', 'Import failed: ' . $e->getMessage());
             } finally {
@@ -704,8 +753,12 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // Force rescan — same as triggerImport but resets all datasource data first.
     $forceRescanAction = $c->action(function (Context $c) use (
-        $app, $debug, $daemon,
-        $importRunning, $confirmRescan, $importScanPorts
+        $app,
+        $debug,
+        $daemon,
+        $importRunning,
+        $confirmRescan,
+        $importScanPorts
     ): void {
         $confirmRescan->setValue(false);
 
@@ -727,8 +780,9 @@ $app->page('/', function (Context $c) use ($app): void {
         }
 
         $scanPorts = $importScanPorts->bool();
-        \OpenSwoole\Coroutine::create(function () use ($app, $debug, $daemon, $scanPorts): void {
+        Coroutine::create(function () use ($app, $debug, $daemon, $scanPorts): void {
             $app->setGlobalState('import_cancel', false);
+
             /** Append new Debug WARNING+ entries to the global log state. */
             $flushLog = static function () use ($app): void {
                 $new = Debug::drainBuffer();
@@ -740,9 +794,10 @@ $app->page('/', function (Context $c) use ($app): void {
                     }
                 }
             };
+
             try {
                 $importYears = Config::$settings->importYears();
-                $start       = (new \DateTime())->modify('-' . $importYears . ' years');
+                $start = (new DateTime())->modify('-' . $importYears . ' years');
 
                 $importer = new Import();
                 $importer->setQuiet(true);
@@ -756,9 +811,11 @@ $app->page('/', function (Context $c) use ($app): void {
                         $flushLog();
                         $app->setGlobalState('import_progress', $progress['pct']);
                         $app->setGlobalState('import_current_file', $progress['file']);
-                        $app->setGlobalState('import_status_text',
+                        $app->setGlobalState(
+                            'import_status_text',
                             'Scanning ' . number_format($progress['processed'])
-                            . ' / ' . number_format($progress['total']) . ' files');
+                            . ' / ' . number_format($progress['total']) . ' files'
+                        );
                         $app->setGlobalState('import_eta', $progress['eta']);
                         if (!empty($app->getClients())) {
                             $app->broadcast('admin:import');
@@ -772,7 +829,7 @@ $app->page('/', function (Context $c) use ($app): void {
                 $app->setGlobalState('import_status_text', $cancelled ? 'Rescan cancelled.' : 'Rescan complete.');
                 $app->setGlobalState('import_current_file', '');
                 $app->setGlobalState('import_eta', '');
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $debug->log('Rescan failed: ' . $e->getMessage(), LOG_ERR);
                 $app->setGlobalState('import_status_text', 'Rescan failed: ' . $e->getMessage());
             } finally {
@@ -801,10 +858,17 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // Save user preferences — persists to preferences.json and reloads defaults on all tabs.
     $saveSettingsAction = $c->action(function (Context $c) use (
-        $app, $makeToast,
-        $settingsDefaultView, $settingsGraphDisplay, $settingsGraphDatatype,
-        $settingsGraphProtocols, $settingsFlowLimit, $settingsStatsOrderBy,
-        $settingsFiltersText, $settingsLogPriority, $settingsMessage
+        $app,
+        $makeToast,
+        $settingsDefaultView,
+        $settingsGraphDisplay,
+        $settingsGraphDatatype,
+        $settingsGraphProtocols,
+        $settingsFlowLimit,
+        $settingsStatsOrderBy,
+        $settingsFiltersText,
+        $settingsLogPriority,
+        $settingsMessage
     ): void {
         // Parse filters: one per line, trim, drop blank lines
         $rawFilters = array_values(array_filter(
@@ -813,14 +877,14 @@ $app->page('/', function (Context $c) use ($app): void {
 
         try {
             $prefs = UserPreferences::fromArray([
-                'defaultView'           => $settingsDefaultView->string(),
-                'defaultGraphDisplay'   => $settingsGraphDisplay->string(),
-                'defaultGraphDatatype'  => $settingsGraphDatatype->string(),
+                'defaultView' => $settingsDefaultView->string(),
+                'defaultGraphDisplay' => $settingsGraphDisplay->string(),
+                'defaultGraphDatatype' => $settingsGraphDatatype->string(),
                 'defaultGraphProtocols' => $settingsGraphProtocols->array(),
-                'defaultFlowLimit'      => $settingsFlowLimit->int(),
-                'defaultStatsOrderBy'   => $settingsStatsOrderBy->string(),
-                'filters'               => $rawFilters,
-                'logPriority'           => Settings::logLevelFromString($settingsLogPriority->string()),
+                'defaultFlowLimit' => $settingsFlowLimit->int(),
+                'defaultStatsOrderBy' => $settingsStatsOrderBy->string(),
+                'filters' => $rawFilters,
+                'logPriority' => Settings::logLevelFromString($settingsLogPriority->string()),
             ]);
 
             $prefs->save(Config::$prefsFile);
@@ -830,7 +894,7 @@ $app->page('/', function (Context $c) use ($app): void {
             $settingsFiltersText->setValue(implode("\n", $prefs->filters), broadcast: false);
 
             // Success toast is shown client-side immediately on click (no SSE needed)
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $settingsMessage->setValue(
                 $makeToast('error', 'Failed to save: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES)),
                 broadcast: false
@@ -883,13 +947,13 @@ $app->page('/', function (Context $c) use ($app): void {
 
         // 3. Render modal HTML and push as a fragment — no full page re-render
         $modalHtml = $c->render('partials/ip-info-modal.html.twig', [
-            'ip'       => htmlspecialchars($ip, ENT_QUOTES),
+            'ip' => htmlspecialchars($ip, ENT_QUOTES),
             'hostname' => htmlspecialchars((string) $hostname, ENT_QUOTES),
-            'geoData'  => $geoData,
+            'geoData' => $geoData,
         ]);
 
         $c->getPatchManager()->queuePatch([
-            'type'    => 'elements',
+            'type' => 'elements',
             'content' => $modalHtml,
         ]);
 
@@ -909,35 +973,80 @@ $app->page('/', function (Context $c) use ($app): void {
     // Cached values are reused between refreshes so chart and timestamps stay visible.
     $lastGraphFetch = 0;
     $cachedGraphData = '[]';
+
     /** @var array<array{name: string, last_update: int}> $cachedImportSources */
     $cachedImportSources = [];
 
     // Health checks: cached per-tab; re-run at most every 30 s (or when not importing).
     $lastHealthFetch = 0;
-    /** @var list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}> */
+
+    /** @var list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}> */
     $cachedHealthChecks = [];
 
     $c->view(function (bool $isUpdate) use (
-        $c, $app, $fetchGraphData,
-        $datestart, $dateend, $error,
-        $graphDisplay, $graphSources, $graphPorts, $graphProtocols,
-        $graphDatatype, $graphTrafficUnit, $graphResolution,
-        $graphIsLive, $graphActualRes, $graphLastUpdate,
-        $flowFilter, $flowLimit,
-        $flowAggBidirectional, $flowAggProto, $flowAggSrcPort, $flowAggDstPort,
-        $flowAggSrcIp, $flowAggSrcIpPrefix, $flowAggDstIp, $flowAggDstIpPrefix,
-        $flowOrderByTstart, $flowCount, $flowMessage,
-        $statsFilter, $statsCount, $statsFor, $statsOrderBy, $statsMessage,
-        $importRunning, $confirmRescan, $importScanPorts,
-        $refreshGraphsAction, $flowAction, $statsAction, $ipInfoAction,
-        $triggerImportAction, $forceRescanAction, $cancelImportAction,
-        $countNfcapdFiles, $nfcapdFileCount, $countFilesAction,
-        $settingsDefaultView, $settingsGraphDisplay, $settingsGraphDatatype,
-        $settingsGraphProtocols, $settingsFlowLimit, $settingsStatsOrderBy,
-        $settingsFiltersText, $settingsLogPriority, $settingsMessage,
+        $c,
+        $app,
+        $fetchGraphData,
+        $datestart,
+        $dateend,
+        $error,
+        $graphDisplay,
+        $graphSources,
+        $graphPorts,
+        $graphProtocols,
+        $graphDatatype,
+        $graphTrafficUnit,
+        $graphResolution,
+        $graphIsLive,
+        $graphActualRes,
+        $graphLastUpdate,
+        $flowFilter,
+        $flowLimit,
+        $flowAggBidirectional,
+        $flowAggProto,
+        $flowAggSrcPort,
+        $flowAggDstPort,
+        $flowAggSrcIp,
+        $flowAggSrcIpPrefix,
+        $flowAggDstIp,
+        $flowAggDstIpPrefix,
+        $flowOrderByTstart,
+        $flowCount,
+        $flowMessage,
+        $statsFilter,
+        $statsCount,
+        $statsFor,
+        $statsOrderBy,
+        $statsMessage,
+        $importRunning,
+        $confirmRescan,
+        $importScanPorts,
+        $refreshGraphsAction,
+        $flowAction,
+        $statsAction,
+        $triggerImportAction,
+        $forceRescanAction,
+        $cancelImportAction,
+        $countNfcapdFiles,
+        $nfcapdFileCount,
+        $countFilesAction,
+        $settingsDefaultView,
+        $settingsGraphDisplay,
+        $settingsGraphDatatype,
+        $settingsGraphProtocols,
+        $settingsFlowLimit,
+        $settingsStatsOrderBy,
+        $settingsFiltersText,
+        $settingsLogPriority,
+        $settingsMessage,
         $saveSettingsAction,
-        &$flowTableHtml, &$statsTableHtml, &$lastGraphFetch, &$cachedGraphData, &$cachedImportSources,
-        &$lastHealthFetch, &$cachedHealthChecks
+        &$flowTableHtml,
+        &$statsTableHtml,
+        &$lastGraphFetch,
+        &$cachedGraphData,
+        &$cachedImportSources,
+        &$lastHealthFetch,
+        &$cachedHealthChecks
     ): string {
         // Sync importRunning signal to daemon lock state so all tabs reflect the
         // correct value when re-rendered by an admin:import or rrd:live broadcast.
@@ -953,7 +1062,7 @@ $app->page('/', function (Context $c) use ($app): void {
         // Subsequent changes are handled by countFilesAction triggered from the browser.
         if (!$hasFatalError && !$isUpdate) {
             $srcs = $graphSources->array();
-            if (\in_array('any', $srcs, true) || empty($srcs)) {
+            if (in_array('any', $srcs, true) || empty($srcs)) {
                 $srcs = Config::$settings->sources;
             }
             $nfcapdFileCount->setValue(
@@ -973,7 +1082,7 @@ $app->page('/', function (Context $c) use ($app): void {
             $cachedImportSources = [];
             foreach (Config::$settings->sources as $source) {
                 $cachedImportSources[] = [
-                    'name'        => $source,
+                    'name' => $source,
                     'last_update' => Config::$db->last_update($source),
                 ];
             }
@@ -987,8 +1096,8 @@ $app->page('/', function (Context $c) use ($app): void {
             $cachedHealthChecks = HealthChecker::run(
                 (bool) $app->globalState('daemon_disabled', false),
                 $hcDaemon !== null ? [
-                    'ready'          => $hcDaemon->isDaemonReady(),
-                    'watchCount'     => $hcDaemon->getWatchCount(),
+                    'ready' => $hcDaemon->isDaemonReady(),
+                    'watchCount' => $hcDaemon->getWatchCount(),
                     'lastAutoImport' => $hcDaemon->getLastAutoImportTime(),
                 ] : null,
             );
@@ -999,143 +1108,143 @@ $app->page('/', function (Context $c) use ($app): void {
         // ── Status indicator computation ──────────────────────────────────
         // Capture health: infer nfcapd activity from most recent RRD last_update
         $maxLastUpdate = empty($importSources) ? 0 : max(array_column($importSources, 'last_update'));
-        $captureAge    = $maxLastUpdate > 0 ? (time() - $maxLastUpdate) : PHP_INT_MAX;
+        $captureAge = $maxLastUpdate > 0 ? (time() - $maxLastUpdate) : PHP_INT_MAX;
         if ($maxLastUpdate === 0) {
             $captureStatus = 'secondary';
-            $captureLabel  = 'nfcapd: no data yet';
+            $captureLabel = 'nfcapd: no data yet';
         } elseif ($captureAge < 600) {
             $captureStatus = 'success';
-            $captureLabel  = 'nfcapd: last capture ' . HealthChecker::ageStr($captureAge) . ' ago';
+            $captureLabel = 'nfcapd: last capture ' . HealthChecker::ageStr($captureAge) . ' ago';
         } elseif ($captureAge < 3600) {
             $captureStatus = 'warning';
-            $captureLabel  = 'nfcapd: no capture in ' . HealthChecker::ageStr($captureAge);
+            $captureLabel = 'nfcapd: no capture in ' . HealthChecker::ageStr($captureAge);
         } else {
             $captureStatus = 'danger';
-            $captureLabel  = 'nfcapd: no capture in ' . HealthChecker::ageStr($captureAge);
+            $captureLabel = 'nfcapd: no capture in ' . HealthChecker::ageStr($captureAge);
         }
 
         // Daemon health
         $d2 = $app->globalState('daemon', null);
         if ((bool) $app->globalState('daemon_disabled', false) || $d2 === null) {
             $daemonStatus = 'danger';
-            $daemonLabel  = 'Import daemon: disabled (NFSEN_SKIP_DAEMON)';
+            $daemonLabel = 'Import daemon: disabled (NFSEN_SKIP_DAEMON)';
         } elseif (!$d2->isDaemonReady()) {
             $daemonStatus = 'warning';
-            $daemonLabel  = 'Import daemon: initializing…';
+            $daemonLabel = 'Import daemon: initializing…';
         } else {
             $n = $d2->getWatchCount();
             $daemonStatus = 'success';
-            $daemonLabel  = "Import daemon: watching {$n} dir" . ($n !== 1 ? 's' : '');
+            $daemonLabel = "Import daemon: watching {$n} dir" . ($n !== 1 ? 's' : '');
         }
 
         return $c->render('layout.html.twig', [
             // ── App metadata ──────────────────────────────────────────────
-            'version'     => Config::VERSION,
-            'fatalError'  => $app->globalState('_fatalError', null),
+            'version' => Config::VERSION,
+            'fatalError' => $app->globalState('_fatalError', null),
             'connections' => count($app->getClients()),
             'importYears' => Config::$settings->importYears,
 
             // ── Static config (non-reactive, drives option lists) ─────────
             'sources' => Config::$settings->sources,
-            'ports'   => Config::$settings->ports,
+            'ports' => Config::$settings->ports,
             'filters' => Config::$settings->filters,
             'defaults' => ['view' => Config::$settings->defaultView],
 
             // ── Signal objects — templates use bind(signal) and signal.id() ──
             // Date range
-            'datestart'        => $datestart,
-            'dateend'          => $dateend,
+            'datestart' => $datestart,
+            'dateend' => $dateend,
             // Error
-            'error'            => $error,
+            'error' => $error,
             // Graph filters
-            'graphDisplay'     => $graphDisplay,
-            'graphSources'     => $graphSources,
-            'graphPorts'       => $graphPorts,
-            'graphProtocols'   => $graphProtocols,
-            'graphDatatype'    => $graphDatatype,
+            'graphDisplay' => $graphDisplay,
+            'graphSources' => $graphSources,
+            'graphPorts' => $graphPorts,
+            'graphProtocols' => $graphProtocols,
+            'graphDatatype' => $graphDatatype,
             'graphTrafficUnit' => $graphTrafficUnit,
-            'graphResolution'  => $graphResolution,
+            'graphResolution' => $graphResolution,
             // Graph metadata (server-pushed, never sent back by browser — _-prefixed ID)
-            'graphIsLive'      => $graphIsLive,
-            'graphActualRes'   => $graphActualRes,
-            'graphLastUpdate'  => $graphLastUpdate,
+            'graphIsLive' => $graphIsLive,
+            'graphActualRes' => $graphActualRes,
+            'graphLastUpdate' => $graphLastUpdate,
             // Flow filter signals
-            'flowFilter'            => $flowFilter,
-            'flowLimit'             => $flowLimit,
-            'flowAggBidirectional'  => $flowAggBidirectional,
-            'flowAggProto'          => $flowAggProto,
-            'flowAggSrcPort'        => $flowAggSrcPort,
-            'flowAggDstPort'        => $flowAggDstPort,
-            'flowAggSrcIp'          => $flowAggSrcIp,
-            'flowAggSrcIpPrefix'    => $flowAggSrcIpPrefix,
-            'flowAggDstIp'          => $flowAggDstIp,
-            'flowAggDstIpPrefix'    => $flowAggDstIpPrefix,
-            'flowOrderByTstart'     => $flowOrderByTstart,
-            'flowCount'         => $flowCount,
-            'flowMessage'       => $flowMessage,
+            'flowFilter' => $flowFilter,
+            'flowLimit' => $flowLimit,
+            'flowAggBidirectional' => $flowAggBidirectional,
+            'flowAggProto' => $flowAggProto,
+            'flowAggSrcPort' => $flowAggSrcPort,
+            'flowAggDstPort' => $flowAggDstPort,
+            'flowAggSrcIp' => $flowAggSrcIp,
+            'flowAggSrcIpPrefix' => $flowAggSrcIpPrefix,
+            'flowAggDstIp' => $flowAggDstIp,
+            'flowAggDstIpPrefix' => $flowAggDstIpPrefix,
+            'flowOrderByTstart' => $flowOrderByTstart,
+            'flowCount' => $flowCount,
+            'flowMessage' => $flowMessage,
             // Stats filter signals
-            'statsFilter'  => $statsFilter,
-            'statsCount'   => $statsCount,
-            'statsFor'     => $statsFor,
+            'statsFilter' => $statsFilter,
+            'statsCount' => $statsCount,
+            'statsFor' => $statsFor,
             'statsOrderBy' => $statsOrderBy,
             'statsMessage' => $statsMessage,
             // nfcapd file count (for Flows/Statistics tabs)
-            'nfcapdFileCount'  => $nfcapdFileCount,
+            'nfcapdFileCount' => $nfcapdFileCount,
             // ── Action URLs ──────────────────────────────────────────────────────────────────
             'action_refreshGraphs' => $refreshGraphsAction->url(),
-            'action_flowActions'   => $flowAction->url(),
-            'action_statsActions'  => $statsAction->url(),
-            'action_countFiles'    => $countFilesAction->url(),
+            'action_flowActions' => $flowAction->url(),
+            'action_statsActions' => $statsAction->url(),
+            'action_countFiles' => $countFilesAction->url(),
             'action_triggerImport' => $triggerImportAction->url(),
-            'action_forceRescan'   => $forceRescanAction->url(),
-            'action_cancelImport'  => $cancelImportAction->url(),
+            'action_forceRescan' => $forceRescanAction->url(),
+            'action_cancelImport' => $cancelImportAction->url(),
             // ── Settings ─────────────────────────────────────────────────
-            'settingsDefaultView'    => $settingsDefaultView,
-            'settingsGraphDisplay'   => $settingsGraphDisplay,
-            'settingsGraphDatatype'  => $settingsGraphDatatype,
+            'settingsDefaultView' => $settingsDefaultView,
+            'settingsGraphDisplay' => $settingsGraphDisplay,
+            'settingsGraphDatatype' => $settingsGraphDatatype,
             'settingsGraphProtocols' => $settingsGraphProtocols,
-            'settingsFlowLimit'      => $settingsFlowLimit,
-            'settingsStatsOrderBy'   => $settingsStatsOrderBy,
-            'settingsFiltersText'    => $settingsFiltersText,
-            'settingsLogPriority'    => $settingsLogPriority,
-            'settingsMessageHtml'   => $settingsMessage->string(),
-            'action_saveSettings'    => $saveSettingsAction->url(),
+            'settingsFlowLimit' => $settingsFlowLimit,
+            'settingsStatsOrderBy' => $settingsStatsOrderBy,
+            'settingsFiltersText' => $settingsFiltersText,
+            'settingsLogPriority' => $settingsLogPriority,
+            'settingsMessageHtml' => $settingsMessage->string(),
+            'action_saveSettings' => $saveSettingsAction->url(),
             // ── Deployment config (read-only display in Settings tab) ─────
-            'deployDatasource'    => Config::$settings->datasourceName,
-            'deployImportYears'   => Config::$settings->importYears,
-            'deployNfdumpBinary'  => Config::$settings->nfdumpBinary,
+            'deployDatasource' => Config::$settings->datasourceName,
+            'deployImportYears' => Config::$settings->importYears,
+            'deployNfdumpBinary' => Config::$settings->nfdumpBinary,
             'deployNfdumpProfiles' => Config::$settings->nfdumpProfilesData,
-            'deployPrefsFile'     => Config::$prefsFile,
+            'deployPrefsFile' => Config::$prefsFile,
             // ── Computed / pre-rendered data ──────────────────────────────
-            'graphData'        => $graphData,
-            'flowTableHtml'    => $flowTableHtml,
-            'flowMessageHtml'  => $flowMessage->string(),
-            'statsTableHtml'   => $statsTableHtml,
+            'graphData' => $graphData,
+            'flowTableHtml' => $flowTableHtml,
+            'flowMessageHtml' => $flowMessage->string(),
+            'statsTableHtml' => $statsTableHtml,
             'statsMessageHtml' => $statsMessage->string(),
             // ── Admin / import ────────────────────────────────────────────
-            'importRunning'       => $importRunning,
-            'confirmRescan'       => $confirmRescan,
-            'importScanPorts'     => $importScanPorts,
-            'hasPorts'            => !empty(Config::$settings->ports),
-            'importSources'       => $importSources,
-            'importProgress'      => $app->globalState('import_progress', 0),
-            'importCurrentFile'   => $app->globalState('import_current_file', ''),
-            'importStatusText'    => $app->globalState('import_status_text', ''),
-            'importEta'           => $app->globalState('import_eta', ''),
-            'importLog'           => $app->globalState('import_log', []),
-            'daemonDisabled'      => (bool) $app->globalState('daemon_disabled', false),
-            'daemonInfo'          => ($d = $app->globalState('daemon', null)) !== null ? [
-                'ready'          => $d->isDaemonReady(),
-                'watchCount'     => $d->getWatchCount(),
+            'importRunning' => $importRunning,
+            'confirmRescan' => $confirmRescan,
+            'importScanPorts' => $importScanPorts,
+            'hasPorts' => !empty(Config::$settings->ports),
+            'importSources' => $importSources,
+            'importProgress' => $app->globalState('import_progress', 0),
+            'importCurrentFile' => $app->globalState('import_current_file', ''),
+            'importStatusText' => $app->globalState('import_status_text', ''),
+            'importEta' => $app->globalState('import_eta', ''),
+            'importLog' => $app->globalState('import_log', []),
+            'daemonDisabled' => (bool) $app->globalState('daemon_disabled', false),
+            'daemonInfo' => ($d = $app->globalState('daemon', null)) !== null ? [
+                'ready' => $d->isDaemonReady(),
+                'watchCount' => $d->getWatchCount(),
                 'lastAutoImport' => $d->getLastAutoImportTime(),
             ] : null,
             // ── Status indicators ─────────────────────────────────────────
             'captureStatus' => $captureStatus,
-            'captureLabel'  => $captureLabel,
-            'daemonStatus'  => $daemonStatus,
-            'daemonLabel'   => $daemonLabel,
+            'captureLabel' => $captureLabel,
+            'daemonStatus' => $daemonStatus,
+            'daemonLabel' => $daemonLabel,
             // ── Health checks ─────────────────────────────────────────────
-            'healthChecks'  => $healthChecks,
+            'healthChecks' => $healthChecks,
         ]);
     }, cacheUpdates: false);
 });

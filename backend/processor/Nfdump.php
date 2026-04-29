@@ -227,7 +227,7 @@ class Nfdump implements Processor {
         }
 
         // if output format is JSON, decode and return structured data
-        if (isset($this->cfg['format']) && $this->cfg['format'] === 'json' && isset($output[0]) && preg_match('/^[\{|\[]/', $output[0])) {
+        if (isset($this->cfg['format']) && $this->cfg['format'] === 'json' && preg_match('/^[\{|\[]/', $output[0])) {
             // Check for "No matching flows" error message
             foreach ($output as $line) {
                 $trimmed = trim($line);
@@ -354,7 +354,7 @@ class Nfdump implements Processor {
         $headers = [];
 
         // Detect delimiter once: use comma if first line contains commas, otherwise tab
-        $delimiter = str_contains($output[0] ?? '', ',') ? ',' : "\t";
+        $delimiter = str_contains($output[0], ',') ? ',' : "\t";
         $aggregationNote = isset($this->cfg['option']['-a']) ? ' (with aggregation -a=' . $this->cfg['option']['-a'] . ')' : '';
         $this->d->log('CSV delimiter detected: ' . ($delimiter === ',' ? 'comma' : 'tab') . $aggregationNote, LOG_DEBUG);
 
@@ -411,9 +411,9 @@ class Nfdump implements Processor {
      */
     public function reset(): void {
         $this->clean['env'] = [
-            'bin'           => Config::$settings->nfdumpBinary,
+            'bin' => Config::$settings->nfdumpBinary,
             'profiles-data' => Config::$settings->nfdumpProfilesData,
-            'profile'       => Config::$settings->nfdumpProfile,
+            'profile' => Config::$settings->nfdumpProfile,
             'sources' => [],
         ];
         $this->cfg = $this->clean;

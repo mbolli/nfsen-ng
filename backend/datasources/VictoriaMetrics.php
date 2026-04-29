@@ -7,6 +7,7 @@ namespace mbolli\nfsen_ng\datasources;
 use JetBrains\PhpStorm\ExpectedValues;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\HealthChecker;
 
 class VictoriaMetrics implements Datasource {
     private readonly Debug $d;
@@ -36,10 +37,10 @@ class VictoriaMetrics implements Datasource {
         // Query for first and last timestamp of the aggregate (no-port) series.
         $metric = $this->buildMetricName('flows', '');
         $labels = $this->buildLabels($source, 0, null, forQuery: true);
-        $query  = "{$metric}{$labels}";
+        $query = "{$metric}{$labels}";
 
         $first = $this->querySingleValue($query, 'timestamp', true);
-        $last  = $this->querySingleValue($query, 'timestamp', false);
+        $last = $this->querySingleValue($query, 'timestamp', false);
 
         return [(int) $first, (int) $last];
     }
@@ -52,7 +53,7 @@ class VictoriaMetrics implements Datasource {
     public function last_update(string $source = '', int $port = 0): int {
         $metric = $this->buildMetricName('flows', '');
         $labels = $this->buildLabels($source, $port, null, forQuery: true);
-        $query  = "{$metric}{$labels}";
+        $query = "{$metric}{$labels}";
 
         try {
             $timestamp = $this->querySingleValue($query, 'timestamp', false);
@@ -222,19 +223,19 @@ class VictoriaMetrics implements Datasource {
     /**
      * Returns health check entries for this datasource.
      *
-     * @param string   $group
      * @param string[] $sources
-     * @return list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}>
+     *
+     * @return list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}>
      */
     public function healthChecks(string $group, array $sources): array {
-        $checks      = [];
+        $checks = [];
         $importYears = Config::$settings->importYears();
 
-        $vmCfg  = Config::$settings->datasourceConfig('VictoriaMetrics');
+        $vmCfg = Config::$settings->datasourceConfig('VictoriaMetrics');
         $vmHost = (string) ($vmCfg['host'] ?? 'victoriametrics');
         $vmPort = (int) ($vmCfg['port'] ?? 8428);
 
-        $vmUiUrl  = "http://{$vmHost}:{$vmPort}/vmui";
+        $vmUiUrl = "http://{$vmHost}:{$vmPort}/vmui";
         $checks[] = ['id' => 'vm_config', 'label' => 'VictoriaMetrics config', 'status' => 'ok',
             'detail' => "<code>{$vmHost}:{$vmPort}</code> — <a href=\"{$vmUiUrl}\" target=\"_blank\" rel=\"noopener\">Open UI ↗</a>",
             'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
@@ -257,7 +258,6 @@ class VictoriaMetrics implements Datasource {
                 'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
         }
         if ($healthResponse === 'OK') {
-
             foreach ($sources as $source) {
                 try {
                     $lastUpdate = $this->last_update($source);
@@ -265,6 +265,7 @@ class VictoriaMetrics implements Datasource {
                     $checks[] = ['id' => "vm_data_{$source}", 'label' => "VM data: {$source}",
                         'status' => 'warning', 'detail' => 'Could not query last_update',
                         'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+
                     continue;
                 }
                 if ($lastUpdate === 0) {
@@ -272,9 +273,9 @@ class VictoriaMetrics implements Datasource {
                         'status' => 'warning', 'detail' => 'No data yet', 'group' => $group,
                         'code' => false, 'hint' => 'Go to Admin → click "Initial Import" to populate the database', 'epoch' => 0];
                 } else {
-                    $age    = time() - $lastUpdate;
+                    $age = time() - $lastUpdate;
                     $status = $age > 3600 ? 'warning' : 'ok';
-                    $ageStr = \mbolli\nfsen_ng\common\HealthChecker::ageStr($age);
+                    $ageStr = HealthChecker::ageStr($age);
                     $detail = $age <= 0 ? 'Just imported'
                         : ($age > 3600 ? "Last import {$ageStr} ago — may be stalled"
                                        : "Last import {$ageStr} ago");
@@ -300,6 +301,58 @@ class VictoriaMetrics implements Datasource {
      */
     public function get_data_path(string $source = '', int $port = 0): string {
         return $this->queryUrl;
+    }
+
+    /**
+     * Send data to VictoriaMetrics.
+     */
+    protected function sendToVM(string $url, string $body): bool {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: text/plain',
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return true;
+        }
+
+        $this->d->log("VictoriaMetrics write failed: HTTP {$httpCode}, Response: {$response}", LOG_ERR);
+
+        return false;
+    }
+
+    /**
+     * HTTP GET request.
+     */
+    protected function httpGet(string $url, int $timeout = 30): string {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        if (curl_errno($ch)) {
+            $error = curl_error($ch);
+            curl_close($ch);
+
+            throw new \Exception("HTTP request failed: {$error}");
+        }
+
+        curl_close($ch);
+
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return $response;
+        }
+
+        throw new \Exception("HTTP request failed with code {$httpCode}: {$response}");
     }
 
     /**
@@ -391,8 +444,8 @@ class VictoriaMetrics implements Datasource {
      * time (unlike `timestamp(last_over_time(...))` which returns ~eval_time).
      */
     private function querySingleValue(string $query, string $field = 'timestamp', bool $first = true): int {
-        $windowDays  = $this->importYears * 365;
-        $fn          = $first ? 'tfirst_over_time' : 'tlast_over_time';
+        $windowDays = $this->importYears * 365;
+        $fn = $first ? 'tfirst_over_time' : 'tlast_over_time';
         $wrappedQuery = "{$fn}({$query}[{$windowDays}d])";
 
         $url = str_replace('query_range', 'query', $this->queryUrl) . '?' . http_build_query([
@@ -441,57 +494,5 @@ class VictoriaMetrics implements Datasource {
         }
 
         return $output;
-    }
-
-    /**
-     * Send data to VictoriaMetrics.
-     */
-    protected function sendToVM(string $url, string $body): bool {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: text/plain',
-        ]);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($httpCode >= 200 && $httpCode < 300) {
-            return true;
-        }
-
-        $this->d->log("VictoriaMetrics write failed: HTTP {$httpCode}, Response: {$response}", LOG_ERR);
-
-        return false;
-    }
-
-    /**
-     * HTTP GET request.
-     */
-    protected function httpGet(string $url, int $timeout = 30): string {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        if (curl_errno($ch)) {
-            $error = curl_error($ch);
-            curl_close($ch);
-
-            throw new \Exception("HTTP request failed: {$error}");
-        }
-
-        curl_close($ch);
-
-        if ($httpCode >= 200 && $httpCode < 300) {
-            return $response;
-        }
-
-        throw new \Exception("HTTP request failed with code {$httpCode}: {$response}");
     }
 }

@@ -22,6 +22,8 @@ composer test-phpstan   # Static analysis (level 5)
 composer fix            # Auto-format PHP
 composer before-commit  # fix + phpstan
 
+**Always run `composer before-commit` after a set of PHP changes and fix any reported errors before committing.**
+
 pnpm install            # Install JS deps (copies datastar.js to frontend/js/)
 pnpm run lint           # ESLint frontend/
 pnpm run format         # Prettier frontend/

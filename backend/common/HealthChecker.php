@@ -19,41 +19,57 @@ namespace mbolli\nfsen_ng\common;
 class HealthChecker {
     /** Human-readable elapsed time — handles non-positive (clock skew) gracefully. */
     public static function ageStr(int $seconds): string {
-        if ($seconds <= 0) return 'just now';
-        if ($seconds < 60) return "{$seconds}s";
-        if ($seconds < 3600) return round($seconds / 60) . 'min';
-        if ($seconds < 86400) return round($seconds / 3600, 1) . 'h';
+        if ($seconds <= 0) {
+            return 'just now';
+        }
+        if ($seconds < 60) {
+            return "{$seconds}s";
+        }
+        if ($seconds < 3600) {
+            return round($seconds / 60) . 'min';
+        }
+        if ($seconds < 86400) {
+            return round($seconds / 3600, 1) . 'h';
+        }
+
         return round($seconds / 86400) . 'd';
     }
 
     /**
-     * @param array{ready: bool, watchCount: int, lastAutoImport: int}|null $daemonInfo
-     * @return list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}>
+     * @param null|array{ready: bool, watchCount: int, lastAutoImport: int} $daemonInfo
+     *
+     * @return list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}>
      */
     public static function run(bool $daemonDisabled, ?array $daemonInfo = null): array {
-        /** @var list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}> $checks */
+        /** @var list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}> $checks */
         $checks = [];
         $settings = Config::$settings;
 
         /**
-         * @param 'ok'|'warning'|'error' $status
-         * @param bool   $code   true → wrap detail in <code> in template (paths, identifiers)
-         * @param string $hint   optional advisory note shown below the detail
-         * @param int    $epoch  unix timestamp: when > 0, template renders a JS-formatted local date
+         * @param 'error'|'ok'|'warning' $status
+         * @param bool                   $code   true → wrap detail in <code> in template (paths, identifiers)
+         * @param string                 $hint   optional advisory note shown below the detail
+         * @param int                    $epoch  unix timestamp: when > 0, template renders a JS-formatted local date
          */
         $add = static function (
-            string $id, string $label, string $status, string $detail,
-            string $group, bool $code = false, string $hint = '', int $epoch = 0
+            string $id,
+            string $label,
+            string $status,
+            string $detail,
+            string $group,
+            bool $code = false,
+            string $hint = '',
+            int $epoch = 0
         ) use (&$checks): void {
-            /** @var list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}> $checks */
+            /** @var list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}> $checks */
             $checks[] = ['id' => $id, 'label' => $label, 'status' => $status, 'detail' => $detail,
-                         'group' => $group, 'code' => $code, 'hint' => $hint, 'epoch' => $epoch];
+                'group' => $group, 'code' => $code, 'hint' => $hint, 'epoch' => $epoch];
         };
 
         $ageStr = static fn (int $s): string => self::ageStr($s);
 
         // Determine active datasource once — used throughout all checks below.
-        $datasource   = strtolower($settings->datasourceName);
+        $datasource = strtolower($settings->datasourceName);
         $storageGroup = $datasource === 'victoriametrics' ? 'VictoriaMetrics' : 'RRD Storage';
 
         // Group display order (index = sort priority)
@@ -61,31 +77,44 @@ class HealthChecker {
 
         // ── 1. PHP Extensions ────────────────────────────────────────────────
         $phpVer = PHP_VERSION;
-        $phpOk  = version_compare($phpVer, '8.4.0', '>=');
-        $add('php_version', 'PHP version', $phpOk ? 'ok' : 'error',
+        $phpOk = version_compare($phpVer, '8.4.0', '>=');
+        $add(
+            'php_version',
+            'PHP version',
+            $phpOk ? 'ok' : 'error',
             $phpOk ? $phpVer : "{$phpVer} — nfsen-ng requires PHP ≥ 8.4",
-            'PHP Extensions');
+            'PHP Extensions'
+        );
 
         $swVer = phpversion('openswoole') ?: null;
-        $add('ext_openswoole', 'PHP ext-openswoole', $swVer !== null ? 'ok' : 'error',
+        $add(
+            'ext_openswoole',
+            'PHP ext-openswoole',
+            $swVer !== null ? 'ok' : 'error',
             $swVer !== null ? "Loaded ({$swVer})" : 'Not loaded — OpenSwoole is required',
-            'PHP Extensions');
+            'PHP Extensions'
+        );
 
         // ext_rrd is only required when the RRD datasource is active.
-        $rrdOk = function_exists('rrd_version');
-        $add('ext_rrd', 'PHP ext-rrd',
+        $rrdOk = \function_exists('rrd_version');
+        $add(
+            'ext_rrd',
+            'PHP ext-rrd',
             $rrdOk ? 'ok' : ($datasource === 'rrd' ? 'error' : 'warning'),
-            // @phpstan-ignore-next-line (rrd_version is a dynamic extension function)
-            $rrdOk ? 'Loaded (' . \rrd_version() . ')'
+            $rrdOk ? 'Loaded (' . rrd_version() . ')'
                    : ($datasource === 'rrd' ? 'Not loaded — install php-rrd'
                                            : 'Not loaded (not required for ' . $settings->datasourceName . ')'),
-            'PHP Extensions');
+            'PHP Extensions'
+        );
 
-        $inotifyOk = function_exists('inotify_init');
-        $add('ext_inotify', 'PHP ext-inotify',
+        $inotifyOk = \function_exists('inotify_init');
+        $add(
+            'ext_inotify',
+            'PHP ext-inotify',
             $inotifyOk ? 'ok' : ($daemonDisabled ? 'warning' : 'error'),
             $inotifyOk ? 'Loaded' : 'Not loaded — install php-inotify',
-            'PHP Extensions');
+            'PHP Extensions'
+        );
 
         // ── 2. nfdump ────────────────────────────────────────────────────────
         $binary = $settings->nfdumpBinary;
@@ -102,7 +131,7 @@ class HealthChecker {
                 $out = [];
                 $ret = 0;
                 exec(escapeshellarg($binary) . ' -V 2>&1', $out, $ret);
-                $nfdumpVer = ($ret !== 127 && count($out) > 0) ? trim($out[0]) : '';
+                $nfdumpVer = ($ret !== 127 && \count($out) > 0) ? trim($out[0]) : '';
             }
             // Parse raw output: "/path/nfdump: Version: 1.7.6-release Options: ZSTD BZIP2 Date: ..."
             $vDetail = $nfdumpVer;
@@ -112,50 +141,90 @@ class HealthChecker {
                     $vDetail .= ' (' . trim($om[1]) . ')';
                 }
             }
-            $add('nfdump_binary', 'nfdump binary', $nfdumpVer !== '' ? 'ok' : 'error',
+            $add(
+                'nfdump_binary',
+                'nfdump binary',
+                $nfdumpVer !== '' ? 'ok' : 'error',
                 $nfdumpVer !== '' ? $vDetail : 'Execution failed',
-                'nfdump');
+                'nfdump'
+            );
         }
 
         $maxProc = $settings->nfdumpMaxProcesses;
-        $add('nfdump_max_processes', 'Max processes',
+        $add(
+            'nfdump_max_processes',
+            'Max processes',
             $maxProc >= 1 ? 'ok' : 'error',
             $maxProc >= 1 ? (string) $maxProc : 'max-processes must be ≥ 1',
-            'nfdump');
+            'nfdump'
+        );
 
         // ── 3. Sources ───────────────────────────────────────────────────────
         $sources = $settings->sources;
-        $add('sources_nonempty', 'Sources configured',
+        $add(
+            'sources_nonempty',
+            'Sources configured',
             !empty($sources) ? 'ok' : 'error',
             !empty($sources) ? implode(', ', $sources) : 'No sources in general.sources',
-            'Sources', !empty($sources));
+            'Sources',
+            !empty($sources)
+        );
 
         // ── 4. Import Daemon ─────────────────────────────────────────────────
         if ($daemonDisabled) {
-            $add('daemon_status', 'Daemon status', 'warning',
-                'Disabled', 'Import Daemon', false,
-                'Import must be triggered manually from this panel');
+            $add(
+                'daemon_status',
+                'Daemon status',
+                'warning',
+                'Disabled',
+                'Import Daemon',
+                false,
+                'Import must be triggered manually from this panel'
+            );
         } elseif ($daemonInfo === null) {
-            $add('daemon_status', 'Daemon status', 'error',
-                'Not running — restart required', 'Import Daemon');
+            $add(
+                'daemon_status',
+                'Daemon status',
+                'error',
+                'Not running — restart required',
+                'Import Daemon'
+            );
         } elseif (!$daemonInfo['ready']) {
-            $add('daemon_status', 'Daemon status', 'warning',
-                'Initializing…', 'Import Daemon');
+            $add(
+                'daemon_status',
+                'Daemon status',
+                'warning',
+                'Initializing…',
+                'Import Daemon'
+            );
         } else {
             $n = $daemonInfo['watchCount'];
-            $add('daemon_status', 'Daemon status', 'ok',
-                'Watching ' . $n . ' dir' . ($n !== 1 ? 's' : ''), 'Import Daemon');
-                    if ($daemonInfo['lastAutoImport'] > 0) {
-                        $autoAge = time() - $daemonInfo['lastAutoImport'];
-                        $autoDetail = $autoAge <= 0 ? 'Just now' : $ageStr($autoAge) . ' ago';
-                        $add('daemon_last_import', 'Last auto-import', 'ok',
-                            $autoDetail, 'Import Daemon', false, '', $daemonInfo['lastAutoImport']);
-                    }
+            $add(
+                'daemon_status',
+                'Daemon status',
+                'ok',
+                'Watching ' . $n . ' dir' . ($n !== 1 ? 's' : ''),
+                'Import Daemon'
+            );
+            if ($daemonInfo['lastAutoImport'] > 0) {
+                $autoAge = time() - $daemonInfo['lastAutoImport'];
+                $autoDetail = $autoAge <= 0 ? 'Just now' : $ageStr($autoAge) . ' ago';
+                $add(
+                    'daemon_last_import',
+                    'Last auto-import',
+                    'ok',
+                    $autoDetail,
+                    'Import Daemon',
+                    false,
+                    '',
+                    $daemonInfo['lastAutoImport']
+                );
+            }
         }
 
         // ── 5. nfcapd Paths ──────────────────────────────────────────────────
         $profilesData = rtrim($settings->nfdumpProfilesData, '/\\');
-        $profile      = $settings->nfdumpProfile;
+        $profile = $settings->nfdumpProfile;
 
         if ($profilesData === '') {
             $add('profiles_data', 'profiles-data dir', 'error', 'nfdump.profiles-data not set in config', 'nfcapd Paths');
@@ -176,8 +245,15 @@ class HealthChecker {
                     $sourcePath = $profilePath . \DIRECTORY_SEPARATOR . $source;
 
                     if (!is_dir($sourcePath)) {
-                        $add("source_dir_{$source}", "Source dir: {$source}", 'error',
-                            "Not found: {$sourcePath}", 'nfcapd Paths', true);
+                        $add(
+                            "source_dir_{$source}",
+                            "Source dir: {$source}",
+                            'error',
+                            "Not found: {$sourcePath}",
+                            'nfcapd Paths',
+                            true
+                        );
+
                         continue;
                     }
 
@@ -186,28 +262,43 @@ class HealthChecker {
                     $flatFiles = array_filter($flatFiles, static fn ($f) => is_file($f)
                         && !is_link($f)
                         && !str_contains($f, '.current.'));
-                    if (count($flatFiles) > 0) {
-                        $add("source_layout_{$source}", "Source layout: {$source}", 'error',
-                            "nfcapd files in flat structure — run reorganize_nfcapd.sh and configure nfcapd with -S 1",
-                            'nfcapd Paths');
+                    if (\count($flatFiles) > 0) {
+                        $add(
+                            "source_layout_{$source}",
+                            "Source layout: {$source}",
+                            'error',
+                            'nfcapd files in flat structure — run reorganize_nfcapd.sh and configure nfcapd with -S 1',
+                            'nfcapd Paths'
+                        );
+
                         continue;
                     }
 
                     // Capture freshness: check today's YYYY/MM/DD dir
-                    $today    = date('Y') . \DIRECTORY_SEPARATOR . date('m') . \DIRECTORY_SEPARATOR . date('d');
+                    $today = date('Y') . \DIRECTORY_SEPARATOR . date('m') . \DIRECTORY_SEPARATOR . date('d');
                     $todayDir = $sourcePath . \DIRECTORY_SEPARATOR . $today;
                     if (!is_dir($todayDir)) {
-                        $add("capture_fresh_{$source}", "Capture freshness: {$source}", 'warning',
-                            "No data dir for today ({$today})", 'nfcapd Paths');
+                        $add(
+                            "capture_fresh_{$source}",
+                            "Capture freshness: {$source}",
+                            'warning',
+                            "No data dir for today ({$today})",
+                            'nfcapd Paths'
+                        );
                     } else {
                         $files = glob($todayDir . \DIRECTORY_SEPARATOR . 'nfcapd.*') ?: [];
                         if ($files === []) {
-                            $add("capture_fresh_{$source}", "Capture freshness: {$source}", 'warning',
-                                "No nfcapd files in today's dir", 'nfcapd Paths');
+                            $add(
+                                "capture_fresh_{$source}",
+                                "Capture freshness: {$source}",
+                                'warning',
+                                "No nfcapd files in today's dir",
+                                'nfcapd Paths'
+                            );
                         } else {
-                            $mtimes      = array_map('filemtime', $files);
+                            $mtimes = array_map('filemtime', $files);
                             $newestMtime = max($mtimes);
-                            $age         = time() - $newestMtime;
+                            $age = time() - $newestMtime;
                             // nfcapd default rotation is 5 min; warn after 12 min (2.4×) to allow for slow systems
                             $status = $age > 720 ? 'warning' : 'ok';
                             if ($age <= 0) {
@@ -233,8 +324,9 @@ class HealthChecker {
 
         // Sort: group order first, then errors-before-warnings-before-ok within each group
         $statusOrder = ['error' => 0, 'warning' => 1, 'ok' => 2];
-        usort($checks, static fn ($a, $b) =>
-            ($groupOrder[$a['group']] ?? 99) <=> ($groupOrder[$b['group']] ?? 99)
+        usort(
+            $checks,
+            static fn ($a, $b) => ($groupOrder[$a['group']] ?? 99) <=> ($groupOrder[$b['group']] ?? 99)
             ?: $statusOrder[$a['status']] <=> $statusOrder[$b['status']]
         );
 

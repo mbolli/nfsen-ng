@@ -170,15 +170,12 @@
                                 {{ check.label }}
                             </td>
                             <td class="text-muted small">
-                                {% if check.code %}<code>{{ check.detail }}</code>{% else %}{{ check.detail }}{% endif %}
+                                {% if check.code %}<code>{{ check.detail }}</code>{% else %}{{ check.detail|raw }}{% endif %}
                                 {% if check.epoch > 0 %}
                                     <br><span class="font-monospace" style="font-size:.85em" data-text="new Date({{ check.epoch }} * 1000).toLocaleString('sv')">{{ check.epoch|date('Y-m-d H:i:s') }}</span>
                                 {% endif %}
                                 {% if check.hint %}
                                     <br><small class="text-muted" style="opacity:.65; font-size:.78em">{{ check.hint }}</small>
-                                {% endif %}
-                                {% if check.url is defined and check.url %}
-                                    <br><a href="{{ check.url }}" target="_blank" rel="noopener" class="text-muted" style="font-size:.78em">Open UI ↗</a>
                                 {% endif %}
                             </td>
                         </tr>

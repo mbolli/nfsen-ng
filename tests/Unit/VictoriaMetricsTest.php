@@ -43,13 +43,6 @@ class TestVM extends VictoriaMetrics
 
         return $this->nextSendResult;
     }
-
-    /** @return resource|false */
-    protected function tcpConnect(string $host, int $port, int &$errNo, string &$errStr): mixed
-    {
-        // Simulate a successful connection so healthChecks proceeds without real I/O
-        return fopen('php://memory', 'r');
-    }
 }
 
 // ── Bootstrap helper ──────────────────────────────────────────────────────────
@@ -413,11 +406,7 @@ describe('VictoriaMetrics output format alignment', function () {
             {
                 return true;
             }
-            /** @return resource|false */
-            protected function tcpConnect(string $host, int $port, int &$errNo, string &$errStr): mixed
-            {
-                return fopen('php://memory', 'r');
-            }        };
+        };
 
         $result = $vm->get_graph_data(
             $ts1,
@@ -501,12 +490,6 @@ describe('VictoriaMetrics::date_boundaries() and last_update()', function () {
             {
                 return true;
             }
-
-            /** @return resource|false */
-            protected function tcpConnect(string $host, int $port, int &$errNo, string &$errStr): mixed
-            {
-                return fopen('php://memory', 'r');
-            }
         };
 
         expect($vm->last_update('gw'))->toBe(0);
@@ -519,6 +502,8 @@ describe('VictoriaMetrics::healthChecks()', function () {
     beforeEach(function () {
         makeVmSettings();
         $this->vm = new TestVM();
+        // Seed 'OK' as first httpGet response (the /health endpoint call)
+        $this->vm->getResponseQueue = ['OK'];
     });
 
     test('always returns vm_config and import_years entries', function () {
@@ -529,13 +514,14 @@ describe('VictoriaMetrics::healthChecks()', function () {
         expect($ids)->toContain('import_years');
     });
 
-    test('vm_config entry shows configured host:port', function () {
+    test('vm_config entry detail contains configured host:port', function () {
         $checks = $this->vm->healthChecks('grp', []);
         $ids    = array_column($checks, 'id');
         $cfg    = $checks[array_search('vm_config', $ids, true)];
 
         expect($cfg['detail'])->toContain('vm-test');
         expect($cfg['detail'])->toContain('8428');
+        expect($cfg['detail'])->toContain('/vmui');
     });
 
     test('import_years entry is ok when >= 1', function () {

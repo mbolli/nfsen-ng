@@ -234,22 +234,29 @@ class VictoriaMetrics implements Datasource {
         $vmHost = (string) ($vmCfg['host'] ?? 'victoriametrics');
         $vmPort = (int) ($vmCfg['port'] ?? 8428);
 
+        $vmUiUrl  = "http://{$vmHost}:{$vmPort}/vmui";
         $checks[] = ['id' => 'vm_config', 'label' => 'VictoriaMetrics config', 'status' => 'ok',
-            'detail' => "{$vmHost}:{$vmPort}", 'group' => $group, 'code' => true, 'hint' => '',
-            'url' => "http://{$vmHost}:{$vmPort}/vmui", 'epoch' => 0];
+            'detail' => "<code>{$vmHost}:{$vmPort}</code> — <a href=\"{$vmUiUrl}\" target=\"_blank\" rel=\"noopener\">Open UI ↗</a>",
+            'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
 
-        // TCP connectivity check — 2 s timeout
-        $errNo  = 0;
-        $errStr = '';
-        $sock   = $this->tcpConnect($vmHost, $vmPort, $errNo, $errStr);
-        if ($sock === false) {
+        // HTTP health check — VictoriaMetrics /health returns 'OK' when ready
+        try {
+            $healthResponse = trim($this->httpGet("http://{$vmHost}:{$vmPort}/health"));
+        } catch (\Throwable $e) {
+            $healthResponse = '';
             $checks[] = ['id' => 'vm_reachable', 'label' => 'VictoriaMetrics reachable',
-                'status' => 'error', 'detail' => "Cannot connect: {$errStr} (errno {$errNo})",
+                'status' => 'error', 'detail' => 'Cannot connect: ' . $e->getMessage(),
                 'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
-        } else {
-            fclose($sock); // @phpstan-ignore argument.type
+        }
+        if ($healthResponse === 'OK') {
             $checks[] = ['id' => 'vm_reachable', 'label' => 'VictoriaMetrics reachable',
-                'status' => 'ok', 'detail' => 'Connected', 'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+                'status' => 'ok', 'detail' => 'Healthy', 'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+        } elseif ($healthResponse !== '') {
+            $checks[] = ['id' => 'vm_reachable', 'label' => 'VictoriaMetrics reachable',
+                'status' => 'error', 'detail' => 'Unexpected response: ' . substr($healthResponse, 0, 60),
+                'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+        }
+        if ($healthResponse === 'OK') {
 
             foreach ($sources as $source) {
                 try {
@@ -293,17 +300,6 @@ class VictoriaMetrics implements Datasource {
      */
     public function get_data_path(string $source = '', int $port = 0): string {
         return $this->queryUrl;
-    }
-
-    /**
-     * Open a TCP connection for health-check probing.
-     * Extracted to a protected method so tests can override it.
-     *
-     * @return resource|false
-     */
-    protected function tcpConnect(string $host, int $port, int &$errNo, string &$errStr): mixed
-    {
-        return @fsockopen($host, $port, $errNo, $errStr, 2.0);
     }
 
     /**

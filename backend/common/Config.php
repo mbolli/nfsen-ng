@@ -64,7 +64,14 @@ abstract class Config {
             ?: self::$path . \DIRECTORY_SEPARATOR . 'settings' . \DIRECTORY_SEPARATOR . 'preferences.json';
         $prefs = UserPreferences::load(self::$prefsFile);
         if ($prefs !== null) {
+            // Capture settings.php filter presets before preferences overlay them.
+            // Merge: settings.php filters first (deployment defaults), then user-saved
+            // filters on top, deduplicated. This ensures the settings tab textarea and
+            // the flow/stats filter dropdowns always include the deployment presets.
+            $baseFilters = self::$settings->filters;
             self::$settings = $prefs->applyTo(self::$settings);
+            $merged = array_values(array_unique(array_merge($baseFilters, self::$settings->filters)));
+            self::$settings = self::$settings->withFilters($merged);
         }
 
         // Validate directory structure for nfcapd files

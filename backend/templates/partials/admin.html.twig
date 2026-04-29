@@ -177,6 +177,9 @@
                                 {% if check.hint %}
                                     <br><small class="text-muted" style="opacity:.65; font-size:.78em">{{ check.hint }}</small>
                                 {% endif %}
+                                {% if check.url is defined and check.url %}
+                                    <br><a href="{{ check.url }}" target="_blank" rel="noopener" class="text-muted" style="font-size:.78em">Open UI ↗</a>
+                                {% endif %}
                             </td>
                         </tr>
                         {% else %}

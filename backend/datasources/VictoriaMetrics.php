@@ -235,7 +235,8 @@ class VictoriaMetrics implements Datasource {
         $vmPort = (int) ($vmCfg['port'] ?? 8428);
 
         $checks[] = ['id' => 'vm_config', 'label' => 'VictoriaMetrics config', 'status' => 'ok',
-            'detail' => "{$vmHost}:{$vmPort}", 'group' => $group, 'code' => true, 'hint' => '', 'epoch' => 0];
+            'detail' => "{$vmHost}:{$vmPort}", 'group' => $group, 'code' => true, 'hint' => '',
+            'url' => "http://{$vmHost}:{$vmPort}/vmui", 'epoch' => 0];
 
         // TCP connectivity check — 2 s timeout
         $errNo  = 0;

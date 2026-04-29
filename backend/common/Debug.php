@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\common;
 
 class Debug {
+    private const LOG_BUFFER_MAX = 200;
     public static ?self $_instance = null;
     private readonly float $stopwatch;
     private bool $debug = true;
@@ -12,7 +13,6 @@ class Debug {
 
     /** @var array<int,array{ts:int,level:int,msg:string}> Ring buffer for admin UI log drain. */
     private static array $logBuffer = [];
-    private const LOG_BUFFER_MAX = 200;
 
     public function __construct() {
         $this->stopwatch = microtime(true);
@@ -33,7 +33,7 @@ class Debug {
      */
     public function log(string $message, int $priority): void {
         // Config::$settings may not be initialized before Config::initialize() is called.
-        $cfgPriority = isset(Config::$settings) ? Config::$settings->logPriority : \LOG_INFO;
+        $cfgPriority = isset(Config::$settings) ? Config::$settings->logPriority : LOG_INFO;
         if ($cfgPriority >= $priority) {
             syslog($priority, 'nfsen-ng: ' . $message);
 
@@ -43,7 +43,7 @@ class Debug {
         }
 
         // Always buffer LOG_WARNING and above so the admin UI can show them.
-        if ($priority <= \LOG_WARNING) {
+        if ($priority <= LOG_WARNING) {
             self::$logBuffer[] = ['ts' => time(), 'level' => $priority, 'msg' => $message];
             if (\count(self::$logBuffer) > self::LOG_BUFFER_MAX) {
                 array_shift(self::$logBuffer);

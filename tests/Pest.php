@@ -1,6 +1,8 @@
 <?php
 
 declare(strict_types=1);
+use Dom\HTMLDocument;
+use Tests\TestCase;
 
 /*
 |--------------------------------------------------------------------------
@@ -13,7 +15,7 @@ declare(strict_types=1);
 |
 */
 
-pest()->extend(Tests\TestCase::class)->in('Feature');
+pest()->extend(TestCase::class)->in('Feature');
 
 /*
 |--------------------------------------------------------------------------
@@ -31,22 +33,21 @@ expect()->extend('toBeValidHtml', function () {
     $this->toBeString();
 
     try {
-        $doc = \Dom\HTMLDocument::createFromString(
+        $doc = HTMLDocument::createFromString(
             $this->value,
             \Dom\HTML_NO_DEFAULT_NS
         );
+
         // If we get here, the HTML parsed successfully
-        return $this->and($doc)->toBeInstanceOf(\Dom\HTMLDocument::class);
-    } catch (\Exception $e) {
+        return $this->and($doc)->toBeInstanceOf(HTMLDocument::class);
+    } catch (Exception $e) {
         // Parsing failed - this will cause the test to fail
         return $this->and(false)->toBeTrue("HTML parsing failed: {$e->getMessage()}");
     }
 });
 
-expect()->extend('toContainString', function (string $needle) {
-    return $this->toBeString()
-        ->and(str_contains($this->value, $needle))->toBeTrue();
-});
+expect()->extend('toContainString', fn (string $needle) => $this->toBeString()
+    ->and(str_contains($this->value, $needle))->toBeTrue());
 
 /*
 |--------------------------------------------------------------------------
@@ -62,8 +63,7 @@ expect()->extend('toContainString', function (string $needle) {
 /**
  * Create a mock settings array for testing.
  */
-function mockSettings(): array
-{
+function mockSettings(): array {
     return [
         'general' => [
             'ports' => [80, 443, 22],

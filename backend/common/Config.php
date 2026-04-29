@@ -27,7 +27,7 @@ abstract class Config {
 
         // Allow custom settings file via environment variable
         $explicitFile = getenv('NFSEN_SETTINGS_FILE');
-        $defaultFile  = \dirname(__DIR__) . \DIRECTORY_SEPARATOR . 'settings' . \DIRECTORY_SEPARATOR . 'settings.php';
+        $defaultFile = \dirname(__DIR__) . \DIRECTORY_SEPARATOR . 'settings' . \DIRECTORY_SEPARATOR . 'settings.php';
         $settingsFile = $explicitFile ?: $defaultFile;
 
         if (!file_exists($settingsFile)) {
@@ -47,15 +47,15 @@ abstract class Config {
                 $val = getenv($var);
                 if ($val !== false && $val !== '') {
                     trigger_error(
-                        "$var is set but a settings file is also loaded ($settingsFile) — " .
-                        "the env var will be ignored. Remove settings.php or wire $var in it.",
-                        \E_USER_WARNING,
+                        "{$var} is set but a settings file is also loaded ({$settingsFile}) — "
+                        . "the env var will be ignored. Remove settings.php or wire {$var} in it.",
+                        E_USER_WARNING,
                     );
                 }
             }
         }
 
-        self::$path        = \dirname(__DIR__);
+        self::$path = \dirname(__DIR__);
         self::$initialized = true;
 
         // Load user preferences (preferences.json) and overlay on base settings.
@@ -105,8 +105,8 @@ abstract class Config {
      */
     private static function validateDirectoryStructure(): void {
         $profilesData = self::$settings->nfdumpProfilesData;
-        $profile      = self::$settings->nfdumpProfile;
-        $sources      = self::$settings->sources;
+        $profile = self::$settings->nfdumpProfile;
+        $sources = self::$settings->sources;
 
         if (empty($profilesData) || empty($sources)) {
             return; // Skip validation if config is incomplete

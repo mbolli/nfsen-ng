@@ -7,7 +7,7 @@ use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\processor\Nfdump;
 
 // Nfdump requires Config to be initialized, so we set up minimal config
-beforeAll(function () {
+beforeAll(function (): void {
     // Set up minimal config for Nfdump to work
     Config::$settings = Settings::fromArray([
         'general' => [
@@ -28,9 +28,9 @@ beforeAll(function () {
     ]);
 });
 
-describe('Nfdump', function () {
-    describe('get_output_format', function () {
-        test('returns line format fields', function () {
+describe('Nfdump', function (): void {
+    describe('get_output_format', function (): void {
+        test('returns line format fields', function (): void {
             $nfdump = new Nfdump();
             $result = $nfdump->get_output_format('line');
 
@@ -42,10 +42,11 @@ describe('Nfdump', function () {
                 ->toContain('sa')
                 ->toContain('sp')
                 ->toContain('da')
-                ->toContain('dp');
+                ->toContain('dp')
+            ;
         });
 
-        test('returns long format fields', function () {
+        test('returns long format fields', function (): void {
             $nfdump = new Nfdump();
             $result = $nfdump->get_output_format('long');
 
@@ -53,10 +54,11 @@ describe('Nfdump', function () {
                 ->toBeArray()
                 ->toContain('flg')
                 ->toContain('stos')
-                ->toContain('dtos');
+                ->toContain('dtos')
+            ;
         });
 
-        test('returns extended format fields', function () {
+        test('returns extended format fields', function (): void {
             $nfdump = new Nfdump();
             $result = $nfdump->get_output_format('extended');
 
@@ -64,19 +66,21 @@ describe('Nfdump', function () {
                 ->toBeArray()
                 ->toContain('ibps')
                 ->toContain('ipps')
-                ->toContain('ibpp');
+                ->toContain('ibpp')
+            ;
         });
 
-        test('returns full format with all fields', function () {
+        test('returns full format with all fields', function (): void {
             $nfdump = new Nfdump();
             $result = $nfdump->get_output_format('full');
 
             expect($result)
                 ->toBeArray()
-                ->toHaveCount(48);
+                ->toHaveCount(48)
+            ;
         });
 
-        test('parses custom format string', function () {
+        test('parses custom format string', function (): void {
             $nfdump = new Nfdump();
             $result = $nfdump->get_output_format('fmt:%ts %sa %da');
 
@@ -84,10 +88,11 @@ describe('Nfdump', function () {
                 ->toBeArray()
                 ->toContain('ts')
                 ->toContain('sa')
-                ->toContain('da');
+                ->toContain('da')
+            ;
         });
 
-        test('handles format with percent signs', function () {
+        test('handles format with percent signs', function (): void {
             $nfdump = new Nfdump();
             $result = $nfdump->get_output_format('%ts %td %pr');
 
@@ -95,12 +100,13 @@ describe('Nfdump', function () {
                 ->toBeArray()
                 ->toContain('ts')
                 ->toContain('td')
-                ->toContain('pr');
+                ->toContain('pr')
+            ;
         });
     });
 
-    describe('setFilter', function () {
-        test('accepts filter string', function () {
+    describe('setFilter', function (): void {
+        test('accepts filter string', function (): void {
             $nfdump = new Nfdump();
             $nfdump->setFilter('src ip 192.168.1.1');
 
@@ -108,14 +114,14 @@ describe('Nfdump', function () {
             expect(true)->toBeTrue();
         });
 
-        test('accepts empty filter', function () {
+        test('accepts empty filter', function (): void {
             $nfdump = new Nfdump();
             $nfdump->setFilter('');
 
             expect(true)->toBeTrue();
         });
 
-        test('accepts complex filter', function () {
+        test('accepts complex filter', function (): void {
             $nfdump = new Nfdump();
             $nfdump->setFilter('src ip 192.168.1.0/24 and dst port 443 and proto tcp');
 
@@ -123,8 +129,8 @@ describe('Nfdump', function () {
         });
     });
 
-    describe('reset', function () {
-        test('resets configuration', function () {
+    describe('reset', function (): void {
+        test('resets configuration', function (): void {
             $nfdump = new Nfdump();
             $nfdump->setFilter('test filter');
             $nfdump->reset();
@@ -135,8 +141,8 @@ describe('Nfdump', function () {
         });
     });
 
-    describe('singleton pattern', function () {
-        beforeEach(function () {
+    describe('singleton pattern', function (): void {
+        beforeEach(function (): void {
             // Reset singleton
             $reflection = new ReflectionClass(Nfdump::class);
             $property = $reflection->getProperty('_instance');
@@ -144,13 +150,13 @@ describe('Nfdump', function () {
             $property->setValue(null, null);
         });
 
-        test('getInstance returns Nfdump instance', function () {
+        test('getInstance returns Nfdump instance', function (): void {
             $instance = Nfdump::getInstance();
 
             expect($instance)->toBeInstanceOf(Nfdump::class);
         });
 
-        test('getInstance returns same instance', function () {
+        test('getInstance returns same instance', function (): void {
             $instance1 = Nfdump::getInstance();
             $instance2 = Nfdump::getInstance();
 

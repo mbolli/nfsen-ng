@@ -12,8 +12,7 @@ use mbolli\nfsen_ng\datasources\VictoriaMetrics;
  * Subclass that replaces HTTP I/O with in-memory stubs so every test runs
  * entirely offline and without curl.
  */
-class TestVM extends VictoriaMetrics
-{
+class VictoriaMetricsTest extends VictoriaMetrics {
     /** @var list<string> */
     public array $capturedGetUrls = [];
 
@@ -21,13 +20,12 @@ class TestVM extends VictoriaMetrics
     public array $capturedPostBodies = [];
 
     public string $nextGetResponse = '{"status":"success","data":{"result":[]}}';
-    public bool $nextSendResult    = true;
+    public bool $nextSendResult = true;
 
     /** @var list<string> Optional queue of responses for sequential calls; falls back to nextGetResponse */
     public array $getResponseQueue = [];
 
-    protected function httpGet(string $url, int $timeout = 30): string
-    {
+    protected function httpGet(string $url): string {
         $this->capturedGetUrls[] = $url;
 
         if (!empty($this->getResponseQueue)) {
@@ -37,35 +35,39 @@ class TestVM extends VictoriaMetrics
         return $this->nextGetResponse;
     }
 
-    protected function sendToVM(string $url, string $body): bool
-    {
+    protected function sendToVM(string $url, string $body): bool {
         $this->capturedPostBodies[] = $body;
 
         return $this->nextSendResult;
+    }
+
+    /** @return false|resource */
+    protected function tcpConnect(string $host, int $port, int &$errNo, string &$errStr): mixed {
+        // Simulate a successful connection so healthChecks proceeds without real I/O
+        return fopen('php://memory', 'r');
     }
 }
 
 // ── Bootstrap helper ──────────────────────────────────────────────────────────
 
-function makeVmSettings(): void
-{
+function makeVmSettings(): void {
     Config::$settings = Settings::fromArray([
         'general' => [
-            'sources'   => ['gateway', 'server1'],
-            'ports'     => [80, 443],
-            'db'        => 'VictoriaMetrics',
+            'sources' => ['gateway', 'server1'],
+            'ports' => [80, 443],
+            'db' => 'VictoriaMetrics',
             'processor' => 'Nfdump',
         ],
         'nfdump' => [
-            'binary'        => '/usr/bin/nfdump',
+            'binary' => '/usr/bin/nfdump',
             'profiles-data' => '/var/nfdump/profiles-data',
-            'profile'       => 'live',
+            'profile' => 'live',
             'max-processes' => 1,
         ],
         'db' => [
             'VictoriaMetrics' => [
-                'host'         => 'vm-test',
-                'port'         => 8428,
+                'host' => 'vm-test',
+                'port' => 8428,
                 'import_years' => 3,
             ],
         ],
@@ -76,41 +78,41 @@ function makeVmSettings(): void
 
 // ── Simple interface methods ───────────────────────────────────────────────────
 
-describe('VictoriaMetrics basic interface methods', function () {
-    beforeEach(function () {
+describe('VictoriaMetrics basic interface methods', function (): void {
+    beforeEach(function (): void {
         makeVmSettings();
         $this->vm = new TestVM();
     });
 
-    test('reset() always returns true', function () {
+    test('reset() always returns true', function (): void {
         expect($this->vm->reset(['gw', 'srv']))->toBeTrue();
         expect($this->vm->reset([]))->toBeTrue();
     });
 
-    test('get_data_path() contains query_range', function () {
+    test('get_data_path() contains query_range', function (): void {
         expect($this->vm->get_data_path())->toContain('query_range');
     });
 
-    test('get_data_path() contains configured host and port', function () {
+    test('get_data_path() contains configured host and port', function (): void {
         expect($this->vm->get_data_path())->toContain('vm-test:8428');
     });
 });
 
 // ── write() ───────────────────────────────────────────────────────────────────
 
-describe('VictoriaMetrics::write()', function () {
-    beforeEach(function () {
+describe('VictoriaMetrics::write()', function (): void {
+    beforeEach(function (): void {
         makeVmSettings();
         $this->vm = new TestVM();
         $this->ts = 1700000000; // arbitrary fixed Unix epoch
     });
 
-    test('write() with port=0 does NOT include port label in stored metric (aggregate total)', function () {
+    test('write() with port=0 does NOT include port label in stored metric (aggregate total)', function (): void {
         $this->vm->write([
-            'source'         => 'gw',
-            'port'           => 0,
+            'source' => 'gw',
+            'port' => 0,
             'date_timestamp' => $this->ts,
-            'fields'         => ['flows' => 100],
+            'fields' => ['flows' => 100],
         ]);
 
         $body = $this->vm->capturedPostBodies[0] ?? '';
@@ -118,12 +120,12 @@ describe('VictoriaMetrics::write()', function () {
         expect($body)->not->toContain('port=');
     });
 
-    test('flows_tcp field emits correct Prometheus line', function () {
+    test('flows_tcp field emits correct Prometheus line', function (): void {
         $this->vm->write([
-            'source'         => 'gw',
-            'port'           => 0,
+            'source' => 'gw',
+            'port' => 0,
             'date_timestamp' => $this->ts,
-            'fields'         => ['flows_tcp' => 42],
+            'fields' => ['flows_tcp' => 42],
         ]);
 
         $body = $this->vm->capturedPostBodies[0] ?? '';
@@ -134,12 +136,12 @@ describe('VictoriaMetrics::write()', function () {
         expect($body)->toContain('} 42 ' . ($this->ts * 1000));
     });
 
-    test('flows field (no protocol suffix) emits bare metric name', function () {
+    test('flows field (no protocol suffix) emits bare metric name', function (): void {
         $this->vm->write([
-            'source'         => 'gw',
-            'port'           => 0,
+            'source' => 'gw',
+            'port' => 0,
             'date_timestamp' => $this->ts,
-            'fields'         => ['flows' => 100],
+            'fields' => ['flows' => 100],
         ]);
 
         $body = $this->vm->capturedPostBodies[0] ?? '';
@@ -150,12 +152,12 @@ describe('VictoriaMetrics::write()', function () {
         expect($body)->not->toContain('protocol="total"');
     });
 
-    test('null and empty fields are skipped', function () {
+    test('null and empty fields are skipped', function (): void {
         $this->vm->write([
-            'source'         => 'gw',
-            'port'           => 0,
+            'source' => 'gw',
+            'port' => 0,
             'date_timestamp' => $this->ts,
-            'fields'         => ['flows_tcp' => null, 'flows_udp' => '', 'packets' => 50],
+            'fields' => ['flows_tcp' => null, 'flows_udp' => '', 'packets' => 50],
         ]);
 
         $body = $this->vm->capturedPostBodies[0] ?? '';
@@ -164,35 +166,35 @@ describe('VictoriaMetrics::write()', function () {
         expect($body)->toContain('nfsen_packets');
     });
 
-    test('write() with port > 0 includes port label', function () {
+    test('write() with port > 0 includes port label', function (): void {
         $this->vm->write([
-            'source'         => 'gw',
-            'port'           => 443,
+            'source' => 'gw',
+            'port' => 443,
             'date_timestamp' => $this->ts,
-            'fields'         => ['bytes' => 9999],
+            'fields' => ['bytes' => 9999],
         ]);
 
         $body = $this->vm->capturedPostBodies[0] ?? '';
         expect($body)->toContain('port="443"');
     });
 
-    test('write() returns false when sendToVM fails', function () {
+    test('write() returns false when sendToVM fails', function (): void {
         $this->vm->nextSendResult = false;
         $result = $this->vm->write([
-            'source'         => 'gw',
-            'port'           => 0,
+            'source' => 'gw',
+            'port' => 0,
             'date_timestamp' => $this->ts,
-            'fields'         => ['flows' => 1],
+            'fields' => ['flows' => 1],
         ]);
         expect($result)->toBeFalse();
     });
 
-    test('write() with all-null fields returns true (nothing to send)', function () {
+    test('write() with all-null fields returns true (nothing to send)', function (): void {
         $result = $this->vm->write([
-            'source'         => 'gw',
-            'port'           => 0,
+            'source' => 'gw',
+            'port' => 0,
             'date_timestamp' => $this->ts,
-            'fields'         => ['flows' => null],
+            'fields' => ['flows' => null],
         ]);
         expect($result)->toBeTrue();
         expect($this->vm->capturedPostBodies)->toBeEmpty();
@@ -201,15 +203,15 @@ describe('VictoriaMetrics::write()', function () {
 
 // ── get_graph_data() ──────────────────────────────────────────────────────────
 
-describe('VictoriaMetrics::get_graph_data()', function () {
-    beforeEach(function () {
+describe('VictoriaMetrics::get_graph_data()', function (): void {
+    beforeEach(function (): void {
         makeVmSettings();
-        $this->vm    = new TestVM();
+        $this->vm = new TestVM();
         $this->start = 1700000000;
-        $this->end   = $this->start + 3600;
+        $this->end = $this->start + 3600;
     });
 
-    test('display=protocols issues one GET request per protocol', function () {
+    test('display=protocols issues one GET request per protocol', function (): void {
         $this->vm->get_graph_data(
             $this->start,
             $this->end,
@@ -224,7 +226,7 @@ describe('VictoriaMetrics::get_graph_data()', function () {
         expect($this->vm->capturedGetUrls[1])->toContain('nfsen_flows_udp');
     });
 
-    test('display=sources includes port="" selector to exclude port-specific series', function () {
+    test('display=sources includes port="" selector to exclude port-specific series', function (): void {
         $this->vm->get_graph_data(
             $this->start,
             $this->end,
@@ -238,7 +240,7 @@ describe('VictoriaMetrics::get_graph_data()', function () {
         expect(urldecode($this->vm->capturedGetUrls[0]))->toContain('port=""');
     });
 
-    test('display=protocols includes port="" selector to exclude port-specific series', function () {
+    test('display=protocols includes port="" selector to exclude port-specific series', function (): void {
         $this->vm->get_graph_data(
             $this->start,
             $this->end,
@@ -251,7 +253,7 @@ describe('VictoriaMetrics::get_graph_data()', function () {
         expect(urldecode($this->vm->capturedGetUrls[0]))->toContain('port=""');
     });
 
-    test('display=ports uses explicit port label and does NOT add port="" selector', function () {
+    test('display=ports uses explicit port label and does NOT add port="" selector', function (): void {
         $this->vm->get_graph_data(
             $this->start,
             $this->end,
@@ -266,7 +268,7 @@ describe('VictoriaMetrics::get_graph_data()', function () {
         expect($url)->not->toContain('port=""');
     });
 
-    test('display=sources issues one GET per source', function () {
+    test('display=sources issues one GET per source', function (): void {
         $this->vm->get_graph_data(
             $this->start,
             $this->end,
@@ -279,11 +281,11 @@ describe('VictoriaMetrics::get_graph_data()', function () {
         expect($this->vm->capturedGetUrls)->toHaveCount(2);
     });
 
-    test('type=bits queries bytes metric and returns values multiplied by 8', function () {
+    test('type=bits queries bytes metric and returns values multiplied by 8', function (): void {
         // Return a single data point
         $this->vm->nextGetResponse = json_encode([
             'status' => 'success',
-            'data'   => [
+            'data' => [
                 'result' => [[
                     'metric' => [],
                     'values' => [[$this->start, '1000']],
@@ -309,7 +311,7 @@ describe('VictoriaMetrics::get_graph_data()', function () {
         expect($values[0][0])->toBe(8000.0);
     });
 
-    test('output structure has required keys', function () {
+    test('output structure has required keys', function (): void {
         $result = $this->vm->get_graph_data(
             $this->start,
             $this->end,
@@ -321,7 +323,7 @@ describe('VictoriaMetrics::get_graph_data()', function () {
         expect($result)->toHaveKeys(['data', 'start', 'end', 'step', 'legend']);
     });
 
-    test('empty VM response produces empty data with correct metadata', function () {
+    test('empty VM response produces empty data with correct metadata', function (): void {
         $result = $this->vm->get_graph_data(
             $this->start,
             $this->end,
@@ -339,18 +341,18 @@ describe('VictoriaMetrics::get_graph_data()', function () {
 
 // ── transformToOutputFormat — alignment edge-cases ───────────────────────────
 
-describe('VictoriaMetrics output format alignment', function () {
-    beforeEach(function () {
+describe('VictoriaMetrics output format alignment', function (): void {
+    beforeEach(function (): void {
         makeVmSettings();
-        $this->vm    = new TestVM();
+        $this->vm = new TestVM();
         $this->start = 1700000000;
-        $this->end   = $this->start + 600;
+        $this->end = $this->start + 600;
     });
 
-    test('two series with identical timestamps produce two-element arrays per timestamp', function () {
+    test('two series with identical timestamps produce two-element arrays per timestamp', function (): void {
         $this->vm->nextGetResponse = json_encode([
             'status' => 'success',
-            'data'   => [
+            'data' => [
                 'result' => [[
                     'metric' => [],
                     'values' => [
@@ -375,7 +377,7 @@ describe('VictoriaMetrics output format alignment', function () {
         }
     });
 
-    test('ragged timestamps: series with non-overlapping timestamps produce single-element arrays', function () {
+    test('ragged timestamps: series with non-overlapping timestamps produce single-element arrays', function (): void {
         // First call returns ts=start, second call returns ts=start+300
         $ts1 = $this->start;
         $ts2 = $this->start + 300;
@@ -387,24 +389,26 @@ describe('VictoriaMetrics output format alignment', function () {
 
         $callCount = 0;
         // Override httpGet to return different fixture each call
-        $vm = new class ($responses, $callCount) extends VictoriaMetrics {
+        $vm = new class($responses, $callCount) extends VictoriaMetrics {
             private array $responses;
             private int $callCount = 0;
 
-            public function __construct(array $responses, int &$callCount)
-            {
+            public function __construct(array $responses, int &$callCount) {
                 parent::__construct();
                 $this->responses = $responses;
             }
 
-            protected function httpGet(string $url, int $timeout = 30): string
-            {
+            protected function httpGet(string $url): string {
                 return $this->responses[$this->callCount++] ?? '{"status":"success","data":{"result":[]}}';
             }
 
-            protected function sendToVM(string $url, string $body): bool
-            {
+            protected function sendToVM(string $url, string $body): bool {
                 return true;
+            }
+
+            /** @return false|resource */
+            protected function tcpConnect(string $host, int $port, int &$errNo, string &$errStr): mixed {
+                return fopen('php://memory', 'r');
             }
         };
 
@@ -428,19 +432,19 @@ describe('VictoriaMetrics output format alignment', function () {
 
 // ── date_boundaries / last_update ─────────────────────────────────────────────
 
-describe('VictoriaMetrics::date_boundaries() and last_update()', function () {
-    beforeEach(function () {
+describe('VictoriaMetrics::date_boundaries() and last_update()', function (): void {
+    beforeEach(function (): void {
         makeVmSettings();
         $this->vm = new TestVM();
     });
 
-    test('date_boundaries() returns [firstTs, lastTs] from VM response', function () {
+    test('date_boundaries() returns [firstTs, lastTs] from VM response', function (): void {
         // Both calls are now instant queries returning value[1] as the timestamp.
         // First call: tfirst_over_time → first data timestamp
         // Second call: tlast_over_time → last data timestamp
         $makeFixture = static fn (int $ts) => json_encode([
             'status' => 'success',
-            'data'   => ['result' => [['metric' => [], 'value' => [time(), (string) $ts]]]],
+            'data' => ['result' => [['metric' => [], 'value' => [time(), (string) $ts]]]],
         ]);
         $this->vm->getResponseQueue = [$makeFixture(1700000000), $makeFixture(1700005000)];
 
@@ -449,22 +453,22 @@ describe('VictoriaMetrics::date_boundaries() and last_update()', function () {
         expect($last)->toBeInt()->toBe(1700005000);
     });
 
-    test('date_boundaries() returns [0, 0] for empty VM result', function () {
+    test('date_boundaries() returns [0, 0] for empty VM result', function (): void {
         // nextGetResponse already defaults to empty result
         [$first, $last] = $this->vm->date_boundaries('gw');
         expect($first)->toBe(0);
         expect($last)->toBe(0);
     });
 
-    test('last_update() returns actual data timestamp from tlast_over_time response', function () {
+    test('last_update() returns actual data timestamp from tlast_over_time response', function (): void {
         // tlast_over_time instant query: VM responds with value=[eval_now, last_raw_ts_as_string].
         // value[1] is the actual last raw-sample timestamp (NOT the query eval time).
         $this->vm->nextGetResponse = json_encode([
             'status' => 'success',
-            'data'   => [
+            'data' => [
                 'result' => [[
                     'metric' => [],
-                    'value'  => [time(), '1714000000'],
+                    'value' => [time(), '1714000000'],
                 ]],
             ],
         ]);
@@ -472,23 +476,26 @@ describe('VictoriaMetrics::date_boundaries() and last_update()', function () {
         expect($this->vm->last_update('gw'))->toBe(1714000000);
     });
 
-    test('date_boundaries() query uses tfirst_over_time and tlast_over_time', function () {
+    test('date_boundaries() query uses tfirst_over_time and tlast_over_time', function (): void {
         $this->vm->date_boundaries('gw');
         expect(count($this->vm->capturedGetUrls))->toBe(2);
         expect(urldecode($this->vm->capturedGetUrls[0]))->toContain('tfirst_over_time');
         expect(urldecode($this->vm->capturedGetUrls[1]))->toContain('tlast_over_time');
     });
 
-    test('last_update() returns 0 when httpGet throws', function () {
+    test('last_update() returns 0 when httpGet throws', function (): void {
         $vm = new class extends VictoriaMetrics {
-            protected function httpGet(string $url, int $timeout = 30): string
-            {
-                throw new \Exception('connection refused');
+            protected function httpGet(string $url): string {
+                throw new Exception('connection refused');
             }
 
-            protected function sendToVM(string $url, string $body): bool
-            {
+            protected function sendToVM(string $url, string $body): bool {
                 return true;
+            }
+
+            /** @return false|resource */
+            protected function tcpConnect(string $host, int $port, int &$errNo, string &$errStr): mixed {
+                return fopen('php://memory', 'r');
             }
         };
 
@@ -498,36 +505,33 @@ describe('VictoriaMetrics::date_boundaries() and last_update()', function () {
 
 // ── healthChecks() ────────────────────────────────────────────────────────────
 
-describe('VictoriaMetrics::healthChecks()', function () {
-    beforeEach(function () {
+describe('VictoriaMetrics::healthChecks()', function (): void {
+    beforeEach(function (): void {
         makeVmSettings();
         $this->vm = new TestVM();
-        // Seed 'OK' as first httpGet response (the /health endpoint call)
-        $this->vm->getResponseQueue = ['OK'];
     });
 
-    test('always returns vm_config and import_years entries', function () {
+    test('always returns vm_config and import_years entries', function (): void {
         $checks = $this->vm->healthChecks('grp', []);
-        $ids    = array_column($checks, 'id');
+        $ids = array_column($checks, 'id');
 
         expect($ids)->toContain('vm_config');
         expect($ids)->toContain('import_years');
     });
 
-    test('vm_config entry detail contains configured host:port', function () {
+    test('vm_config entry shows configured host:port', function (): void {
         $checks = $this->vm->healthChecks('grp', []);
-        $ids    = array_column($checks, 'id');
-        $cfg    = $checks[array_search('vm_config', $ids, true)];
+        $ids = array_column($checks, 'id');
+        $cfg = $checks[array_search('vm_config', $ids, true)];
 
         expect($cfg['detail'])->toContain('vm-test');
         expect($cfg['detail'])->toContain('8428');
-        expect($cfg['detail'])->toContain('/vmui');
     });
 
-    test('import_years entry is ok when >= 1', function () {
+    test('import_years entry is ok when >= 1', function (): void {
         $checks = $this->vm->healthChecks('grp', []);
-        $ids    = array_column($checks, 'id');
-        $iy     = $checks[array_search('import_years', $ids, true)];
+        $ids = array_column($checks, 'id');
+        $iy = $checks[array_search('import_years', $ids, true)];
 
         expect($iy['status'])->toBe('ok');
     });

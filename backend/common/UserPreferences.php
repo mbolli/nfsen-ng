@@ -53,7 +53,7 @@ final class UserPreferences {
             defaultFlowLimit: (int) ($data['defaultFlowLimit'] ?? 50),
             defaultStatsOrderBy: (string) ($data['defaultStatsOrderBy'] ?? 'bytes'),
             filters: array_values(array_filter(array_map('strval', (array) ($data['filters'] ?? [])))),
-            logPriority: (int) ($data['logPriority'] ?? \LOG_INFO),
+            logPriority: (int) ($data['logPriority'] ?? LOG_INFO),
         );
     }
 
@@ -70,7 +70,8 @@ final class UserPreferences {
             ->withDefaultFlowLimit($this->defaultFlowLimit)
             ->withDefaultStatsOrderBy($this->defaultStatsOrderBy)
             ->withFilters($this->filters)
-            ->withLogPriority($this->logPriority);
+            ->withLogPriority($this->logPriority)
+        ;
     }
 
     /**
@@ -79,8 +80,8 @@ final class UserPreferences {
      * @throws \RuntimeException on write or rename failure
      */
     public function save(string $path): void {
-        $json = json_encode($this->toArray(), \JSON_PRETTY_PRINT | \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR);
-        $dir  = \dirname($path);
+        $json = json_encode($this->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $dir = \dirname($path);
 
         if (!is_dir($dir) && !mkdir($dir, 0o755, true)) {
             throw new \RuntimeException("Cannot create preferences directory: {$dir}");
@@ -88,12 +89,13 @@ final class UserPreferences {
 
         $tmp = $path . '.tmp.' . getmypid();
 
-        if (file_put_contents($tmp, $json, \LOCK_EX) === false) {
+        if (file_put_contents($tmp, $json, LOCK_EX) === false) {
             throw new \RuntimeException("Cannot write preferences to: {$tmp}");
         }
 
         if (!rename($tmp, $path)) {
             @unlink($tmp);
+
             throw new \RuntimeException("Cannot rename preferences file to: {$path}");
         }
     }
@@ -101,14 +103,14 @@ final class UserPreferences {
     /** @return array<string, mixed> */
     public function toArray(): array {
         return [
-            'defaultView'           => $this->defaultView,
-            'defaultGraphDisplay'   => $this->defaultGraphDisplay,
-            'defaultGraphDatatype'  => $this->defaultGraphDatatype,
+            'defaultView' => $this->defaultView,
+            'defaultGraphDisplay' => $this->defaultGraphDisplay,
+            'defaultGraphDatatype' => $this->defaultGraphDatatype,
             'defaultGraphProtocols' => $this->defaultGraphProtocols,
-            'defaultFlowLimit'      => $this->defaultFlowLimit,
-            'defaultStatsOrderBy'   => $this->defaultStatsOrderBy,
-            'filters'               => $this->filters,
-            'logPriority'           => $this->logPriority,
+            'defaultFlowLimit' => $this->defaultFlowLimit,
+            'defaultStatsOrderBy' => $this->defaultStatsOrderBy,
+            'filters' => $this->filters,
+            'logPriority' => $this->logPriority,
         ];
     }
 }

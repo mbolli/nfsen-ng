@@ -4,36 +4,36 @@ declare(strict_types=1);
 
 use mbolli\nfsen_ng\common\Settings;
 
-describe('Settings::fromArray()', function () {
-    test('parses all typed fields correctly', function () {
+describe('Settings::fromArray()', function (): void {
+    test('parses all typed fields correctly', function (): void {
         $raw = [
             'general' => [
-                'sources'   => ['gw1', 'gw2'],
-                'ports'     => ['80', '443'],
-                'filters'   => ['proto tcp', 'dst port 53'],
-                'db'        => 'VictoriaMetrics',
+                'sources' => ['gw1', 'gw2'],
+                'ports' => ['80', '443'],
+                'filters' => ['proto tcp', 'dst port 53'],
+                'db' => 'VictoriaMetrics',
                 'processor' => 'NfDump',
             ],
             'frontend' => [
                 'defaults' => [
-                    'view'  => 'flows',
+                    'view' => 'flows',
                     'graphs' => [
-                        'display'   => 'protocols',
-                        'datatype'  => 'packets',
+                        'display' => 'protocols',
+                        'datatype' => 'packets',
                         'protocols' => ['tcp', 'udp'],
                     ],
-                    'flows'      => ['limit' => 100],
+                    'flows' => ['limit' => 100],
                     'statistics' => ['order_by' => 'packets'],
                 ],
             ],
             'nfdump' => [
-                'binary'        => '/usr/local/bin/nfdump',
+                'binary' => '/usr/local/bin/nfdump',
                 'profiles-data' => '/data/profiles',
-                'profile'       => 'prod',
+                'profile' => 'prod',
                 'max-processes' => 2,
             ],
             'log' => ['priority' => LOG_DEBUG],
-            'db'  => [
+            'db' => [
                 'VictoriaMetrics' => ['host' => 'vm-host', 'import_years' => 5],
             ],
         ];
@@ -55,10 +55,11 @@ describe('Settings::fromArray()', function () {
             ->and($s->nfdumpProfilesData)->toBe('/data/profiles')
             ->and($s->nfdumpProfile)->toBe('prod')
             ->and($s->nfdumpMaxProcesses)->toBe(2)
-            ->and($s->logPriority)->toBe(LOG_DEBUG);
+            ->and($s->logPriority)->toBe(LOG_DEBUG)
+        ;
     });
 
-    test('applies safe defaults for entirely missing config', function () {
+    test('applies safe defaults for entirely missing config', function (): void {
         $s = Settings::fromArray([]);
 
         expect($s->sources)->toBe([])
@@ -76,17 +77,18 @@ describe('Settings::fromArray()', function () {
             ->and($s->nfdumpProfilesData)->toBe('/var/nfdump/profiles-data')
             ->and($s->nfdumpProfile)->toBe('live')
             ->and($s->nfdumpMaxProcesses)->toBe(1)
-            ->and($s->logPriority)->toBe(LOG_INFO);
+            ->and($s->logPriority)->toBe(LOG_INFO)
+        ;
     });
 
-    test('clamps nfdumpMaxProcesses to minimum 1', function () {
+    test('clamps nfdumpMaxProcesses to minimum 1', function (): void {
         $s = Settings::fromArray(['nfdump' => ['max-processes' => 0]]);
         expect($s->nfdumpMaxProcesses)->toBe(1);
     });
 });
 
-describe('Settings::fromEnv()', function () {
-    test('returns instance with defaults when no env vars set', function () {
+describe('Settings::fromEnv()', function (): void {
+    test('returns instance with defaults when no env vars set', function (): void {
         $s = Settings::fromEnv();
 
         expect($s->datasourceName)->toBe('RRD')
@@ -94,10 +96,11 @@ describe('Settings::fromEnv()', function () {
             ->and($s->nfdumpBinary)->toBe('/usr/local/nfdump/bin/nfdump')
             ->and($s->nfdumpMaxProcesses)->toBeGreaterThanOrEqual(1)
             ->and($s->sources)->toBe([])
-            ->and($s->ports)->toBe([]);
+            ->and($s->ports)->toBe([])
+        ;
     });
 
-    test('parses NFSEN_SOURCES as comma-separated list', function () {
+    test('parses NFSEN_SOURCES as comma-separated list', function (): void {
         putenv('NFSEN_SOURCES=gw1,gw2, mailserver ');
         $s = Settings::fromEnv();
         putenv('NFSEN_SOURCES');
@@ -105,7 +108,7 @@ describe('Settings::fromEnv()', function () {
         expect($s->sources)->toBe(['gw1', 'gw2', 'mailserver']);
     });
 
-    test('parses NFSEN_PORTS as comma-separated integers', function () {
+    test('parses NFSEN_PORTS as comma-separated integers', function (): void {
         putenv('NFSEN_PORTS=80,443,22');
         $s = Settings::fromEnv();
         putenv('NFSEN_PORTS');
@@ -113,7 +116,7 @@ describe('Settings::fromEnv()', function () {
         expect($s->ports)->toBe([80, 443, 22]);
     });
 
-    test('parses NFSEN_FILTERS as a JSON array', function () {
+    test('parses NFSEN_FILTERS as a JSON array', function (): void {
         putenv('NFSEN_FILTERS=["proto tcp","dst port 53"]');
         $s = Settings::fromEnv();
         putenv('NFSEN_FILTERS');
@@ -121,7 +124,7 @@ describe('Settings::fromEnv()', function () {
         expect($s->filters)->toBe(['proto tcp', 'dst port 53']);
     });
 
-    test('ignores malformed NFSEN_FILTERS and returns empty array', function () {
+    test('ignores malformed NFSEN_FILTERS and returns empty array', function (): void {
         putenv('NFSEN_FILTERS=not-json');
         $s = Settings::fromEnv();
         putenv('NFSEN_FILTERS');
@@ -129,7 +132,7 @@ describe('Settings::fromEnv()', function () {
         expect($s->filters)->toBe([]);
     });
 
-    test('populates RRD datasource config from env vars', function () {
+    test('populates RRD datasource config from env vars', function (): void {
         putenv('NFSEN_IMPORT_YEARS=7');
         putenv('NFSEN_RRD_PATH=/rrd/data');
         $s = Settings::fromEnv();
@@ -138,17 +141,18 @@ describe('Settings::fromEnv()', function () {
 
         expect($s->importYears)->toBe(7)
             ->and($s->importYears())->toBe(7)
-            ->and($s->datasourceConfig('RRD'))->toBe(['data_path' => '/rrd/data']);
+            ->and($s->datasourceConfig('RRD'))->toBe(['data_path' => '/rrd/data'])
+        ;
     });
 
-    test('RRD datasource config omits data_path when NFSEN_RRD_PATH not set', function () {
+    test('RRD datasource config omits data_path when NFSEN_RRD_PATH not set', function (): void {
         putenv('NFSEN_RRD_PATH');
         $s = Settings::fromEnv();
 
         expect($s->datasourceConfig('RRD'))->toBe([]);
     });
 
-    test('populates VictoriaMetrics datasource config from env vars', function () {
+    test('populates VictoriaMetrics datasource config from env vars', function (): void {
         putenv('VM_HOST=vm.local');
         putenv('VM_PORT=9428');
         $s = Settings::fromEnv();
@@ -157,126 +161,140 @@ describe('Settings::fromEnv()', function () {
 
         expect($s->datasourceConfig('VictoriaMetrics')['host'])->toBe('vm.local')
             ->and($s->datasourceConfig('VictoriaMetrics')['port'])->toBe(9428)
-            ->and($s->datasourceConfig('VictoriaMetrics'))->not->toHaveKey('import_years');
+            ->and($s->datasourceConfig('VictoriaMetrics'))->not->toHaveKey('import_years')
+        ;
     });
 });
 
-describe('Settings with…() fluent mutators', function () {
-    test('with…() returns new instance without mutating original', function () {
+describe('Settings with…() fluent mutators', function (): void {
+    test('with…() returns new instance without mutating original', function (): void {
         $original = Settings::fromArray([]);
         $modified = $original->withSources(['src1'])->withPorts([22, 80]);
 
         expect($original->sources)->toBe([])
             ->and($original->ports)->toBe([])
             ->and($modified->sources)->toBe(['src1'])
-            ->and($modified->ports)->toBe([22, 80]);
+            ->and($modified->ports)->toBe([22, 80])
+        ;
     });
 
-    test('withNfdumpMaxProcesses clamps to minimum 1', function () {
+    test('withNfdumpMaxProcesses clamps to minimum 1', function (): void {
         $s = Settings::fromArray([])->withNfdumpMaxProcesses(0);
         expect($s->nfdumpMaxProcesses)->toBe(1);
     });
 
-    test('withDatasourceConfig stores and returns config sub-array', function () {
+    test('withDatasourceConfig stores and returns config sub-array', function (): void {
         $s = Settings::fromArray([])
             ->withDatasourceName('RRD')
-            ->withDatasourceConfig('RRD', ['import_years' => 7, 'data_path' => '/rrd']);
+            ->withDatasourceConfig('RRD', ['import_years' => 7, 'data_path' => '/rrd'])
+        ;
 
         expect($s->datasourceConfig('RRD'))->toBe(['import_years' => 7, 'data_path' => '/rrd']);
     });
 
-    test('each with…() method is fluent and chainable', function () {
+    test('each with…() method is fluent and chainable', function (): void {
         $s = Settings::fromArray([])
             ->withSources(['a'])
             ->withFilters(['proto tcp'])
             ->withLogPriority(LOG_WARNING)
-            ->withNfdumpProfile('live2');
+            ->withNfdumpProfile('live2')
+        ;
 
         expect($s->sources)->toBe(['a'])
             ->and($s->filters)->toBe(['proto tcp'])
             ->and($s->logPriority)->toBe(LOG_WARNING)
-            ->and($s->nfdumpProfile)->toBe('live2');
+            ->and($s->nfdumpProfile)->toBe('live2')
+        ;
     });
 });
 
-describe('Settings computed methods', function () {
-    test('datasourceClass() returns correct FQN for known datasources', function () {
+describe('Settings computed methods', function (): void {
+    test('datasourceClass() returns correct FQN for known datasources', function (): void {
         expect(Settings::fromArray(['general' => ['db' => 'RRD']])->datasourceClass())
-            ->toBe('mbolli\\nfsen_ng\\datasources\\Rrd');
+            ->toBe('mbolli\\nfsen_ng\\datasources\\Rrd')
+        ;
 
         expect(Settings::fromArray(['general' => ['db' => 'VictoriaMetrics']])->datasourceClass())
-            ->toBe('mbolli\\nfsen_ng\\datasources\\VictoriaMetrics');
+            ->toBe('mbolli\\nfsen_ng\\datasources\\VictoriaMetrics')
+        ;
     });
 
-    test('datasourceClass() is case-insensitive', function () {
+    test('datasourceClass() is case-insensitive', function (): void {
         expect(Settings::fromArray(['general' => ['db' => 'rrd']])->datasourceClass())
-            ->toBe('mbolli\\nfsen_ng\\datasources\\Rrd');
+            ->toBe('mbolli\\nfsen_ng\\datasources\\Rrd')
+        ;
     });
 
-    test('datasourceClass() throws for unknown datasource', function () {
+    test('datasourceClass() throws for unknown datasource', function (): void {
         expect(fn () => Settings::fromArray(['general' => ['db' => 'MySQL']])->datasourceClass())
-            ->toThrow(\InvalidArgumentException::class);
+            ->toThrow(InvalidArgumentException::class)
+        ;
     });
 
-    test('processorClass() returns correct FQN', function () {
+    test('processorClass() returns correct FQN', function (): void {
         expect(Settings::fromArray([])->processorClass())
-            ->toBe('mbolli\\nfsen_ng\\processor\\Nfdump');
+            ->toBe('mbolli\\nfsen_ng\\processor\\Nfdump')
+        ;
     });
 
-    test('processorClass() throws for unknown processor', function () {
+    test('processorClass() throws for unknown processor', function (): void {
         expect(fn () => Settings::fromArray(['general' => ['processor' => 'Unknown']])->processorClass())
-            ->toThrow(\InvalidArgumentException::class);
+            ->toThrow(InvalidArgumentException::class)
+        ;
     });
 
-    test('importYears() returns configured value for active datasource', function () {
+    test('importYears() returns configured value for active datasource', function (): void {
         $s = Settings::fromArray([
             'general' => ['db' => 'RRD'],
-            'db'      => ['RRD' => ['import_years' => 7]],
+            'db' => ['RRD' => ['import_years' => 7]],
         ]);
 
         expect($s->importYears)->toBe(7)
-            ->and($s->importYears())->toBe(7);
+            ->and($s->importYears())->toBe(7)
+        ;
     });
 
-    test('importYears() returns default 3 when not configured', function () {
+    test('importYears() returns default 3 when not configured', function (): void {
         $s = Settings::fromArray(['general' => ['db' => 'RRD']]);
         expect($s->importYears)->toBe(3);
     });
 
-    test('importYears is clamped to minimum 1', function () {
+    test('importYears is clamped to minimum 1', function (): void {
         $s = Settings::fromArray([
             'general' => ['db' => 'RRD'],
-            'db'      => ['RRD' => ['import_years' => 0]],
+            'db' => ['RRD' => ['import_years' => 0]],
         ]);
         expect($s->importYears)->toBe(1);
     });
 
-    test('datasourceConfig() returns empty array for unknown datasource', function () {
+    test('datasourceConfig() returns empty array for unknown datasource', function (): void {
         $s = Settings::fromArray([]);
         expect($s->datasourceConfig('Nonexistent'))->toBe([]);
     });
 });
 
-describe('Settings static helpers', function () {
-    test('logLevelFromString() converts known names', function () {
+describe('Settings static helpers', function (): void {
+    test('logLevelFromString() converts known names', function (): void {
         expect(Settings::logLevelFromString('DEBUG'))->toBe(LOG_DEBUG)
             ->and(Settings::logLevelFromString('info'))->toBe(LOG_INFO)
             ->and(Settings::logLevelFromString('LOG_WARNING'))->toBe(LOG_WARNING)
-            ->and(Settings::logLevelFromString('ERROR'))->toBe(LOG_ERR);
+            ->and(Settings::logLevelFromString('ERROR'))->toBe(LOG_ERR)
+        ;
     });
 
-    test('logLevelFromString() returns LOG_INFO for unknown name', function () {
+    test('logLevelFromString() returns LOG_INFO for unknown name', function (): void {
         expect(Settings::logLevelFromString('NONSENSE'))->toBe(LOG_INFO);
     });
 
-    test('logLevelToString() converts known constants', function () {
+    test('logLevelToString() converts known constants', function (): void {
         expect(Settings::logLevelToString(LOG_DEBUG))->toBe('debug')
             ->and(Settings::logLevelToString(LOG_INFO))->toBe('info')
             ->and(Settings::logLevelToString(LOG_WARNING))->toBe('warning')
-            ->and(Settings::logLevelToString(LOG_ERR))->toBe('error');
+            ->and(Settings::logLevelToString(LOG_ERR))->toBe('error')
+        ;
     });
 
-    test('logLevelToString() returns "info" for unknown value', function () {
+    test('logLevelToString() returns "info" for unknown value', function (): void {
         expect(Settings::logLevelToString(999))->toBe('info');
     });
 });

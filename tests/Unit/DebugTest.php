@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use mbolli\nfsen_ng\common\Debug;
 
-describe('Debug', function () {
-    beforeEach(function () {
+describe('Debug', function (): void {
+    beforeEach(function (): void {
         // Reset the singleton instance before each test
         $reflection = new ReflectionClass(Debug::class);
         $property = $reflection->getProperty('_instance');
@@ -13,29 +13,29 @@ describe('Debug', function () {
         $property->setValue(null, null);
     });
 
-    describe('singleton pattern', function () {
-        test('getInstance returns Debug instance', function () {
+    describe('singleton pattern', function (): void {
+        test('getInstance returns Debug instance', function (): void {
             $instance = Debug::getInstance();
 
             expect($instance)->toBeInstanceOf(Debug::class);
         });
 
-        test('getInstance returns same instance on multiple calls', function () {
+        test('getInstance returns same instance on multiple calls', function (): void {
             $instance1 = Debug::getInstance();
             $instance2 = Debug::getInstance();
 
             expect($instance1)->toBe($instance2);
         });
 
-        test('can create new instance directly', function () {
+        test('can create new instance directly', function (): void {
             $instance = new Debug();
 
             expect($instance)->toBeInstanceOf(Debug::class);
         });
     });
 
-    describe('stopWatch', function () {
-        test('returns elapsed time as float', function () {
+    describe('stopWatch', function (): void {
+        test('returns elapsed time as float', function (): void {
             $debug = new Debug();
 
             usleep(10000); // 10ms
@@ -43,10 +43,11 @@ describe('Debug', function () {
 
             expect($elapsed)
                 ->toBeFloat()
-                ->toBeGreaterThan(0);
+                ->toBeGreaterThan(0)
+            ;
         });
 
-        test('returns rounded time by default', function () {
+        test('returns rounded time by default', function (): void {
             $debug = new Debug();
 
             $elapsed = $debug->stopWatch();
@@ -62,7 +63,7 @@ describe('Debug', function () {
             }
         });
 
-        test('returns precise time when requested', function () {
+        test('returns precise time when requested', function (): void {
             $debug = new Debug();
 
             usleep(10000); // 10ms
@@ -71,7 +72,7 @@ describe('Debug', function () {
             expect($elapsed)->toBeFloat();
         });
 
-        test('time increases between calls', function () {
+        test('time increases between calls', function (): void {
             $debug = new Debug();
 
             $time1 = $debug->stopWatch();
@@ -82,8 +83,8 @@ describe('Debug', function () {
         });
     });
 
-    describe('setDebug', function () {
-        test('can enable debug mode', function () {
+    describe('setDebug', function (): void {
+        test('can enable debug mode', function (): void {
             $debug = new Debug();
             $debug->setDebug(true);
 
@@ -91,7 +92,7 @@ describe('Debug', function () {
             expect(true)->toBeTrue();
         });
 
-        test('can disable debug mode', function () {
+        test('can disable debug mode', function (): void {
             $debug = new Debug();
             $debug->setDebug(false);
 

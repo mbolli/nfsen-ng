@@ -7,6 +7,7 @@ namespace mbolli\nfsen_ng\common;
 use mbolli\nfsen_ng\datasources\Rrd;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\vendor\ProgressBar;
+use OpenSwoole\Coroutine;
 
 class Import {
     private readonly Debug $d;
@@ -86,12 +87,12 @@ class Import {
     }
 
     /**
-     * @param callable(array{file:string,source:string,processed:int,total:int,pct:int,eta:string}):void|null $onProgress
-     *   Optional callback invoked after each successfully written file.
-     * @param callable():void|null $onTick
-     *   Optional callback invoked after each failed/skipped file (for log draining).
-     * @param callable():bool|null $shouldCancel
-     *   Optional callback checked before each file; return true to abort the import.
+     * @param null|callable(array{file:string,source:string,processed:int,total:int,pct:int,eta:string}):void $onProgress
+     *                                                                                                                      Optional callback invoked after each successfully written file
+     * @param null|callable():void                                                                            $onTick
+     *                                                                                                                      Optional callback invoked after each failed/skipped file (for log draining)
+     * @param null|callable():bool                                                                            $shouldCancel
+     *                                                                                                                      Optional callback checked before each file; return true to abort the import
      *
      * @throws \Exception
      */
@@ -190,8 +191,8 @@ class Import {
                     // processed before we loop to the next date. Without this, a long
                     // series of missing directories (date gaps) would never reach the
                     // per-file cancel check in the inner loop.
-                    if (\OpenSwoole\Coroutine::getCid() > 0) {
-                        \OpenSwoole\Coroutine::sleep(0);
+                    if (Coroutine::getCid() > 0) {
+                        Coroutine::sleep(0);
                     }
 
                     if ($shouldCancel !== null && $shouldCancel()) {
@@ -272,12 +273,12 @@ class Import {
                                 $eta = $this->formatEta($etaSecs);
                             }
                             $onProgress([
-                                'file'      => $statsPath,
-                                'source'    => $source,
+                                'file' => $statsPath,
+                                'source' => $source,
                                 'processed' => $processed,
-                                'total'     => $total,
-                                'pct'       => $total > 0 ? min(99, (int) (($processed / $total) * 100)) : 0,
-                                'eta'       => $eta,
+                                'total' => $total,
+                                'pct' => $total > 0 ? min(99, (int) (($processed / $total) * 100)) : 0,
+                                'eta' => $eta,
                             ]);
                         }
                     } catch (\Exception $e) {
@@ -298,22 +299,6 @@ class Import {
         if ($this->cli === true && $this->quiet === false) {
             echo ProgressBar::finish();
         }
-    }
-
-    private function formatEta(int $seconds): string {
-        if ($seconds < 60) {
-            return "~{$seconds}s";
-        }
-        if ($seconds < 3600) {
-            $m = (int) ($seconds / 60);
-            $s = $seconds % 60;
-
-            return "~{$m}m {$s}s";
-        }
-        $h = (int) ($seconds / 3600);
-        $m = (int) (($seconds % 3600) / 60);
-
-        return "~{$h}h {$m}m";
     }
 
     /**
@@ -395,6 +380,22 @@ class Import {
 
     public function setCheckLastUpdate(bool $checkLastUpdate): void {
         $this->checkLastUpdate = $checkLastUpdate;
+    }
+
+    private function formatEta(int $seconds): string {
+        if ($seconds < 60) {
+            return "~{$seconds}s";
+        }
+        if ($seconds < 3600) {
+            $m = (int) ($seconds / 60);
+            $s = $seconds % 60;
+
+            return "~{$m}m {$s}s";
+        }
+        $h = (int) ($seconds / 3600);
+        $m = (int) (($seconds % 3600) / 60);
+
+        return "~{$h}h {$m}m";
     }
 
     /**

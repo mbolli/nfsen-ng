@@ -21,28 +21,28 @@ namespace mbolli\nfsen_ng\common;
 final class Settings {
     // ─── Log-level name → PHP LOG_* constant map ─────────────────────────────
     private const LOG_LEVEL_MAP = [
-        'LOG_EMERG'   => \LOG_EMERG,
-        'LOG_ALERT'   => \LOG_ALERT,
-        'LOG_CRIT'    => \LOG_CRIT,
-        'LOG_ERR'     => \LOG_ERR,
-        'LOG_WARNING' => \LOG_WARNING,
-        'LOG_NOTICE'  => \LOG_NOTICE,
-        'LOG_INFO'    => \LOG_INFO,
-        'LOG_DEBUG'   => \LOG_DEBUG,
-        'EMERG'       => \LOG_EMERG,
-        'ALERT'       => \LOG_ALERT,
-        'CRIT'        => \LOG_CRIT,
-        'ERR'         => \LOG_ERR,
-        'ERROR'       => \LOG_ERR,
-        'WARNING'     => \LOG_WARNING,
-        'NOTICE'      => \LOG_NOTICE,
-        'INFO'        => \LOG_INFO,
-        'DEBUG'       => \LOG_DEBUG,
+        'LOG_EMERG' => LOG_EMERG,
+        'LOG_ALERT' => LOG_ALERT,
+        'LOG_CRIT' => LOG_CRIT,
+        'LOG_ERR' => LOG_ERR,
+        'LOG_WARNING' => LOG_WARNING,
+        'LOG_NOTICE' => LOG_NOTICE,
+        'LOG_INFO' => LOG_INFO,
+        'LOG_DEBUG' => LOG_DEBUG,
+        'EMERG' => LOG_EMERG,
+        'ALERT' => LOG_ALERT,
+        'CRIT' => LOG_CRIT,
+        'ERR' => LOG_ERR,
+        'ERROR' => LOG_ERR,
+        'WARNING' => LOG_WARNING,
+        'NOTICE' => LOG_NOTICE,
+        'INFO' => LOG_INFO,
+        'DEBUG' => LOG_DEBUG,
     ];
 
     // ─── Datasource class name map ────────────────────────────────────────────
     private const DATASOURCE_MAP = [
-        'rrd'             => 'mbolli\\nfsen_ng\\datasources\\Rrd',
+        'rrd' => 'mbolli\\nfsen_ng\\datasources\\Rrd',
         'victoriametrics' => 'mbolli\\nfsen_ng\\datasources\\VictoriaMetrics',
     ];
 
@@ -52,12 +52,12 @@ final class Settings {
     ];
 
     /**
-     * @param string[]             $sources           Configured NetFlow source names
-     * @param int[]                $ports             Configured port numbers
-     * @param string[]             $filters           Saved nfdump filter expressions
+     * @param string[]             $sources               Configured NetFlow source names
+     * @param int[]                $ports                 Configured port numbers
+     * @param string[]             $filters               Saved nfdump filter expressions
      * @param string[]             $defaultGraphProtocols Default graph protocols
-     * @param int                  $importYears       How many years of data to import/retain (shared by all datasources)
-     * @param array<string, mixed> $datasourceConfigs Raw datasource config sub-arrays keyed by name
+     * @param int                  $importYears           How many years of data to import/retain (shared by all datasources)
+     * @param array<string, mixed> $datasourceConfigs     Raw datasource config sub-arrays keyed by name
      */
     private function __construct(
         public private(set) array $sources,
@@ -84,9 +84,9 @@ final class Settings {
 
     /** Build from the raw `$nfsen_config` array loaded from settings.php. */
     public static function fromArray(array $raw): self {
-        $logPriority    = (int) ($raw['log']['priority'] ?? \LOG_INFO);
+        $logPriority = (int) ($raw['log']['priority'] ?? LOG_INFO);
         $datasourceName = (string) ($raw['general']['db'] ?? 'RRD');
-        $importYears    = (int) ($raw['db'][$datasourceName]['import_years'] ?? 3);
+        $importYears = (int) ($raw['db'][$datasourceName]['import_years'] ?? 3);
 
         // Env-var override for log level — applied at construction time
         $envLevel = getenv('NFSEN_LOG_LEVEL');
@@ -121,8 +121,8 @@ final class Settings {
 
     /** Build from environment variables only — the standard path for Docker deployments. */
     public static function fromEnv(): self {
-        $logPriority = \LOG_INFO;
-        $envLevel    = getenv('NFSEN_LOG_LEVEL');
+        $logPriority = LOG_INFO;
+        $envLevel = getenv('NFSEN_LOG_LEVEL');
         if ($envLevel !== false && $envLevel !== '') {
             $mapped = self::LOG_LEVEL_MAP[strtoupper($envLevel)] ?? null;
             if ($mapped !== null) {
@@ -131,14 +131,14 @@ final class Settings {
         }
 
         // NFSEN_SOURCES — comma-separated source names, e.g. "gw1,gw2,mailserver"
-        $sources    = [];
+        $sources = [];
         $sourcesEnv = getenv('NFSEN_SOURCES');
         if ($sourcesEnv !== false && $sourcesEnv !== '') {
             $sources = array_values(array_filter(array_map('trim', explode(',', $sourcesEnv))));
         }
 
         // NFSEN_PORTS — comma-separated port numbers, e.g. "80,443,22"
-        $ports    = [];
+        $ports = [];
         $portsEnv = getenv('NFSEN_PORTS');
         if ($portsEnv !== false && $portsEnv !== '') {
             $ports = array_values(array_filter(array_map('intval', array_map('trim', explode(',', $portsEnv)))));
@@ -146,7 +146,7 @@ final class Settings {
 
         // NFSEN_FILTERS — JSON array of nfdump filter strings
         // e.g. '["proto tcp","dst port 80"]'
-        $filters    = [];
+        $filters = [];
         $filtersEnv = getenv('NFSEN_FILTERS');
         if ($filtersEnv !== false && $filtersEnv !== '') {
             $decoded = json_decode($filtersEnv, true);
@@ -158,7 +158,7 @@ final class Settings {
         // Datasource configs — import_years is a shared top-level setting; only store
         // datasource-specific connection details here.
         $rrdConfig = [];
-        $rrdPath   = getenv('NFSEN_RRD_PATH');
+        $rrdPath = getenv('NFSEN_RRD_PATH');
         if ($rrdPath !== false && $rrdPath !== '') {
             $rrdConfig['data_path'] = $rrdPath;
         }
@@ -201,7 +201,7 @@ final class Settings {
      * @throws \InvalidArgumentException for unknown datasource names
      */
     public function datasourceClass(): string {
-        $key   = strtolower($this->datasourceName);
+        $key = strtolower($this->datasourceName);
         $class = self::DATASOURCE_MAP[$key] ?? null;
         if ($class === null) {
             throw new \InvalidArgumentException("Unknown datasource '{$key}'. Known: " . implode(', ', array_keys(self::DATASOURCE_MAP)));
@@ -216,7 +216,7 @@ final class Settings {
      * @throws \InvalidArgumentException for unknown processor names
      */
     public function processorClass(): string {
-        $key   = strtolower($this->processorName);
+        $key = strtolower($this->processorName);
         $class = self::PROCESSOR_MAP[$key] ?? null;
         if ($class === null) {
             throw new \InvalidArgumentException("Unknown processor '{$key}'. Known: " . implode(', ', array_keys(self::PROCESSOR_MAP)));
@@ -246,7 +246,7 @@ final class Settings {
 
     /** @param string[] $sources */
     public function withSources(array $sources): self {
-        $clone          = clone $this;
+        $clone = clone $this;
         $clone->sources = $sources;
 
         return $clone;
@@ -254,7 +254,7 @@ final class Settings {
 
     /** @param int[] $ports */
     public function withPorts(array $ports): self {
-        $clone        = clone $this;
+        $clone = clone $this;
         $clone->ports = $ports;
 
         return $clone;
@@ -262,42 +262,42 @@ final class Settings {
 
     /** @param string[] $filters */
     public function withFilters(array $filters): self {
-        $clone          = clone $this;
+        $clone = clone $this;
         $clone->filters = $filters;
 
         return $clone;
     }
 
     public function withDatasourceName(string $name): self {
-        $clone                 = clone $this;
+        $clone = clone $this;
         $clone->datasourceName = $name;
 
         return $clone;
     }
 
     public function withProcessorName(string $name): self {
-        $clone                = clone $this;
+        $clone = clone $this;
         $clone->processorName = $name;
 
         return $clone;
     }
 
     public function withDefaultView(string $view): self {
-        $clone              = clone $this;
+        $clone = clone $this;
         $clone->defaultView = $view;
 
         return $clone;
     }
 
     public function withDefaultGraphDisplay(string $display): self {
-        $clone                     = clone $this;
+        $clone = clone $this;
         $clone->defaultGraphDisplay = $display;
 
         return $clone;
     }
 
     public function withDefaultGraphDatatype(string $datatype): self {
-        $clone                      = clone $this;
+        $clone = clone $this;
         $clone->defaultGraphDatatype = $datatype;
 
         return $clone;
@@ -305,63 +305,63 @@ final class Settings {
 
     /** @param string[] $protocols */
     public function withDefaultGraphProtocols(array $protocols): self {
-        $clone                        = clone $this;
+        $clone = clone $this;
         $clone->defaultGraphProtocols = $protocols;
 
         return $clone;
     }
 
     public function withDefaultFlowLimit(int $limit): self {
-        $clone                   = clone $this;
+        $clone = clone $this;
         $clone->defaultFlowLimit = $limit;
 
         return $clone;
     }
 
     public function withDefaultStatsOrderBy(string $orderBy): self {
-        $clone                      = clone $this;
+        $clone = clone $this;
         $clone->defaultStatsOrderBy = $orderBy;
 
         return $clone;
     }
 
     public function withNfdumpBinary(string $binary): self {
-        $clone               = clone $this;
+        $clone = clone $this;
         $clone->nfdumpBinary = $binary;
 
         return $clone;
     }
 
     public function withNfdumpProfilesData(string $path): self {
-        $clone                    = clone $this;
+        $clone = clone $this;
         $clone->nfdumpProfilesData = $path;
 
         return $clone;
     }
 
     public function withNfdumpProfile(string $profile): self {
-        $clone                = clone $this;
+        $clone = clone $this;
         $clone->nfdumpProfile = $profile;
 
         return $clone;
     }
 
     public function withNfdumpMaxProcesses(int $max): self {
-        $clone                    = clone $this;
+        $clone = clone $this;
         $clone->nfdumpMaxProcesses = max(1, $max);
 
         return $clone;
     }
 
     public function withImportYears(int $years): self {
-        $clone              = clone $this;
+        $clone = clone $this;
         $clone->importYears = max(1, $years);
 
         return $clone;
     }
 
     public function withLogPriority(int $priority): self {
-        $clone              = clone $this;
+        $clone = clone $this;
         $clone->logPriority = $priority;
 
         return $clone;
@@ -369,8 +369,8 @@ final class Settings {
 
     /** @param array<string, mixed> $config */
     public function withDatasourceConfig(string $name, array $config): self {
-        $clone                            = clone $this;
-        $clone->datasourceConfigs[$name]  = $config;
+        $clone = clone $this;
+        $clone->datasourceConfigs[$name] = $config;
 
         return $clone;
     }
@@ -379,20 +379,20 @@ final class Settings {
 
     /** Convert a log-level name string to a PHP LOG_* constant. Returns LOG_INFO for unknown values. */
     public static function logLevelFromString(string $name): int {
-        return self::LOG_LEVEL_MAP[strtoupper($name)] ?? \LOG_INFO;
+        return self::LOG_LEVEL_MAP[strtoupper($name)] ?? LOG_INFO;
     }
 
     /** Convert a PHP LOG_* constant back to a lower-case string (e.g. "debug"). */
     public static function logLevelToString(int $priority): string {
         $flip = array_flip([
-            'emerg'   => \LOG_EMERG,
-            'alert'   => \LOG_ALERT,
-            'crit'    => \LOG_CRIT,
-            'error'   => \LOG_ERR,
-            'warning' => \LOG_WARNING,
-            'notice'  => \LOG_NOTICE,
-            'info'    => \LOG_INFO,
-            'debug'   => \LOG_DEBUG,
+            'emerg' => LOG_EMERG,
+            'alert' => LOG_ALERT,
+            'crit' => LOG_CRIT,
+            'error' => LOG_ERR,
+            'warning' => LOG_WARNING,
+            'notice' => LOG_NOTICE,
+            'info' => LOG_INFO,
+            'debug' => LOG_DEBUG,
         ]);
 
         return $flip[$priority] ?? 'info';

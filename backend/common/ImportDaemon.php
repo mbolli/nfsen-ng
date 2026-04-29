@@ -19,7 +19,7 @@ namespace mbolli\nfsen_ng\common;
 class ImportDaemon {
     private readonly Debug $debug;
 
-    /** @var resource|false inotify file descriptor */
+    /** @var false|resource inotify file descriptor */
     private mixed $inotify = false;
 
     /** @var array<string, array{wd: int, source: string}> path → watch info */
@@ -66,7 +66,7 @@ class ImportDaemon {
 
     /** Number of directory paths currently watched by inotify. */
     public function getWatchCount(): int {
-        return count($this->watches);
+        return \count($this->watches);
     }
 
     /** Unix timestamp of the most recent inotify-triggered import, 0 if none. */
@@ -85,6 +85,7 @@ class ImportDaemon {
      */
     public function initialImport(?callable $onProgress = null, ?callable $shouldCancel = null): void {
         $this->lock();
+
         try {
             $importYears = Config::$settings->importYears();
 
@@ -134,7 +135,7 @@ class ImportDaemon {
     /**
      * Process one inotify poll tick. Call this from $app->setInterval(..., 1000).
      *
-     * @param callable $onImportDone Invoked after each successfully imported file.
+     * @param callable $onImportDone invoked after each successfully imported file
      */
     public function pollOnce(callable $onImportDone): void {
         if ($this->inotify === false) {
@@ -153,7 +154,7 @@ class ImportDaemon {
         $events = @inotify_read($this->inotify);
 
         if ($events) {
-            $this->debug->log('ImportDaemon: received ' . count($events) . ' inotify event(s)', LOG_DEBUG);
+            $this->debug->log('ImportDaemon: received ' . \count($events) . ' inotify event(s)', LOG_DEBUG);
 
             foreach ($events as $event) {
                 $this->handleEvent($event, $onImportDone);
@@ -162,7 +163,7 @@ class ImportDaemon {
 
         // Refresh watches for today/tomorrow every hour, or immediately when
         // no directories are watched yet (e.g. today's dir appeared after startup).
-        if (count($this->watches) === 0 || time() - $this->lastPathUpdate >= 3600) {
+        if (\count($this->watches) === 0 || time() - $this->lastPathUpdate >= 3600) {
             $this->debug->log('ImportDaemon: refreshing inotify watches', LOG_DEBUG);
             $this->addCurrentPaths();
             $this->lastPathUpdate = time();
@@ -173,7 +174,7 @@ class ImportDaemon {
 
     private function initWatches(): void {
         $inotify = @inotify_init();
-        if (!is_resource($inotify)) {
+        if (!\is_resource($inotify)) {
             $error = error_get_last();
             $this->debug->log('ImportDaemon: failed to init inotify: ' . ($error['message'] ?? 'unknown'), LOG_ERR);
 
@@ -185,7 +186,7 @@ class ImportDaemon {
         $this->lastPathUpdate = time();
 
         $this->addCurrentPaths();
-        $this->debug->log('ImportDaemon: inotify watches ready (' . count($this->watches) . ' dirs)', LOG_INFO);
+        $this->debug->log('ImportDaemon: inotify watches ready (' . \count($this->watches) . ' dirs)', LOG_INFO);
     }
 
     private function addCurrentPaths(): void {
@@ -252,6 +253,7 @@ class ImportDaemon {
             if ($info['wd'] === $event['wd']) {
                 $eventPath = $path;
                 $eventSource = $info['source'];
+
                 break;
             }
         }
@@ -270,8 +272,8 @@ class ImportDaemon {
         $this->processedFiles[$fileKey] = time();
 
         // Trim dedup cache to avoid unbounded growth
-        if (count($this->processedFiles) > 100) {
-            $this->processedFiles = array_slice($this->processedFiles, -50, 50, true);
+        if (\count($this->processedFiles) > 100) {
+            $this->processedFiles = \array_slice($this->processedFiles, -50, 50, true);
         }
 
         $this->debug->log("ImportDaemon: new file {$filename} (source: {$eventSource})", LOG_INFO);

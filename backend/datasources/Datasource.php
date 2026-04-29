@@ -106,7 +106,8 @@ interface Datasource {
      *
      * @param string   $group   Health check group label (e.g. 'RRD Storage')
      * @param string[] $sources Configured source names
-     * @return list<array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}>
+     *
+     * @return list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}>
      */
     public function healthChecks(string $group, array $sources): array;
 }

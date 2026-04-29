@@ -239,6 +239,10 @@ $app->page('/', function (Context $c) use ($app): void {
     // It is initialised client-side via data-signals in the template; no server registration.
     $datestart = $c->signal(time() - 86400, 'datestart', clientWritable: true);
     $dateend = $c->signal(time(), 'dateend', clientWritable: true);
+    // Actual data range — derived from RRD first/last timestamps, updated on every render.
+    // Server-owned (never client-writable), used to bound the date-range slider.
+    $dataRangeMin = $c->signal(time() - Config::$settings->importYears * 365 * 86400, 'data_range_min');
+    $dataRangeMax = $c->signal(time(), 'data_range_max');
     $error = $c->signal($fatalError, '_error');
 
     // Graph filter signals (client-writable — filter UI updates these)
@@ -438,6 +442,35 @@ $app->page('/', function (Context $c) use ($app): void {
         }
 
         return $count;
+    };
+
+    // ── Helper: update $dataRangeMin / $dataRangeMax from actual RRD boundaries ──
+    $updateDataRange = static function () use ($dataRangeMin, $dataRangeMax): void {
+        $sources = Config::$settings->sources;
+        if (empty($sources)) {
+            return;
+        }
+
+        $fallbackMin = time() - Config::$settings->importYears * 365 * 86400;
+        $firsts = [];
+        $lasts = [];
+
+        foreach ($sources as $source) {
+            try {
+                [$first, $last] = Config::$db->date_boundaries($source);
+                if ($first > 0) {
+                    $firsts[] = $first;
+                }
+                if ($last > 0) {
+                    $lasts[] = $last;
+                }
+            } catch (Throwable) {
+                // RRD may not exist yet — skip
+            }
+        }
+
+        $dataRangeMin->setValue(empty($firsts) ? $fallbackMin : min($firsts), broadcast: false);
+        $dataRangeMax->setValue(empty($lasts) ? time() : max($lasts), broadcast: false);
     };
 
     // ── Helper: build an nfsen-toast HTML snippet ────────────────────────────
@@ -989,6 +1022,9 @@ $app->page('/', function (Context $c) use ($app): void {
         $fetchGraphData,
         $datestart,
         $dateend,
+        $dataRangeMin,
+        $dataRangeMax,
+        $updateDataRange,
         $error,
         $graphDisplay,
         $graphSources,
@@ -1076,6 +1112,7 @@ $app->page('/', function (Context $c) use ($app): void {
         // Between intervals, reuse the last cached result so chart and timestamps stay visible.
         $now = time();
         if (!$hasFatalError && (!$isImporting || ($now - $lastGraphFetch) >= 10)) {
+            $updateDataRange();
             $cachedGraphData = json_encode($fetchGraphData(), JSON_THROW_ON_ERROR);
             $lastGraphFetch = $now;
 
@@ -1154,6 +1191,8 @@ $app->page('/', function (Context $c) use ($app): void {
             // Date range
             'datestart' => $datestart,
             'dateend' => $dateend,
+            'dataRangeMin' => $dataRangeMin,
+            'dataRangeMax' => $dataRangeMax,
             // Error
             'error' => $error,
             // Graph filters

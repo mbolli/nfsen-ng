@@ -11,6 +11,10 @@ use mbolli\nfsen_ng\datasources\VictoriaMetrics;
 /**
  * Subclass that replaces HTTP I/O with in-memory stubs so every test runs
  * entirely offline and without curl.
+ *
+ * @internal
+ *
+ * @coversNothing
  */
 class VictoriaMetricsTest extends VictoriaMetrics {
     /** @var list<string> */
@@ -25,7 +29,7 @@ class VictoriaMetricsTest extends VictoriaMetrics {
     /** @var list<string> Optional queue of responses for sequential calls; falls back to nextGetResponse */
     public array $getResponseQueue = [];
 
-    protected function httpGet(string $url): string {
+    protected function httpGet(string $url, int $timeout = 30): string {
         $this->capturedGetUrls[] = $url;
 
         if (!empty($this->getResponseQueue)) {

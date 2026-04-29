@@ -3,24 +3,22 @@
     datestart / dateend are server-registered signals; bind() emits the correct
     context-scoped data-bind attribute so Datastar sends them back on actions.
 
-    importYears comes from the NFSEN_IMPORT_YEARS env var (default 3).
+    dataRangeMin / dataRangeMax are server-owned signals updated from actual RRD
+    first/last timestamps so the slider is bounded to real data instead of a
+    fixed importYears window.
 #}
-{% set nowMs     = 'new Date().getTime()' %}
-{% set rangeMs   = importYears ~ ' * 365 * 24 * 60 * 60 * 1000' %}
-{% set minMs     = (("now - " ~ importYears ~ " years")|date('U')) ~ '000' %}
 {% set fromMs    = ("now - 1 day"|date('U')) ~ '000' %}
-{% set maxMs     = "now"|date('U') ~ '000' %}
+{% set nowMs     = "now"|date('U') ~ '000' %}
 
 <div class="mb-3">
     <nfsen-daterange
         id="dateRangeSlider"
         data-ignore-morph
-        data-min="{{ minMs }}"
-        data-max="{{ maxMs }}"
+        data-min="{{ dataRangeMin.int() * 1000 }}"
+        data-max="{{ dataRangeMax.int() * 1000 }}"
         data-from="{{ fromMs }}"
-        data-to="{{ maxMs }}"
+        data-to="{{ nowMs }}"
         data-ref="_daterangeWidget"
-        data-on-interval__duration.60s="el.dataset.min = new Date().getTime() - {{ rangeMs }}; el.dataset.max = new Date().getTime();"
         data-on:range-change="${{ datestart.id() }} = Math.floor(evt.detail.from / 1000); ${{ dateend.id() }} = Math.floor(evt.detail.to / 1000); el.dispatchEvent(new Event('change', { bubbles: true }));">
     </nfsen-daterange>
 </div>

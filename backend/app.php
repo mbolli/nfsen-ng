@@ -290,7 +290,6 @@ $app->page('/', function (Context $c) use ($app): void {
     $flowLowerLimit = $c->signal('', 'flows_lower_limit', clientWritable: true);
     $flowUpperLimit = $c->signal('', 'flows_upper_limit', clientWritable: true);
     $flowCount = $c->signal(0, 'flows_count');
-    $flowMessage = $c->signal('', 'flowMessage');
 
     // Stats signals
     $statsFilter = $c->signal('', 'stats_filter', clientWritable: true);
@@ -305,7 +304,6 @@ $app->page('/', function (Context $c) use ($app): void {
     // nfdump -l/-L flags are only valid for line/packed output, not for -s statistics mode.
     $statsLowerLimit = $c->signal('', 'stats_lower_limit', clientWritable: true);
     $statsUpperLimit = $c->signal('', 'stats_upper_limit', clientWritable: true);
-    $statsMessage = $c->signal('', 'statsMessage');
     // nfcapd file count — updated by count-files action and on initial render
     $nfcapdFileCount = $c->signal(0, 'nfcapd_file_count');
 
@@ -342,6 +340,10 @@ $app->page('/', function (Context $c) use ($app): void {
     // These carry large result sets between the action and the view closure.
     $flowTableHtml = '';
     $statsTableHtml = '';
+    // Notifications persist across broadcasts until explicitly dismissed server-side.
+    // Each entry: ['id' => hex_string, 'type' => 'success'|'warning'|'error', 'message' => html_string]
+    $flowNotifications = [];
+    $statsNotifications = [];
 
     // ── Subscribe to import and RRD broadcasts ──────────────────────────────
     // admin:import — live progress pushed from the import coroutine to all admin tabs
@@ -482,7 +484,8 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // ── Helper: build an nfsen-toast HTML snippet ────────────────────────────
     $makeToast = static fn (string $type, string $message, bool $autoDismiss = false): string => sprintf(
-        '<nfsen-toast data-type="%s" data-message="%s"%s></nfsen-toast>',
+        '<nfsen-toast id="toast-%s" data-type="%s" data-message="%s"%s></nfsen-toast>',
+        bin2hex(random_bytes(4)),
         htmlspecialchars($type, ENT_QUOTES),
         htmlspecialchars($message, ENT_QUOTES),
         $autoDismiss ? ' data-auto-dismiss="true"' : ''
@@ -509,7 +512,6 @@ $app->page('/', function (Context $c) use ($app): void {
     // Flow actions — run nfdump, render result table into $flowTableHtml
     $flowAction = $c->action(function (Context $c) use (
         $debug,
-        $makeToast,
         $datestart,
         $dateend,
         $flowFilter,
@@ -526,7 +528,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $flowAggDstIpPrefix,
         $flowOrderByTstart,
         $flowCount,
-        $flowMessage,
+        &$flowNotifications,
         &$flowTableHtml,
         &$ipInfoAction
     ): void {
@@ -603,15 +605,14 @@ $app->page('/', function (Context $c) use ($app): void {
 
             $flowCount->setValue(count($flowData), broadcast: false);
             $elapsed = round(microtime(true) - $time, 3);
-            $cmd = $result['command'] ?? '';
-            $msg = $cmd
-                ? $makeToast('success', "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)")
-                : $makeToast('success', "Flows processed in {$elapsed}s.", autoDismiss: true);
+            $cmd = htmlspecialchars((string) ($result['command'] ?? ''), ENT_QUOTES | ENT_HTML5);
+            $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
+                ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
+                : "Flows processed in {$elapsed}s."]];
 
             if (!empty($result['stderr'])) {
-                $msg .= $makeToast('warning', '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES));
+                $flowNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES | ENT_HTML5)];
             }
-            $flowMessage->setValue($msg, broadcast: false);
 
             $flowTableHtml = Table::generate($flowData, 'flowTable', [
                 'hiddenFields' => [],
@@ -622,7 +623,7 @@ $app->page('/', function (Context $c) use ($app): void {
             ]);
         } catch (Throwable $e) {
             $debug->log('Flow action error: ' . $e->getMessage(), LOG_ERR);
-            $flowMessage->setValue($makeToast('error', 'Error: ' . $e->getMessage()), broadcast: false);
+            $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
             $flowTableHtml = '';
         }
 
@@ -632,7 +633,6 @@ $app->page('/', function (Context $c) use ($app): void {
     // Stats actions
     $statsAction = $c->action(function (Context $c) use (
         $debug,
-        $makeToast,
         $datestart,
         $dateend,
         $statsFilter,
@@ -642,12 +642,13 @@ $app->page('/', function (Context $c) use ($app): void {
         $statsLowerLimit,
         $statsUpperLimit,
         $graphSources,
-        $statsMessage,
+        &$statsNotifications,
         &$statsTableHtml,
         &$ipInfoAction
     ): void {
         $time = microtime(true);
         $forParam = $statsFor->string() . '/' . $statsOrderBy->string();
+        $statsNotifications = [];
 
         try {
             $srcs = $graphSources->array() ?: Config::$settings->sources;
@@ -655,11 +656,10 @@ $app->page('/', function (Context $c) use ($app): void {
             $processor->setOption('-M', implode(':', $srcs));
             $ds = $datestart->int();
             $de = $dateend->int();
-            $windowWarning = '';
             $maxWindow = Config::$settings->maxStatsWindow;
             if ($maxWindow > 0 && ($de - $ds) > $maxWindow) {
                 $ds = $de - $maxWindow;
-                $windowWarning = $makeToast('warning', 'Time window clamped to ' . round($maxWindow / 86400, 1) . ' days (NFSEN_MAX_STATS_WINDOW).');
+                $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => 'Time window clamped to ' . round($maxWindow / 86400, 1) . ' days (NFSEN_MAX_STATS_WINDOW).'];
             }
             $processor->setOption('-R', [$ds, $de]);
             $processor->setOption('-n', $statsCount->int());
@@ -688,16 +688,14 @@ $app->page('/', function (Context $c) use ($app): void {
             }
 
             $elapsed = round(microtime(true) - $time, 3);
-            $cmd = $result['command'] ?? '';
-            $msg = $cmd
-                ? $makeToast('success', "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)")
-                : $makeToast('success', "Statistics processed in {$elapsed}s.", autoDismiss: true);
+            $cmd = htmlspecialchars((string) ($result['command'] ?? ''), ENT_QUOTES | ENT_HTML5);
+            $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
+                ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
+                : "Statistics processed in {$elapsed}s."];
 
             if (!empty($result['stderr'])) {
-                $msg .= $makeToast('warning', '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES));
+                $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES | ENT_HTML5)];
             }
-            $msg .= $windowWarning;
-            $statsMessage->setValue($msg, broadcast: false);
 
             $statsTableHtml = Table::generate($statsData, 'statsTable', [
                 'hiddenFields' => [],
@@ -708,12 +706,24 @@ $app->page('/', function (Context $c) use ($app): void {
             ]);
         } catch (Throwable $e) {
             $debug->log('Stats action error: ' . $e->getMessage(), LOG_ERR);
-            $statsMessage->setValue($makeToast('error', 'Error: ' . $e->getMessage()), broadcast: false);
+            $statsNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
             $statsTableHtml = '';
         }
 
         $c->sync();
     }, 'stats-actions');
+
+    // Dismiss a notification by ID — removes it server-side so subsequent re-renders
+    // (including rrd:live broadcasts) reflect the dismissed state.
+    $dismissNotificationAction = $c->action(function (Context $c) use (&$flowNotifications, &$statsNotifications): void {
+        $id = $c->input('id') ?? '';
+        if (empty($id)) {
+            return;
+        }
+        $flowNotifications = array_values(array_filter($flowNotifications, fn ($n) => $n['id'] !== $id));
+        $statsNotifications = array_values(array_filter($statsNotifications, fn ($n) => $n['id'] !== $id));
+        $c->sync();
+    }, 'dismiss-notification');
 
     // Count nfcapd files — lightweight scan triggered by date/source filter changes
     // in the Flows and Statistics tabs. Only updates $nfcapdFileCount; no heavy work.
@@ -1095,20 +1105,21 @@ $app->page('/', function (Context $c) use ($app): void {
         $flowCount,
         $flowLowerLimit,
         $flowUpperLimit,
-        $flowMessage,
+        &$flowNotifications,
         $statsFilter,
         $statsCount,
         $statsFor,
         $statsOrderBy,
         $statsLowerLimit,
         $statsUpperLimit,
-        $statsMessage,
+        &$statsNotifications,
         $importRunning,
         $confirmRescan,
         $importScanPorts,
         $refreshGraphsAction,
         $flowAction,
         $statsAction,
+        $dismissNotificationAction,
         $triggerImportAction,
         $forceRescanAction,
         $cancelImportAction,
@@ -1271,7 +1282,6 @@ $app->page('/', function (Context $c) use ($app): void {
             'flowCount' => $flowCount,
             'flowLowerLimit' => $flowLowerLimit,
             'flowUpperLimit' => $flowUpperLimit,
-            'flowMessage' => $flowMessage,
             // Stats filter signals
             'statsFilter' => $statsFilter,
             'statsCount' => $statsCount,
@@ -1279,13 +1289,13 @@ $app->page('/', function (Context $c) use ($app): void {
             'statsOrderBy' => $statsOrderBy,
             'statsLowerLimit' => $statsLowerLimit,
             'statsUpperLimit' => $statsUpperLimit,
-            'statsMessage' => $statsMessage,
             // nfcapd file count (for Flows/Statistics tabs)
             'nfcapdFileCount' => $nfcapdFileCount,
             // ── Action URLs ──────────────────────────────────────────────────────────────────
             'action_refreshGraphs' => $refreshGraphsAction->url(),
             'action_flowActions' => $flowAction->url(),
             'action_statsActions' => $statsAction->url(),
+            'action_dismissNotification' => $dismissNotificationAction->url(),
             'action_countFiles' => $countFilesAction->url(),
             'action_triggerImport' => $triggerImportAction->url(),
             'action_forceRescan' => $forceRescanAction->url(),
@@ -1310,9 +1320,9 @@ $app->page('/', function (Context $c) use ($app): void {
             // ── Computed / pre-rendered data ──────────────────────────────
             'graphData' => $graphData,
             'flowTableHtml' => $flowTableHtml,
-            'flowMessageHtml' => $flowMessage->string(),
+            'flowNotifications' => $flowNotifications,
             'statsTableHtml' => $statsTableHtml,
-            'statsMessageHtml' => $statsMessage->string(),
+            'statsNotifications' => $statsNotifications,
             // ── Admin / import ────────────────────────────────────────────
             'importRunning' => $importRunning,
             'confirmRescan' => $confirmRescan,

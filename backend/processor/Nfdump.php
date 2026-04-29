@@ -208,7 +208,7 @@ class Nfdump implements Processor {
             // Check if it looks like JSON - if so, let it through
             $firstChar = $output[0][0] ?? '';
             if ($firstChar !== '{' && $firstChar !== '[') {
-                throw new \Exception('NfDump error: ' . $output[0] . '<br><b>Command:</b> ' . $command);
+                throw new \Exception('NfDump error: ' . $output[0] . '<br><b>Command: </b><code>' . $command . '</code>');
             }
         }
 
@@ -232,7 +232,7 @@ class Nfdump implements Processor {
             foreach ($output as $line) {
                 $trimmed = trim($line);
                 if ($trimmed === 'No matching flows') {
-                    throw new \Exception('NfDump: No matching flows found for the given filter and time range.<br><b>Command:</b> ' . $command);
+                    throw new \Exception('NfDump: No matching flows found for the given filter and time range.<br><b>Command: </b><code>' . $command . '</code>');
                 }
             }
 

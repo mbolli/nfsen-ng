@@ -22,7 +22,14 @@
                         <span class="text-muted small">rows</span>
                     </div>
                 </div>
-                <div id="statsMessage">{{ statsMessageHtml|raw }}</div>
+                <div id="statsMessage">
+                    {% for n in statsNotifications %}
+                    <div class="alert alert-{{ n.type == 'error' ? 'danger' : n.type }} alert-dismissible fade show" role="alert">
+                        {{ n.message|raw }}
+                        <button type="button" class="btn-close" data-on:click="@post('{{ action_dismissNotification }}?id={{ n.id }}')" aria-label="Close"></button>
+                    </div>
+                    {% endfor %}
+                </div>
                 <div id="statsTable">{{ statsTableHtml|raw }}</div>
             </div>
         </div>

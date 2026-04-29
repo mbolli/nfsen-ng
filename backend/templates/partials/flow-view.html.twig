@@ -1,8 +1,8 @@
 {#
     Flow results panel.
-    flowMessageHtml and flowTableHtml are pre-rendered server-side on every sync.
-    The server pushes them as part of the full-page DOM morph — no targeted element
-    patches needed.
+    flowNotifications and flowTableHtml are rendered server-side on every sync.
+    The dismiss button posts back to remove a notification server-side, so
+    broadcasts re-render only the notifications still active on the server.
 #}
 <div class="row" data-signals__ifmissing='{"_flows_queried": false}'>
     <div class="col-12">
@@ -25,7 +25,14 @@
                         <span class="text-muted small">flows</span>
                     </div>
                 </div>
-                <div id="flowMessage">{{ flowMessageHtml|raw }}</div>
+                <div id="flowMessage">
+                    {% for n in flowNotifications %}
+                    <div class="alert alert-{{ n.type == 'error' ? 'danger' : n.type }} alert-dismissible fade show" role="alert">
+                        {{ n.message|raw }}
+                        <button type="button" class="btn-close" data-on:click="@post('{{ action_dismissNotification }}?id={{ n.id }}')" aria-label="Close"></button>
+                    </div>
+                    {% endfor %}
+                </div>
                 <div id="flowTable">{{ flowTableHtml|raw }}</div>
             </div>
         </div>

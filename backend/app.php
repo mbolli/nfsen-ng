@@ -653,7 +653,15 @@ $app->page('/', function (Context $c) use ($app): void {
             $srcs = $graphSources->array() ?: Config::$settings->sources;
             $processor = new Config::$processorClass();
             $processor->setOption('-M', implode(':', $srcs));
-            $processor->setOption('-R', [$datestart->int(), $dateend->int()]);
+            $ds = $datestart->int();
+            $de = $dateend->int();
+            $windowWarning = '';
+            $maxWindow = Config::$settings->maxStatsWindow;
+            if ($maxWindow > 0 && ($de - $ds) > $maxWindow) {
+                $ds = $de - $maxWindow;
+                $windowWarning = $makeToast('warning', 'Time window clamped to ' . round($maxWindow / 86400, 1) . ' days (NFSEN_MAX_STATS_WINDOW).');
+            }
+            $processor->setOption('-R', [$ds, $de]);
             $processor->setOption('-n', $statsCount->int());
             $processor->setOption('-o', 'json');
             $processor->setOption('-s', $forParam);
@@ -688,6 +696,7 @@ $app->page('/', function (Context $c) use ($app): void {
             if (!empty($result['stderr'])) {
                 $msg .= $makeToast('warning', '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES));
             }
+            $msg .= $windowWarning;
             $statsMessage->setValue($msg, broadcast: false);
 
             $statsTableHtml = Table::generate($statsData, 'statsTable', [

@@ -41,6 +41,7 @@ services:
       - NFSEN_NFDUMP_PROFILES=/data/nfsen-ng  # Must match the container-side volume mount path
       # - NFSEN_NFDUMP_PROFILE=live
       # - NFSEN_NFDUMP_MAX_PROCESSES=1
+      # - NFSEN_MAX_STATS_WINDOW=604800   # Max Statistics query window in seconds (default: 0 = unlimited)
 
       # ── RRD storage ──────────────────────────────────────────────────────────
       # - NFSEN_RRD_PATH=/var/nfsen-ng/rrd  # Default: backend/datasources/data

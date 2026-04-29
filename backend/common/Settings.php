@@ -77,6 +77,7 @@ final class Settings {
         public private(set) int $nfdumpMaxProcesses,
         public private(set) int $importYears,
         public private(set) int $logPriority,
+        public private(set) int $maxStatsWindow,
         private array $datasourceConfigs,
     ) {}
 
@@ -115,6 +116,7 @@ final class Settings {
             nfdumpMaxProcesses: max(1, (int) ($raw['nfdump']['max-processes'] ?? 1)),
             importYears: max(1, $importYears),
             logPriority: $logPriority,
+            maxStatsWindow: max(0, (int) ($raw['general']['max_stats_window'] ?? (int) (getenv('NFSEN_MAX_STATS_WINDOW') ?: 0))),
             datasourceConfigs: (array) ($raw['db'] ?? []),
         );
     }
@@ -189,6 +191,7 @@ final class Settings {
             nfdumpMaxProcesses: max(1, (int) (getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 1)),
             importYears: max(1, (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3)),
             logPriority: $logPriority,
+            maxStatsWindow: max(0, (int) (getenv('NFSEN_MAX_STATS_WINDOW') ?: 0)),
             datasourceConfigs: $datasourceConfigs,
         );
     }

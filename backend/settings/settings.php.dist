@@ -57,6 +57,11 @@ $nfsen_config = [
         ],
         'db' => getenv('NFSEN_DATASOURCE') ?: 'RRD',
         'processor' => 'NfDump',
+        // Maximum query time window in seconds for Statistics queries.
+        // Queries spanning a larger window are silently clamped to this value (keeping the end time).
+        // 0 = unlimited (default). Example: 604800 = 7 days.
+        // Can also be set via the NFSEN_MAX_STATS_WINDOW environment variable.
+        'max_stats_window' => (int) (getenv('NFSEN_MAX_STATS_WINDOW') ?: 0),
     ],
     'frontend' => [
         'defaults' => [

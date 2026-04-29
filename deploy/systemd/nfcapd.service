@@ -7,7 +7,7 @@ Documentation=man:nfcapd(1)
 Type=forking
 PIDFile=/var/run/nfcapd.pid
 ExecStartPre=/bin/mkdir -p /var/nfdump/profiles-data/live/all
-ExecStart=/usr/bin/nfcapd -w /var/nfdump/profiles-data/live/all -z -S 1 -p 9995 -P /var/run/nfcapd.pid -T all -D
+ExecStart=/usr/bin/nfcapd -w /var/nfdump/profiles-data/live/all -z=lz4 -S 1 -p 9995 -P /var/run/nfcapd.pid -T all -D
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5s

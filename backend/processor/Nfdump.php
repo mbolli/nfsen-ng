@@ -204,7 +204,12 @@ class Nfdump implements Processor {
 
         // If we only have 1 line of output, it's likely an error message
         // BUT: single-line JSON output is valid (e.g., from -s statistics with -n 1)
+        // "No matching flows" is a normal nfdump output, not a fatal error — return empty decoded.
         if (\count($output) === 1) {
+            if (trim($output[0]) === 'No matching flows') {
+                return ['command' => $command, 'rawOutput' => '', 'decoded' => []];
+            }
+
             // Check if it looks like JSON - if so, let it through
             $firstChar = $output[0][0] ?? '';
             if ($firstChar !== '{' && $firstChar !== '[') {
@@ -228,11 +233,10 @@ class Nfdump implements Processor {
 
         // if output format is JSON, decode and return structured data
         if (isset($this->cfg['format']) && $this->cfg['format'] === 'json' && preg_match('/^[\{|\[]/', $output[0])) {
-            // Check for "No matching flows" error message
+            // Check for "No matching flows" — return empty decoded rather than throwing.
             foreach ($output as $line) {
-                $trimmed = trim($line);
-                if ($trimmed === 'No matching flows') {
-                    throw new \Exception('NfDump: No matching flows found for the given filter and time range.<br><b>Command: </b><code>' . $command . '</code>');
+                if (trim($line) === 'No matching flows') {
+                    return ['command' => $command, 'rawOutput' => '', 'decoded' => []];
                 }
             }
 

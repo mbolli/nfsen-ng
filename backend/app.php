@@ -438,11 +438,12 @@ $app->page('/', function (Context $c) use ($app): void {
                         continue;
                     }
 
-                    try {
-                        $ft = (new DateTime($m[1]))->getTimestamp();
-                    } catch (Exception) {
+                    $dt = DateTime::createFromFormat('YmdHi', $m[1]);
+                    if ($dt === false) {
                         continue;
                     }
+
+                    $ft = $dt->getTimestamp();
                     if ($ft >= $ds && $ft <= $de) {
                         ++$count;
                     }
@@ -651,7 +652,11 @@ $app->page('/', function (Context $c) use ($app): void {
         $statsNotifications = [];
 
         try {
-            $srcs = $graphSources->array() ?: Config::$settings->sources;
+            $srcs = $graphSources->array();
+            if (in_array('any', $srcs, true) || empty($srcs)) {
+                $srcs = Config::$settings->sources;
+            }
+
             $processor = new Config::$processorClass();
             $processor->setOption('-M', implode(':', $srcs));
             $ds = $datestart->int();

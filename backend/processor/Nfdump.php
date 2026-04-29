@@ -426,53 +426,107 @@ class Nfdump implements Processor {
      * @throws \Exception
      */
     public function convert_date_to_path(int $datestart, int $dateend): string {
-        $start = new \DateTime();
-        $end = new \DateTime();
-        $start->setTimestamp((int) $datestart - ($datestart % 300));
-        $end->setTimestamp((int) $dateend - ($dateend % 300));
-        $filestart = $fileend = '-';
-        $filestartexists = false;
-        $fileendexists = false;
-        $sourcepath = $this->cfg['env']['profiles-data'] . \DIRECTORY_SEPARATOR . $this->cfg['env']['profile'] . \DIRECTORY_SEPARATOR;
-        $counter = 0;
+        $startTs = $datestart - ($datestart % 300);
+        $endTs = $dateend - ($dateend % 300);
 
-        // if start file does not exist, increment by 5 minutes and try again
-        while ($filestartexists === false && $counter < 10000) {
-            if ($start >= $end) {
-                throw new \Exception('No nfcapd data files found for the requested time range.');
-            }
+        $sourcepath = $this->cfg['env']['profiles-data']
+            . \DIRECTORY_SEPARATOR
+            . $this->cfg['env']['profile']
+            . \DIRECTORY_SEPARATOR;
+
+        $filestart = '-';
+        $fileend = '-';
+
+        // ── Find start file: iterate day directories forward ──────────────────
+        // O(days) rather than O(5-min-slots): avoids the old 10 000-iteration cap
+        // that caused silent failures when data started months into the range.
+        $cur = (new \DateTime())->setTimestamp($startTs);
+        $endDay = (new \DateTime())->setTimestamp($endTs);
+
+        while ($cur->format('Ymd') <= $endDay->format('Ymd')) {
+            $dayPath = $cur->format('Y/m/d');
+            $found = [];
 
             foreach ($this->cfg['env']['sources'] as $source) {
-                if (file_exists($sourcepath . $source . \DIRECTORY_SEPARATOR . $filestart)) {
-                    $filestartexists = true;
+                $dirPath = $sourcepath . $source . \DIRECTORY_SEPARATOR . $dayPath;
+                if (!is_dir($dirPath)) {
+                    continue;
+                }
+
+                foreach (scandir($dirPath) ?: [] as $file) {
+                    if (!preg_match('/^nfcapd\.(\d{12})$/', (string) $file, $m)) {
+                        continue;
+                    }
+
+                    $dt = \DateTime::createFromFormat('YmdHi', $m[1]);
+                    if ($dt === false) {
+                        continue;
+                    }
+
+                    $fileTs = $dt->getTimestamp();
+                    if ($fileTs >= $startTs) {
+                        $found[] = ['ts' => $fileTs, 'path' => $dayPath . \DIRECTORY_SEPARATOR . $file];
+                    }
                 }
             }
 
-            $pathstart = $start->format('Y/m/d') . \DIRECTORY_SEPARATOR;
-            $filestart = $pathstart . 'nfcapd.' . $start->format('YmdHi');
-            $start->add(new \DateInterval('PT5M'));
-            ++$counter;
-        }
-
-        $counter = 0;
-        // if end file does not exist, subtract by 5 minutes and try again
-        while ($fileendexists === false && $counter < 10000) {
-            if ($end === $start) { // strict comparison won't work
-                $fileend = $filestart;
+            if (!empty($found)) {
+                usort($found, fn ($a, $b) => $a['ts'] <=> $b['ts']);
+                $filestart = $found[0]['path'];
 
                 break;
             }
 
+            $cur->modify('+1 day');
+        }
+
+        if ($filestart === '-') {
+            throw new \Exception('No nfcapd data files found for the requested time range.');
+        }
+
+        // ── Find end file: iterate day directories backward ───────────────────
+        $cur = (new \DateTime())->setTimestamp($endTs);
+        $startDay = (new \DateTime())->setTimestamp($startTs);
+
+        while ($cur->format('Ymd') >= $startDay->format('Ymd')) {
+            $dayPath = $cur->format('Y/m/d');
+            $found = [];
+
             foreach ($this->cfg['env']['sources'] as $source) {
-                if (file_exists($sourcepath . $source . \DIRECTORY_SEPARATOR . $fileend)) {
-                    $fileendexists = true;
+                $dirPath = $sourcepath . $source . \DIRECTORY_SEPARATOR . $dayPath;
+                if (!is_dir($dirPath)) {
+                    continue;
+                }
+
+                foreach (scandir($dirPath) ?: [] as $file) {
+                    if (!preg_match('/^nfcapd\.(\d{12})$/', (string) $file, $m)) {
+                        continue;
+                    }
+
+                    $dt = \DateTime::createFromFormat('YmdHi', $m[1]);
+                    if ($dt === false) {
+                        continue;
+                    }
+
+                    $fileTs = $dt->getTimestamp();
+                    if ($fileTs <= $endTs) {
+                        $found[] = ['ts' => $fileTs, 'path' => $dayPath . \DIRECTORY_SEPARATOR . $file];
+                    }
                 }
             }
 
-            $pathend = $end->format('Y/m/d') . \DIRECTORY_SEPARATOR;
-            $fileend = $pathend . 'nfcapd.' . $end->format('YmdHi');
-            $end->sub(new \DateInterval('PT5M'));
-            ++$counter;
+            if (!empty($found)) {
+                usort($found, fn ($a, $b) => $b['ts'] <=> $a['ts']);
+                $fileend = $found[0]['path'];
+
+                break;
+            }
+
+            $cur->modify('-1 day');
+        }
+
+        if ($fileend === '-') {
+            throw new \Exception('No nfcapd data files found for the requested time range.');
         }
 
         return $filestart . PATH_SEPARATOR . $fileend;

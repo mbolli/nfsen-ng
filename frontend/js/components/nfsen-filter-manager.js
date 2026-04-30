@@ -215,7 +215,8 @@ class NfsenFilterManager extends HTMLElement {
         const textarea = this.getTargetTextarea();
         if (textarea) {
             textarea.value = filterValue;
-            // Trigger change event for any listeners
+            // Dispatch both input (for Datastar data-bind) and change for other listeners
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
             textarea.dispatchEvent(new Event('change', { bubbles: true }));
             // Set delete button disabled state based on whether the filter is global
             const selectedOption = this.querySelector(`option[value="${filterValue}"]`);

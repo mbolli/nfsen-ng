@@ -87,5 +87,19 @@ services:
     command: ["-w", "/data/nfsen-ng/live/all", "-z", "-S", "1", "-T", "all", "-p", "9995"]
     restart: unless-stopped
 
+  # Second nfcapd writing to the 'test' profile (port 9996).
+  # softflowd can mirror to this port: sudo softflowd -i <iface> -n 127.0.0.1:9996 -v 9
+  nfcapd-test:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dev
+    container_name: nfsen-nfcapd-test
+    network_mode: host
+    volumes:
+      - /var/nfdump/profiles-data:/data/nfsen-ng
+    entrypoint: ["/usr/local/nfdump/bin/nfcapd"]
+    command: ["-w", "/data/nfsen-ng/test/all", "-z", "-S", "1", "-T", "all", "-p", "9996"]
+    restart: unless-stopped
+
 # volumes:
 #   rrd-data:  # Uncomment if using separate RRD volume

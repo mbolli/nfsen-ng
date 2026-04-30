@@ -105,6 +105,88 @@ abstract class Config {
     }
 
     /**
+     * Detect available nfdump profiles by scanning the profiles-data directory.
+     * Supports flat profiles (profiles-data/live/source/YYYY/...) and
+     * nested groups (profiles-data/group/subprofile/source/YYYY/...).
+     *
+     * Returns a sorted array of profile name strings, e.g. ['live', 'work', 'group/sub'].
+     * Falls back to ['live'] (the configured default) if the directory is unreadable or empty.
+     *
+     * @return string[]
+     */
+    public static function detectProfiles(): array {
+        $profilesData = self::$settings->nfdumpProfilesData;
+
+        if (!is_dir($profilesData)) {
+            return [self::$settings->nfdumpProfile];
+        }
+
+        $profiles = [];
+
+        foreach (scandir($profilesData) ?: [] as $entry) {
+            if ($entry[0] === '.') {
+                continue;
+            }
+            $entryPath = $profilesData . \DIRECTORY_SEPARATOR . $entry;
+            if (!is_dir($entryPath)) {
+                continue;
+            }
+
+            if (self::dirContainsSources($entryPath)) {
+                // Flat profile: $entry directly contains source dirs with date hierarchy
+                $profiles[] = $entry;
+            } else {
+                // Possibly a group — check each child as a potential sub-profile
+                foreach (scandir($entryPath) ?: [] as $child) {
+                    if ($child[0] === '.') {
+                        continue;
+                    }
+                    $childPath = $entryPath . \DIRECTORY_SEPARATOR . $child;
+                    if (!is_dir($childPath)) {
+                        continue;
+                    }
+                    if (self::dirContainsSources($childPath)) {
+                        $profiles[] = $entry . '/' . $child;
+                    }
+                }
+            }
+        }
+
+        if (empty($profiles)) {
+            return [self::$settings->nfdumpProfile];
+        }
+
+        sort($profiles);
+
+        return $profiles;
+    }
+
+    /**
+     * Return true if $dirPath contains at least one source directory
+     * (a subdirectory that itself contains a 4-digit YYYY subdirectory).
+     */
+    private static function dirContainsSources(string $dirPath): bool {
+        foreach (scandir($dirPath) ?: [] as $child) {
+            if ($child[0] === '.') {
+                continue;
+            }
+            $childPath = $dirPath . \DIRECTORY_SEPARATOR . $child;
+            if (!is_dir($childPath)) {
+                continue;
+            }
+            // If child contains YYYY directories, it looks like a source directory
+            foreach (scandir($childPath) ?: [] as $yyyyCandidate) {
+                if (preg_match('/^\d{4}$/', $yyyyCandidate)
+                    && is_dir($childPath . \DIRECTORY_SEPARATOR . $yyyyCandidate)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Validate that nfcapd files are organized in the expected directory structure.
      * nfsen-ng requires nfcapd files to be organized as: profiles-data/profile/source/YYYY/MM/DD/nfcapd.*.
      *

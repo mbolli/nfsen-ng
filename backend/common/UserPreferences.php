@@ -24,6 +24,7 @@ final class UserPreferences {
         public readonly string $defaultStatsOrderBy,
         public readonly array $filters,
         public readonly int $logPriority,
+        public readonly string $selectedProfile = 'live',
     ) {}
 
     /**
@@ -54,6 +55,7 @@ final class UserPreferences {
             defaultStatsOrderBy: (string) ($data['defaultStatsOrderBy'] ?? 'bytes'),
             filters: array_values(array_filter(array_map('strval', (array) ($data['filters'] ?? [])))),
             logPriority: (int) ($data['logPriority'] ?? LOG_INFO),
+            selectedProfile: (string) ($data['selectedProfile'] ?? 'live'),
         );
     }
 
@@ -111,6 +113,15 @@ final class UserPreferences {
             'defaultStatsOrderBy' => $this->defaultStatsOrderBy,
             'filters' => $this->filters,
             'logPriority' => $this->logPriority,
+            'selectedProfile' => $this->selectedProfile,
         ];
+    }
+
+    /** Return a copy with the selectedProfile changed. */
+    public function withSelectedProfile(string $profile): self {
+        $arr = $this->toArray();
+        $arr['selectedProfile'] = $profile;
+
+        return self::fromArray($arr);
     }
 }

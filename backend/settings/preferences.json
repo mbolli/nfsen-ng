@@ -10,5 +10,6 @@
         "dst port 443",
         "src net 192.168.0.0\/16"
     ],
-    "logPriority": 7
+    "logPriority": 7,
+    "selectedProfile": "test"
 }

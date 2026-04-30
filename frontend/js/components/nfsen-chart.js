@@ -262,8 +262,13 @@ export class NfsenChart extends HTMLElement {
         this.updateSyncButtonState(true);
 
         // Expose zoomed range as attributes
-        this.setAttribute('data-zoom-start', Math.floor(minDate));
-        this.setAttribute('data-zoom-end', Math.floor(maxDate));
+        const from = Math.floor(minDate);
+        const to = Math.floor(maxDate);
+        this.setAttribute('data-zoom-start', from);
+        this.setAttribute('data-zoom-end', to);
+
+        // Notify listeners (e.g. auto-sync slider)
+        this.dispatchEvent(new CustomEvent('graph-zoom', { bubbles: true, detail: { from, to } }));
     }
 
     /**
@@ -304,8 +309,12 @@ export class NfsenChart extends HTMLElement {
                 this.originalEndPan(event, g, context);
             }
 
-            // Enable sync button after panning
+            // Enable sync button after panning and fire zoom event
             this.updateSyncButtonState(true);
+            const [from, to] = g.xAxisRange();
+            this.setAttribute('data-zoom-start', Math.floor(from));
+            this.setAttribute('data-zoom-end', Math.floor(to));
+            this.dispatchEvent(new CustomEvent('graph-zoom', { bubbles: true, detail: { from: Math.floor(from), to: Math.floor(to) } }));
         };
     }
 
@@ -330,6 +339,12 @@ export class NfsenChart extends HTMLElement {
                             this.rangeSelectorActive = false;
                             // Enable sync button after range selector drag
                             this.updateSyncButtonState(true);
+                            if (this.dygraph) {
+                                const [from, to] = this.dygraph.xAxisRange();
+                                this.setAttribute('data-zoom-start', Math.floor(from));
+                                this.setAttribute('data-zoom-end', Math.floor(to));
+                                this.dispatchEvent(new CustomEvent('graph-zoom', { bubbles: true, detail: { from: Math.floor(from), to: Math.floor(to) } }));
+                            }
                         }
                         document.removeEventListener('mouseup', handleMouseUp);
                     };

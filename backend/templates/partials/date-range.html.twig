@@ -19,12 +19,13 @@
         data-from="{{ fromMs }}"
         data-to="{{ nowMs }}"
         data-ref="_daterangeWidget"
-        data-on:range-change="${{ datestart.id() }} = Math.floor(evt.detail.from / 1000); ${{ dateend.id() }} = Math.floor(evt.detail.to / 1000); el.dispatchEvent(new Event('change', { bubbles: true }));">
+        data-on:range-change="${{ datestart.id() }} = Math.floor(evt.detail.from / 1000); ${{ dateend.id() }} = Math.floor(evt.detail.to / 1000); el.dispatchEvent(new Event('change', { bubbles: true }));"
+        data-on:graph-zoom__window__debounce.500ms="$_autoSyncGraph && $_daterangeWidget.updateRange(evt.detail.from, evt.detail.to)">
     </nfsen-daterange>
 </div>
 
 <div class="d-flex justify-content-end gap-2 flex-wrap mb-4 date-range-controls"
-     data-signals='{"_activeDuration": 86400000}'>
+     data-signals__ifmissing='{"_activeDuration": 86400000, "_autoSyncGraph": false}'>
 
     {# Quick-select preset windows #}
     <div class="btn-group" id="date_slot" role="group">
@@ -67,21 +68,26 @@
         </button>
     </div>
 
-    {# Copy graph zoom range back to the date slider (graphs view only) #}
-    <div class="btn-group" id="date_syncing" role="group">
-        <nfsen-tooltip data-ignore-morph text="Sync date range slider with current graph zoom/pan level" placement="bottom" no-icon>
-            <button type="button"
-                    class="btn btn-outline-primary sync-date"
-                    disabled
-                    data-on:click="const range = $graph._widget.getCurrentRange(); $_daterangeWidget.updateRange(range.from, range.to); el.disabled = true;"
-                    data-show="$_currentView == 'graphs'">
-                Copy from graph
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-repeat" viewBox="0 0 16 16">
-                    <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9"/>
-                    <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z"/>
-                </svg>
-            </button>
-        </nfsen-tooltip>
+    {# Sync graph zoom range to the date slider (graphs view only) #}
+    <div class="btn-group" id="date_syncing" role="group" data-show="$_currentView == 'graphs'">
+        <button type="button"
+                class="btn btn-outline-primary sync-date"
+                disabled
+                title="Copy current graph zoom/pan range to the date slider once"
+                data-on:click="const range = $graph._widget.getCurrentRange(); $_daterangeWidget.updateRange(range.from, range.to); el.disabled = true;">
+            Sync now
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-repeat" viewBox="0 0 16 16">
+                <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9"/>
+                <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z"/>
+            </svg>
+        </button>
+        <button type="button"
+                class="btn btn-outline-primary"
+                title="Automatically follow graph zoom and pan in the date slider"
+                data-class:active="$_autoSyncGraph"
+                data-on:click="$_autoSyncGraph = !$_autoSyncGraph;">
+            <span data-text="$_autoSyncGraph ? 'Following' : 'Follow'"></span>
+        </button>
     </div>
 
 </div>

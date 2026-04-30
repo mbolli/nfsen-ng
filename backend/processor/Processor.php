@@ -22,6 +22,12 @@ interface Processor {
     public function setFilter(string $filter): void;
 
     /**
+     * Override the nfdump profile used for path construction.
+     * Must be called before setOption('-M', ...) to take effect.
+     */
+    public function setProfile(string $profile): void;
+
+    /**
      * Executes the processor command, tries to throw an
      * exception based on the return code.
      *

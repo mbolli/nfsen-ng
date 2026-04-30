@@ -43,7 +43,10 @@ class ImportDaemon {
     /** Unix timestamp of the last inotify-triggered import, 0 if none yet. */
     private int $lastAutoImportTime = 0;
 
-    public function __construct() {
+    private readonly string $profile;
+
+    public function __construct(string $profile = '') {
+        $this->profile = $profile !== '' ? $profile : Config::$settings->nfdumpProfile;
         $this->debug = Debug::getInstance();
     }
 
@@ -74,6 +77,11 @@ class ImportDaemon {
         return $this->lastAutoImportTime;
     }
 
+    /** The nfdump profile this daemon is monitoring. */
+    public function getProfile(): string {
+        return $this->profile;
+    }
+
     // ─── Public API ──────────────────────────────────────────────────────────
 
     /**
@@ -100,6 +108,7 @@ class ImportDaemon {
             $importer->setProcessPorts(true);
             $importer->setProcessPortsBySource(true);
             $importer->setCheckLastUpdate(true);
+            $importer->setProfile($this->profile);
             $importer->start($start, $onProgress, null, $shouldCancel);
 
             $this->debug->log('ImportDaemon: initial import done', LOG_INFO);
@@ -112,6 +121,7 @@ class ImportDaemon {
         $this->importer = new Import();
         $this->importer->setQuiet(true);
         $this->importer->setVerbose(false);
+        $this->importer->setProfile($this->profile);
 
         // Set up inotify watches after the initial import completes
         $this->initWatches();
@@ -127,6 +137,7 @@ class ImportDaemon {
         $this->importer = new Import();
         $this->importer->setQuiet(true);
         $this->importer->setVerbose(false);
+        $this->importer->setProfile($this->profile);
 
         $this->initWatches();
         $this->debug->log('ImportDaemon: inotify watches ready (startup import skipped)', LOG_INFO);
@@ -223,7 +234,7 @@ class ImportDaemon {
         $sources = Config::$settings->sources;
         $profilePath = Config::$settings->nfdumpProfilesData
             . \DIRECTORY_SEPARATOR
-            . Config::$settings->nfdumpProfile;
+            . $this->profile;
 
         $paths = [];
         $now = new \DateTime();
@@ -280,7 +291,7 @@ class ImportDaemon {
 
         $profilePath = Config::$settings->nfdumpProfilesData
             . \DIRECTORY_SEPARATOR
-            . Config::$settings->nfdumpProfile;
+            . $this->profile;
         $relativePath = str_replace(
             $profilePath . \DIRECTORY_SEPARATOR . $eventSource . \DIRECTORY_SEPARATOR,
             '',

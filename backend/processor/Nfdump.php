@@ -434,6 +434,14 @@ class Nfdump implements Processor {
     }
 
     /**
+     * Override the nfdump profile used for path construction.
+     * Must be called before setOption('-M', ...) to take effect.
+     */
+    public function setProfile(string $profile): void {
+        $this->cfg['env']['profile'] = $profile;
+    }
+
+    /**
      * Converts a time range to a nfcapd file range
      * Ensures that files actually exist.
      *

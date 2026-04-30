@@ -19,6 +19,9 @@ class Import {
     private bool $processPortsBySource = false;
     private bool $checkLastUpdate = false;
 
+    /** Profile override for multi-profile setups; null = use Config::$settings->nfdumpProfile. */
+    private ?string $profile = null;
+
     public function __construct() {
         $this->d = Debug::getInstance();
         $this->cli = (\PHP_SAPI === 'cli');
@@ -35,7 +38,7 @@ class Import {
         $sources = Config::$settings->sources;
         $sourcePath = Config::$settings->nfdumpProfilesData
             . \DIRECTORY_SEPARATOR
-            . Config::$settings->nfdumpProfile;
+            . ($this->profile ?? Config::$settings->nfdumpProfile);
         $count = 0;
 
         foreach ($sources as $source) {
@@ -43,7 +46,7 @@ class Import {
             $lastUpdate = null;
 
             if ($this->force === false) {
-                $lastUpdateDb = Config::$db->last_update($source);
+                $lastUpdateDb = Config::$db->last_update($source, 0, $this->profile ?? Config::$settings->nfdumpProfile);
                 if ($lastUpdateDb > 0) {
                     $lastUpdate = (new \DateTime())->setTimestamp($lastUpdateDb);
                     $date->setTimestamp($lastUpdateDb);
@@ -111,7 +114,7 @@ class Import {
             if ($this->cli === true && $this->quiet === false) {
                 echo PHP_EOL . 'Validating RRD structure...' . PHP_EOL;
             }
-            Config::$db->validateStructure($sources[0], 0, true, $this->quiet);
+            Config::$db->validateStructure($sources[0], 0, true, $this->quiet, $this->profile ?? Config::$settings->nfdumpProfile);
         }
 
         // if in force mode, reset existing data
@@ -119,7 +122,7 @@ class Import {
             if ($this->cli === true) {
                 echo 'Resetting existing data...' . PHP_EOL;
             }
-            Config::$db->reset([]);
+            Config::$db->reset([], $this->profile ?? Config::$settings->nfdumpProfile);
         }
 
         // start progress bar (CLI only)
@@ -130,7 +133,7 @@ class Import {
 
         // process each source, e.g. gateway, mailserver, etc.
         foreach ($sources as $nr => $source) {
-            $sourcePath = Config::$settings->nfdumpProfilesData . \DIRECTORY_SEPARATOR . Config::$settings->nfdumpProfile;
+            $sourcePath = Config::$settings->nfdumpProfilesData . \DIRECTORY_SEPARATOR . ($this->profile ?? Config::$settings->nfdumpProfile);
             if (!file_exists($sourcePath)) {
                 throw new \Exception('Could not read nfdump profile directory ' . $sourcePath);
             }
@@ -142,7 +145,7 @@ class Import {
 
             // check if we want to continue a stopped import
             // assumes the last update of a source is similar to the last update of its ports...
-            $lastUpdateDb = Config::$db->last_update($source);
+            $lastUpdateDb = Config::$db->last_update($source, 0, $this->profile ?? Config::$settings->nfdumpProfile);
 
             $lastUpdate = null;
             if ($lastUpdateDb > 0) {
@@ -246,8 +249,14 @@ class Import {
                     $statsPath = implode(\DIRECTORY_SEPARATOR, \array_slice($scan, 2, 5)) . \DIRECTORY_SEPARATOR . $file;
 
                     try {
-                        // fill source.rrd
-                        $this->writeSourceData($source, $statsPath);
+                        // fill source.rrd; skip port processing if file is unreadable
+                        if ($this->writeSourceData($source, $statsPath) === false) {
+                            if ($onTick !== null) {
+                                $onTick();
+                            }
+
+                            continue;
+                        }
 
                         // write general port data (queries data for all sources, should only be executed when data for all sources exists...)
                         if ($this->processPorts === true && $nr === \count($sources) - 1) {
@@ -308,8 +317,10 @@ class Import {
         try {
             $this->d->log('Importing file ' . $file . ' (' . $source . '), last=' . (int) $last, LOG_INFO);
 
-            // fill source.rrd
-            $this->writeSourceData($source, $file);
+            // fill source.rrd; bail early if the file is unreadable (avoids 6 redundant port nfdump calls)
+            if ($this->writeSourceData($source, $file) === false) {
+                return;
+            }
 
             // write general port data (not depending on source, so only executed per port)
             if ($last === true) {
@@ -344,7 +355,7 @@ class Import {
         $fileDatetime = new \DateTime($date[1]);
 
         // get last updated time from database
-        $lastUpdateDb = Config::$db->last_update($source, $port);
+        $lastUpdateDb = Config::$db->last_update($source, $port, $this->profile ?? Config::$settings->nfdumpProfile);
         $lastUpdate = null;
         if ($lastUpdateDb !== 0) {
             $lastUpdate = new \DateTime();
@@ -382,6 +393,14 @@ class Import {
         $this->checkLastUpdate = $checkLastUpdate;
     }
 
+    /**
+     * Override the nfdump profile used for path construction.
+     * When set, this takes precedence over Config::$settings->nfdumpProfile.
+     */
+    public function setProfile(?string $profile): void {
+        $this->profile = $profile;
+    }
+
     private function formatEta(int $seconds): string {
         if ($seconds < 60) {
             return "~{$seconds}s";
@@ -405,6 +424,7 @@ class Import {
         // set options and get netflow summary statistics (-I)
         $nfdump = Nfdump::getInstance();
         $nfdump->reset();
+        $nfdump->setProfile($this->profile ?? Config::$settings->nfdumpProfile);
         $nfdump->setOption('-I', null);
         $nfdump->setOption('-M', $source);
         $nfdump->setOption('-r', $statsPath);
@@ -426,6 +446,7 @@ class Import {
             'fields' => [],
             'source' => $source,
             'port' => 0,
+            'profile' => $this->profile ?? Config::$settings->nfdumpProfile,
             'date_iso' => $date->format('Ymd\THis'),
             'date_timestamp' => $date->getTimestamp(),
         ];
@@ -482,6 +503,7 @@ class Import {
         // set options and get netflow statistics
         $nfdump = Nfdump::getInstance();
         $nfdump->reset();
+        $nfdump->setProfile($this->profile ?? Config::$settings->nfdumpProfile);
 
         if (empty($source)) {
             // if no source is specified, get data for all sources
@@ -525,6 +547,7 @@ class Import {
             ],
             'source' => $source,
             'port' => $port,
+            'profile' => $this->profile ?? Config::$settings->nfdumpProfile,
             'date_iso' => $date->format('Ymd\THis'),
             'date_timestamp' => $date->getTimestamp(),
         ];

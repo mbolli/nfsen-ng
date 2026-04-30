@@ -74,30 +74,31 @@ interface Datasource {
         string $type = 'flows',
         string $display = 'sources',
         ?int $maxrows = 500,
+        string $profile = '',
     ): array|string;
 
     /**
      * Removes all existing data for every source in $sources.
      * If $sources is empty, remove all existing data.
      */
-    public function reset(array $sources): bool;
+    public function reset(array $sources, string $profile = ''): bool;
 
     /**
      * Gets the timestamps of the first and last entry in the datasource (for this specific source).
      *
      * @return array (timestampfirst, timestamplast)
      */
-    public function date_boundaries(string $source): array;
+    public function date_boundaries(string $source, string $profile = ''): array;
 
     /**
      * Gets the timestamp of the last update of the datasource (for this specific source).
      */
-    public function last_update(string $source, int $port = 0): int;
+    public function last_update(string $source, int $port = 0, string $profile = ''): int;
 
     /**
      * Gets the path where the datasource's data is stored.
      */
-    public function get_data_path(string $source = '', int $port = 0): string;
+    public function get_data_path(string $source = '', int $port = 0, string $profile = ''): string;
 
     /**
      * Returns health check entries for this datasource to be included in the

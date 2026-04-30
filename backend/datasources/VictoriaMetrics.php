@@ -33,10 +33,10 @@ class VictoriaMetrics implements Datasource {
     /**
      * Gets the timestamps of the first and last entry of this specific source.
      */
-    public function date_boundaries(string $source): array {
+    public function date_boundaries(string $source, string $profile = ''): array {
         // Query for first and last timestamp of the aggregate (no-port) series.
         $metric = $this->buildMetricName('flows', '');
-        $labels = $this->buildLabels($source, 0, null, forQuery: true);
+        $labels = $this->buildLabels($source, 0, null, forQuery: true, profile: $profile);
         $query = "{$metric}{$labels}";
 
         $first = $this->querySingleValue($query, 'timestamp', true);
@@ -50,9 +50,9 @@ class VictoriaMetrics implements Datasource {
      *
      * @return int timestamp or 0 if not found
      */
-    public function last_update(string $source = '', int $port = 0): int {
+    public function last_update(string $source = '', int $port = 0, string $profile = ''): int {
         $metric = $this->buildMetricName('flows', '');
-        $labels = $this->buildLabels($source, $port, null, forQuery: true);
+        $labels = $this->buildLabels($source, $port, null, forQuery: true, profile: $profile);
         $query = "{$metric}{$labels}";
 
         try {
@@ -76,6 +76,7 @@ class VictoriaMetrics implements Datasource {
         $timestampMs = $timestamp * 1000; // VM uses milliseconds
         $source = $data['source'];
         $port = $data['port'] ?? 0;
+        $profile = $data['profile'] ?? '';
 
         // Build Prometheus exposition format lines
         $lines = [];
@@ -91,7 +92,7 @@ class VictoriaMetrics implements Datasource {
             $protocol = $parts[1] ?? 'total';
 
             $metricName = $this->buildMetricName($metricType, $protocol);
-            $labels = $this->buildLabels($source, $port, $protocol !== 'total' ? $protocol : null);
+            $labels = $this->buildLabels($source, $port, $protocol !== 'total' ? $protocol : null, false, $profile);
 
             // Prometheus format: metric_name{labels} value timestamp
             $lines[] = "{$metricName}{$labels} {$value} {$timestampMs}";
@@ -125,6 +126,7 @@ class VictoriaMetrics implements Datasource {
         #[ExpectedValues(['protocols', 'sources', 'ports'])]
         string $display = 'sources',
         ?int $maxrows = 500,
+        string $profile = '',
     ): array|string {
         $useBits = false;
         if ($type === 'bits') {
@@ -154,7 +156,7 @@ class VictoriaMetrics implements Datasource {
                 foreach ($protocols as $protocol) {
                     $proto = ($protocol === 'any') ? null : $protocol;
                     $metricName = $this->buildMetricName($type, $proto);
-                    $labels = $this->buildLabels($sources[0], 0, $proto, forQuery: true);
+                    $labels = $this->buildLabels($sources[0], 0, $proto, forQuery: true, profile: $profile);
                     $queries[] = "{$metricName}{$labels}";
                     $legends[] = implode('_', array_filter([$protocol, $type, $sources[0]]));
                 }
@@ -165,7 +167,7 @@ class VictoriaMetrics implements Datasource {
                 foreach ($sources as $source) {
                     $proto = ($protocols[0] === 'any') ? null : $protocols[0];
                     $metricName = $this->buildMetricName($type, $proto);
-                    $labels = $this->buildLabels($source, 0, $proto, forQuery: true);
+                    $labels = $this->buildLabels($source, 0, $proto, forQuery: true, profile: $profile);
                     $queries[] = "{$metricName}{$labels}";
                     $legends[] = implode('_', array_filter([$source, $type, $protocols[0]]));
                 }
@@ -178,7 +180,7 @@ class VictoriaMetrics implements Datasource {
                     $proto = ($protocols[0] === 'any') ? null : $protocols[0];
                     $metricName = $this->buildMetricName($type, $proto);
                     // forQuery: true still needed here; port > 0 so port="" is not emitted.
-                    $labels = $this->buildLabels($source, $port, $proto, forQuery: true);
+                    $labels = $this->buildLabels($source, $port, $proto, forQuery: true, profile: $profile);
                     $queries[] = "{$metricName}{$labels}";
                     $legends[] = implode('_', array_filter([$port, $type, $source, $protocols[0]]));
                 }
@@ -212,7 +214,7 @@ class VictoriaMetrics implements Datasource {
      * Creates a new database for every source/port combination.
      * Note: VictoriaMetrics doesn't require pre-creation, but we can verify connectivity.
      */
-    public function reset(array $sources): bool {
+    public function reset(array $sources, string $profile = ''): bool {
         // VictoriaMetrics doesn't need reset - it's schemaless
         // But we could delete existing data if needed
         $this->d->log('VictoriaMetrics reset called - no action needed (schemaless DB)', LOG_INFO);
@@ -258,30 +260,38 @@ class VictoriaMetrics implements Datasource {
                 'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
         }
         if ($healthResponse === 'OK') {
-            foreach ($sources as $source) {
-                try {
-                    $lastUpdate = $this->last_update($source);
-                } catch (\Throwable) {
-                    $checks[] = ['id' => "vm_data_{$source}", 'label' => "VM data: {$source}",
-                        'status' => 'warning', 'detail' => 'Could not query last_update',
-                        'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+            $profiles = Config::detectProfiles();
+            $multiProfile = \count($profiles) > 1;
 
-                    continue;
-                }
-                if ($lastUpdate === 0) {
-                    $checks[] = ['id' => "vm_data_{$source}", 'label' => "VM data: {$source}",
-                        'status' => 'warning', 'detail' => 'No data yet', 'group' => $group,
-                        'code' => false, 'hint' => 'Go to Admin → click "Initial Import" to populate the database', 'epoch' => 0];
-                } else {
-                    $age = time() - $lastUpdate;
-                    $status = $age > 3600 ? 'warning' : 'ok';
-                    $ageStr = HealthChecker::ageStr($age);
-                    $detail = $age <= 0 ? 'Just imported'
-                        : ($age > 3600 ? "Last import {$ageStr} ago — may be stalled"
-                                       : "Last import {$ageStr} ago");
-                    $checks[] = ['id' => "vm_data_{$source}", 'label' => "VM data: {$source}",
-                        'status' => $status, 'detail' => $detail,
-                        'group' => $group, 'code' => false, 'hint' => '', 'epoch' => $lastUpdate];
+            foreach ($profiles as $profile) {
+                foreach ($sources as $source) {
+                    $sourceLabel = $multiProfile ? "VM data: {$source} ({$profile})" : "VM data: {$source}";
+                    $sourceId = $multiProfile ? "vm_data_{$profile}_{$source}" : "vm_data_{$source}";
+
+                    try {
+                        $lastUpdate = $this->last_update($source, 0, $profile);
+                    } catch (\Throwable) {
+                        $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
+                            'status' => 'warning', 'detail' => 'Could not query last_update',
+                            'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+
+                        continue;
+                    }
+                    if ($lastUpdate === 0) {
+                        $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
+                            'status' => 'warning', 'detail' => 'No data yet', 'group' => $group,
+                            'code' => false, 'hint' => 'Go to Admin → click "Initial Import" to populate the database', 'epoch' => 0];
+                    } else {
+                        $age = time() - $lastUpdate;
+                        $status = $age > 3600 ? 'warning' : 'ok';
+                        $ageStr = HealthChecker::ageStr($age);
+                        $detail = $age <= 0 ? 'Just imported'
+                            : ($age > 3600 ? "Last import {$ageStr} ago — may be stalled"
+                                           : "Last import {$ageStr} ago");
+                        $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
+                            'status' => $status, 'detail' => $detail,
+                            'group' => $group, 'code' => false, 'hint' => '', 'epoch' => $lastUpdate];
+                    }
                 }
             }
         }
@@ -299,7 +309,7 @@ class VictoriaMetrics implements Datasource {
     /**
      * Gets the path where the datasource's data is stored.
      */
-    public function get_data_path(string $source = '', int $port = 0): string {
+    public function get_data_path(string $source = '', int $port = 0, string $profile = ''): string {
         return $this->queryUrl;
     }
 
@@ -375,7 +385,19 @@ class VictoriaMetrics implements Datasource {
      *                       aggregate total — and excludes port-specific series that
      *                       would otherwise also match a plain `{source="…"}` selector.
      */
-    private function buildLabels(string $source = '', int $port = 0, ?string $protocol = null, bool $forQuery = false): string {
+    /**
+     * Build a label selector for VictoriaMetrics.
+     *
+     * @param bool   $forQuery When true (read path), port=0 emits `port=""` which in
+     *                         PromQL matches series where the label is absent — i.e. the
+     *                         aggregate total — and excludes port-specific series that
+     *                         would otherwise also match a plain `{source="…"}` selector.
+     *                         Also, $profile uses a regex `profile=~"live|"` to match both
+     *                         labelled and old unlabelled series (backward compatibility).
+     * @param string $profile  when non-empty: write path adds `profile="live"` exactly;
+     *                         read path adds `profile=~"live|"` (matches labelled + absent)
+     */
+    private function buildLabels(string $source = '', int $port = 0, ?string $protocol = null, bool $forQuery = false, string $profile = ''): string {
         $labels = [];
 
         if (!empty($source)) {
@@ -392,6 +414,15 @@ class VictoriaMetrics implements Datasource {
 
         if ($protocol !== null && $protocol !== 'total') {
             $labels[] = "protocol=\"{$protocol}\"";
+        }
+
+        if ($profile !== '') {
+            if ($forQuery) {
+                // Regex matches this profile OR absent label — backward compat with pre-profile data.
+                $labels[] = "profile=~\"{$profile}|\"";
+            } else {
+                $labels[] = "profile=\"{$profile}\"";
+            }
         }
 
         return empty($labels) ? '' : '{' . implode(',', $labels) . '}';

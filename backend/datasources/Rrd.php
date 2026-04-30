@@ -40,6 +40,8 @@ class Rrd implements Datasource {
 
         $this->importYears = Config::$settings->importYears();
 
+        $this->migrateRrdsToProfileSubdir();
+
         // Calculate layout based on import years
         // Structure maintains same resolution levels but extends daily samples
         $this->layout = [
@@ -53,10 +55,15 @@ class Rrd implements Datasource {
     /**
      * Gets the timestamps of the first and last entry of this specific source.
      */
-    public function date_boundaries(string $source): array {
-        $rrdFile = $this->get_data_path($source);
+    public function date_boundaries(string $source, string $profile = ''): array {
+        $rrdFile = $this->get_data_path($source, 0, $profile);
 
-        return [rrd_first($rrdFile), rrd_last($rrdFile)];
+        // Use sidecar .first file for the lower bound — rrd_first() returns the
+        // RRD creation start (now - importYears), not the first actual data point.
+        $sidecar = $rrdFile . '.first';
+        $first = file_exists($sidecar) ? (int) trim((string) file_get_contents($sidecar)) : 0;
+
+        return [$first, rrd_last($rrdFile)];
     }
 
     /**
@@ -64,8 +71,8 @@ class Rrd implements Datasource {
      *
      * @return int timestamp or false
      */
-    public function last_update(string $source = '', int $port = 0): int {
-        $rrdFile = $this->get_data_path($source, $port);
+    public function last_update(string $source = '', int $port = 0, string $profile = ''): int {
+        $rrdFile = $this->get_data_path($source, $port, $profile);
         $last_update = rrd_last($rrdFile);
 
         // $this->d->log('Last update of ' . $rrdFile . ': ' . date('d.m.Y H:i', $last_update), LOG_DEBUG);
@@ -78,8 +85,8 @@ class Rrd implements Datasource {
      * @param string $source e.g. gateway or server_xyz
      * @param bool   $reset  overwrites existing RRD file if true
      */
-    public function create(string $source, int $port = 0, bool $reset = false): bool {
-        $rrdFile = $this->get_data_path($source, $port);
+    public function create(string $source, int $port = 0, bool $reset = false, string $profile = ''): bool {
+        $rrdFile = $this->get_data_path($source, $port, $profile);
 
         // check if folder exists
         if (!file_exists(\dirname($rrdFile))) {
@@ -98,6 +105,11 @@ class Rrd implements Datasource {
         if (file_exists($rrdFile)) {
             if ($reset === true) {
                 unlink($rrdFile);
+                // Remove sidecar so the next write recreates it with the new first timestamp.
+                $sidecar = $rrdFile . '.first';
+                if (file_exists($sidecar)) {
+                    unlink($sidecar);
+                }
             } else {
                 $this->d->log('Error creating ' . $rrdFile . ': File already exists', LOG_ERR);
 
@@ -136,8 +148,8 @@ class Rrd implements Datasource {
      *
      * @return array{valid: bool, message: string, expected_rows: null|int, actual_rows: null|int}
      */
-    public function validateStructure(string $source, int $port = 0, bool $showWarnings = false, bool $quiet = false): array {
-        $rrdFile = $this->get_data_path($source, $port);
+    public function validateStructure(string $source, int $port = 0, bool $showWarnings = false, bool $quiet = false, string $profile = ''): array {
+        $rrdFile = $this->get_data_path($source, $port, $profile);
 
         if (!file_exists($rrdFile)) {
             return [
@@ -235,15 +247,16 @@ WARNING;
      * @throws \Exception
      */
     public function write(array $data): bool {
-        $rrdFile = $this->get_data_path($data['source'], $data['port']);
+        $profile = $data['profile'] ?? '';
+        $rrdFile = $this->get_data_path($data['source'], $data['port'], $profile);
         if (!file_exists($rrdFile)) {
-            $this->create($data['source'], $data['port'], false);
+            $this->create($data['source'], $data['port'], false, $profile);
         } else {
             $lastTs = rrd_last($rrdFile);
             if ($lastTs > time() + 86400 * 365) {
                 // Corrupted far-future timestamp — recreate the file.
                 $this->d->log('Recreating RRD with corrupted timestamp (' . $lastTs . '): ' . $rrdFile, LOG_WARNING);
-                $this->create($data['source'], $data['port'], true);
+                $this->create($data['source'], $data['port'], true, $profile);
             } else {
                 $nearest = (int) $data['date_timestamp'] - ($data['date_timestamp'] % 300);
                 if ($nearest <= $lastTs) {
@@ -257,8 +270,20 @@ WARNING;
         $nearest = (int) $data['date_timestamp'] - ($data['date_timestamp'] % 300);
         $this->d->log('Writing to file ' . $rrdFile, LOG_DEBUG);
 
-        // write data
-        return (new \RRDUpdater($rrdFile))->update($data['fields'], (string) $nearest);
+        $result = (new \RRDUpdater($rrdFile))->update($data['fields'], (string) $nearest);
+
+        // Write sidecar on first successful write (if missing) so date_boundaries()
+        // knows the actual first data point rather than the RRD creation start.
+        // Checked every write so it is also created for pre-existing RRDs that
+        // predate this feature, and after a force-rescan that deleted the sidecar.
+        if ($result) {
+            $sidecar = $rrdFile . '.first';
+            if (!file_exists($sidecar)) {
+                file_put_contents($sidecar, (string) $nearest);
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -277,6 +302,7 @@ WARNING;
         #[ExpectedValues(['protocols', 'sources', 'ports'])]
         string $display = 'sources',
         ?int $maxrows = 500,
+        string $profile = '',
     ): array|string {
         $options = [
             '--start',
@@ -309,7 +335,7 @@ WARNING;
         switch ($display) {
             case 'protocols':
                 foreach ($protocols as $protocol) {
-                    $rrdFile = $this->get_data_path($sources[0]);
+                    $rrdFile = $this->get_data_path($sources[0], 0, $profile);
                     $proto = ($protocol === 'any') ? '' : '_' . $protocol;
                     $legend = array_filter([$protocol, $type, $sources[0]]);
                     $options[] = 'DEF:data' . $sources[0] . $protocol . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
@@ -320,7 +346,7 @@ WARNING;
 
             case 'sources':
                 foreach ($sources as $source) {
-                    $rrdFile = $this->get_data_path($source);
+                    $rrdFile = $this->get_data_path($source, 0, $profile);
                     $proto = ($protocols[0] === 'any') ? '' : '_' . $protocols[0];
                     $legend = array_filter([$source, $type, $protocols[0]]);
                     $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
@@ -334,7 +360,7 @@ WARNING;
                     $source = ($sources[0] === 'any') ? '' : $sources[0];
                     $proto = ($protocols[0] === 'any') ? '' : '_' . $protocols[0];
                     $legend = array_filter([$port, $type, $source, $protocols[0]]);
-                    $rrdFile = $this->get_data_path($source, $port);
+                    $rrdFile = $this->get_data_path($source, $port, $profile);
                     $options[] = 'DEF:data' . $source . $port . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
                     $options[] = 'XPORT:data' . $source . $port . ':' . implode('_', $legend);
                 }
@@ -383,7 +409,7 @@ WARNING;
     /**
      * Creates a new database for every source/port combination.
      */
-    public function reset(array $sources): bool {
+    public function reset(array $sources, string $profile = ''): bool {
         $return = true;
         if (empty($sources)) {
             $sources = Config::$settings->sources;
@@ -392,14 +418,14 @@ WARNING;
         $ports[] = 0;
         foreach ($ports as $port) {
             if ($port !== 0) {
-                $return = $this->create('', $port, true);
+                $return = $this->create('', $port, true, $profile);
             }
             if ($return === false) {
                 return false;
             }
 
             foreach ($sources as $source) {
-                $return = $this->create($source, $port, true);
+                $return = $this->create($source, $port, true, $profile);
                 if ($return === false) {
                     return false;
                 }
@@ -441,39 +467,65 @@ WARNING;
             'hint' => 'Set via NFSEN_IMPORT_YEARS env var (default: 3). Changing requires a force-rescan.',
             'epoch' => 0];
 
-        foreach ($sources as $source) {
-            $rrdFile = $this->get_data_path($source);
-            if (!file_exists($rrdFile)) {
-                $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
-                    'status' => 'warning', 'detail' => 'No RRD file yet', 'group' => $group,
-                    'code' => false, 'hint' => 'Go to Admin → click "Initial Import" to populate the database', 'epoch' => 0];
+        $profiles = Config::detectProfiles();
+        $multiProfile = \count($profiles) > 1;
+
+        foreach ($profiles as $profile) {
+            $profileDir = $rrdPath . \DIRECTORY_SEPARATOR . str_replace('/', \DIRECTORY_SEPARATOR, $profile);
+            $profileLabel = $multiProfile ? "RRD dir ({$profile})" : 'RRD profile dir';
+            $profileId = $multiProfile ? "rrd_profile_dir_{$profile}" : 'rrd_profile_dir';
+
+            if (!is_dir($profileDir)) {
+                $checks[] = ['id' => $profileId, 'label' => $profileLabel, 'status' => 'warning',
+                    'detail' => "Not found: {$profileDir}", 'group' => $group, 'code' => true,
+                    'hint' => 'Created automatically when the first nfcapd file is imported for this profile', 'epoch' => 0];
+
+                continue;
+            }
+            if (!is_writable($profileDir)) {
+                $checks[] = ['id' => $profileId, 'label' => $profileLabel, 'status' => 'error',
+                    'detail' => "Not writable: {$profileDir}", 'group' => $group, 'code' => true, 'hint' => '', 'epoch' => 0];
 
                 continue;
             }
 
-            try {
-                $lastUpdate = $this->last_update($source);
-            } catch (\Throwable) {
-                $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
-                    'status' => 'warning', 'detail' => 'Could not read last_update',
-                    'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+            foreach ($sources as $source) {
+                $rrdFile = $this->get_data_path($source, 0, $profile);
+                $sourceLabel = $multiProfile ? "RRD data: {$source} ({$profile})" : "RRD data: {$source}";
+                $sourceId = $multiProfile ? "rrd_data_{$profile}_{$source}" : "rrd_data_{$source}";
 
-                continue;
-            }
-            if ($lastUpdate === 0) {
-                $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
-                    'status' => 'warning', 'detail' => 'RRD exists but has never been written',
-                    'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
-            } else {
-                $age = time() - $lastUpdate;
-                $status = $age > 3600 ? 'warning' : 'ok';
-                $ageStr = HealthChecker::ageStr($age);
-                $detail = $age <= 0 ? 'Just imported'
-                    : ($age > 3600 ? "Last import {$ageStr} ago — may be stalled"
-                                   : "Last import {$ageStr} ago");
-                $checks[] = ['id' => "rrd_data_{$source}", 'label' => "RRD data: {$source}",
-                    'status' => $status, 'detail' => $detail,
-                    'group' => $group, 'code' => false, 'hint' => '', 'epoch' => $lastUpdate];
+                if (!file_exists($rrdFile)) {
+                    $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
+                        'status' => 'warning', 'detail' => 'No RRD file yet', 'group' => $group,
+                        'code' => false, 'hint' => 'Go to Admin → click "Initial Import" to populate the database', 'epoch' => 0];
+
+                    continue;
+                }
+
+                try {
+                    $lastUpdate = $this->last_update($source, 0, $profile);
+                } catch (\Throwable) {
+                    $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
+                        'status' => 'warning', 'detail' => 'Could not read last_update',
+                        'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+
+                    continue;
+                }
+                if ($lastUpdate === 0) {
+                    $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
+                        'status' => 'warning', 'detail' => 'RRD exists but has never been written',
+                        'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
+                } else {
+                    $age = time() - $lastUpdate;
+                    $status = $age > 3600 ? 'warning' : 'ok';
+                    $ageStr = HealthChecker::ageStr($age);
+                    $detail = $age <= 0 ? 'Just imported'
+                        : ($age > 3600 ? "Last import {$ageStr} ago — may be stalled"
+                                       : "Last import {$ageStr} ago");
+                    $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
+                        'status' => $status, 'detail' => $detail,
+                        'group' => $group, 'code' => false, 'hint' => '', 'epoch' => $lastUpdate];
+                }
             }
         }
 
@@ -482,8 +534,9 @@ WARNING;
 
     /**
      * Concatenates the path to the source's rrd file.
+     * Path: {data_path}/{profile}/{source}{_port}.rrd.
      */
-    public function get_data_path(string $source = '', int $port = 0): string {
+    public function get_data_path(string $source = '', int $port = 0, string $profile = ''): string {
         if ($port === 0) {
             $port = '';
         } else {
@@ -494,12 +547,51 @@ WARNING;
         $rrdPath = Config::$settings->datasourceConfig('RRD')['data_path']
             ?? Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data';
 
-        $path = $rrdPath . \DIRECTORY_SEPARATOR . $source . $port . '.rrd';
+        $p = $profile !== '' ? $profile : Config::$settings->nfdumpProfile;
+        // Support nested profiles like 'group/sub' — convert to OS path separator
+        $p = str_replace('/', \DIRECTORY_SEPARATOR, $p);
+
+        $path = $rrdPath . \DIRECTORY_SEPARATOR . $p . \DIRECTORY_SEPARATOR . $source . $port . '.rrd';
 
         if (!file_exists($path)) {
             $this->d->log('Was not able to find ' . $path, LOG_INFO);
         }
 
         return $path;
+    }
+
+    /**
+     * One-time startup migration: moves any flat *.rrd files directly inside
+     * {data_path}/ into the {data_path}/{nfdumpProfile}/ subdirectory.
+     * This handles upgrading from the old single-profile layout to per-profile subdirs.
+     */
+    private function migrateRrdsToProfileSubdir(): void {
+        $rrdPath = Config::$settings->datasourceConfig('RRD')['data_path']
+            ?? Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data';
+
+        $flatFiles = glob($rrdPath . \DIRECTORY_SEPARATOR . '*.rrd') ?: [];
+        if (empty($flatFiles)) {
+            return;
+        }
+
+        $profile = Config::$settings->nfdumpProfile;
+        $profileDir = $rrdPath . \DIRECTORY_SEPARATOR . $profile;
+
+        if (!is_dir($profileDir)) {
+            if (!mkdir($profileDir, 0o755, true) && !is_dir($profileDir)) {
+                $this->d->log('RRD migration: could not create profile dir ' . $profileDir, LOG_ERR);
+
+                return;
+            }
+        }
+
+        foreach ($flatFiles as $file) {
+            $dest = $profileDir . \DIRECTORY_SEPARATOR . basename($file);
+            if (rename($file, $dest)) {
+                $this->d->log('RRD migration: moved ' . basename($file) . ' → ' . $profile . '/', LOG_WARNING);
+            } else {
+                $this->d->log('RRD migration: failed to move ' . $file . ' → ' . $profileDir, LOG_ERR);
+            }
+        }
     }
 }

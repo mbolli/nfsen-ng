@@ -3,15 +3,115 @@
 {# ── Action buttons ────────────────────────────────────────────────────────── #}
 <div class="row justify-content-center mt-4">
     <div class="col-lg-8">
-        <div class="d-flex gap-2 align-items-center flex-wrap">
 
-    {% if daemonDisabled or daemonInfo is null %}
+    {% if daemonDisabled or daemonsInfo is empty %}
 
         <p class="text-muted small mb-0">
             Import daemon is disabled (<code>NFSEN_SKIP_DAEMON=1</code>).
         </p>
 
+    {% elseif daemonsInfo|length > 1 %}
+
+        {# ── Multi-profile daemon table ─────────────────────────────────── #}
+        <table class="table table-sm table-bordered mb-2 small align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Profile</th>
+                    <th>Status</th>
+                    <th>Last auto-import</th>
+                    <th>Dirs watched</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for profile, info in daemonsInfo %}
+            <tr>
+                <td class="font-monospace">{{ profile }}</td>
+                <td>
+                    {% if info.ready %}
+                        <span class="badge bg-success">ready</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">init&hellip;</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if info.lastAutoImport > 0 %}
+                        <span data-text="new Date({{ info.lastAutoImport }} * 1000).toLocaleString('sv')"></span>
+                    {% else %}
+                        <span class="text-muted">never</span>
+                    {% endif %}
+                </td>
+                <td>{{ info.watchCount }}</td>
+                <td>
+                    <div class="d-flex gap-1 flex-wrap">
+                        <button class="btn btn-sm btn-primary"
+                                data-attr:disabled="${{ importRunning.id() }}"
+                                data-show="!${{ importRunning.id() }}"
+                                data-on:click="${{ adminTargetProfile.id() }} = '{{ profile }}'; @post('{{ action_triggerImport }}')">
+                            Trigger
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger"
+                                data-attr:disabled="${{ importRunning.id() }}"
+                                data-show="!${{ confirmRescan.id() }} && !${{ importRunning.id() }}"
+                                data-on:click="${{ adminTargetProfile.id() }} = '{{ profile }}'; ${{ confirmRescan.id() }} = true">
+                            Rescan
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        {# Shared confirm-rescan dialog (shown after clicking Rescan for any profile) #}
+        <div data-show="${{ confirmRescan.id() }}" style="display: none;" class="mb-2">
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <span class="text-danger fw-semibold small">
+                    ⚠ Resets all {{ deployDatasource }} data for
+                    <strong><span data-text="${{ adminTargetProfile.id() }}"></span></strong>
+                    and re-imports from scratch.
+                </span>
+                <button class="btn btn-danger btn-sm"
+                        data-attr:disabled="${{ importRunning.id() }}"
+                        data-on:click="@post('{{ action_forceRescan }}')">
+                    Confirm &amp; Rescan
+                </button>
+                <button class="btn btn-secondary btn-sm"
+                        data-on:click="${{ confirmRescan.id() }} = false">
+                    Cancel
+                </button>
+            </div>
+        </div>
+
+        {# Cancel — only visible while an import is running #}
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <button class="btn btn-warning"
+                    data-show="${{ importRunning.id() }}" style="display: none;"
+                    data-indicator:_cancel_loading
+                    data-on:click="@post('{{ action_cancelImport }}')">
+                <span data-show="$_cancel_loading" style="display: none;" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                <svg data-show="!$_cancel_loading" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle me-1" viewBox="0 0 16 16">
+                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                    <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"/>
+                </svg>
+                Cancel Import
+            </button>
+
+            {# Port-scanning toggle — only shown when ports are configured in settings #}
+            {% if hasPorts %}
+            <div class="form-check ms-2 my-auto">
+                <input type="checkbox" class="form-check-input" id="adminScanPorts"
+                       {{ bind(importScanPorts) }}
+                       data-attr:disabled="${{ importRunning.id() }}">
+                <label class="form-check-label small" for="adminScanPorts">Scan ports</label>
+            </div>
+            {% endif %}
+        </div>
+
     {% else %}
+
+        {# ── Single-profile action buttons (original layout) ─────────────── #}
+        <div class="d-flex gap-2 align-items-center flex-wrap">
 
         {# Trigger import: catch up on any new nfcapd files since last import #}
         <button class="btn btn-primary"
@@ -77,9 +177,10 @@
         </div>
         {% endif %}
 
+        </div>
+
     {% endif %}
 
-        </div>
     </div>
 </div>
 

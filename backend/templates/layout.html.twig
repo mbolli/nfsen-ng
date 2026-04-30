@@ -53,11 +53,39 @@
            href="https://github.com/mbolli/nfsen-ng" target="_blank">
             nfsen-ng <span id="version">{{ version }}</span>
         </a>
+        {# Profile selector — only shown when multiple profiles are detected #}
+        {% set availableProfilesList = availableProfiles.getValue() %}
+        {% if availableProfilesList|length > 1 %}
+        <div class="position-absolute" style="left: 50%; transform: translateX(-50%);">
+            <select class="form-select form-select-sm d-inline-block w-auto"
+                    {{ bind(selectedProfile) }}
+                    data-on:change="@post('{{ action_changeProfile }}')">
+                {% set lastGroup = null %}
+                {% for p in availableProfilesList %}
+                    {% set parts = p|split('/') %}
+                    {% if parts|length > 1 %}
+                        {% set group = parts[0] %}
+                        {% if group != lastGroup %}
+                            {% if lastGroup is not null %}</optgroup>{% endif %}
+                            <optgroup label="{{ group }}">
+                            {% set lastGroup = group %}
+                        {% endif %}
+                        <option value="{{ p }}">{{ parts[1:parts|length]|join('/') }}</option>
+                    {% else %}
+                        {% if lastGroup is not null %}</optgroup>{% set lastGroup = null %}{% endif %}
+                        <option value="{{ p }}">{{ p }}</option>
+                    {% endif %}
+                {% endfor %}
+                {% if lastGroup is not null %}</optgroup>{% endif %}
+            </select>
+        </div>
+        {% endif %}
         {% include 'partials/nav.html.twig' %}
     </header>
 
     {# ── Global import status strip — visible on every tab while import runs ── #}
-    <div data-show="${{ importRunning.id() }}"
+    <div id="importStatusStrip"
+         data-show="${{ importRunning.id() }}"
          style="display:none; cursor:pointer;"
          class="border-bottom mb-2"
          data-on:click="$_currentView = 'admin'"
@@ -70,11 +98,11 @@
             <small class="text-muted">
                 {{ importStatusText ?: 'Importing\u2026' }}
                 {% if importCurrentFile %}
-                    &mdash; <code class="small">{{ importCurrentFile|split('/')|last }}</code>
+                    &bull; <code class="small">{{ importCurrentFile|split('/')|last }}</code>
                 {% endif %}
             </small>
             <small class="fw-semibold">
-                {{ importProgress }}%{% if importEta %} &mdash; {{ importEta }}{% endif %}
+                {{ importProgress }}%{% if importEta %} &bull; {{ importEta }}{% endif %}
             </small>
         </div>
     </div>

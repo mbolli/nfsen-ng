@@ -168,13 +168,15 @@ export class NfsenDateRange extends HTMLElement {
     }
 
     /**
-     * Set range to a specific duration (ms), anchored to the current max.
+     * Set range to a specific duration (ms), anchored to the current max,
+     * clamped so the selection never goes below data-min.
      * The template passes durationMs values (3600000, 86400000, etc.).
      */
     setQuickRange(durationMs) {
         if (!this.slider?.noUiSlider) return;
-        const maxMs = this.slider.noUiSlider.options.range.max;
-        this.updateRange(maxMs - durationMs, maxMs);
+        const { min: minMs, max: maxMs } = this.slider.noUiSlider.options.range;
+        const from = Math.max(maxMs - durationMs, minMs);
+        this.updateRange(from, maxMs);
     }
 
     /** Navigate forward or backward by the current selected span. */
@@ -182,9 +184,10 @@ export class NfsenDateRange extends HTMLElement {
         if (!this.slider?.noUiSlider) return;
         const [from, to] = this.slider.noUiSlider.get(true).map(Number);
         const duration = to - from;
-        const maxMs = this.slider.noUiSlider.options.range.max;
+        const { min: minMs, max: maxMs } = this.slider.noUiSlider.options.range;
         if (direction === 'prev') {
-            this.updateRange(from - duration, to - duration);
+            const newFrom = Math.max(from - duration, minMs);
+            this.updateRange(newFrom, newFrom + duration);
         } else {
             const newTo = Math.min(to + duration, maxMs);
             this.updateRange(newTo - duration, newTo);
@@ -195,8 +198,9 @@ export class NfsenDateRange extends HTMLElement {
     goToEnd() {
         if (!this.slider?.noUiSlider) return;
         const [from, to] = this.slider.noUiSlider.get(true).map(Number);
-        const maxMs = this.slider.noUiSlider.options.range.max;
-        this.updateRange(maxMs - (to - from), maxMs);
+        const { min: minMs, max: maxMs } = this.slider.noUiSlider.options.range;
+        const window = to - from;
+        this.updateRange(Math.max(maxMs - window, minMs), maxMs);
     }
 
     // ── Attribute observation ─────────────────────────────────────────────────

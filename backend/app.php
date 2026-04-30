@@ -94,8 +94,18 @@ $app->onStart(function () use ($app): void {
         return;
     }
 
-    $daemon = new ImportDaemon();
-    $app->setGlobalState('daemon', $daemon);
+    $profiles = Config::detectProfiles();
+
+    /** @var array<string, ImportDaemon> $daemons */
+    $daemons = [];
+    foreach ($profiles as $profile) {
+        $daemons[$profile] = new ImportDaemon($profile);
+    }
+    $app->setGlobalState('daemons', $daemons);
+    // Keep 'daemon' pointing to the primary daemon for backward-compat health checks.
+    $primaryDaemon = !empty($daemons) ? reset($daemons) : null;
+    $app->setGlobalState('daemon', $primaryDaemon);
+    $app->setGlobalState('import_active_profile', array_key_first($daemons) ?? Config::$settings->nfdumpProfile);
 
     // Shared import progress — written by the import coroutine, read by every admin tab.
     $app->setGlobalState('import_progress', 0);
@@ -116,7 +126,8 @@ $app->onStart(function () use ($app): void {
     // NOTE: Import::start() is not coroutine-safe per the original comment in
     // listen.php. If problems arise, move this call before $app->start() so it
     // runs synchronously before the server accepts connections.
-    Coroutine::create(function () use ($app, $daemon, $debug): void {
+    Coroutine::create(function () use ($app, $daemons, $debug): void {
+        /** @var array<string, ImportDaemon> $daemons */
         /** Append new Debug WARNING+ entries to the global log state. */
         $flushLog = static function () use ($app): void {
             $new = Debug::drainBuffer();
@@ -130,91 +141,105 @@ $app->onStart(function () use ($app): void {
         $skipEnv = getenv('NFSEN_SKIP_INITIAL_IMPORT');
         if ($skipEnv === '1' || $skipEnv === 'true') {
             $debug->log('ImportDaemon: startup import skipped (NFSEN_SKIP_INITIAL_IMPORT)', LOG_INFO);
-            $daemon->setupWatchesOnly();
+            foreach ($daemons as $daemon) {
+                $daemon->setupWatchesOnly();
+            }
 
             return;
         }
 
-        // Detect whether any source already has data in the database.
-        $hasExistingData = false;
-        foreach (Config::$settings->sources as $source) {
-            if (Config::$db->last_update($source) > 0) {
-                $hasExistingData = true;
+        // Detect which profiles already have data — profiles with no data are skipped
+        // (fresh install for that profile; user triggers Initial Import manually).
+        $daemonsToRun = [];
+        foreach ($daemons as $profile => $daemon) {
+            $hasData = false;
+            foreach (Config::$settings->sources as $source) {
+                if (Config::$db->last_update($source, 0, $profile) > 0) {
+                    $hasData = true;
 
-                break;
+                    break;
+                }
+            }
+            if ($hasData) {
+                $daemonsToRun[$profile] = $daemon;
+            } else {
+                $debug->log("ImportDaemon [{$profile}]: no existing data — startup gap-fill skipped; use Admin panel to run Initial Import", LOG_INFO);
+                $daemon->setupWatchesOnly();
             }
         }
 
-        if (!$hasExistingData) {
-            // Fresh install — no data yet. Skip the import; user triggers it manually.
-            $debug->log('ImportDaemon: no existing data — startup import skipped; use Admin panel to run Initial Import', LOG_INFO);
-            $daemon->setupWatchesOnly();
-
+        if (empty($daemonsToRun)) {
             return;
         }
 
-        // Existing database — run a gap fill to catch up on any missed files.
-        $app->setGlobalState('import_status_text', 'Catching up on missed files…');
-        if (!empty($app->getClients())) {
-            $app->broadcast('admin:import');
-        }
+        // Run initial (catch-up) import sequentially for each profile that has existing data.
+        foreach ($daemonsToRun as $profile => $daemon) {
+            $app->setGlobalState('import_active_profile', $profile);
+            $app->setGlobalState('import_status_text', "[{$profile}] Catching up on missed files…");
+            if (!empty($app->getClients())) {
+                $app->broadcast('admin:import');
+            }
 
-        try {
-            $daemon->initialImport(
-                function (array $progress) use ($app, $flushLog): void {
-                    $app->setGlobalState('import_progress', $progress['pct']);
-                    $app->setGlobalState('import_current_file', $progress['file']);
-                    $app->setGlobalState('import_status_text', 'Catching up: ' . $progress['processed'] . ' / ' . $progress['total'] . ' files');
-                    $app->setGlobalState('import_eta', $progress['eta']);
-                    $flushLog();
-                    if (!empty($app->getClients())) {
-                        $app->broadcast('admin:import');
-                    }
-                },
-                static fn (): bool => (bool) $app->globalState('import_cancel', false)
-            );
-            $flushLog();
-            $app->setGlobalState('import_status_text', 'Up to date');
-            $app->setGlobalState('import_progress', 100);
-            $app->setGlobalState('import_current_file', '');
-            $app->setGlobalState('import_eta', '');
-        } catch (Throwable $e) {
-            $debug->log('ImportDaemon: catch-up import failed: ' . $e->getMessage(), LOG_ERR);
-            $app->setGlobalState('import_status_text', 'Catch-up failed: ' . $e->getMessage());
-        }
+            try {
+                $daemon->initialImport(
+                    function (array $progress) use ($app, $flushLog, $profile): void {
+                        $app->setGlobalState('import_progress', $progress['pct']);
+                        $app->setGlobalState('import_current_file', $progress['file']);
+                        $app->setGlobalState('import_status_text', "[{$profile}] Catching up: " . $progress['processed'] . ' / ' . $progress['total'] . ' files');
+                        $app->setGlobalState('import_eta', $progress['eta']);
+                        $flushLog();
+                        if (!empty($app->getClients())) {
+                            $app->broadcast('admin:import');
+                        }
+                    },
+                    static fn (): bool => (bool) $app->globalState('import_cancel', false)
+                );
+                $flushLog();
+                $app->setGlobalState('import_status_text', "[{$profile}] Up to date");
+                $app->setGlobalState('import_progress', 100);
+                $app->setGlobalState('import_current_file', '');
+                $app->setGlobalState('import_eta', '');
+            } catch (Throwable $e) {
+                $debug->log("ImportDaemon [{$profile}]: catch-up import failed: " . $e->getMessage(), LOG_ERR);
+                $app->setGlobalState('import_status_text', "[{$profile}] Catch-up failed: " . $e->getMessage());
+            }
 
-        if (!empty($app->getClients())) {
-            $app->broadcast('admin:import');
+            if (!empty($app->getClients())) {
+                $app->broadcast('admin:import');
+            }
         }
     });
 
     // Ongoing inotify poll every 1 s — setInterval runs in the event loop, not
     // in a child coroutine, which is safe per Import class restrictions.
-    $app->setInterval(function () use ($app, $daemon, $debug): void {
-        try {
-            $daemon->pollOnce(function () use ($app, $debug): void {
-                $debug->log('ImportDaemon: file imported → broadcasting rrd:live', LOG_DEBUG);
+    $app->setInterval(function () use ($app, $daemons, $debug): void {
+        /** @var array<string, ImportDaemon> $daemons */
+        foreach ($daemons as $daemon) {
+            try {
+                $daemon->pollOnce(function () use ($app, $debug): void {
+                    $debug->log('ImportDaemon: file imported → broadcasting rrd:live', LOG_DEBUG);
 
-                // Surface any RRD write warnings from this inotify-triggered import
-                $new = Debug::drainBuffer();
-                if ($new !== []) {
-                    $log = $app->globalState('import_log', []);
-                    $merged = array_merge($log, $new);
-                    if (count($merged) > 100) {
-                        $merged = array_slice($merged, -100);
+                    // Surface any RRD write warnings from this inotify-triggered import
+                    $new = Debug::drainBuffer();
+                    if ($new !== []) {
+                        $log = $app->globalState('import_log', []);
+                        $merged = array_merge($log, $new);
+                        if (count($merged) > 100) {
+                            $merged = array_slice($merged, -100);
+                        }
+                        $app->setGlobalState('import_log', $merged);
+                        if (!empty($app->getClients())) {
+                            $app->broadcast('admin:import');
+                        }
                     }
-                    $app->setGlobalState('import_log', $merged);
+
                     if (!empty($app->getClients())) {
-                        $app->broadcast('admin:import');
+                        $app->broadcast('rrd:live');
                     }
-                }
-
-                if (!empty($app->getClients())) {
-                    $app->broadcast('rrd:live');
-                }
-            });
-        } catch (Throwable $e) {
-            $debug->log('ImportDaemon: poll error: ' . $e->getMessage(), LOG_ERR);
+                });
+            } catch (Throwable $e) {
+                $debug->log('ImportDaemon: poll error: ' . $e->getMessage(), LOG_ERR);
+            }
         }
     }, 1000);
 });
@@ -312,7 +337,29 @@ $app->page('/', function (Context $c) use ($app): void {
     // Admin / import signals
     /** @var null|ImportDaemon $daemon */
     $daemon = $app->globalState('daemon', null);
-    $importRunning = $c->signal($daemon !== null && $daemon->isLocked(), 'import_running');
+
+    /** @var array<string, ImportDaemon> $daemons */
+    $daemons = $app->globalState('daemons', []);
+
+    // Profiles: detect available profiles and restore selected profile from prefs.
+    $availableProfilesList = Config::detectProfiles();
+    $loadedPrefs = UserPreferences::load(Config::$prefsFile);
+    $defaultSelectedProfile = $loadedPrefs !== null
+        ? $loadedPrefs->selectedProfile
+        : Config::$settings->nfdumpProfile;
+    if (!in_array($defaultSelectedProfile, $availableProfilesList, true)) {
+        $defaultSelectedProfile = $availableProfilesList[0] ?? 'live';
+    }
+    $selectedProfile = $c->signal($defaultSelectedProfile, 'selected_profile', clientWritable: true);
+    $availableProfilesSignal = $c->signal($availableProfilesList, 'available_profiles');
+
+    // adminTargetProfile: which profile the admin action buttons target
+    $firstProfile = array_key_first($daemons) ?? Config::$settings->nfdumpProfile;
+    $adminTargetProfile = $c->signal($firstProfile, 'admin_target_profile', clientWritable: true);
+
+    // importRunning: true when any daemon is locked
+    $anyLocked = array_reduce($daemons, fn ($carry, $d) => $carry || $d->isLocked(), false);
+    $importRunning = $c->signal($anyLocked, 'import_running');
     // Client-writable: browser toggles confirm panel without a round-trip
     $confirmRescan = $c->signal(false, 'confirm_rescan', clientWritable: true);
     // Whether ports should be scanned during import (combined and per-source)
@@ -369,7 +416,8 @@ $app->page('/', function (Context $c) use ($app): void {
         $graphIsLive,
         $graphActualRes,
         $graphLastUpdate,
-        $error
+        $error,
+        $selectedProfile
     ): array {
         $ds = $datestart->int();
         $de = $dateend->int();
@@ -389,7 +437,8 @@ $app->page('/', function (Context $c) use ($app): void {
                 $graphPorts->array(),
                 $unit,
                 $graphDisplay->string(),
-                $graphResolution->int()
+                $graphResolution->int(),
+                $selectedProfile->string()
             );
         } catch (Throwable $e) {
             $error->setValue('Graph error: ' . $e->getMessage(), broadcast: false);
@@ -403,7 +452,7 @@ $app->page('/', function (Context $c) use ($app): void {
         // Use the actual RRD last-write time rather than wall-clock "now"
         $activeSources = $graphSources->array() ?: Config::$settings->sources;
         $lastWrite = empty($activeSources) ? 0 : max(array_map(
-            fn ($s) => Config::$db->last_update($s),
+            fn ($s) => Config::$db->last_update($s, 0, $selectedProfile->string()),
             $activeSources
         ));
         $graphLastUpdate->setValue($lastWrite > 0 ? $lastWrite : time(), broadcast: false);
@@ -413,10 +462,10 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // ── Helper: count actual nfcapd files in a date range for given sources ─────
     // Scans the filesystem path structure: profiles-data/profile/source/YYYY/MM/DD/
-    $countNfcapdFiles = static function (int $ds, int $de, array $sources): int {
+    $countNfcapdFiles = static function (int $ds, int $de, array $sources, string $profile = ''): int {
         $sourcePath = Config::$settings->nfdumpProfilesData
             . \DIRECTORY_SEPARATOR
-            . Config::$settings->nfdumpProfile;
+            . ($profile !== '' ? $profile : Config::$settings->nfdumpProfile);
         $count = 0;
 
         foreach ($sources as $source) {
@@ -457,7 +506,7 @@ $app->page('/', function (Context $c) use ($app): void {
     };
 
     // ── Helper: update $dataRangeMin / $dataRangeMax from actual RRD boundaries ──
-    $updateDataRange = static function () use ($dataRangeMin, $dataRangeMax): void {
+    $updateDataRange = static function () use ($dataRangeMin, $dataRangeMax, $selectedProfile): void {
         $sources = Config::$settings->sources;
         if (empty($sources)) {
             return;
@@ -469,7 +518,7 @@ $app->page('/', function (Context $c) use ($app): void {
 
         foreach ($sources as $source) {
             try {
-                [$first, $last] = Config::$db->date_boundaries($source);
+                [$first, $last] = Config::$db->date_boundaries($source, $selectedProfile->string());
                 if ($first > 0) {
                     $firsts[] = $first;
                 }
@@ -496,6 +545,30 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // ── Actions ──────────────────────────────────────────────────────────────
 
+    // Change profile — persists the selection to UserPreferences and re-renders.
+    $changeProfileAction = $c->action(function (Context $c) use ($selectedProfile, $updateDataRange, $dataRangeMax, $datestart, $dateend): void {
+        $newProfile = $selectedProfile->string();
+        $available = Config::detectProfiles();
+        if (!in_array($newProfile, $available, true)) {
+            return;
+        }
+        $prefs = UserPreferences::load(Config::$prefsFile) ?? UserPreferences::fromArray([]);
+        $prefs->withSelectedProfile($newProfile)->save(Config::$prefsFile);
+
+        // Update date range boundaries for the newly selected profile so the
+        // graph slider and live window reflect what data actually exists.
+        $updateDataRange();
+
+        // Slide the end of the visible window to the new profile's latest data
+        // (or now if no data yet) so the graph doesn't open on an empty range.
+        $newMax = $dataRangeMax->int();
+        $window = $dateend->int() - $datestart->int();
+        $dateend->setValue($newMax, broadcast: false);
+        $datestart->setValue($newMax - $window, broadcast: false);
+
+        $c->sync();
+    }, 'change-profile');
+
     // Refresh graphs (called by the filter UI after any filter change)
     $refreshGraphsAction = $c->action(function (Context $c) use ($fetchGraphData, $datestart, $dateend): void {
         // If the end date is within the live window (< 10 min old), slide the range
@@ -517,6 +590,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $debug,
         $datestart,
         $dateend,
+        $selectedProfile,
         $flowFilter,
         $flowLowerLimit,
         $flowUpperLimit,
@@ -574,6 +648,7 @@ $app->page('/', function (Context $c) use ($app): void {
         try {
             $sources = implode(':', Config::$settings->sources);
             $processor = new Config::$processorClass();
+            $processor->setProfile($selectedProfile->string());
             $processor->setOption('-M', $sources);
             $processor->setOption('-R', [$datestart->int(), $dateend->int()]);
             $processor->setOption('-c', $flowLimit->int());
@@ -638,6 +713,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $debug,
         $datestart,
         $dateend,
+        $selectedProfile,
         $statsFilter,
         $statsCount,
         $statsFor,
@@ -660,6 +736,7 @@ $app->page('/', function (Context $c) use ($app): void {
             }
 
             $processor = new Config::$processorClass();
+            $processor->setProfile($selectedProfile->string());
             $processor->setOption('-M', implode(':', $srcs));
             $ds = $datestart->int();
             $de = $dateend->int();
@@ -738,6 +815,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $datestart,
         $dateend,
         $graphSources,
+        $selectedProfile,
         $nfcapdFileCount,
         $countNfcapdFiles
     ): void {
@@ -746,7 +824,7 @@ $app->page('/', function (Context $c) use ($app): void {
             $srcs = Config::$settings->sources;
         }
         $nfcapdFileCount->setValue(
-            $countNfcapdFiles($datestart->int(), $dateend->int(), $srcs),
+            $countNfcapdFiles($datestart->int(), $dateend->int(), $srcs, $selectedProfile->string()),
             broadcast: false
         );
         $c->sync();
@@ -759,16 +837,22 @@ $app->page('/', function (Context $c) use ($app): void {
     $triggerImportAction = $c->action(function (Context $c) use (
         $app,
         $debug,
-        $daemon,
+        $daemons,
+        $adminTargetProfile,
         $importRunning,
         $importScanPorts
     ): void {
-        if ($daemon === null || $daemon->isLocked()) {
+        /** @var array<string, ImportDaemon> $daemons */
+        $targetProfile = $adminTargetProfile->string();
+        $targetDaemon = $daemons[$targetProfile] ?? null;
+
+        if ($targetDaemon === null || $targetDaemon->isLocked()) {
             return;
         }
 
-        $daemon->lock();
+        $targetDaemon->lock();
         $importRunning->setValue(true, broadcast: false);
+        $app->setGlobalState('import_active_profile', $targetProfile);
         $app->setGlobalState('import_progress', 0);
         $app->setGlobalState('import_current_file', '');
         $app->setGlobalState('import_status_text', 'Counting files…');
@@ -781,7 +865,7 @@ $app->page('/', function (Context $c) use ($app): void {
         }
 
         $scanPorts = $importScanPorts->bool();
-        Coroutine::create(function () use ($app, $debug, $daemon, $scanPorts): void {
+        Coroutine::create(function () use ($app, $debug, $targetDaemon, $targetProfile, $scanPorts): void {
             $app->setGlobalState('import_cancel', false);
 
             /** Append new Debug WARNING+ entries to the global log state. */
@@ -805,6 +889,7 @@ $app->page('/', function (Context $c) use ($app): void {
                 $importer->setProcessPorts($scanPorts);
                 $importer->setProcessPortsBySource($scanPorts);
                 $importer->setCheckLastUpdate(true);
+                $importer->setProfile($targetProfile);
 
                 $importer->start(
                     $start,
@@ -836,7 +921,7 @@ $app->page('/', function (Context $c) use ($app): void {
             } finally {
                 $flushLog();
                 $app->setGlobalState('import_cancel', false);
-                $daemon->unlock();
+                $targetDaemon->unlock();
                 $app->setGlobalState('import_progress', 100);
                 if (!empty($app->getClients())) {
                     $app->broadcast('admin:import');
@@ -850,19 +935,25 @@ $app->page('/', function (Context $c) use ($app): void {
     $forceRescanAction = $c->action(function (Context $c) use (
         $app,
         $debug,
-        $daemon,
+        $daemons,
+        $adminTargetProfile,
         $importRunning,
         $confirmRescan,
         $importScanPorts
     ): void {
+        /** @var array<string, ImportDaemon> $daemons */
         $confirmRescan->setValue(false);
 
-        if ($daemon === null || $daemon->isLocked()) {
+        $targetProfile = $adminTargetProfile->string();
+        $targetDaemon = $daemons[$targetProfile] ?? null;
+
+        if ($targetDaemon === null || $targetDaemon->isLocked()) {
             return;
         }
 
-        $daemon->lock();
+        $targetDaemon->lock();
         $importRunning->setValue(true, broadcast: false);
+        $app->setGlobalState('import_active_profile', $targetProfile);
         $app->setGlobalState('import_progress', 0);
         $app->setGlobalState('import_current_file', '');
         $app->setGlobalState('import_status_text', 'Resetting RRD data…');
@@ -875,7 +966,7 @@ $app->page('/', function (Context $c) use ($app): void {
         }
 
         $scanPorts = $importScanPorts->bool();
-        Coroutine::create(function () use ($app, $debug, $daemon, $scanPorts): void {
+        Coroutine::create(function () use ($app, $debug, $targetDaemon, $targetProfile, $scanPorts): void {
             $app->setGlobalState('import_cancel', false);
 
             /** Append new Debug WARNING+ entries to the global log state. */
@@ -899,6 +990,7 @@ $app->page('/', function (Context $c) use ($app): void {
                 $importer->setForce(true);
                 $importer->setProcessPorts($scanPorts);
                 $importer->setProcessPortsBySource($scanPorts);
+                $importer->setProfile($targetProfile);
 
                 $importer->start(
                     $start,
@@ -930,7 +1022,7 @@ $app->page('/', function (Context $c) use ($app): void {
             } finally {
                 $flushLog();
                 $app->setGlobalState('import_cancel', false);
-                $daemon->unlock();
+                $targetDaemon->unlock();
                 $app->setGlobalState('import_progress', 100);
                 if (!empty($app->getClients())) {
                     $app->broadcast('admin:import');
@@ -1148,6 +1240,10 @@ $app->page('/', function (Context $c) use ($app): void {
         $importRunning,
         $confirmRescan,
         $importScanPorts,
+        $selectedProfile,
+        $availableProfilesSignal,
+        $adminTargetProfile,
+        $changeProfileAction,
         $refreshGraphsAction,
         $flowAction,
         $statsAction,
@@ -1179,7 +1275,9 @@ $app->page('/', function (Context $c) use ($app): void {
     ): string {
         // Sync importRunning signal to daemon lock state so all tabs reflect the
         // correct value when re-rendered by an admin:import or rrd:live broadcast.
-        $isImporting = $app->globalState('daemon', null)?->isLocked() ?? false;
+        /** @var array<string, ImportDaemon> $allDaemons */
+        $allDaemons = $app->globalState('daemons', []);
+        $isImporting = array_reduce($allDaemons, fn ($carry, $d) => $carry || $d->isLocked(), false);
         $importRunning->setValue($isImporting, broadcast: false);
 
         // Skip all data fetches when Config failed to initialize (fatal error path).
@@ -1195,7 +1293,7 @@ $app->page('/', function (Context $c) use ($app): void {
                 $srcs = Config::$settings->sources;
             }
             $nfcapdFileCount->setValue(
-                $countNfcapdFiles($datestart->int(), $dateend->int(), $srcs),
+                $countNfcapdFiles($datestart->int(), $dateend->int(), $srcs, $selectedProfile->string()),
                 broadcast: false
             );
         }
@@ -1206,6 +1304,18 @@ $app->page('/', function (Context $c) use ($app): void {
         $now = time();
         if (!$hasFatalError && (!$isImporting || ($now - $lastGraphFetch) >= 10)) {
             $updateDataRange();
+
+            // Auto-advance the selected window when the user is in "live" mode
+            // (dateend within 10 min of now). This runs on every rrd:live broadcast
+            // so the selection tracks new data even when the graph refresh interval
+            // has stopped (graphIsLive=false after the 5-min SSE liveness window).
+            $de = $dateend->int();
+            if ($now - $de < 600) {
+                $window = $de - $datestart->int();
+                $dateend->setValue($now, broadcast: false);
+                $datestart->setValue($now - $window, broadcast: false);
+            }
+
             $cachedGraphData = json_encode($fetchGraphData(), JSON_THROW_ON_ERROR);
             $lastGraphFetch = $now;
 
@@ -1213,7 +1323,7 @@ $app->page('/', function (Context $c) use ($app): void {
             foreach (Config::$settings->sources as $source) {
                 $cachedImportSources[] = [
                     'name' => $source,
-                    'last_update' => Config::$db->last_update($source),
+                    'last_update' => Config::$db->last_update($source, 0, $selectedProfile->string()),
                 ];
             }
         }
@@ -1222,18 +1332,31 @@ $app->page('/', function (Context $c) use ($app): void {
 
         // Health checks — throttled to at most once every 30 s per tab
         if (!$hasFatalError && (!$isImporting || ($now - $lastHealthFetch) >= 30)) {
-            $hcDaemon = $app->globalState('daemon', null);
+            $hcDaemonsInfo = [];
+            foreach ($allDaemons as $prof => $d) {
+                $hcDaemonsInfo[$prof] = [
+                    'ready' => $d->isDaemonReady(),
+                    'watchCount' => $d->getWatchCount(),
+                    'lastAutoImport' => $d->getLastAutoImportTime(),
+                ];
+            }
             $cachedHealthChecks = HealthChecker::run(
                 (bool) $app->globalState('daemon_disabled', false),
-                $hcDaemon !== null ? [
-                    'ready' => $hcDaemon->isDaemonReady(),
-                    'watchCount' => $hcDaemon->getWatchCount(),
-                    'lastAutoImport' => $hcDaemon->getLastAutoImportTime(),
-                ] : null,
+                $hcDaemonsInfo,
             );
             $lastHealthFetch = $now;
         }
         $healthChecks = $cachedHealthChecks;
+
+        // Build daemonsInfo map: profile → status array (for admin panel)
+        $daemonsInfo = [];
+        foreach ($allDaemons as $profile => $d) {
+            $daemonsInfo[$profile] = [
+                'ready' => $d->isDaemonReady(),
+                'watchCount' => $d->getWatchCount(),
+                'lastAutoImport' => $d->getLastAutoImportTime(),
+            ];
+        }
 
         // ── Status indicator computation ──────────────────────────────────
         // Capture health: infer nfcapd activity from most recent RRD last_update
@@ -1253,18 +1376,22 @@ $app->page('/', function (Context $c) use ($app): void {
             $captureLabel = 'nfcapd: no capture in ' . HealthChecker::ageStr($captureAge);
         }
 
-        // Daemon health
+        // Daemon health — aggregate across all daemons
         $d2 = $app->globalState('daemon', null);
-        if ((bool) $app->globalState('daemon_disabled', false) || $d2 === null) {
+        if ((bool) $app->globalState('daemon_disabled', false) || empty($allDaemons)) {
             $daemonStatus = 'danger';
             $daemonLabel = 'Import daemon: disabled (NFSEN_SKIP_DAEMON)';
-        } elseif (!$d2->isDaemonReady()) {
-            $daemonStatus = 'warning';
-            $daemonLabel = 'Import daemon: initializing…';
         } else {
-            $n = $d2->getWatchCount();
-            $daemonStatus = 'success';
-            $daemonLabel = "Import daemon: watching {$n} dir" . ($n !== 1 ? 's' : '');
+            $allReady = array_reduce($allDaemons, fn ($carry, $d) => $carry && $d->isDaemonReady(), true);
+            $totalWatches = array_sum(array_map(fn ($d) => $d->getWatchCount(), $allDaemons));
+            $profileCount = count($allDaemons);
+            if (!$allReady) {
+                $daemonStatus = 'warning';
+                $daemonLabel = 'Import daemon: initializing…';
+            } else {
+                $daemonStatus = 'success';
+                $daemonLabel = "Import daemon: {$profileCount} profile" . ($profileCount !== 1 ? 's' : '') . ", watching {$totalWatches} dir" . ($totalWatches !== 1 ? 's' : '');
+            }
         }
 
         return $c->render('layout.html.twig', [
@@ -1333,6 +1460,11 @@ $app->page('/', function (Context $c) use ($app): void {
             'action_triggerImport' => $triggerImportAction->url(),
             'action_forceRescan' => $forceRescanAction->url(),
             'action_cancelImport' => $cancelImportAction->url(),
+            'action_changeProfile' => $changeProfileAction->url(),
+            // ── Profile selector ──────────────────────────────────────────
+            'selectedProfile' => $selectedProfile,
+            'availableProfiles' => $availableProfilesSignal,
+            'adminTargetProfile' => $adminTargetProfile,
             // ── Settings ─────────────────────────────────────────────────
             'settingsDefaultView' => $settingsDefaultView,
             'settingsGraphDisplay' => $settingsGraphDisplay,
@@ -1368,7 +1500,9 @@ $app->page('/', function (Context $c) use ($app): void {
             'importStatusText' => $app->globalState('import_status_text', ''),
             'importEta' => $app->globalState('import_eta', ''),
             'importLog' => $app->globalState('import_log', []),
+            'importActiveProfile' => $app->globalState('import_active_profile', ''),
             'daemonDisabled' => (bool) $app->globalState('daemon_disabled', false),
+            'daemonsInfo' => $daemonsInfo,
             'daemonInfo' => ($d = $app->globalState('daemon', null)) !== null ? [
                 'ready' => $d->isDaemonReady(),
                 'watchCount' => $d->getWatchCount(),

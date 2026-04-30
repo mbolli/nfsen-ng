@@ -36,11 +36,11 @@ class HealthChecker {
     }
 
     /**
-     * @param null|array{ready: bool, watchCount: int, lastAutoImport: int} $daemonInfo
+     * @param array<string, array{ready: bool, watchCount: int, lastAutoImport: int}> $daemonsInfo Profile-keyed daemon status map. Empty = not running.
      *
      * @return list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}>
      */
-    public static function run(bool $daemonDisabled, ?array $daemonInfo = null): array {
+    public static function run(bool $daemonDisabled, array $daemonsInfo = []): array {
         /** @var list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}> $checks */
         $checks = [];
         $settings = Config::$settings;
@@ -202,7 +202,7 @@ class HealthChecker {
                 false,
                 'Import must be triggered manually from this panel'
             );
-        } elseif ($daemonInfo === null) {
+        } elseif (empty($daemonsInfo)) {
             $add(
                 'daemon_status',
                 'Daemon status',
@@ -210,42 +210,29 @@ class HealthChecker {
                 'Not running — restart required',
                 'Import Daemon'
             );
-        } elseif (!$daemonInfo['ready']) {
-            $add(
-                'daemon_status',
-                'Daemon status',
-                'warning',
-                'Initializing…',
-                'Import Daemon'
-            );
         } else {
-            $n = $daemonInfo['watchCount'];
-            $add(
-                'daemon_status',
-                'Daemon status',
-                'ok',
-                'Watching ' . $n . ' dir' . ($n !== 1 ? 's' : ''),
-                'Import Daemon'
-            );
-            if ($daemonInfo['lastAutoImport'] > 0) {
-                $autoAge = time() - $daemonInfo['lastAutoImport'];
-                $autoDetail = $autoAge <= 0 ? 'Just now' : $ageStr($autoAge) . ' ago';
-                $add(
-                    'daemon_last_import',
-                    'Last auto-import',
-                    'ok',
-                    $autoDetail,
-                    'Import Daemon',
-                    false,
-                    '',
-                    $daemonInfo['lastAutoImport']
-                );
+            foreach ($daemonsInfo as $prof => $daemonInfo) {
+                $label = \count($daemonsInfo) > 1 ? "Daemon ({$prof})" : 'Daemon status';
+                $idPfx = \count($daemonsInfo) > 1 ? "daemon_{$prof}" : 'daemon';
+                if (!$daemonInfo['ready']) {
+                    $add("{$idPfx}_status", $label, 'warning', 'Initializing…', 'Import Daemon');
+                } else {
+                    $n = $daemonInfo['watchCount'];
+                    $add("{$idPfx}_status", $label, 'ok', 'Watching ' . $n . ' dir' . ($n !== 1 ? 's' : ''), 'Import Daemon');
+                    if ($daemonInfo['lastAutoImport'] > 0) {
+                        $autoAge = time() - $daemonInfo['lastAutoImport'];
+                        $autoDetail = $autoAge <= 0 ? 'Just now' : $ageStr($autoAge) . ' ago';
+                        $lastLabel = \count($daemonsInfo) > 1 ? "Last import ({$prof})" : 'Last auto-import';
+                        $add("{$idPfx}_last_import", $lastLabel, 'ok', $autoDetail, 'Import Daemon', false, '', $daemonInfo['lastAutoImport']);
+                    }
+                }
             }
         }
 
         // ── 5. nfcapd Paths ──────────────────────────────────────────────────
         $profilesData = rtrim($settings->nfdumpProfilesData, '/\\');
-        $profile = $settings->nfdumpProfile;
+        $profiles = Config::detectProfiles();
+        $multiProfile = \count($profiles) > 1;
 
         if ($profilesData === '') {
             $add('profiles_data', 'profiles-data dir', 'error', 'nfdump.profiles-data not set in config', 'nfcapd Paths');
@@ -256,19 +243,28 @@ class HealthChecker {
         } else {
             $add('profiles_data', 'profiles-data dir', 'ok', $profilesData, 'nfcapd Paths', true);
 
-            $profilePath = $profilesData . \DIRECTORY_SEPARATOR . $profile;
-            if (!is_dir($profilePath)) {
-                $add('profile_dir', "Profile dir '{$profile}'", 'error', "Not found: {$profilePath}", 'nfcapd Paths', true);
-            } else {
-                $add('profile_dir', "Profile dir '{$profile}'", 'ok', $profilePath, 'nfcapd Paths', true);
+            foreach ($profiles as $profile) {
+                $profilePath = $profilesData . \DIRECTORY_SEPARATOR . $profile;
+                $profileLabel = $multiProfile ? "Profile '{$profile}'" : "Profile dir '{$profile}'";
+                $profileIdPfx = $multiProfile ? "profile_{$profile}" : 'profile';
+
+                if (!is_dir($profilePath)) {
+                    $add("{$profileIdPfx}_dir", $profileLabel, 'error', "Not found: {$profilePath}", 'nfcapd Paths', true);
+
+                    continue;
+                }
+
+                $add("{$profileIdPfx}_dir", $profileLabel, 'ok', $profilePath, 'nfcapd Paths', true);
 
                 foreach ($sources as $source) {
                     $sourcePath = $profilePath . \DIRECTORY_SEPARATOR . $source;
+                    $sourceIdPfx = $multiProfile ? "{$profile}_{$source}" : $source;
+                    $sourceLabel = $multiProfile ? "Source {$source} ({$profile})" : "Source dir: {$source}";
 
                     if (!is_dir($sourcePath)) {
                         $add(
-                            "source_dir_{$source}",
-                            "Source dir: {$source}",
+                            "source_dir_{$sourceIdPfx}",
+                            $sourceLabel,
                             'error',
                             "Not found: {$sourcePath}",
                             'nfcapd Paths',
@@ -285,8 +281,8 @@ class HealthChecker {
                         && !str_contains($f, '.current.'));
                     if (\count($flatFiles) > 0) {
                         $add(
-                            "source_layout_{$source}",
-                            "Source layout: {$source}",
+                            "source_layout_{$sourceIdPfx}",
+                            $multiProfile ? "Layout {$source} ({$profile})" : "Source layout: {$source}",
                             'error',
                             'nfcapd files in flat structure — run reorganize_nfcapd.sh and configure nfcapd with -S 1',
                             'nfcapd Paths'
@@ -298,10 +294,11 @@ class HealthChecker {
                     // Capture freshness: check today's YYYY/MM/DD dir
                     $today = date('Y') . \DIRECTORY_SEPARATOR . date('m') . \DIRECTORY_SEPARATOR . date('d');
                     $todayDir = $sourcePath . \DIRECTORY_SEPARATOR . $today;
+                    $freshnessLabel = $multiProfile ? "Freshness {$source} ({$profile})" : "Capture freshness: {$source}";
                     if (!is_dir($todayDir)) {
                         $add(
-                            "capture_fresh_{$source}",
-                            "Capture freshness: {$source}",
+                            "capture_fresh_{$sourceIdPfx}",
+                            $freshnessLabel,
                             'warning',
                             "No data dir for today ({$today})",
                             'nfcapd Paths'
@@ -310,8 +307,8 @@ class HealthChecker {
                         $files = glob($todayDir . \DIRECTORY_SEPARATOR . 'nfcapd.*') ?: [];
                         if ($files === []) {
                             $add(
-                                "capture_fresh_{$source}",
-                                "Capture freshness: {$source}",
+                                "capture_fresh_{$sourceIdPfx}",
+                                $freshnessLabel,
                                 'warning',
                                 "No nfcapd files in today's dir",
                                 'nfcapd Paths'
@@ -329,7 +326,7 @@ class HealthChecker {
                             } else {
                                 $detail = 'Last file ' . $ageStr($age) . ' ago';
                             }
-                            $add("capture_fresh_{$source}", "Capture freshness: {$source}", $status, $detail, 'nfcapd Paths', false, '', $newestMtime);
+                            $add("capture_fresh_{$sourceIdPfx}", $freshnessLabel, $status, $detail, 'nfcapd Paths', false, '', $newestMtime);
                         }
                     }
                 }

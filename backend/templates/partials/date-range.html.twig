@@ -7,17 +7,15 @@
     first/last timestamps so the slider is bounded to real data instead of a
     fixed importYears window.
 #}
-{% set fromMs    = ("now - 1 day"|date('U')) ~ '000' %}
-{% set nowMs     = "now"|date('U') ~ '000' %}
 
 <div class="mb-3">
     <nfsen-daterange
         id="dateRangeSlider"
         data-ignore-morph
-        data-min="{{ dataRangeMin.int() * 1000 }}"
-        data-max="{{ dataRangeMax.int() * 1000 }}"
-        data-from="{{ fromMs }}"
-        data-to="{{ nowMs }}"
+        data-attr:data-min="${{ dataRangeMin.id() }} * 1000"
+        data-attr:data-max="${{ dataRangeMax.id() }} * 1000"
+        data-attr:data-from="${{ datestart.id() }} * 1000"
+        data-attr:data-to="${{ dateend.id() }} * 1000"
         data-ref="_daterangeWidget"
         data-on:range-change="${{ datestart.id() }} = Math.floor(evt.detail.from / 1000); ${{ dateend.id() }} = Math.floor(evt.detail.to / 1000); el.dispatchEvent(new Event('change', { bubbles: true }));"
         data-on:graph-zoom__window__debounce.500ms="$_autoSyncGraph && $_daterangeWidget.updateRange(evt.detail.from, evt.detail.to)">

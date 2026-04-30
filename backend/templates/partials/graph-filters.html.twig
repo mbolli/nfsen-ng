@@ -73,7 +73,7 @@
     </div>
 
     {# Protocols #}
-    <div class="col-md-4" id="filterProtocols">
+    <div class="col-md-4" id="filterProtocols" data-signals='{ {{ graphProtocols.id() }}: ["any"]}'>
         <div class="filter-group">
         <p class="filter-label">Protocols
             <nfsen-tooltip data-ignore-morph text="Filter by protocol. 'Any' shows all traffic." placement="top"></nfsen-tooltip>
@@ -83,7 +83,7 @@
                    class="btn-check"
                    id="filterProtocolAny"
                    value="any"
-                   data-effect="el.checked = ${{ graphProtocols.id() }}.includes('any') || (${{ graphDisplay.id() }} === 'protocols' && ${{ graphProtocols.id() }}.length >= 4)"
+                   data-effect="console.log(${{ graphProtocols.id() }}); el.checked = ${{ graphProtocols.id() }}.includes('any') || (${{ graphDisplay.id() }} === 'protocols' && ${{ graphProtocols.id() }}.length >= 4)"
                    data-on:change="${{ graphDisplay.id() }} !== 'protocols' ? el.checked && (${{ graphProtocols.id() }} = ['any']) : (el.checked ? (${{ graphProtocols.id() }} = ['tcp', 'udp', 'icmp', 'other']) : ${{ graphProtocols.id() }} = ['tcp'])">
             <label class="btn btn-outline-primary btn-sm" for="filterProtocolAny">Any</label>
             {% for value, label in {'tcp': 'TCP', 'udp': 'UDP', 'icmp': 'ICMP', 'other': 'Others'} %}
@@ -91,8 +91,7 @@
                    class="btn-check"
                    id="filterProtocol{{ value|capitalize }}"
                    value="{{ value }}"
-                   data-effect="el.checked = ${{ graphProtocols.id() }}.includes('{{ value }}')"
-
+                   data-effect="console.log(${{ graphProtocols.id() }}); el.checked = ${{ graphProtocols.id() }}.includes('{{ value }}')"
                    data-on:change="${{ graphDisplay.id() }} !== 'protocols' ? el.checked && (${{ graphProtocols.id() }} = [el.value]) : (el.checked ? ${{ graphProtocols.id() }}.push(el.value) : ${{ graphProtocols.id() }} = ${{ graphProtocols.id() }}.filter(p => p !== el.value))">
             <label class="btn btn-outline-primary btn-sm" for="filterProtocol{{ value|capitalize }}">{{ label }}</label>
             {% endfor %}

@@ -62,6 +62,18 @@ $nfsen_config = [
         // 0 = unlimited (default). Example: 604800 = 7 days.
         // Can also be set via the NFSEN_MAX_STATS_WINDOW environment variable.
         'max_stats_window' => (int) (getenv('NFSEN_MAX_STATS_WINDOW') ?: 0),
+
+        // Netbox integration — optional, for RFC1918 / private IP lookups.
+        // When set, clicking an IP from the flow/stats table queries Netbox for
+        // address metadata (description, tenant, VRF, status) instead of showing
+        // the public geo lookup (which returns no data for private ranges anyway).
+        // 'netbox_url' should be the base URL of your Netbox instance, e.g.:
+        //   'https://netbox.example.com'
+        // 'netbox_token' should be a read-only API token from Netbox → Admin → API Tokens.
+        // Both can be set via environment variables instead (NFSEN_NETBOX_URL / NFSEN_NETBOX_TOKEN).
+        // Leave both empty (or unset) to disable Netbox integration.
+        'netbox_url'   => (string) (getenv('NFSEN_NETBOX_URL') ?: ''),
+        'netbox_token' => (string) (getenv('NFSEN_NETBOX_TOKEN') ?: ''),
     ],
     'frontend' => [
         'defaults' => [

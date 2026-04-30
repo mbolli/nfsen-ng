@@ -78,6 +78,8 @@ final class Settings {
         public private(set) int $importYears,
         public private(set) int $logPriority,
         public private(set) int $maxStatsWindow,
+        public private(set) string $netboxUrl,
+        public private(set) string $netboxToken,
         private array $datasourceConfigs,
     ) {}
 
@@ -117,6 +119,8 @@ final class Settings {
             importYears: max(1, $importYears),
             logPriority: $logPriority,
             maxStatsWindow: max(0, (int) ($raw['general']['max_stats_window'] ?? (int) (getenv('NFSEN_MAX_STATS_WINDOW') ?: 0))),
+            netboxUrl: (string) ($raw['general']['netbox_url'] ?? (string) (getenv('NFSEN_NETBOX_URL') ?: '')),
+            netboxToken: (string) ($raw['general']['netbox_token'] ?? (string) (getenv('NFSEN_NETBOX_TOKEN') ?: '')),
             datasourceConfigs: (array) ($raw['db'] ?? []),
         );
     }
@@ -192,6 +196,8 @@ final class Settings {
             importYears: max(1, (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3)),
             logPriority: $logPriority,
             maxStatsWindow: max(0, (int) (getenv('NFSEN_MAX_STATS_WINDOW') ?: 0)),
+            netboxUrl: (string) (getenv('NFSEN_NETBOX_URL') ?: ''),
+            netboxToken: (string) (getenv('NFSEN_NETBOX_TOKEN') ?: ''),
             datasourceConfigs: $datasourceConfigs,
         );
     }

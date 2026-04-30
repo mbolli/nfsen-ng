@@ -29,6 +29,7 @@ use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\Import;
 use mbolli\nfsen_ng\common\ImportDaemon;
+use mbolli\nfsen_ng\common\IpLookup;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\Table;
 use mbolli\nfsen_ng\common\UserPreferences;
@@ -1013,15 +1014,25 @@ $app->page('/', function (Context $c) use ($app): void {
             return;
         }
 
-        // 1. Geo lookup (server-side — no CORS issue)
-        $geoData = [];
-        $ctx = stream_context_create(['http' => ['timeout' => 5, 'user_agent' => 'nfsen-ng']]);
-        $json = @file_get_contents('https://ipapi.co/' . rawurlencode($ip) . '/json/', false, $ctx);
-        if ($json !== false) {
-            $geoData = json_decode($json, true) ?? [];
+        $isPrivate = IpLookup::isPrivate($ip);
+
+        // 1. Netbox lookup — for private/RFC1918 IPs when Netbox is configured
+        $netboxData = null;
+        if ($isPrivate) {
+            $netboxData = IpLookup::netbox($ip);
         }
 
-        // 2. Hostname resolution
+        // 2. Geo lookup — public IPs only (ipapi.co returns errors for private ranges)
+        $geoData = [];
+        if (!$isPrivate) {
+            $ctx = stream_context_create(['http' => ['timeout' => 5, 'user_agent' => 'nfsen-ng']]);
+            $json = @file_get_contents('https://ipapi.co/' . rawurlencode($ip) . '/json/', false, $ctx);
+            if ($json !== false) {
+                $geoData = json_decode($json, true) ?? [];
+            }
+        }
+
+        // 3. Hostname resolution
         $hostname = @gethostbyaddr($ip);
         if ($hostname === $ip || $hostname === false) {
             $esc = escapeshellarg((string) $ip);
@@ -1039,11 +1050,12 @@ $app->page('/', function (Context $c) use ($app): void {
             }
         }
 
-        // 3. Render modal HTML and push as a fragment — no full page re-render
+        // 4. Render modal HTML and push as a fragment — no full page re-render
         $modalHtml = $c->render('partials/ip-info-modal.html.twig', [
             'ip' => htmlspecialchars($ip, ENT_QUOTES),
             'hostname' => htmlspecialchars((string) $hostname, ENT_QUOTES),
             'geoData' => $geoData,
+            'netboxData' => $netboxData ?? [],
         ]);
 
         $c->getPatchManager()->queuePatch([
@@ -1051,7 +1063,7 @@ $app->page('/', function (Context $c) use ($app): void {
             'content' => $modalHtml,
         ]);
 
-        // 4. Show modal via JS after the fragment lands
+        // 5. Show modal via JS after the fragment lands
         $c->execScript('document.getElementById("ip-modal-inner").showModal()');
     }, 'ip-info');
 

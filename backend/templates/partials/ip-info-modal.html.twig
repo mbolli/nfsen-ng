@@ -17,6 +17,30 @@
                     <dd class="col-sm-9{% if hostname == 'could not be resolved' %} text-secondary fst-italic{% endif %}">{{ hostname }}</dd>
                 </dl>
 
+                {% if netboxData is defined and netboxData is not empty %}
+                    <h3 class="fs-6 fw-semibold text-muted mb-1">Netbox</h3>
+                    <table class="table table-sm table-bordered mb-3">
+                        {% if netboxData.address is defined %}
+                            <tr><th class="col-4">Address</th><td>{{ netboxData.address }}</td></tr>
+                        {% endif %}
+                        {% if netboxData.description is defined and netboxData.description %}
+                            <tr><th>Description</th><td>{{ netboxData.description }}</td></tr>
+                        {% endif %}
+                        {% if netboxData.tenant is defined and netboxData.tenant %}
+                            <tr><th>Tenant</th><td>{{ netboxData.tenant.name }}</td></tr>
+                        {% endif %}
+                        {% if netboxData.vrf is defined and netboxData.vrf %}
+                            <tr><th>VRF</th><td>{{ netboxData.vrf.name }}</td></tr>
+                        {% endif %}
+                        {% if netboxData.status is defined %}
+                            <tr><th>Status</th><td>{{ netboxData.status.label ?? netboxData.status }}</td></tr>
+                        {% endif %}
+                        {% if netboxData.role is defined and netboxData.role %}
+                            <tr><th>Role</th><td>{{ netboxData.role.label ?? netboxData.role }}</td></tr>
+                        {% endif %}
+                    </table>
+                {% endif %}
+
                 {% if geoData.error is defined and geoData.error %}
                     <div class="alert alert-warning">{{ geoData.reason ?? 'IP lookup failed' }}</div>
                 {% else %}

@@ -28,7 +28,8 @@ class TableFormatter {
     private const PATTERN_ICMP_FIELDS = '/^(icmp_type|icmptype)$/i';
     private const PATTERN_FWD_STATUS_FIELDS = '/^(fwd_status|fwdstatus|forwarding_status)$/i';
     private const PATTERN_PROTO_FIELDS = '/^(proto|protocol)$/i';
-    private const PATTERN_PORT_FIELDS = '/^(srcport|dstport|src_port|dst_port|sp|dp|port)$/i';
+    private const PATTERN_PORT_FIELDS = '/^(srcport|dstport|src_port|dst_port|sp|dp|port|natsrcport|natdstport|natport|nsrcport|ndstport|xlate_src_port|xlate_dst_port|nat_src_port|nat_dst_port)$/i';
+    private const PATTERN_NAT_EVENT_FIELDS = '/^(event|xevent|nevent|nsel_event|nat_event)$/i';
     private const PATTERN_PERCENTAGE_SUFFIX = '/(percent|pct|ratio)$/i';
     private const PATTERN_IP_SUFFIX = '/(?:ip|addr)$/i';
 
@@ -169,6 +170,11 @@ class TableFormatter {
         // Format protocol numbers to names
         if (preg_match(self::PATTERN_PROTO_FIELDS, $fieldLower) && is_numeric($value)) {
             return self::formatProtocol($value);
+        }
+
+        // Format NSEL/NAT event type
+        if (preg_match(self::PATTERN_NAT_EVENT_FIELDS, $fieldLower)) {
+            return self::formatNatEvent($value);
         }
 
         // Format port numbers with service names
@@ -667,6 +673,57 @@ class TableFormatter {
         }
 
         return (string) $port;
+    }
+
+    /**
+     * Format a NSEL/NAT event type value as a human-readable badge.
+     * Handles both numeric event codes and string event names.
+     *
+     * NSEL/ASA event codes: 0=ignore, 1=create, 2=delete, 3=keepalive, 4=deny
+     * NEL/NAT event codes: 1=add, 2=delete
+     *
+     * @param mixed $value
+     */
+    private static function formatNatEvent($value): string {
+        // Map string event names (as returned by nfdump for flow listing)
+        static $stringMap = [
+            'ignore' => ['ignore', 'secondary'],
+            'create' => ['create', 'success'],
+            'delete' => ['delete', 'danger'],
+            'term' => ['term', 'danger'],
+            'deny' => ['deny', 'warning'],
+            'keepalive' => ['keepalive', 'secondary'],
+            'add' => ['add', 'success'],
+            '<no-evt>' => ['no-event', 'secondary'],
+        ];
+
+        $lower = strtolower(trim((string) $value));
+        if (isset($stringMap[$lower])) {
+            [$label, $color] = $stringMap[$lower];
+
+            return \sprintf('<span class="badge bg-%s">%s</span>', $color, htmlspecialchars($label, ENT_QUOTES | ENT_HTML5));
+        }
+
+        if (is_numeric($value)) {
+            $code = (int) $value;
+            static $codeMap = [
+                0 => ['ignore', 'secondary'],
+                1 => ['create', 'success'],
+                2 => ['delete', 'danger'],
+                3 => ['keepalive', 'secondary'],
+                4 => ['deny', 'warning'],
+                5 => ['quota exceeded', 'warning'],
+            ];
+            if (isset($codeMap[$code])) {
+                [$label, $color] = $codeMap[$code];
+
+                return \sprintf('<span class="badge bg-%s">%s</span>', $color, htmlspecialchars($label, ENT_QUOTES | ENT_HTML5));
+            }
+
+            return \sprintf('<span class="badge bg-secondary">event %d</span>', $code);
+        }
+
+        return htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5);
     }
 
     /**

@@ -257,4 +257,78 @@ describe('TableFormatter', function (): void {
             expect($result)->toBe('some-value');
         });
     });
+
+    describe('NSEL/NAT event formatting', function (): void {
+        test('formats numeric event code 1 (create) as success badge', function (): void {
+            $result = TableFormatter::formatCellValue(1, 'event', ['linkIpAddresses' => false]);
+            expect($result)->toContain('bg-success')->toContain('create');
+        });
+
+        test('formats numeric event code 2 (delete) as danger badge', function (): void {
+            $result = TableFormatter::formatCellValue(2, 'event', ['linkIpAddresses' => false]);
+            expect($result)->toContain('bg-danger')->toContain('delete');
+        });
+
+        test('formats numeric event code 4 (deny) as warning badge', function (): void {
+            $result = TableFormatter::formatCellValue(4, 'event', ['linkIpAddresses' => false]);
+            expect($result)->toContain('bg-warning')->toContain('deny');
+        });
+
+        test('formats numeric event code 0 (ignore) as secondary badge', function (): void {
+            $result = TableFormatter::formatCellValue(0, 'event', ['linkIpAddresses' => false]);
+            expect($result)->toContain('bg-secondary')->toContain('ignore');
+        });
+
+        test('formats unknown numeric event code', function (): void {
+            $result = TableFormatter::formatCellValue(99, 'event', ['linkIpAddresses' => false]);
+            expect($result)->toContain('badge')->toContain('99');
+        });
+
+        test('formats string event name "create"', function (): void {
+            $result = TableFormatter::formatCellValue('create', 'event', ['linkIpAddresses' => false]);
+            expect($result)->toContain('bg-success')->toContain('create');
+        });
+
+        test('formats string event name "deny"', function (): void {
+            $result = TableFormatter::formatCellValue('deny', 'event', ['linkIpAddresses' => false]);
+            expect($result)->toContain('bg-warning')->toContain('deny');
+        });
+
+        test('formats nfdump no-event placeholder', function (): void {
+            $result = TableFormatter::formatCellValue('<no-evt>', 'event', ['linkIpAddresses' => false]);
+            expect($result)->toContain('badge');
+        });
+
+        test('formats event field for xevent field name', function (): void {
+            $result = TableFormatter::formatCellValue(1, 'xevent', ['linkIpAddresses' => false]);
+            expect($result)->toContain('badge');
+        });
+
+        test('formats event field for nevent (NEL) field name', function (): void {
+            $result = TableFormatter::formatCellValue(2, 'nevent', ['linkIpAddresses' => false]);
+            expect($result)->toContain('bg-danger');
+        });
+    });
+
+    describe('NAT port field formatting', function (): void {
+        test('formats natsrcport as port', function (): void {
+            $result = TableFormatter::formatCellValue(80, 'natsrcport', ['linkIpAddresses' => false]);
+            expect($result)->toContain('80');
+        });
+
+        test('formats natdstport as port', function (): void {
+            $result = TableFormatter::formatCellValue(443, 'natdstport', ['linkIpAddresses' => false]);
+            expect($result)->toContain('443');
+        });
+
+        test('formats nsrcport (NEL) as port', function (): void {
+            $result = TableFormatter::formatCellValue(53, 'nsrcport', ['linkIpAddresses' => false]);
+            expect($result)->toContain('53');
+        });
+
+        test('formats xlate_src_port as port', function (): void {
+            $result = TableFormatter::formatCellValue(22, 'xlate_src_port', ['linkIpAddresses' => false]);
+            expect($result)->toContain('22');
+        });
+    });
 });

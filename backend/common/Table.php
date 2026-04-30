@@ -53,6 +53,30 @@ class Table {
         'outdstmac' => 'Output Destination MAC',
         'indstmac' => 'Input Destination MAC',
         'outsrcmac' => 'Output Source MAC',
+        // NSEL / Cisco ASA
+        'event' => 'NSEL Event',
+        'xevent' => 'NSEL Extended Event',
+        'natsrcip' => 'NAT Src IP',
+        'natdstip' => 'NAT Dst IP',
+        'natip' => 'NAT IP',
+        'natsrcport' => 'NAT Src Port',
+        'natdstport' => 'NAT Dst Port',
+        'natport' => 'NAT Port',
+        // NEL / NAT
+        'nevent' => 'NAT Event',
+        'nsrcip' => 'NAT Src IP',
+        'ndstip' => 'NAT Dst IP',
+        'nsrcport' => 'NAT Src Port',
+        'ndstport' => 'NAT Dst Port',
+        // NSEL translated address fields (flow listing)
+        'xlate_src_addr' => 'XLATE Src IP',
+        'xlate_dst_addr' => 'XLATE Dst IP',
+        'xlate_src_port' => 'XLATE Src Port',
+        'xlate_dst_port' => 'XLATE Dst Port',
+        'nat_src_addr' => 'NAT Src IP',
+        'nat_dst_addr' => 'NAT Dst IP',
+        'nat_src_port' => 'NAT Src Port',
+        'nat_dst_port' => 'NAT Dst Port',
     ];
 
     /**

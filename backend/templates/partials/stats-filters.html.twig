@@ -113,6 +113,23 @@
                 {% for i in 1..10 %}
                 <option value="mpls{{ i }}">MPLS Label {{ i }}</option>
                 {% endfor %}
+                <optgroup label="NSEL / Cisco ASA">
+                    <option value="event">NSEL Event type</option>
+                    <option value="xevent">NSEL Extended event</option>
+                    <option value="natsrcip">NSEL NAT Src IP</option>
+                    <option value="natdstip">NSEL NAT Dst IP</option>
+                    <option value="natip">NSEL NAT Src/Dst IP</option>
+                    <option value="natsrcport">NSEL NAT Src Port</option>
+                    <option value="natdstport">NSEL NAT Dst Port</option>
+                    <option value="natport">NSEL NAT Src/Dst Port</option>
+                </optgroup>
+                <optgroup label="NEL / NAT">
+                    <option value="nevent">NAT Event type</option>
+                    <option value="nsrcip">NAT Src IP</option>
+                    <option value="ndstip">NAT Dst IP</option>
+                    <option value="nsrcport">NAT Src Port</option>
+                    <option value="ndstport">NAT Dst Port</option>
+                </optgroup>
             </select>
         </div>
         <div class="form-group">

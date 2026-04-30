@@ -149,7 +149,10 @@ class Nfdump implements Processor {
         // Remove 2>&1 from command since we're handling stderr separately
         $command = str_replace(' 2>&1', '', $command);
 
-        $process = proc_open($command, $descriptorspec, $pipes);
+        // Prefix with 'exec' so the shell replaces itself with nfdump directly.
+        // Without this, proc_open spawns /bin/sh -c "...", and proc_get_status()['pid']
+        // returns the shell's PID — killing the shell leaves nfdump running and completing normally.
+        $process = proc_open('exec ' . $command, $descriptorspec, $pipes);
 
         if (!\is_resource($process)) {
             throw new \Exception('Failed to start nfdump process');

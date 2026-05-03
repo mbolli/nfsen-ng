@@ -9,6 +9,11 @@
 
 	# Serve static files from frontend directory
 	# Caddy compresses these directly (php-via never sees /frontend/* requests)
+	#
+	# ⚠  BARE-METAL USERS: change the path below to wherever you cloned nfsen-ng.
+	#    Example: if you cloned to /var/www/nfsen-ng, use `root * /var/www/nfsen-ng`
+	#    The Docker images mount the repo at /var/www/html/nfsen-ng, which is
+	#    why that path is the default here.
 	handle /frontend/* {
 		encode br zstd gzip
 		root * /var/www/html/nfsen-ng

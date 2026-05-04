@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 1.2.3 or 1.2.3-beta.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version format
+        run: |
+          if ! echo "${{ inputs.version }}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+            echo "Error: version must follow semver format (e.g. 1.2.3 or 1.2.3-beta.1)"
+            exit 1
+          fi
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump composer.json version
+        run: |
+          jq --arg v "${{ inputs.version }}" '.version = $v' composer.json > composer.json.tmp
+          mv composer.json.tmp composer.json
+
+      - name: Bump package.json version
+        run: npm version "${{ inputs.version }}" --no-git-tag-version
+
+      - name: Bump Config::VERSION
+        run: |
+          sed -i "s/public const VERSION = 'v[^']*'/public const VERSION = 'v${{ inputs.version }}'/" backend/common/Config.php
+
+      - name: Commit and tag
+        run: |
+          git add composer.json package.json backend/common/Config.php
+          git commit -m "release: v${{ inputs.version }}"
+          git tag "v${{ inputs.version }}"
+
+      - name: Push
+        run: |
+          git push origin master
+          git push origin "v${{ inputs.version }}"

@@ -39,6 +39,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/mbolli/nfsen-ng
+          labels: |
+            org.opencontainers.image.title=nfsen-ng
+            org.opencontainers.image.description=Modern NetFlow analyzer — PHP/OpenSwoole application server
+            org.opencontainers.image.url=https://github.com/mbolli/nfsen-ng
+            org.opencontainers.image.source=https://github.com/mbolli/nfsen-ng
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -80,6 +85,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/mbolli/nfsen-ng-caddy
+          labels: |
+            org.opencontainers.image.title=nfsen-ng-caddy
+            org.opencontainers.image.description=nfsen-ng — Caddy reverse proxy with Brotli compression
+            org.opencontainers.image.url=https://github.com/mbolli/nfsen-ng
+            org.opencontainers.image.source=https://github.com/mbolli/nfsen-ng
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

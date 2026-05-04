@@ -1,0 +1,315 @@
+{#
+    Alert Rules settings card — shown in the Settings tab.
+    Allows creating, editing, enabling/disabling, and deleting threshold-based alert rules.
+    Notifications: in-app SSE toast, optional email, optional HTTP webhook.
+#}
+
+{# ── Alert Rules list ──────────────────────────────────────────────────── #}
+<div class="card mb-4">
+    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+        Alert Rules
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm py-0"
+                    title="Send a test toast to verify the notification UI works"
+                    data-on:click="window.showMessage('warning', '🔔 Test alert toast — in-app notifications are working!', true, '#alerts-toast-container')">
+                Test Toast
+            </button>
+            <span class="badge bg-secondary fw-normal">{{ alerts|length }} rule{{ alerts|length != 1 ? 's' : '' }}</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        {% if alerts is empty %}
+            <p class="text-muted small p-3 mb-0">No alert rules configured. Use the form below to create one.</p>
+        {% else %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 small align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th>Profile</th>
+                        <th>Condition</th>
+                        <th>Notify</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for rule in alerts %}
+                <tr class="{{ rule.enabled ? '' : 'text-muted' }}">
+                    <td>
+                        <span class="badge {{ rule.enabled ? 'bg-success' : 'bg-secondary' }} me-1">{{ rule.enabled ? 'on' : 'off' }}</span>
+                        {{ rule.name|e }}
+                    </td>
+                    <td><code class="small">{{ rule.profile|e }}</code></td>
+                    <td class="font-monospace small">
+                        {{ rule.metric }}
+                        {{ rule.operator }}
+                        {% if rule.thresholdType == 'absolute' %}
+                            {{ rule.thresholdValue|number_format(0) }}
+                        {% else %}
+                            {{ rule.thresholdValue|number_format(0) }}% of {{ rule.avgWindow }} avg
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if rule.notifyEmail %}<span title="{{ rule.notifyEmail|e }}" class="me-1">✉</span>{% endif %}
+                        {% if rule.notifyWebhook %}<span title="{{ rule.notifyWebhook|e }}">🔗</span>{% endif %}
+                        {% if not rule.notifyEmail and not rule.notifyWebhook %}<span class="text-muted">in-app only</span>{% endif %}
+                    </td>
+                    <td class="text-end text-nowrap">
+                        {# Test: force-evaluate now, show current value vs threshold #}
+                        <button class="btn btn-outline-info btn-sm py-0 px-1 me-1"
+                                title="Test-fire now (bypasses cooldown)"
+                                data-indicator:_alert_testing_{{ rule.id|replace({'-': '_'}) }}
+                                data-on:click="@post('{{ testAlert.url() }}', {id: '{{ rule.id|e('js') }}'})">
+                            <span data-show="$_alert_testing_{{ rule.id|replace({'-': '_'}) }}" style="display:none"
+                                  class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            <span data-show="!$_alert_testing_{{ rule.id|replace({'-': '_'}) }}">▶ Test</span>
+                        </button>
+                        {# Edit: populate form signals client-side without a round-trip #}
+                        <button class="btn btn-outline-secondary btn-sm py-0 px-1 me-1"
+                                title="Edit"
+                                data-on:click="${{ alert_form_id.id() }} = '{{ rule.id|e('js') }}';
+                                    ${{ alert_form_name.id() }} = '{{ rule.name|e('js') }}';
+                                    ${{ alert_form_enabled.id() }} = {{ rule.enabled ? 'true' : 'false' }};
+                                    ${{ alert_form_profile.id() }} = '{{ rule.profile|e('js') }}';
+                                    ${{ alert_form_metric.id() }} = '{{ rule.metric|e('js') }}';
+                                    ${{ alert_form_operator.id() }} = '{{ rule.operator|e('js') }}';
+                                    ${{ alert_form_thresholdType.id() }} = '{{ rule.thresholdType|e('js') }}';
+                                    ${{ alert_form_thresholdValue.id() }} = {{ rule.thresholdValue }};
+                                    ${{ alert_form_avgWindow.id() }} = '{{ rule.avgWindow|e('js') }}';
+                                    ${{ alert_form_cooldownSlots.id() }} = {{ rule.cooldownSlots }};
+                                    ${{ alert_form_notifyEmail.id() }} = '{{ rule.notifyEmail|default('')|e('js') }}';
+                                    ${{ alert_form_notifyWebhook.id() }} = '{{ rule.notifyWebhook|default('')|e('js') }}';
+                                    document.getElementById('alert-form-card').scrollIntoView({behavior:'smooth'})">
+                            ✏
+                        </button>
+                        {# Toggle enabled #}
+                        <button class="btn {{ rule.enabled ? 'btn-outline-warning' : 'btn-outline-success' }} btn-sm py-0 px-1 me-1"
+                                title="{{ rule.enabled ? 'Disable' : 'Enable' }}"
+                                data-on:click="@post('{{ toggleAlert.url() }}', {id: '{{ rule.id|e('js') }}'})">
+                            {{ rule.enabled ? '⏸' : '▶' }}
+                        </button>
+                        {# Delete #}
+                        <button class="btn btn-outline-danger btn-sm py-0 px-1"
+                                title="Delete"
+                                data-on:click="if(confirm('Delete rule \'{{ rule.name|e('js') }}\'?')) @post('{{ deleteAlert.url() }}', {id: '{{ rule.id|e('js') }}'})">
+                            🗑
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# ── Alert Rule Form ────────────────────────────────────────────────────── #}
+<div id="alert-form-card" class="card mb-4">
+    <div class="card-header fw-semibold">
+        <span data-show="${{ alert_form_id.id() }} == ''">New Alert Rule</span>
+        <span data-show="${{ alert_form_id.id() }} != ''" style="display:none">Edit Alert Rule</span>
+    </div>
+    <div class="card-body">
+
+        <div class="row g-3">
+
+            {# Name #}
+            <div class="col-md-6">
+                <label class="form-label fw-semibold small">Rule name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control form-control-sm"
+                       placeholder="e.g. High traffic on gw1"
+                       {{ bind(alert_form_name) }}>
+            </div>
+
+            {# Profile #}
+            <div class="col-md-3">
+                <label class="form-label fw-semibold small">Profile</label>
+                <input type="text" class="form-control form-control-sm"
+                       placeholder="live"
+                       {{ bind(alert_form_profile) }}>
+            </div>
+
+            {# Enabled toggle #}
+            <div class="col-md-3 d-flex align-items-end">
+                <div class="form-check form-switch mb-1">
+                    <input class="form-check-input" type="checkbox"
+                           role="switch"
+                           id="alertFormEnabledCheck"
+                           {{ bind(alert_form_enabled) }}>
+                    <label class="form-check-label small" for="alertFormEnabledCheck">Enabled</label>
+                </div>
+            </div>
+
+        </div>{# /row #}
+
+        <hr class="my-3">
+        <h6 class="text-muted small text-uppercase mb-3">Condition</h6>
+
+        <div class="row g-3">
+
+            {# Metric #}
+            <div class="col-md-3">
+                <label class="form-label fw-semibold small">Metric</label>
+                {% set _m = alert_form_metric.string() %}
+                <select class="form-select form-select-sm" {{ bind(alert_form_metric) }}>
+                    <option value="flows" {{ _m == 'flows' ? 'selected' : '' }}>Flows/s</option>
+                    <option value="packets" {{ _m == 'packets' ? 'selected' : '' }}>Packets/s</option>
+                    <option value="bytes" {{ _m == 'bytes' ? 'selected' : '' }}>Bytes/s</option>
+                </select>
+            </div>
+
+            {# Operator #}
+            <div class="col-md-2">
+                <label class="form-label fw-semibold small">Operator</label>
+                {% set _op = alert_form_operator.string() %}
+                <select class="form-select form-select-sm" {{ bind(alert_form_operator) }}>
+                    <option value=">"  {{ _op == '>'  ? 'selected' : '' }}>&gt;</option>
+                    <option value=">=" {{ _op == '>=' ? 'selected' : '' }}>&gt;=</option>
+                    <option value="<"  {{ _op == '<'  ? 'selected' : '' }}>&lt;</option>
+                    <option value="<=" {{ _op == '<=' ? 'selected' : '' }}>&lt;=</option>
+                </select>
+            </div>
+
+            {# Threshold type #}
+            <div class="col-md-3">
+                <label class="form-label fw-semibold small">Threshold type</label>
+                {% set _tt = alert_form_thresholdType.string() %}
+                <select class="form-select form-select-sm" {{ bind(alert_form_thresholdType) }}>
+                    <option value="absolute" {{ _tt == 'absolute' ? 'selected' : '' }}>Absolute value</option>
+                    <option value="percent_of_avg" {{ _tt == 'percent_of_avg' ? 'selected' : '' }}>% of rolling avg</option>
+                </select>
+            </div>
+
+            {# Threshold value #}
+            <div class="col-md-2">
+                <label class="form-label fw-semibold small">
+                    <span data-show="${{ alert_form_thresholdType.id() }} == 'absolute'">Value</span>
+                    <span data-show="${{ alert_form_thresholdType.id() }} != 'absolute'" style="display:none">Percent (%)</span>
+                </label>
+                <input type="number" class="form-control form-control-sm"
+                       min="0" step="1"
+                       {{ bind(alert_form_thresholdValue) }}>
+                <div class="form-text">Tip: use <code>&lt; 1</code> to fire even on empty data.</div>
+            </div>
+
+            {# Avg window — only relevant for percent_of_avg #}
+            <div class="col-md-2" data-show="${{ alert_form_thresholdType.id() }} == 'percent_of_avg'" style="display:none">
+                <label class="form-label fw-semibold small">Avg window</label>
+                {% set _aw = alert_form_avgWindow.string() %}
+                <select class="form-select form-select-sm" {{ bind(alert_form_avgWindow) }}>
+                    <option value="10m" {{ _aw == '10m' ? 'selected' : '' }}>10 min</option>
+                    <option value="30m" {{ _aw == '30m' ? 'selected' : '' }}>30 min</option>
+                    <option value="1h"  {{ _aw == '1h'  ? 'selected' : '' }}>1 hour</option>
+                    <option value="6h"  {{ _aw == '6h'  ? 'selected' : '' }}>6 hours</option>
+                    <option value="12h" {{ _aw == '12h' ? 'selected' : '' }}>12 hours</option>
+                    <option value="24h" {{ _aw == '24h' ? 'selected' : '' }}>24 hours</option>
+                </select>
+            </div>
+
+        </div>{# /row #}
+
+        <div class="row g-3 mt-1">
+
+            {# Cooldown slots #}
+            <div class="col-md-3">
+                <label class="form-label fw-semibold small">
+                    Cooldown <span class="text-muted fw-normal">(5-min slots)</span>
+                </label>
+                <input type="number" class="form-control form-control-sm"
+                       min="0" max="288" step="1"
+                       {{ bind(alert_form_cooldownSlots) }}>
+                <div class="form-text">Slots to suppress re-triggering after a fire.</div>
+            </div>
+
+        </div>{# /row #}
+
+        <hr class="my-3">
+        <h6 class="text-muted small text-uppercase mb-3">Notifications</h6>
+
+        <div class="row g-3">
+
+            {# Email #}
+            <div class="col-md-6">
+                <label class="form-label fw-semibold small">
+                    Email address
+                    {% if not alertEmailEnabled %}
+                        <span class="badge bg-secondary fw-normal ms-1" title="Set NFSEN_ALERT_EMAIL_FROM env var to enable email">disabled</span>
+                    {% endif %}
+                </label>
+                <input type="email" class="form-control form-control-sm"
+                       placeholder="alerts@example.com"
+                       {{ alertEmailEnabled ? '' : 'disabled' }}
+                       {{ bind(alert_form_notifyEmail) }}>
+                {% if not alertEmailEnabled %}
+                    <div class="form-text text-warning">Set <code>NFSEN_ALERT_EMAIL_FROM</code> env var to enable email.</div>
+                {% endif %}
+            </div>
+
+            {# Webhook #}
+            <div class="col-md-6">
+                <label class="form-label fw-semibold small">Webhook URL</label>
+                <input type="url" class="form-control form-control-sm"
+                       placeholder="https://hooks.example.com/alert"
+                       {{ bind(alert_form_notifyWebhook) }}>
+                <div class="form-text">HTTP POST with JSON payload. Must start with <code>http://</code> or <code>https://</code>.</div>
+            </div>
+
+        </div>{# /row #}
+
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <button class="btn btn-outline-secondary btn-sm"
+                    data-show="${{ alert_form_id.id() }} != ''"
+                    style="display:none"
+                    data-on:click="${{ alert_form_id.id() }} = ''; ${{ alert_form_name.id() }} = ''">
+                Cancel edit
+            </button>
+            <div class="ms-auto">
+                <button class="btn btn-primary btn-sm"
+                        data-indicator:_alert_saving
+                        data-on:click="@post('{{ saveAlert.url() }}')">
+                    <span data-show="$_alert_saving" style="display:none"
+                          class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                    <span data-show="${{ alert_form_id.id() }} == ''">Create rule</span>
+                    <span data-show="${{ alert_form_id.id() }} != ''" style="display:none">Update rule</span>
+                </button>
+            </div>
+        </div>
+
+    </div>{# /card-body #}
+</div>{# /card #}
+
+{# ── Recent alert history ──────────────────────────────────────────────── #}
+{% if alertLog is not empty %}
+<div class="card mb-4">
+    <div class="card-header fw-semibold">Recent Alert History</div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 small align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Time</th>
+                        <th>Rule</th>
+                        <th>Metric</th>
+                        <th>Value</th>
+                        <th>Profile</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for entry in alertLog %}
+                <tr>
+                    <td class="text-nowrap">
+                        <span data-text="new Date({{ entry.ts }} * 1000).toLocaleString('sv')">{{ entry.ts }}</span>
+                    </td>
+                    <td>{{ entry.rule|e }}</td>
+                    <td><code>{{ entry.metric|e }}</code></td>
+                    <td>{{ entry.value|number_format(2) }}</td>
+                    <td><code>{{ entry.profile|e }}</code></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}

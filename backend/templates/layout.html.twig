@@ -54,12 +54,12 @@
             nfsen-ng <span id="version">{{ version }}</span>
         </a>
         {# Profile selector — only shown when multiple profiles are detected #}
-        {% set availableProfilesList = availableProfiles.getValue() %}
+        {% set availableProfilesList = available_profiles.getValue() %}
         {% if availableProfilesList|length > 1 %}
         <div class="position-absolute" style="left: 50%; transform: translateX(-50%);">
             <select class="form-select form-select-sm d-inline-block w-auto"
-                    {{ bind(selectedProfile) }}
-                    data-on:change="@post('{{ action_changeProfile }}')">
+                    {{ bind(selected_profile) }}
+                    data-on:change="@post('{{ changeProfile.url() }}')">
                 {% set lastGroup = null %}
                 {% for p in availableProfilesList %}
                     {% set parts = p|split('/') %}
@@ -85,7 +85,7 @@
 
     {# ── Global import status strip — visible on every tab while import runs ── #}
     <div id="importStatusStrip"
-         data-show="${{ importRunning.id() }}"
+         data-show="${{ import_running.id() }}"
          style="display:none; cursor:pointer;"
          class="border-bottom mb-2"
          data-on:click="$_currentView = 'admin'"
@@ -111,16 +111,16 @@
 
         {# ── Server error signal (pushed by server, never sent back) ───────── #}
         <div class="alert alert-danger"
-             data-effect="el.style.display = (${{ error.id() }} != null && ${{ error.id() }} != '') ? 'block' : 'none'"
+             data-effect="el.style.display = (${{ _error.id() }} != null && ${{ _error.id() }} != '') ? 'block' : 'none'"
              role="alert"
-             data-text="${{ error.id() }}"
+             data-text="${{ _error.id() }}"
              style="display: none;"></div>
 
         <div class="filter row align-items-start bg-light border-bottom py-3 mb-3"
              style="flex-direction: row"
              data-show="$_currentView != 'admin' && $_currentView != 'settings'"
              data-indicator:nfcapd._counting
-             data-on:change__window__throttle.1000ms="($_currentView === 'flows' || $_currentView === 'statistics') && evt.target.closest('nfsen-daterange') && @post('{{ action_countFiles }}')">
+             data-on:change__window__throttle.1000ms="($_currentView === 'flows' || $_currentView === 'statistics') && evt.target.closest('nfsen-daterange') && @post('{{ countFiles.url() }}')">
             <div class="col-12">
                 <div class="card">
                     <div class="card-body">
@@ -219,6 +219,11 @@
 
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-filter-manager.js?v={{ version }}"></script>
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-tooltip.js?v={{ version }}"></script>
+
+    {# ── Alert-fired toast container ──────────────────────────────────────── #}
+    {# Fixed overlay (bottom-right). New toasts injected here when alerts fire  #}
+    {# or via window.showMessage(). data-ignore-morph keeps JS-appended toasts. #}
+    <div id="alerts-toast-container" data-ignore-morph>{{ alertFiredHtml|raw }}</div>
 
 </body>
 </html>

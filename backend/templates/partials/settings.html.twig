@@ -27,8 +27,8 @@
             {# Default view #}
             <div class="col-md-4">
                 <label class="form-label fw-semibold small">Default view</label>
-                {% set _v = settingsDefaultView.string() %}
-                <select class="form-select form-select-sm" {{ bind(settingsDefaultView) }}>
+                {% set _v = settings_defaultView.string() %}
+                <select class="form-select form-select-sm" {{ bind(settings_defaultView) }}>
                     <option value="graphs" {{ _v == 'graphs' ? 'selected' : '' }}>Graphs</option>
                     <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
                     <option value="statistics" {{ _v == 'statistics' ? 'selected' : '' }}>Statistics</option>
@@ -38,8 +38,8 @@
             {# Default log level #}
             <div class="col-md-4">
                 <label class="form-label fw-semibold small">Log level</label>
-                {% set _v = settingsLogPriority.string() %}
-                <select class="form-select form-select-sm" {{ bind(settingsLogPriority) }}>
+                {% set _v = settings_logPriority.string() %}
+                <select class="form-select form-select-sm" {{ bind(settings_logPriority) }}>
                     <option value="debug" {{ _v == 'debug' ? 'selected' : '' }}>Debug</option>
                     <option value="info" {{ _v == 'info' ? 'selected' : '' }}>Info</option>
                     <option value="notice" {{ _v == 'notice' ? 'selected' : '' }}>Notice</option>
@@ -58,8 +58,8 @@
             {# Default graph display #}
             <div class="col-md-4">
                 <label class="form-label fw-semibold small">Display</label>
-                {% set _v = settingsGraphDisplay.string() %}
-                <select class="form-select form-select-sm" {{ bind(settingsGraphDisplay) }}>
+                {% set _v = settings_graphDisplay.string() %}
+                <select class="form-select form-select-sm" {{ bind(settings_graphDisplay) }}>
                     <option value="sources" {{ _v == 'sources' ? 'selected' : '' }}>Sources</option>
                     <option value="ports" {{ _v == 'ports' ? 'selected' : '' }}>Ports</option>
                     <option value="protocols" {{ _v == 'protocols' ? 'selected' : '' }}>Protocols</option>
@@ -69,8 +69,8 @@
             {# Default graph datatype #}
             <div class="col-md-4">
                 <label class="form-label fw-semibold small">Datatype</label>
-                {% set _v = settingsGraphDatatype.string() %}
-                <select class="form-select form-select-sm" {{ bind(settingsGraphDatatype) }}>
+                {% set _v = settings_graphDatatype.string() %}
+                <select class="form-select form-select-sm" {{ bind(settings_graphDatatype) }}>
                     <option value="traffic" {{ _v == 'traffic' ? 'selected' : '' }}>Traffic (bits/s)</option>
                     <option value="packets" {{ _v == 'packets' ? 'selected' : '' }}>Packets/s</option>
                     <option value="bytes" {{ _v == 'bytes' ? 'selected' : '' }}>Bytes</option>
@@ -81,8 +81,8 @@
             {# Default graph protocols #}
             <div class="col-md-4">
                 <label class="form-label fw-semibold small">Protocols</label>
-                {% set _protos = settingsGraphProtocols.array() %}
-                <select class="form-select form-select-sm" {{ bind(settingsGraphProtocols) }} multiple>
+                {% set _protos = settings_graphProtocols.array() %}
+                <select class="form-select form-select-sm" {{ bind(settings_graphProtocols) }} multiple>
                     <option value="any" {{ 'any' in _protos ? 'selected' : '' }}>Any</option>
                     <option value="tcp" {{ 'tcp' in _protos ? 'selected' : '' }}>TCP</option>
                     <option value="udp" {{ 'udp' in _protos ? 'selected' : '' }}>UDP</option>
@@ -102,8 +102,8 @@
             {# Default flow limit #}
             <div class="col-md-4">
                 <label class="form-label fw-semibold small">Flow limit</label>
-                {% set _v = settingsFlowLimit.int() %}
-                <select class="form-select form-select-sm" {{ bind(settingsFlowLimit) }}>
+                {% set _v = settings_flowLimit.int() %}
+                <select class="form-select form-select-sm" {{ bind(settings_flowLimit) }}>
                     {% for n in [20, 50, 100, 500, 1000, 10000] %}
                     <option value="{{ n }}" {{ _v == n ? 'selected' : '' }}>{{ n }}</option>
                     {% endfor %}
@@ -113,8 +113,8 @@
             {# Default stats order-by #}
             <div class="col-md-4">
                 <label class="form-label fw-semibold small">Statistics order by</label>
-                {% set _v = settingsStatsOrderBy.string() %}
-                <select class="form-select form-select-sm" {{ bind(settingsStatsOrderBy) }}>
+                {% set _v = settings_statsOrderBy.string() %}
+                <select class="form-select form-select-sm" {{ bind(settings_statsOrderBy) }}>
                     <option value="bytes" {{ _v == 'bytes' ? 'selected' : '' }}>Bytes</option>
                     <option value="packets" {{ _v == 'packets' ? 'selected' : '' }}>Packets</option>
                     <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
@@ -137,7 +137,7 @@
                 </label>
                 <textarea id="settings-filters-textarea"
                           class="form-control form-control-sm font-monospace"
-                          {{ bind(settingsFiltersText) }}
+                          {{ bind(settings_filtersText) }}
                           rows="5"
                           placeholder="proto tcp&#10;dst port 443&#10;host 192.168.1.1"></textarea>
             </div>
@@ -146,7 +146,7 @@
         <div class="d-flex justify-content-end mt-3">
             <button class="btn btn-primary btn-sm"
                     data-indicator:_settings_saving
-                    data-on:click="document.dispatchEvent(new CustomEvent('nfsen-global-filters-updated',{detail:{filters:(document.getElementById('settings-filters-textarea')?.value||'').split('\n').map(s=>s.trim()).filter(s=>s)}})); window.showMessage('success', 'Preferences saved.', true, '#settings-toast-container'); @post('{{ action_saveSettings }}')">
+                    data-on:click="document.dispatchEvent(new CustomEvent('nfsen-global-filters-updated',{detail:{filters:(document.getElementById('settings-filters-textarea')?.value||'').split('\n').map(s=>s.trim()).filter(s=>s)}})); window.showMessage('success', 'Preferences saved.', true, '#settings-toast-container'); @post('{{ saveSettings.url() }}')">
                 <span data-show="$_settings_saving" style="display:none;"
                       class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
                 Save preferences
@@ -155,6 +155,9 @@
 
     </div>{# /card-body #}
 </div>{# /card #}
+
+{# ── Alert Rules ─────────────────────────────────────────────────────────── #}
+{% include 'partials/alerts-settings.html.twig' %}
 
 {# ── Deployment configuration (read-only) ───────────────────────────────── #}
 <div class="card mb-4">

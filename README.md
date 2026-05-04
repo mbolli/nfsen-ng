@@ -6,7 +6,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/mbolli/nfsen-ng?style=flat-square)](https://github.com/mbolli/nfsen-ng/stargazers)
 [![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?style=flat-square&logo=php&logoColor=white)](https://www.php.net/)
 [![OpenSwoole](https://img.shields.io/badge/OpenSwoole-coroutines-F15B2A?style=flat-square)](https://openswoole.com/)
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/mbolli/nfsen-ng/blob/master/deploy/docker-compose.yml)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng)
 [![Donate a beer](https://img.shields.io/badge/paypal-donate-yellow.svg?style=flat-square)](https://paypal.me/bolli)
 
 nfsen-ng is a modern, in-place replacement for the ageing [NfSen](http://nfsen.sourceforge.net/) web frontend. It sits on top of the existing [nfdump](https://github.com/phaag/nfdump) tools and adds real-time SSE push, a responsive UI, and support for RRD or VictoriaMetrics as the storage backend.
@@ -15,14 +15,27 @@ nfsen-ng is a modern, in-place replacement for the ageing [NfSen](http://nfsen.s
 
 ## Quick start
 
+No clone needed — just grab the compose file and go:
+
+```bash
+curl -O https://raw.githubusercontent.com/mbolli/nfsen-ng/master/deploy/docker-compose.yml
+
+# Edit NFSEN_SOURCES, NFSEN_NFDUMP_PROFILES, and other env vars in docker-compose.yml, then:
+
+# Production with bundled Caddy (auto-HTTPS, ports 80/443)
+docker compose --profile proxy up -d
+
+# Production behind your own reverse proxy (app on port 9000 only)
+docker compose up -d
+```
+
+Images are published on GHCR: [`ghcr.io/mbolli/nfsen-ng`](https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng) (app) and [`ghcr.io/mbolli/nfsen-ng-caddy`](https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng-caddy) (Caddy with Brotli).
+
+**Development** (source mounted, auto-reload on file change):
+
 ```bash
 git clone https://github.com/mbolli/nfsen-ng
 cd nfsen-ng
-
-# Production (ports 80/443, bundled Caddy with auto-HTTPS)
-docker compose -f deploy/docker-compose.yml --profile proxy up -d
-
-# Development (port 8080, source mounted, auto-reload)
 docker compose -f deploy/docker-compose.dev.yml up -d
 ```
 

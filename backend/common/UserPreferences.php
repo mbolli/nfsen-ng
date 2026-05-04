@@ -14,7 +14,7 @@ namespace mbolli\nfsen_ng\common;
  * On load: silently return null if the file doesn't exist yet — Config falls back to Settings defaults.
  */
 final class UserPreferences {
-    /** @param string[] $defaultGraphProtocols  @param string[] $filters */
+    /** @param string[] $defaultGraphProtocols  @param string[] $filters  @param AlertRule[] $alerts */
     public function __construct(
         public readonly string $defaultView,
         public readonly string $defaultGraphDisplay,
@@ -25,6 +25,7 @@ final class UserPreferences {
         public readonly array $filters,
         public readonly int $logPriority,
         public readonly string $selectedProfile = 'live',
+        public readonly array $alerts = [],
     ) {}
 
     /**
@@ -46,6 +47,13 @@ final class UserPreferences {
 
     /** @param array<string, mixed> $data */
     public static function fromArray(array $data): self {
+        $alerts = [];
+        foreach ((array) ($data['alerts'] ?? []) as $alertData) {
+            if (\is_array($alertData)) {
+                $alerts[] = AlertRule::fromArray($alertData);
+            }
+        }
+
         return new self(
             defaultView: (string) ($data['defaultView'] ?? 'graphs'),
             defaultGraphDisplay: (string) ($data['defaultGraphDisplay'] ?? 'sources'),
@@ -56,6 +64,7 @@ final class UserPreferences {
             filters: array_values(array_filter(array_map('strval', (array) ($data['filters'] ?? [])))),
             logPriority: (int) ($data['logPriority'] ?? LOG_INFO),
             selectedProfile: (string) ($data['selectedProfile'] ?? 'live'),
+            alerts: $alerts,
         );
     }
 
@@ -73,6 +82,7 @@ final class UserPreferences {
             ->withDefaultStatsOrderBy($this->defaultStatsOrderBy)
             ->withFilters($this->filters)
             ->withLogPriority($this->logPriority)
+            ->withAlerts($this->alerts)
         ;
     }
 
@@ -114,6 +124,7 @@ final class UserPreferences {
             'filters' => $this->filters,
             'logPriority' => $this->logPriority,
             'selectedProfile' => $this->selectedProfile,
+            'alerts' => array_map(fn (AlertRule $r) => $r->toArray(), $this->alerts),
         ];
     }
 

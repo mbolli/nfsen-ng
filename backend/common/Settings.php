@@ -80,6 +80,9 @@ final class Settings {
         public private(set) int $maxStatsWindow,
         public private(set) string $netboxUrl,
         public private(set) string $netboxToken,
+        /** @var AlertRule[] Alert rules stored in preferences.json */
+        public private(set) array $alerts,
+        public private(set) string $alertEmailFrom,
         private array $datasourceConfigs,
     ) {}
 
@@ -121,6 +124,8 @@ final class Settings {
             maxStatsWindow: max(0, (int) ($raw['general']['max_stats_window'] ?? (int) (getenv('NFSEN_MAX_STATS_WINDOW') ?: 0))),
             netboxUrl: (string) ($raw['general']['netbox_url'] ?? (string) (getenv('NFSEN_NETBOX_URL') ?: '')),
             netboxToken: (string) ($raw['general']['netbox_token'] ?? (string) (getenv('NFSEN_NETBOX_TOKEN') ?: '')),
+            alerts: [],
+            alertEmailFrom: (string) ($raw['general']['alert_email_from'] ?? (string) (getenv('NFSEN_ALERT_EMAIL_FROM') ?: '')),
             datasourceConfigs: (array) ($raw['db'] ?? []),
         );
     }
@@ -198,6 +203,8 @@ final class Settings {
             maxStatsWindow: max(0, (int) (getenv('NFSEN_MAX_STATS_WINDOW') ?: 0)),
             netboxUrl: (string) (getenv('NFSEN_NETBOX_URL') ?: ''),
             netboxToken: (string) (getenv('NFSEN_NETBOX_TOKEN') ?: ''),
+            alerts: [],
+            alertEmailFrom: (string) (getenv('NFSEN_ALERT_EMAIL_FROM') ?: ''),
             datasourceConfigs: $datasourceConfigs,
         );
     }
@@ -380,6 +387,14 @@ final class Settings {
     public function withDatasourceConfig(string $name, array $config): self {
         $clone = clone $this;
         $clone->datasourceConfigs[$name] = $config;
+
+        return $clone;
+    }
+
+    /** @param AlertRule[] $alerts */
+    public function withAlerts(array $alerts): self {
+        $clone = clone $this;
+        $clone->alerts = $alerts;
 
         return $clone;
     }

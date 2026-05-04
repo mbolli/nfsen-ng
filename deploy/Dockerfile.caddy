@@ -15,6 +15,11 @@ RUN xcaddy build \
 
 FROM caddy:latest
 
+LABEL org.opencontainers.image.title="nfsen-ng-caddy" \
+      org.opencontainers.image.description="nfsen-ng — Caddy reverse proxy with Brotli compression" \
+      org.opencontainers.image.url="https://github.com/mbolli/nfsen-ng" \
+      org.opencontainers.image.source="https://github.com/mbolli/nfsen-ng"
+
 # Install runtime Brotli libraries
 RUN apk add --no-cache brotli-libs
 

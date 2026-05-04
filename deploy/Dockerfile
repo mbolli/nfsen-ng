@@ -3,6 +3,11 @@
 
 FROM php:8.4-cli
 
+LABEL org.opencontainers.image.title="nfsen-ng" \
+      org.opencontainers.image.description="Modern NetFlow analyzer — PHP/OpenSwoole application server" \
+      org.opencontainers.image.url="https://github.com/mbolli/nfsen-ng" \
+      org.opencontainers.image.source="https://github.com/mbolli/nfsen-ng"
+
 ENV TZ="UTC"
 WORKDIR /var/www/html/nfsen-ng
 

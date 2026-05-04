@@ -48,16 +48,15 @@
     </div>
     {% endif %}
 
-    <header>
-        <a class="position-absolute link-secondary" style="text-decoration: none;"
+    <header class="d-flex align-items-center gap-2">
+        <a class="link-secondary flex-shrink-0" style="text-decoration: none;"
            href="https://github.com/mbolli/nfsen-ng" target="_blank">
             nfsen-ng <span id="version">{{ version }}</span>
         </a>
         {# Profile selector — only shown when multiple profiles are detected #}
         {% set availableProfilesList = available_profiles.getValue() %}
         {% if availableProfilesList|length > 1 %}
-        <div class="position-absolute" style="left: 50%; transform: translateX(-50%);">
-            <select class="form-select form-select-sm d-inline-block w-auto"
+            <select class="form-select form-select-sm d-inline-block w-auto flex-shrink-0"
                     {{ bind(selected_profile) }}
                     data-on:change="@post('{{ changeProfile.url() }}')">
                 {% set lastGroup = null %}
@@ -78,7 +77,6 @@
                 {% endfor %}
                 {% if lastGroup is not null %}</optgroup>{% endif %}
             </select>
-        </div>
         {% endif %}
         {% include 'partials/nav.html.twig' %}
     </header>

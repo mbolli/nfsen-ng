@@ -16,7 +16,7 @@ class NfsenToast extends HTMLElement {
         const autoDismiss = this.dataset.autoDismiss === 'true';
 
         // Render the toast
-        this.render(type, message);
+        this.render(type, message, autoDismiss);
 
         // Auto-dismiss if requested
         if (autoDismiss) {
@@ -29,14 +29,18 @@ class NfsenToast extends HTMLElement {
     /**
      * Render the toast as a Bootstrap alert
      */
-    render(type, message) {
+    render(type, message, autoDismiss = false) {
         const alertType = type === 'error' ? 'danger' : type;
         const icon = this.getIcon(type);
+        const progressBar = autoDismiss
+            ? `<div class="toast-progress" style="animation-duration:${this.autoDismissDelay}ms"></div>`
+            : '';
 
         this.innerHTML = `
             <div class="alert alert-${alertType} alert-dismissible fade show" role="alert">
                 ${icon}&nbsp;${message}
                 <button type="button" class="btn-close" aria-label="Close"></button>
+                ${progressBar}
             </div>
         `;
 
@@ -91,8 +95,10 @@ window.showMessage = function (type, message, autoDismiss = false, containerSele
         toast.dataset.autoDismiss = 'true';
     }
 
-    // Prefer the specified container, then fall back to body
+    // Prefer the specified container, then the fixed overlay, then body
     const container =
-        (containerSelector && document.querySelector(containerSelector)) || document.body;
+        (containerSelector && document.querySelector(containerSelector)) ||
+        document.getElementById('alerts-toast-container') ||
+        document.body;
     container.appendChild(toast);
 };

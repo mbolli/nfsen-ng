@@ -24,6 +24,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+use mbolli\nfsen_ng\common\AlertManager;
+use mbolli\nfsen_ng\common\AlertRule;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\HealthChecker;
@@ -56,7 +58,6 @@ $viaConfig = (new ViaConfig())
     ->withLogLevel($logLevel)
     ->withH2c()
     ->withBrotli()
-    ->withTrustProxy(true)
     ->withSwooleSettings([
         'worker_num' => $workerNum,
         'max_request' => $maxRequest,
@@ -86,6 +87,15 @@ $app->onStart(function () use ($app): void {
 
     $debug = Debug::getInstance();
     $debug->log('nfsen-ng started (php-via)', LOG_INFO);
+
+    // Instantiate AlertManager — persists across all requests for the lifetime of the worker.
+    $alertManager = new AlertManager(
+        Config::$db,
+        __DIR__ . '/settings/alerts-state.json',
+        __DIR__ . '/settings/alerts-log.json',
+        Config::$settings->alertEmailFrom
+    );
+    $app->setGlobalState('alertManager', $alertManager);
 
     if (getenv('NFSEN_SKIP_DAEMON') === '1' || getenv('NFSEN_SKIP_DAEMON') === 'true') {
         $debug->log('ImportDaemon skipped (NFSEN_SKIP_DAEMON)', LOG_INFO);
@@ -214,9 +224,9 @@ $app->onStart(function () use ($app): void {
     // in a child coroutine, which is safe per Import class restrictions.
     $app->setInterval(function () use ($app, $daemons, $debug): void {
         /** @var array<string, ImportDaemon> $daemons */
-        foreach ($daemons as $daemon) {
+        foreach ($daemons as $_profile => $daemon) {
             try {
-                $daemon->pollOnce(function () use ($app, $debug): void {
+                $daemon->pollOnce(function () use ($app, $debug, $_profile): void {
                     $debug->log('ImportDaemon: file imported → broadcasting rrd:live', LOG_DEBUG);
 
                     // Surface any RRD write warnings from this inotify-triggered import
@@ -235,6 +245,19 @@ $app->onStart(function () use ($app): void {
 
                     if (!empty($app->getClients())) {
                         $app->broadcast('rrd:live');
+                    }
+
+                    // Evaluate alert rules for this profile after each successful import
+                    /** @var null|AlertManager $alertMgr */
+                    $alertMgr = $app->globalState('alertManager', null);
+                    if ($alertMgr !== null && !empty(Config::$settings->alerts)) {
+                        $fired = $alertMgr->runPeriodic(Config::$settings->alerts, $_profile);
+                        if (!empty($fired)) {
+                            $app->setGlobalState('alert_fired', ['names' => $fired, 'ts' => time()]);
+                            if (!empty($app->getClients())) {
+                                $app->broadcast('alerts:fired');
+                            }
+                        }
                     }
                 });
             } catch (Throwable $e) {
@@ -385,6 +408,21 @@ $app->page('/', function (Context $c) use ($app): void {
     );
     $settingsMessage = $c->signal('', 'settings_message');
 
+    // Alert rule form signals — used to create/edit individual alert rules in Settings
+    $alertFormId = $c->signal('', 'alert_form_id', clientWritable: true);
+    $alertFormName = $c->signal('', 'alert_form_name', clientWritable: true);
+    $alertFormEnabled = $c->signal(true, 'alert_form_enabled', clientWritable: true);
+    $alertFormProfile = $c->signal(Config::$settings->nfdumpProfile, 'alert_form_profile', clientWritable: true);
+    $alertFormSources = $c->signal(Config::$settings->sources, 'alert_form_sources', clientWritable: true);
+    $alertFormMetric = $c->signal('bytes', 'alert_form_metric', clientWritable: true);
+    $alertFormOperator = $c->signal('>', 'alert_form_operator', clientWritable: true);
+    $alertFormThresholdType = $c->signal('absolute', 'alert_form_thresholdType', clientWritable: true);
+    $alertFormThresholdValue = $c->signal(0, 'alert_form_thresholdValue', clientWritable: true);
+    $alertFormAvgWindow = $c->signal('1h', 'alert_form_avgWindow', clientWritable: true);
+    $alertFormCooldownSlots = $c->signal(3, 'alert_form_cooldownSlots', clientWritable: true);
+    $alertFormNotifyEmail = $c->signal('', 'alert_form_notifyEmail', clientWritable: true);
+    $alertFormNotifyWebhook = $c->signal('', 'alert_form_notifyWebhook', clientWritable: true);
+
     // ── State containers (plain PHP — NOT signals, not sent to browser) ──────
     // These carry large result sets between the action and the view closure.
     $flowTableHtml = '';
@@ -401,6 +439,7 @@ $app->page('/', function (Context $c) use ($app): void {
     $c->addScope('admin:import');
     $c->addScope('rrd:live');
     $c->addScope('settings:saved');
+    $c->addScope('alerts:fired');
 
     // ── Helper: fetch graph data from datasource ─────────────────────────────
     $fetchGraphData = function () use (
@@ -546,7 +585,12 @@ $app->page('/', function (Context $c) use ($app): void {
     // ── Actions ──────────────────────────────────────────────────────────────
 
     // Change profile — persists the selection to UserPreferences and re-renders.
-    $changeProfileAction = $c->action(function (Context $c) use ($selectedProfile, $updateDataRange, $dataRangeMax, $datestart, $dateend): void {
+    $changeProfileAction = $c->action(function (Context $c) use ($updateDataRange): void {
+        $datestart = $c->getSignal('datestart');
+        $dateend = $c->getSignal('dateend');
+        $dataRangeMax = $c->getSignal('data_range_max');
+        $selectedProfile = $c->getSignal('selected_profile');
+        assert($datestart !== null && $dateend !== null && $dataRangeMax !== null && $selectedProfile !== null);
         $newProfile = $selectedProfile->string();
         $available = Config::detectProfiles();
         if (!in_array($newProfile, $available, true)) {
@@ -570,7 +614,10 @@ $app->page('/', function (Context $c) use ($app): void {
     }, 'change-profile');
 
     // Refresh graphs (called by the filter UI after any filter change)
-    $refreshGraphsAction = $c->action(function (Context $c) use ($fetchGraphData, $datestart, $dateend): void {
+    $refreshGraphsAction = $c->action(function (Context $c) use ($fetchGraphData): void {
+        $datestart = $c->getSignal('datestart');
+        $dateend = $c->getSignal('dateend');
+        assert($datestart !== null && $dateend !== null);
         // If the end date is within the live window (< 10 min old), slide the range
         // forward to keep the "LIVE" badge active across repeated 15-second refreshes.
         $now = time();
@@ -588,27 +635,46 @@ $app->page('/', function (Context $c) use ($app): void {
     // Flow actions — run nfdump, render result table into $flowTableHtml
     $flowAction = $c->action(function (Context $c) use (
         $debug,
-        $datestart,
-        $dateend,
-        $selectedProfile,
-        $flowFilter,
-        $flowLowerLimit,
-        $flowUpperLimit,
-        $flowLimit,
-        $flowAggBidirectional,
-        $flowAggProto,
-        $flowAggSrcPort,
-        $flowAggDstPort,
-        $flowAggSrcIp,
-        $flowAggSrcIpPrefix,
-        $flowAggDstIp,
-        $flowAggDstIpPrefix,
-        $flowOrderByTstart,
-        $flowCount,
         &$flowNotifications,
-        &$flowTableHtml,
-        &$ipInfoAction
+        &$flowTableHtml
     ): void {
+        $datestart = $c->getSignal('datestart');
+        $dateend = $c->getSignal('dateend');
+        $selectedProfile = $c->getSignal('selected_profile');
+        $flowFilter = $c->getSignal('flows_filter');
+        $flowLowerLimit = $c->getSignal('flows_lower_limit');
+        $flowUpperLimit = $c->getSignal('flows_upper_limit');
+        $flowLimit = $c->getSignal('flows_limit');
+        $flowAggBidirectional = $c->getSignal('flows_agg_bidirectional');
+        $flowAggProto = $c->getSignal('flows_agg_proto');
+        $flowAggSrcPort = $c->getSignal('flows_agg_srcport');
+        $flowAggDstPort = $c->getSignal('flows_agg_dstport');
+        $flowAggSrcIp = $c->getSignal('flows_agg_srcip');
+        $flowAggSrcIpPrefix = $c->getSignal('flows_agg_srcip_prefix');
+        $flowAggDstIp = $c->getSignal('flows_agg_dstip');
+        $flowAggDstIpPrefix = $c->getSignal('flows_agg_dstip_prefix');
+        $flowOrderByTstart = $c->getSignal('flows_orderByTstart');
+        $flowCount = $c->getSignal('flows_count');
+        $ipInfoAction = $c->getAction('ip-info');
+        assert(
+            $datestart !== null
+            && $dateend !== null
+            && $selectedProfile !== null
+            && $flowFilter !== null
+            && $flowLowerLimit !== null
+            && $flowUpperLimit !== null
+            && $flowLimit !== null
+            && $flowAggBidirectional !== null
+            && $flowAggProto !== null
+            && $flowAggSrcPort !== null
+            && $flowAggDstPort !== null
+            && $flowAggSrcIp !== null
+            && $flowAggSrcIpPrefix !== null
+            && $flowAggDstIp !== null
+            && $flowAggDstIpPrefix !== null
+            && $flowOrderByTstart !== null
+            && $flowCount !== null
+        );
         $time = microtime(true);
 
         // Build aggregation string from individual signals
@@ -695,7 +761,6 @@ $app->page('/', function (Context $c) use ($app): void {
             $flowTableHtml = Table::generate($flowData, 'flowTable', [
                 'hiddenFields' => [],
                 'linkIpAddresses' => true,
-                // @phpstan-ignore notIdentical.alwaysFalse ($ipInfoAction is set by reference later in the same page closure)
                 'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
                 'originalData' => $result['rawOutput'] ?? null,
             ]);
@@ -711,20 +776,32 @@ $app->page('/', function (Context $c) use ($app): void {
     // Stats actions
     $statsAction = $c->action(function (Context $c) use (
         $debug,
-        $datestart,
-        $dateend,
-        $selectedProfile,
-        $statsFilter,
-        $statsCount,
-        $statsFor,
-        $statsOrderBy,
-        $statsLowerLimit,
-        $statsUpperLimit,
-        $graphSources,
         &$statsNotifications,
-        &$statsTableHtml,
-        &$ipInfoAction
+        &$statsTableHtml
     ): void {
+        $datestart = $c->getSignal('datestart');
+        $dateend = $c->getSignal('dateend');
+        $selectedProfile = $c->getSignal('selected_profile');
+        $statsFilter = $c->getSignal('stats_filter');
+        $statsCount = $c->getSignal('stats_count');
+        $statsFor = $c->getSignal('stats_for');
+        $statsOrderBy = $c->getSignal('stats_orderBy');
+        $statsLowerLimit = $c->getSignal('stats_lower_limit');
+        $statsUpperLimit = $c->getSignal('stats_upper_limit');
+        $graphSources = $c->getSignal('graph_sources');
+        $ipInfoAction = $c->getAction('ip-info');
+        assert(
+            $datestart !== null
+            && $dateend !== null
+            && $selectedProfile !== null
+            && $statsFilter !== null
+            && $statsCount !== null
+            && $statsFor !== null
+            && $statsOrderBy !== null
+            && $statsLowerLimit !== null
+            && $statsUpperLimit !== null
+            && $graphSources !== null
+        );
         $time = microtime(true);
         $forParam = $statsFor->string() . '/' . $statsOrderBy->string();
         $statsNotifications = [];
@@ -784,7 +861,6 @@ $app->page('/', function (Context $c) use ($app): void {
             $statsTableHtml = Table::generate($statsData, 'statsTable', [
                 'hiddenFields' => [],
                 'linkIpAddresses' => true,
-                // @phpstan-ignore notIdentical.alwaysFalse ($ipInfoAction is set by reference later in the same page closure)
                 'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
                 'originalData' => $result['rawOutput'] ?? null,
             ]);
@@ -811,14 +887,13 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // Count nfcapd files — lightweight scan triggered by date/source filter changes
     // in the Flows and Statistics tabs. Only updates $nfcapdFileCount; no heavy work.
-    $countFilesAction = $c->action(function (Context $c) use (
-        $datestart,
-        $dateend,
-        $graphSources,
-        $selectedProfile,
-        $nfcapdFileCount,
-        $countNfcapdFiles
-    ): void {
+    $countFilesAction = $c->action(function (Context $c) use ($countNfcapdFiles): void {
+        $datestart = $c->getSignal('datestart');
+        $dateend = $c->getSignal('dateend');
+        $graphSources = $c->getSignal('graph_sources');
+        $selectedProfile = $c->getSignal('selected_profile');
+        $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
+        assert($datestart !== null && $dateend !== null && $graphSources !== null && $selectedProfile !== null && $nfcapdFileCount !== null);
         $srcs = $graphSources->array();
         if (in_array('any', $srcs, true) || empty($srcs)) {
             $srcs = Config::$settings->sources;
@@ -837,11 +912,13 @@ $app->page('/', function (Context $c) use ($app): void {
     $triggerImportAction = $c->action(function (Context $c) use (
         $app,
         $debug,
-        $daemons,
-        $adminTargetProfile,
-        $importRunning,
-        $importScanPorts
+        $daemons
     ): void {
+        $adminTargetProfile = $c->getSignal('admin_target_profile');
+        $importRunning = $c->getSignal('import_running');
+        $importScanPorts = $c->getSignal('import_scan_ports');
+        assert($adminTargetProfile !== null && $importRunning !== null && $importScanPorts !== null);
+
         /** @var array<string, ImportDaemon> $daemons */
         $targetProfile = $adminTargetProfile->string();
         $targetDaemon = $daemons[$targetProfile] ?? null;
@@ -935,12 +1012,14 @@ $app->page('/', function (Context $c) use ($app): void {
     $forceRescanAction = $c->action(function (Context $c) use (
         $app,
         $debug,
-        $daemons,
-        $adminTargetProfile,
-        $importRunning,
-        $confirmRescan,
-        $importScanPorts
+        $daemons
     ): void {
+        $adminTargetProfile = $c->getSignal('admin_target_profile');
+        $importRunning = $c->getSignal('import_running');
+        $confirmRescan = $c->getSignal('confirm_rescan');
+        $importScanPorts = $c->getSignal('import_scan_ports');
+        assert($adminTargetProfile !== null && $importRunning !== null && $confirmRescan !== null && $importScanPorts !== null);
+
         /** @var array<string, ImportDaemon> $daemons */
         $confirmRescan->setValue(false);
 
@@ -1044,25 +1123,36 @@ $app->page('/', function (Context $c) use ($app): void {
     }, 'cancel-import');
 
     // Save user preferences — persists to preferences.json and reloads defaults on all tabs.
-    $saveSettingsAction = $c->action(function (Context $c) use (
-        $app,
-        $makeToast,
-        $settingsDefaultView,
-        $settingsGraphDisplay,
-        $settingsGraphDatatype,
-        $settingsGraphProtocols,
-        $settingsFlowLimit,
-        $settingsStatsOrderBy,
-        $settingsFiltersText,
-        $settingsLogPriority,
-        $settingsMessage
-    ): void {
+    $saveSettingsAction = $c->action(function (Context $c) use ($app, $makeToast): void {
+        $settingsDefaultView = $c->getSignal('settings_defaultView');
+        $settingsGraphDisplay = $c->getSignal('settings_graphDisplay');
+        $settingsGraphDatatype = $c->getSignal('settings_graphDatatype');
+        $settingsGraphProtocols = $c->getSignal('settings_graphProtocols');
+        $settingsFlowLimit = $c->getSignal('settings_flowLimit');
+        $settingsStatsOrderBy = $c->getSignal('settings_statsOrderBy');
+        $settingsFiltersText = $c->getSignal('settings_filtersText');
+        $settingsLogPriority = $c->getSignal('settings_logPriority');
+        $settingsMessage = $c->getSignal('settings_message');
+        assert(
+            $settingsDefaultView !== null
+            && $settingsGraphDisplay !== null
+            && $settingsGraphDatatype !== null
+            && $settingsGraphProtocols !== null
+            && $settingsFlowLimit !== null
+            && $settingsStatsOrderBy !== null
+            && $settingsFiltersText !== null
+            && $settingsLogPriority !== null
+            && $settingsMessage !== null
+        );
         // Parse filters: one per line, trim, drop blank lines
         $rawFilters = array_values(array_filter(
             array_map('trim', explode("\n", $settingsFiltersText->string()))
         ));
 
         try {
+            // Load existing prefs to preserve alert rules (managed by their own actions)
+            $existingPrefs = UserPreferences::load(Config::$prefsFile);
+
             $prefs = UserPreferences::fromArray([
                 'defaultView' => $settingsDefaultView->string(),
                 'defaultGraphDisplay' => $settingsGraphDisplay->string(),
@@ -1072,6 +1162,7 @@ $app->page('/', function (Context $c) use ($app): void {
                 'defaultStatsOrderBy' => $settingsStatsOrderBy->string(),
                 'filters' => $rawFilters,
                 'logPriority' => Settings::logLevelFromString($settingsLogPriority->string()),
+                'alerts' => array_map(fn (AlertRule $r) => $r->toArray(), $existingPrefs !== null ? $existingPrefs->alerts : []),
             ]);
 
             $prefs->save(Config::$prefsFile);
@@ -1096,6 +1187,217 @@ $app->page('/', function (Context $c) use ($app): void {
             $app->broadcast('settings:saved');
         }
     }, 'save-settings');
+
+    // Save (upsert) one alert rule — called from the alert form in Settings.
+    $saveAlertAction = $c->action(function (Context $c) use ($makeToast): void {
+        $alertFormId = $c->getSignal('alert_form_id');
+        $alertFormName = $c->getSignal('alert_form_name');
+        $alertFormEnabled = $c->getSignal('alert_form_enabled');
+        $alertFormProfile = $c->getSignal('alert_form_profile');
+        $alertFormSources = $c->getSignal('alert_form_sources');
+        $alertFormMetric = $c->getSignal('alert_form_metric');
+        $alertFormOperator = $c->getSignal('alert_form_operator');
+        $alertFormThresholdType = $c->getSignal('alert_form_thresholdType');
+        $alertFormThresholdValue = $c->getSignal('alert_form_thresholdValue');
+        $alertFormAvgWindow = $c->getSignal('alert_form_avgWindow');
+        $alertFormCooldownSlots = $c->getSignal('alert_form_cooldownSlots');
+        $alertFormNotifyEmail = $c->getSignal('alert_form_notifyEmail');
+        $alertFormNotifyWebhook = $c->getSignal('alert_form_notifyWebhook');
+        $settingsMessage = $c->getSignal('settings_message');
+        assert(
+            $alertFormId !== null
+            && $alertFormName !== null
+            && $alertFormEnabled !== null
+            && $alertFormProfile !== null
+            && $alertFormSources !== null
+            && $alertFormMetric !== null
+            && $alertFormOperator !== null
+            && $alertFormThresholdType !== null
+            && $alertFormThresholdValue !== null
+            && $alertFormAvgWindow !== null
+            && $alertFormCooldownSlots !== null
+            && $alertFormNotifyEmail !== null
+            && $alertFormNotifyWebhook !== null
+            && $settingsMessage !== null
+        );
+        $id = trim($alertFormId->string());
+
+        try {
+            $rule = AlertRule::fromArray([
+                'id' => $id !== '' ? $id : bin2hex(random_bytes(16)),
+                'name' => $alertFormName->string(),
+                'enabled' => $alertFormEnabled->bool(),
+                'profile' => $alertFormProfile->string(),
+                'sources' => $alertFormSources->array(),
+                'metric' => $alertFormMetric->string(),
+                'operator' => $alertFormOperator->string(),
+                'thresholdType' => $alertFormThresholdType->string(),
+                'thresholdValue' => (float) $alertFormThresholdValue->string(),
+                'avgWindow' => $alertFormAvgWindow->string(),
+                'cooldownSlots' => $alertFormCooldownSlots->int(),
+                'notifyEmail' => $alertFormNotifyEmail->string(),
+                'notifyWebhook' => $alertFormNotifyWebhook->string(),
+            ]);
+
+            $prefs = UserPreferences::load(Config::$prefsFile) ?? UserPreferences::fromArray([]);
+            $found = false;
+            $updatedAlerts = array_map(function (AlertRule $r) use ($rule, &$found) {
+                if ($r->id === $rule->id) {
+                    $found = true;
+
+                    return $rule;
+                }
+
+                return $r;
+            }, $prefs->alerts);
+            if (!$found) {
+                $updatedAlerts[] = $rule;
+            }
+            $newPrefs = UserPreferences::fromArray(
+                array_merge($prefs->toArray(), ['alerts' => array_map(fn (AlertRule $r) => $r->toArray(), $updatedAlerts)])
+            );
+            $newPrefs->save(Config::$prefsFile);
+            Config::$settings = $newPrefs->applyTo(Config::$settings);
+
+            // Reset form fields after successful save
+            $alertFormId->setValue('', broadcast: false);
+            $alertFormName->setValue('', broadcast: false);
+        } catch (Throwable $e) {
+            $settingsMessage->setValue(
+                $makeToast('error', 'Save failed: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES)),
+                broadcast: false
+            );
+        }
+        $c->sync();
+        $settingsMessage->setValue('', broadcast: false);
+    }, 'save-alert');
+
+    // Delete an alert rule by ID.
+    $deleteAlertAction = $c->action(function (Context $c) use ($makeToast): void {
+        $settingsMessage = $c->getSignal('settings_message');
+        assert($settingsMessage !== null);
+        $id = $c->input('id') ?? '';
+        if ($id === '') {
+            return;
+        }
+
+        try {
+            $prefs = UserPreferences::load(Config::$prefsFile) ?? UserPreferences::fromArray([]);
+            $updatedAlerts = array_values(array_filter($prefs->alerts, fn (AlertRule $r) => $r->id !== $id));
+            $newPrefs = UserPreferences::fromArray(
+                array_merge($prefs->toArray(), ['alerts' => array_map(fn (AlertRule $r) => $r->toArray(), $updatedAlerts)])
+            );
+            $newPrefs->save(Config::$prefsFile);
+            Config::$settings = $newPrefs->applyTo(Config::$settings);
+        } catch (Throwable $e) {
+            $settingsMessage->setValue(
+                $makeToast('error', 'Delete failed: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES)),
+                broadcast: false
+            );
+        }
+        $c->sync();
+        $settingsMessage->setValue('', broadcast: false);
+    }, 'delete-alert');
+
+    // Toggle enabled/disabled for an alert rule by ID.
+    $toggleAlertAction = $c->action(function (Context $c) use ($makeToast): void {
+        $settingsMessage = $c->getSignal('settings_message');
+        assert($settingsMessage !== null);
+        $id = $c->input('id') ?? '';
+        if ($id === '') {
+            return;
+        }
+
+        try {
+            $prefs = UserPreferences::load(Config::$prefsFile) ?? UserPreferences::fromArray([]);
+            $updatedAlerts = array_map(
+                fn (AlertRule $r) => $r->id === $id ? $r->withEnabled(!$r->enabled) : $r,
+                $prefs->alerts
+            );
+            $newPrefs = UserPreferences::fromArray(
+                array_merge($prefs->toArray(), ['alerts' => array_map(fn (AlertRule $r) => $r->toArray(), $updatedAlerts)])
+            );
+            $newPrefs->save(Config::$prefsFile);
+            Config::$settings = $newPrefs->applyTo(Config::$settings);
+        } catch (Throwable $e) {
+            $settingsMessage->setValue(
+                $makeToast('error', 'Toggle failed: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES)),
+                broadcast: false
+            );
+        }
+        $c->sync();
+        $settingsMessage->setValue('', broadcast: false);
+    }, 'toggle-alert');
+
+    // Test-fire an alert rule immediately — bypasses cooldown and dispatches notifications.
+    // Useful for verifying thresholds, email and webhook without waiting for a real import.
+    $testAlertAction = $c->action(function (Context $c) use ($app): void {
+        $id = $c->input('id') ?? '';
+        if ($id === '') {
+            return;
+        }
+
+        $prefs = UserPreferences::load(Config::$prefsFile) ?? UserPreferences::fromArray([]);
+        $rule = null;
+        foreach ($prefs->alerts as $r) {
+            if ($r->id === $id) {
+                $rule = $r;
+
+                break;
+            }
+        }
+
+        if ($rule === null) {
+            $c->execScript("window.showMessage('error', 'Rule not found.')");
+
+            return;
+        }
+
+        /** @var null|AlertManager $alertMgr */
+        $alertMgr = $app->globalState('alertManager', null);
+        if ($alertMgr === null) {
+            $c->execScript("window.showMessage('error', 'AlertManager not running (NFSEN_SKIP_DAEMON set?).', true)");
+
+            return;
+        }
+
+        try {
+            $current = Config::$db->fetchLatestSlot($rule->sources, $rule->profile);
+            $threshold = $alertMgr->computeThreshold($rule, $current);
+            $value = $current[$rule->metric] ?? 0.0;
+
+            $thresholdDisplay = $threshold === \PHP_FLOAT_MAX
+                ? '∞ (no baseline yet)'
+                : number_format($threshold, 2);
+
+            $conditionStr = $rule->metric . ' ' . $rule->operator . ' ' . $thresholdDisplay;
+            $fired = match ($rule->operator) {
+                '>' => $value > $threshold,
+                '>=' => $value >= $threshold,
+                '<' => $value < $threshold,
+                '<=' => $value <= $threshold,
+                default => false,
+            };
+
+            $resultLabel = $fired ? '✅ Would FIRE' : '⬜ Would NOT fire';
+            $msg = "{$resultLabel} — {$rule->name}: current {$rule->metric} = " . number_format($value, 2) . ", threshold ({$conditionStr})";
+
+            if ($fired) {
+                // Actually dispatch notifications so email/webhook can be verified
+                $alertMgr->dispatchNotifications($rule, $current, time());
+                $msg .= '. Notifications dispatched.';
+            }
+
+            $type = $fired ? 'warning' : 'success';
+            $msgJs = json_encode($msg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+            $c->execScript("window.showMessage('{$type}', {$msgJs}, true)");
+        } catch (Throwable $e) {
+            $errJs = json_encode('Test failed: ' . $e->getMessage(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+            $c->execScript("window.showMessage('error', {$errJs})");
+        }
+
+        $c->sync(); // refresh alert log table
+    }, 'test-alert');
 
     // IP info: geo lookup + hostname resolution — pushes a rendered modal fragment,    // no full page re-render. The browser JS triggers this action; Datastar patches
     // the fragment into #ip-modal-placeholder and JS calls Bootstrap .show().
@@ -1195,84 +1497,43 @@ $app->page('/', function (Context $c) use ($app): void {
     /** @var list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}> */
     $cachedHealthChecks = [];
 
+    // Alert toast: track the last alert_fired ts shown by this tab to avoid duplicate toasts.
+    $lastAlertShown = 0;
+
     $c->view(function (bool $isUpdate) use (
         $c,
         $app,
         $fetchGraphData,
-        $datestart,
-        $dateend,
-        $dataRangeMin,
-        $dataRangeMax,
         $updateDataRange,
-        $error,
-        $graphDisplay,
-        $graphSources,
-        $graphPorts,
-        $graphProtocols,
-        $graphDatatype,
-        $graphTrafficUnit,
-        $graphResolution,
-        $graphIsLive,
-        $graphActualRes,
-        $graphLastUpdate,
-        $flowFilter,
-        $flowLimit,
-        $flowAggBidirectional,
-        $flowAggProto,
-        $flowAggSrcPort,
-        $flowAggDstPort,
-        $flowAggSrcIp,
-        $flowAggSrcIpPrefix,
-        $flowAggDstIp,
-        $flowAggDstIpPrefix,
-        $flowOrderByTstart,
-        $flowCount,
-        $flowLowerLimit,
-        $flowUpperLimit,
-        &$flowNotifications,
-        $statsFilter,
-        $statsCount,
-        $statsFor,
-        $statsOrderBy,
-        $statsLowerLimit,
-        $statsUpperLimit,
-        &$statsNotifications,
-        $importRunning,
-        $confirmRescan,
-        $importScanPorts,
-        $selectedProfile,
-        $availableProfilesSignal,
-        $adminTargetProfile,
-        $changeProfileAction,
-        $refreshGraphsAction,
-        $flowAction,
-        $statsAction,
-        $dismissNotificationAction,
-        $triggerImportAction,
-        $forceRescanAction,
-        $cancelImportAction,
         $countNfcapdFiles,
-        $nfcapdFileCount,
-        $countFilesAction,
-        $settingsDefaultView,
-        $settingsGraphDisplay,
-        $settingsGraphDatatype,
-        $settingsGraphProtocols,
-        $settingsFlowLimit,
-        $settingsStatsOrderBy,
-        $settingsFiltersText,
-        $settingsLogPriority,
-        $settingsMessage,
-        $saveSettingsAction,
-        $killNfdumpAction,
+        &$flowNotifications,
+        &$statsNotifications,
         &$flowTableHtml,
         &$statsTableHtml,
         &$lastGraphFetch,
         &$cachedGraphData,
         &$cachedImportSources,
         &$lastHealthFetch,
-        &$cachedHealthChecks
+        &$cachedHealthChecks,
+        &$lastAlertShown
     ): string {
+        $datestart = $c->getSignal('datestart');
+        $dateend = $c->getSignal('dateend');
+        $graphSources = $c->getSignal('graph_sources');
+        $importRunning = $c->getSignal('import_running');
+        $selectedProfile = $c->getSignal('selected_profile');
+        $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
+        $settingsMessage = $c->getSignal('settings_message');
+        assert(
+            $datestart !== null
+            && $dateend !== null
+            && $graphSources !== null
+            && $importRunning !== null
+            && $selectedProfile !== null
+            && $nfcapdFileCount !== null
+            && $settingsMessage !== null
+        );
+
         // Sync importRunning signal to daemon lock state so all tabs reflect the
         // correct value when re-rendered by an admin:import or rrd:live broadcast.
         /** @var array<string, ImportDaemon> $allDaemons */
@@ -1394,6 +1655,27 @@ $app->page('/', function (Context $c) use ($app): void {
             }
         }
 
+        // ── Alert toast (via execScript — bypasses data-ignore-morph) ─────
+        // Only show once per tab per fired event.
+        $alertFiredHtml = ''; // kept for template variable; delivery is via execScript
+        $alertFiredInfo = $app->globalState('alert_fired', null);
+        if (
+            $alertFiredInfo !== null
+            && is_array($alertFiredInfo)
+            && ($alertFiredTs = (int) ($alertFiredInfo['ts'] ?? 0)) > $lastAlertShown
+            && (time() - $alertFiredTs) < 300
+        ) {
+            foreach ((array) ($alertFiredInfo['names'] ?? []) as $firedName) {
+                $msgJs = json_encode('Alert fired: ' . (string) $firedName, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+                $c->execScript("window.showMessage('warning', {$msgJs}, true)");
+            }
+            $lastAlertShown = $alertFiredTs;
+        }
+
+        /** @var null|AlertManager $alertMgrView */
+        $alertMgrView = $app->globalState('alertManager', null);
+        $alertLog = $alertMgrView !== null ? $alertMgrView->getRecentLog(10) : [];
+
         return $c->render('layout.html.twig', [
             // ── App metadata ──────────────────────────────────────────────
             'version' => Config::VERSION,
@@ -1407,92 +1689,24 @@ $app->page('/', function (Context $c) use ($app): void {
             'filters' => Config::$settings->filters,
             'defaults' => ['view' => Config::$settings->defaultView],
 
-            // ── Signal objects — templates use bind(signal) and signal.id() ──
-            // Date range
-            'datestart' => $datestart,
-            'dateend' => $dateend,
-            'dataRangeMin' => $dataRangeMin,
-            'dataRangeMax' => $dataRangeMax,
-            // Error
-            'error' => $error,
-            // Graph filters
-            'graphDisplay' => $graphDisplay,
-            'graphSources' => $graphSources,
-            'graphPorts' => $graphPorts,
-            'graphProtocols' => $graphProtocols,
-            'graphDatatype' => $graphDatatype,
-            'graphTrafficUnit' => $graphTrafficUnit,
-            'graphResolution' => $graphResolution,
-            // Graph metadata (server-pushed, never sent back by browser — _-prefixed ID)
-            'graphIsLive' => $graphIsLive,
-            'graphActualRes' => $graphActualRes,
-            'graphLastUpdate' => $graphLastUpdate,
-            // Flow filter signals
-            'flowFilter' => $flowFilter,
-            'flowLimit' => $flowLimit,
-            'flowAggBidirectional' => $flowAggBidirectional,
-            'flowAggProto' => $flowAggProto,
-            'flowAggSrcPort' => $flowAggSrcPort,
-            'flowAggDstPort' => $flowAggDstPort,
-            'flowAggSrcIp' => $flowAggSrcIp,
-            'flowAggSrcIpPrefix' => $flowAggSrcIpPrefix,
-            'flowAggDstIp' => $flowAggDstIp,
-            'flowAggDstIpPrefix' => $flowAggDstIpPrefix,
-            'flowOrderByTstart' => $flowOrderByTstart,
-            'flowCount' => $flowCount,
-            'flowLowerLimit' => $flowLowerLimit,
-            'flowUpperLimit' => $flowUpperLimit,
-            // Stats filter signals
-            'statsFilter' => $statsFilter,
-            'statsCount' => $statsCount,
-            'statsFor' => $statsFor,
-            'statsOrderBy' => $statsOrderBy,
-            'statsLowerLimit' => $statsLowerLimit,
-            'statsUpperLimit' => $statsUpperLimit,
-            // nfcapd file count (for Flows/Statistics tabs)
-            'nfcapdFileCount' => $nfcapdFileCount,
-            // ── Action URLs ──────────────────────────────────────────────────────────────────
-            'action_refreshGraphs' => $refreshGraphsAction->url(),
-            'action_flowActions' => $flowAction->url(),
-            'action_statsActions' => $statsAction->url(),
-            'action_dismissNotification' => $dismissNotificationAction->url(),
-            'action_countFiles' => $countFilesAction->url(),
-            'action_triggerImport' => $triggerImportAction->url(),
-            'action_forceRescan' => $forceRescanAction->url(),
-            'action_cancelImport' => $cancelImportAction->url(),
-            'action_changeProfile' => $changeProfileAction->url(),
-            // ── Profile selector ──────────────────────────────────────────
-            'selectedProfile' => $selectedProfile,
-            'availableProfiles' => $availableProfilesSignal,
-            'adminTargetProfile' => $adminTargetProfile,
-            // ── Settings ─────────────────────────────────────────────────
-            'settingsDefaultView' => $settingsDefaultView,
-            'settingsGraphDisplay' => $settingsGraphDisplay,
-            'settingsGraphDatatype' => $settingsGraphDatatype,
-            'settingsGraphProtocols' => $settingsGraphProtocols,
-            'settingsFlowLimit' => $settingsFlowLimit,
-            'settingsStatsOrderBy' => $settingsStatsOrderBy,
-            'settingsFiltersText' => $settingsFiltersText,
-            'settingsLogPriority' => $settingsLogPriority,
+            // ── Settings message (plain string, not a Signal) ─────────────
             'settingsMessageHtml' => $settingsMessage->string(),
-            'action_saveSettings' => $saveSettingsAction->url(),
-            'action_killNfdump' => $killNfdumpAction->url(),
+
             // ── Deployment config (read-only display in Settings tab) ─────
             'deployDatasource' => Config::$settings->datasourceName,
             'deployImportYears' => Config::$settings->importYears,
             'deployNfdumpBinary' => Config::$settings->nfdumpBinary,
             'deployNfdumpProfiles' => Config::$settings->nfdumpProfilesData,
             'deployPrefsFile' => Config::$prefsFile,
+
             // ── Computed / pre-rendered data ──────────────────────────────
             'graphData' => $graphData,
             'flowTableHtml' => $flowTableHtml,
             'flowNotifications' => $flowNotifications,
             'statsTableHtml' => $statsTableHtml,
             'statsNotifications' => $statsNotifications,
+
             // ── Admin / import ────────────────────────────────────────────
-            'importRunning' => $importRunning,
-            'confirmRescan' => $confirmRescan,
-            'importScanPorts' => $importScanPorts,
             'hasPorts' => !empty(Config::$settings->ports),
             'importSources' => $importSources,
             'importProgress' => $app->globalState('import_progress', 0),
@@ -1508,13 +1722,21 @@ $app->page('/', function (Context $c) use ($app): void {
                 'watchCount' => $d->getWatchCount(),
                 'lastAutoImport' => $d->getLastAutoImportTime(),
             ] : null,
+
             // ── Status indicators ─────────────────────────────────────────
             'captureStatus' => $captureStatus,
             'captureLabel' => $captureLabel,
             'daemonStatus' => $daemonStatus,
             'daemonLabel' => $daemonLabel,
+
             // ── Health checks ─────────────────────────────────────────────
             'healthChecks' => $healthChecks,
+
+            // ── Alerts ───────────────────────────────────────────────────
+            'alerts' => Config::$settings->alerts,
+            'alertLog' => $alertLog,
+            'alertFiredHtml' => $alertFiredHtml,
+            'alertEmailEnabled' => Config::$settings->alertEmailFrom !== '',
         ]);
     }, cacheUpdates: false);
 });

@@ -2,6 +2,11 @@
 
 [![GitHub license](https://img.shields.io/github/license/mbolli/nfsen-ng.svg?style=flat-square)](https://github.com/mbolli/nfsen-ng/blob/master/LICENSE)
 [![GitHub issues](https://img.shields.io/github/issues/mbolli/nfsen-ng.svg?style=flat-square)](https://github.com/mbolli/nfsen-ng/issues)
+[![GitHub last commit](https://img.shields.io/github/last-commit/mbolli/nfsen-ng?style=flat-square)](https://github.com/mbolli/nfsen-ng/commits/master)
+[![GitHub stars](https://img.shields.io/github/stars/mbolli/nfsen-ng?style=flat-square)](https://github.com/mbolli/nfsen-ng/stargazers)
+[![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?style=flat-square&logo=php&logoColor=white)](https://www.php.net/)
+[![OpenSwoole](https://img.shields.io/badge/OpenSwoole-coroutines-F15B2A?style=flat-square)](https://openswoole.com/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/mbolli/nfsen-ng/blob/master/deploy/docker-compose.yml)
 [![Donate a beer](https://img.shields.io/badge/paypal-donate-yellow.svg?style=flat-square)](https://paypal.me/bolli)
 
 nfsen-ng is a modern, in-place replacement for the ageing [NfSen](http://nfsen.sourceforge.net/) web frontend. It sits on top of the existing [nfdump](https://github.com/phaag/nfdump) tools and adds real-time SSE push, a responsive UI, and support for RRD or VictoriaMetrics as the storage backend.

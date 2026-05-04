@@ -314,6 +314,48 @@ class VictoriaMetrics implements Datasource {
     }
 
     /**
+     * Returns summed flows/packets/bytes for the most recently completed 5-min slot
+     * across all given sources.
+     *
+     * @param string[] $sources
+     *
+     * @return array{flows: float, packets: float, bytes: float}
+     */
+    public function fetchLatestSlot(array $sources, string $profile): array {
+        $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+        $sel = $this->buildSourceSelector($sources, $profile);
+
+        foreach (['flows', 'packets', 'bytes'] as $metric) {
+            $metricName = $this->buildMetricName($metric, null);
+            $promql = "sum(last_over_time({$metricName}{$sel}[5m]))";
+            $result[$metric] = $this->queryInstantScalar($promql);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns average flows/packets/bytes over a rolling window, summed across sources.
+     * Returns [0.0, 0.0, 0.0] when no data is available (cold-start safe).
+     *
+     * @param string[] $sources
+     *
+     * @return array{flows: float, packets: float, bytes: float}
+     */
+    public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array {
+        $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+        $sel = $this->buildSourceSelector($sources, $profile);
+
+        foreach (['flows', 'packets', 'bytes'] as $metric) {
+            $metricName = $this->buildMetricName($metric, null);
+            $promql = "sum(avg_over_time({$metricName}{$sel}[{$windowSeconds}s]))";
+            $result[$metric] = $this->queryInstantScalar($promql);
+        }
+
+        return $result;
+    }
+
+    /**
      * Send data to VictoriaMetrics.
      */
     protected function sendToVM(string $url, string $body): bool {
@@ -525,5 +567,45 @@ class VictoriaMetrics implements Datasource {
         }
 
         return $output;
+    }
+
+    /**
+     * Execute a PromQL instant query and return the first result value as float.
+     * Returns 0.0 on any error or empty result — safe for cold-start scenarios.
+     */
+    private function queryInstantScalar(string $promql): float {
+        $url = str_replace('query_range', 'query', $this->queryUrl)
+             . '?' . http_build_query(['query' => $promql]);
+
+        try {
+            $data = json_decode($this->httpGet($url), true);
+
+            return isset($data['data']['result'][0]['value'][1])
+                ? (float) $data['data']['result'][0]['value'][1]
+                : 0.0;
+        } catch (\Throwable) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * Build a source-matching label for use in instant queries over multiple sources.
+     * When only one source is given, uses equality; multiple sources use regex OR.
+     *
+     * @param string[] $sources
+     */
+    private function buildSourceSelector(array $sources, string $profile): string {
+        if (empty($sources)) {
+            return $this->buildLabels('', 0, null, forQuery: true, profile: $profile);
+        }
+
+        if (\count($sources) === 1) {
+            return $this->buildLabels($sources[0], 0, null, forQuery: true, profile: $profile);
+        }
+
+        $escaped = implode('|', array_map('preg_quote', $sources));
+        $profilePart = $profile !== '' ? ",profile=~\"{$profile}|\"" : '';
+
+        return "{source=~\"{$escaped}\",port=\"\"{$profilePart}}";
     }
 }

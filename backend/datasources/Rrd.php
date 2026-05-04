@@ -561,6 +561,95 @@ WARNING;
     }
 
     /**
+     * Returns summed flows/packets/bytes for the most recently completed 5-min slot
+     * across all given sources. Skips missing/unreadable RRD files silently.
+     *
+     * @param string[] $sources
+     *
+     * @return array{flows: float, packets: float, bytes: float}
+     */
+    public function fetchLatestSlot(array $sources, string $profile): array {
+        $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+
+        foreach ($sources as $source) {
+            $file = $this->get_data_path($source, 0, $profile);
+            if (!file_exists($file)) {
+                continue;
+            }
+
+            $ts = rrd_last($file);
+            if ($ts <= 0) {
+                continue;
+            }
+
+            $fetchResult = @rrd_fetch($file, ['AVERAGE', '--start', (string) ($ts - 300), '--end', (string) ($ts + 1), '--resolution', '300']);
+            if (!isset($fetchResult['data']) || !\is_array($fetchResult['data'])) {
+                continue;
+            }
+
+            foreach (['flows', 'packets', 'bytes'] as $metric) {
+                $metricData = $fetchResult['data'][$metric] ?? null;
+                if (!\is_array($metricData)) {
+                    continue;
+                }
+
+                foreach ($metricData as $val) {
+                    if (\is_float($val) && !is_nan($val)) {
+                        $result[$metric] += $val;
+
+                        break; // first non-NaN slot is the target slot
+                    }
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns average flows/packets/bytes over a rolling window, summed across sources.
+     * Returns [0.0, 0.0, 0.0] when no data is available (cold-start safe).
+     *
+     * @param string[] $sources
+     *
+     * @return array{flows: float, packets: float, bytes: float}
+     */
+    public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array {
+        $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+        $now = time();
+
+        foreach ($sources as $source) {
+            $file = $this->get_data_path($source, 0, $profile);
+            if (!file_exists($file)) {
+                continue;
+            }
+
+            $fetchResult = @rrd_fetch($file, ['AVERAGE', '--start', (string) ($now - $windowSeconds), '--end', (string) $now, '--resolution', '300']);
+            if (!isset($fetchResult['data']) || !\is_array($fetchResult['data'])) {
+                continue;
+            }
+
+            foreach (['flows', 'packets', 'bytes'] as $metric) {
+                $metricData = $fetchResult['data'][$metric] ?? null;
+                if (!\is_array($metricData)) {
+                    continue;
+                }
+
+                $vals = array_filter(
+                    $metricData,
+                    static fn ($v) => \is_float($v) && !is_nan($v)
+                );
+
+                if (!empty($vals)) {
+                    $result[$metric] += array_sum($vals) / \count($vals);
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * One-time startup migration: moves any flat *.rrd files directly inside
      * {data_path}/ into the {data_path}/{nfdumpProfile}/ subdirectory.
      * This handles upgrading from the old single-profile layout to per-profile subdirs.

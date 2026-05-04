@@ -111,4 +111,28 @@ interface Datasource {
      * @return list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}>
      */
     public function healthChecks(string $group, array $sources): array;
+
+    /**
+     * Returns the summed flows/packets/bytes for the most recently completed 5-min slot
+     * across the given sources. Used by the alert evaluator.
+     *
+     * @param string[] $sources Source names to sum over
+     * @param string   $profile Profile name (e.g. 'live')
+     *
+     * @return array{flows: float, packets: float, bytes: float}
+     */
+    public function fetchLatestSlot(array $sources, string $profile): array;
+
+    /**
+     * Returns the average flows/packets/bytes over a rolling window ending now,
+     * summed across the given sources. Returns [0.0, 0.0, 0.0] when no data is
+     * available (cold-start safe — callers must treat 0 as "no baseline yet").
+     *
+     * @param string[] $sources       Source names to sum over
+     * @param string   $profile       Profile name
+     * @param int      $windowSeconds Window length in seconds (e.g. 3600 = 1 h)
+     *
+     * @return array{flows: float, packets: float, bytes: float}
+     */
+    public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array;
 }

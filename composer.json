@@ -1,6 +1,6 @@
 {
     "name": "mbolli/nfsen-ng",
-    "version": "1.0.0-alpha",
+    "version": "1.0.0-RC.1",
     "description": "Responsive NetFlow visualizer built on top of nfdump tools",
     "license": "Apache-2.0",
     "minimum-stability": "dev",

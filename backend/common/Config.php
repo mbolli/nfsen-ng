@@ -8,7 +8,7 @@ use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\Processor;
 
 abstract class Config {
-    public const VERSION = 'v1.0-alpha';
+    public const VERSION = 'v1.0.0-RC.1';
 
     public static Settings $settings;
     public static string $path;

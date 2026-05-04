@@ -1,6 +1,6 @@
 {
   "name": "nfsen-ng-frontend",
-  "version": "0.4.0",
+  "version": "1.0.0-RC.1",
   "description": "Frontend for nfsen-ng",
   "type": "module",
   "scripts": {

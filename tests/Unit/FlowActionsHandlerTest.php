@@ -1,75 +1,67 @@
 <?php
 
 /**
- * Tests for the aggregation string building logic used in the flow-actions handler
- * (now inlined in backend/app.php — the old FlowActionsHandler class was removed).
+ * Tests for the aggregation string building logic in Nfdump::buildAggregationString().
  */
 
 declare(strict_types=1);
 
-/**
- * Replicates the aggregation-string builder from app.php's flow-actions closure.
- * Kept here so the logic can be unit-tested independently.
- *
- * @param array<string, mixed> $aggregation
- */
-function buildAggregationString(array $aggregation): string {
-    if (!empty($aggregation['bidirectional'])) {
-        return 'bidirectional';
-    }
-
-    $parts = [];
-    foreach (['proto', 'srcport', 'dstport'] as $k) {
-        if (!empty($aggregation[$k])) {
-            $parts[] = $k;
-        }
-    }
-    foreach (['srcip', 'dstip'] as $k) {
-        if (!empty($aggregation[$k]) && $aggregation[$k] !== 'none') {
-            $v = $aggregation[$k];
-            if (in_array($v, ['srcip4', 'srcip6', 'dstip4', 'dstip6'], true) && !empty($aggregation[$k . 'Prefix'])) {
-                $parts[] = $v . '/' . $aggregation[$k . 'Prefix'];
-            } else {
-                $parts[] = $v;
-            }
-        }
-    }
-
-    return implode(',', $parts);
-}
+use mbolli\nfsen_ng\processor\Nfdump;
 
 describe('Aggregation string building', function (): void {
     test('returns empty string for empty aggregation', function (): void {
-        expect(buildAggregationString([]))->toBe('');
+        expect(Nfdump::buildAggregationString([]))->toBe('');
     });
 
     test('bidirectional aggregation returns correct string', function (): void {
-        expect(buildAggregationString(['bidirectional' => true]))->toBe('bidirectional');
+        expect(Nfdump::buildAggregationString(['bidirectional' => true]))->toBe('bidirectional');
     });
 
     test('protocol aggregation adds proto', function (): void {
-        expect(buildAggregationString(['proto' => true]))->toContain('proto');
+        expect(Nfdump::buildAggregationString(['proto' => true]))->toContain('proto');
     });
 
     test('source and destination ports build correctly', function (): void {
-        expect(buildAggregationString(['srcport' => true, 'dstport' => true]))->toBe('srcport,dstport');
+        expect(Nfdump::buildAggregationString(['srcport' => true, 'dstport' => true]))->toBe('srcport,dstport');
     });
 
     test('IP with prefix builds correctly', function (): void {
-        $result = buildAggregationString(['srcip' => 'srcip4', 'srcipPrefix' => '24']);
+        $result = Nfdump::buildAggregationString(['srcip' => 'srcip4', 'srcipPrefix' => '24']);
         expect($result)->toBe('srcip4/24');
     });
 
     test('plain IP without prefix builds correctly', function (): void {
-        expect(buildAggregationString(['srcip' => 'srcip']))->toBe('srcip');
+        expect(Nfdump::buildAggregationString(['srcip' => 'srcip']))->toBe('srcip');
     });
 
     test('combined aggregation builds comma-separated string', function (): void {
-        $result = buildAggregationString(['proto' => true, 'srcport' => true, 'srcip' => 'srcip']);
+        $result = Nfdump::buildAggregationString(['proto' => true, 'srcport' => true, 'srcip' => 'srcip']);
         expect($result)->toBe('proto,srcport,srcip');
     });
 
     test('none srcip is excluded', function (): void {
-        expect(buildAggregationString(['srcip' => 'none', 'proto' => true]))->toBe('proto');
+        expect(Nfdump::buildAggregationString(['srcip' => 'none', 'proto' => true]))->toBe('proto');
+    });
+});
+
+describe('Threshold filter building', function (): void {
+    test('returns empty string for empty inputs', function (): void {
+        expect(Nfdump::buildThresholdFilter('', ''))->toBe('');
+    });
+
+    test('lower limit only', function (): void {
+        expect(Nfdump::buildThresholdFilter('1024', ''))->toBe('bytes > 1024');
+    });
+
+    test('upper limit only', function (): void {
+        expect(Nfdump::buildThresholdFilter('', '1M'))->toBe('bytes < 1M');
+    });
+
+    test('both limits joined with and', function (): void {
+        expect(Nfdump::buildThresholdFilter('100', '9999'))->toBe('bytes > 100 and bytes < 9999');
+    });
+
+    test('invalid limit is ignored', function (): void {
+        expect(Nfdump::buildThresholdFilter('abc', '500'))->toBe('bytes < 500');
     });
 });

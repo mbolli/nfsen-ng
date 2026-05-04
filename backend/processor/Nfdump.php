@@ -554,6 +554,63 @@ class Nfdump implements Processor {
         return $filestart . PATH_SEPARATOR . $fileend;
     }
 
+    /**
+     * Build the nfdump aggregation string from individual UI aggregation flags.
+     *
+     * Accepted keys in $agg:
+     *   bidirectional (bool), proto (bool), srcport (bool), dstport (bool),
+     *   srcip (string: 'none'|'srcip'|'srcip4'|'srcip6'), srcipPrefix (string),
+     *   dstip (string: 'none'|'dstip'|'dstip4'|'dstip6'), dstipPrefix (string)
+     *
+     * Returns '' (no aggregation), 'bidirectional', or a comma-separated list
+     * such as 'proto,srcport,srcip4/24'.
+     *
+     * @param array<string, mixed> $agg
+     */
+    public static function buildAggregationString(array $agg): string {
+        if (!empty($agg['bidirectional'])) {
+            return 'bidirectional';
+        }
+
+        $parts = [];
+        foreach (['proto', 'srcport', 'dstport'] as $k) {
+            if (!empty($agg[$k])) {
+                $parts[] = $k;
+            }
+        }
+        foreach (['srcip', 'dstip'] as $k) {
+            $v = $agg[$k] ?? '';
+            if ($v === '' || $v === 'none') {
+                continue;
+            }
+            if (\in_array($v, ['srcip4', 'srcip6', 'dstip4', 'dstip6'], true) && ($p = trim((string) ($agg[$k . 'Prefix'] ?? ''))) !== '') {
+                $parts[] = $v . '/' . $p;
+            } else {
+                $parts[] = $v;
+            }
+        }
+
+        return implode(',', $parts);
+    }
+
+    /**
+     * Build a nfdump byte-threshold filter expression from lower/upper limit strings.
+     *
+     * Each limit must be a non-empty string matching /^\d+[kMG]?$/i; invalid or
+     * empty values are silently ignored.  Returns '' when neither limit applies.
+     */
+    public static function buildThresholdFilter(string $lower, string $upper): string {
+        $parts = [];
+        if ($lower !== '' && preg_match('/^\d+[kMG]?$/i', $lower)) {
+            $parts[] = 'bytes > ' . $lower;
+        }
+        if ($upper !== '' && preg_match('/^\d+[kMG]?$/i', $upper)) {
+            $parts[] = 'bytes < ' . $upper;
+        }
+
+        return implode(' and ', $parts);
+    }
+
     public function get_output_format($format): array {
         // todo calculations like bps/pps? flows? concatenate sa/sp to sap?
         return match ($format) {

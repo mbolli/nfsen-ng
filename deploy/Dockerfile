@@ -1,14 +1,14 @@
 # Production Dockerfile for nfsen-ng with Swoole
-# Clones code from git and installs production dependencies
+# Copies source from build context (repo root)
 
 FROM php:8.4-cli
 
 ENV TZ="UTC"
-WORKDIR /var/www/html
+WORKDIR /var/www/html/nfsen-ng
 
 # Install dependencies required for nfdump, nfsen-ng, and Swoole
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    git brotli pkg-config rrdtool librrd-dev \
+    brotli pkg-config rrdtool librrd-dev \
     flex bison libbz2-dev zlib1g-dev \
     build-essential autoconf automake libtool \
     unzip wget curl \
@@ -43,17 +43,18 @@ RUN install-php-extensions openswoole inotify brotli
 RUN pecl install rrd \
     && docker-php-ext-enable rrd
 
-# Setup volumes for persistent data and configuration
-VOLUME ["/data/nfsen-ng"]
-
-# Clone nfsen-ng from git (production)
-RUN git clone https://github.com/mbolli/nfsen-ng.git /var/www/html/nfsen-ng
+# Copy application source
+COPY backend/ backend/
+COPY frontend/ frontend/
+COPY composer.json ./
 
 # Install composer and production dependencies
 RUN curl -sS https://getcomposer.org/download/latest-stable/composer.phar -o /usr/local/bin/composer \
     && chmod +x /usr/local/bin/composer \
-    && cd /var/www/html/nfsen-ng \
     && composer install --no-dev --optimize-autoloader
+
+# Setup volumes for persistent data and configuration
+VOLUME ["/data/nfsen-ng"]
 
 # Copy entrypoint script
 COPY deploy/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

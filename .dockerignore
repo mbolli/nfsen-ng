@@ -1,0 +1,34 @@
+# Version control
+.git/
+.github/
+
+# Development / test artifacts
+vendor/
+node_modules/
+tests/
+scripts/
+wiki/
+
+# Dev Dockerfiles and compose files (not needed inside the image)
+deploy/Dockerfile*
+deploy/docker-compose*.yml
+deploy/Caddyfile*
+deploy/systemd/
+deploy/*.dist
+
+# Local settings file (must not be baked into the image; configure via env vars or volume mount)
+backend/settings/settings.php
+backend/settings/alerts-log.json
+backend/settings/alerts-state.json
+backend/settings/preferences.json
+
+# PHP tooling config
+phpstan.neon
+phpunit.xml
+eslint.config.js
+pnpm-lock.yaml
+.php-cs-fixer.cache
+
+# Misc
+*.md
+LICENSE

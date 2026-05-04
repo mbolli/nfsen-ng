@@ -16,7 +16,7 @@ RUN xcaddy build \
 FROM caddy:latest
 
 LABEL org.opencontainers.image.title="nfsen-ng-caddy" \
-      org.opencontainers.image.description="nfsen-ng — Caddy reverse proxy with Brotli compression" \
+      org.opencontainers.image.description="Caddy reverse proxy for nfsen-ng, built with Brotli compression support. Use this image alongside ghcr.io/mbolli/nfsen-ng when you want a complete out-of-the-box stack with automatic HTTPS, HTTP/3, and Brotli/zstd compression — no separate reverse proxy needed." \
       org.opencontainers.image.url="https://github.com/mbolli/nfsen-ng" \
       org.opencontainers.image.source="https://github.com/mbolli/nfsen-ng"
 

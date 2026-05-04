@@ -4,7 +4,7 @@
 FROM php:8.4-cli
 
 LABEL org.opencontainers.image.title="nfsen-ng" \
-      org.opencontainers.image.description="Modern NetFlow analyzer — PHP/OpenSwoole application server" \
+      org.opencontainers.image.description="nfsen-ng application server (PHP 8.4 + OpenSwoole + nfdump). Use this image when you already have a reverse proxy (nginx, Traefik, Caddy, …) in front — it handles TLS, static assets, and compression for you. Pair with ghcr.io/mbolli/nfsen-ng-caddy for a batteries-included setup." \
       org.opencontainers.image.url="https://github.com/mbolli/nfsen-ng" \
       org.opencontainers.image.source="https://github.com/mbolli/nfsen-ng"
 

@@ -84,13 +84,11 @@ class NfsenFilterManager extends HTMLElement {
 
     render() {
         this.innerHTML = `
-            <div class="btn-group mt-2 mb-2" role="group" aria-label="Filter Manager">
-                <div class="form-group">
-                    <label for="${this.instanceId}">Filters</label>
-                    <select id="${this.instanceId}" class="form-control form-select" title="Filters">
-                        <option value="" disabled selected>Select your filter</option>
-                    </select>
-                </div>
+            <label for="${this.instanceId}">Filters</label>
+            <div class="btn-group mt-1 mb-2" role="group" aria-label="Filter Manager">
+                <select id="${this.instanceId}" class="form-control form-select" title="Filters">
+                    <option value="" disabled selected>Select your filter</option>
+                </select>
 
                 <button type="button" class="btn btn-outline-primary filter-delete-btn" disabled>
                     Delete filter <span class="small">(local)</span>

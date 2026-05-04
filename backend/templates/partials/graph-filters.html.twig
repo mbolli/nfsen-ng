@@ -18,8 +18,8 @@
      data-signals='{"_graph_logscale": false, "_graph_stacked": false, "_graph_stepplot": true, "_sourcesDefault": {{ sources|json_encode }}}'
      data-computed:graph._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ${{ graph_protocols.id() }}, ports: ${{ graph_ports.id() }}, display: ${{ graph_display.id() }}, type: ${{ graph_datatype.id() }}, trafficUnit: ${{ graph_trafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot {{ '}' }}"
      data-indicator:graph._connecting
-     data-on-interval__duration.15s.leading="!$_disconnected && ${{ graph_isLive.id() }} && @post('{{ refreshGraphs.url() }}')""
-     data-on:change__window__throttle.250ms="window.mayUpdateGraph(evt, el) && @post('{{ refreshGraphs.url() }}')"&gt;
+     data-on-interval__duration.15s.leading="!$_disconnected && ${{ graph_isLive.id() }} && @post('{{ refreshGraphs.url() }}')"
+     data-on:change__window__throttle.250ms="window.mayUpdateGraph(evt, el) && @post('{{ refreshGraphs.url() }}')">
 
     {# Display type #}
     <div class="col-md-2">

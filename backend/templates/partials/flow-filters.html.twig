@@ -14,8 +14,8 @@
         <p class="filter-label">Limit Flows
             <nfsen-tooltip data-ignore-morph text="Maximum number of flow records to display (-c option)." placement="top"></nfsen-tooltip>
         </p>
-        {% set _flowLimit = flowLimit.int() %}
-        <select class="form-control form-select" {{ bind(flowLimit) }}>
+        {% set _flowLimit = flows_limit.int() %}
+        <select class="form-control form-select" {{ bind(flows_limit) }}>
             {% for n in [20, 50, 100, 500, 1000, 10000] %}
             <option value="{{ n }}"{{ _flowLimit == n ? ' selected' : '' }}>{{ n }}</option>
             {% endfor %}
@@ -29,7 +29,7 @@
         <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
         </p>
-        <select {{ bind(graphSources) }} multiple class="form-control form-select">
+        <select {{ bind(graph_sources) }} multiple class="form-control form-select">
             <option value="any">Any</option>
             {% for source in sources %}
             <option value="{{ source }}" selected>{{ source }}</option>
@@ -45,7 +45,7 @@
             <nfsen-tooltip data-ignore-morph text="Filter syntax similar to tcpdump/pcap. Example: dst port 80" placement="right"></nfsen-tooltip>
         </p>
         <textarea class="form-control" id="filterNfdumpTextarea"
-                  {{ bind(flowFilter) }} rows="3" autocomplete="on"></textarea>
+                  {{ bind(flows_filter) }} rows="3" autocomplete="on"></textarea>
         <nfsen-filter-manager
             data-ignore-morph
             data-target-textarea="filterNfdumpTextarea"
@@ -60,7 +60,7 @@
         <p class="filter-label">Min bytes
             <nfsen-tooltip data-ignore-morph text="Only show flows with at least this many bytes. Prepended as 'bytes &gt; value'. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
         </p>
-        <input type="text" {{ bind(flowLowerLimit) }} class="form-control" style="width:7rem" placeholder="e.g. 1M">
+        <input type="text" {{ bind(flows_lower_limit) }} class="form-control" style="width:7rem" placeholder="e.g. 1M">
         </div>
     </div>
     <div class="col-auto">
@@ -68,7 +68,7 @@
         <p class="filter-label">Max bytes
             <nfsen-tooltip data-ignore-morph text="Only show flows with at most this many bytes. Prepended as 'bytes &lt; value'. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
         </p>
-        <input type="text" {{ bind(flowUpperLimit) }} class="form-control" style="width:7rem" placeholder="e.g. 100M">
+        <input type="text" {{ bind(flows_upper_limit) }} class="form-control" style="width:7rem" placeholder="e.g. 100M">
         </div>
     </div>
 
@@ -85,19 +85,19 @@
                 <label class="filter-sublabel">Global</label>
                 <div class="btn-group btn-group-sm d-flex mb-2" id="filterFlowAggregationGlobal">
                     <input type="checkbox" class="btn-check" name="bidirectional"
-                           id="filterFlowAggBi" {{ bind(flowAggBidirectional) }}>
+                           id="filterFlowAggBi" {{ bind(flows_agg_bidirectional) }}>
                     <label class="btn btn-outline-primary" for="filterFlowAggBi">Bi-directional</label>
                     <input type="checkbox" class="btn-check" name="proto"
-                           id="filterFlowAggProto" {{ bind(flowAggProto) }}>
+                           id="filterFlowAggProto" {{ bind(flows_agg_proto) }}>
                     <label class="btn btn-outline-primary" for="filterFlowAggProto">Protocol</label>
                 </div>
                 <label class="filter-sublabel">Port</label>
                 <div class="btn-group btn-group-sm d-flex" id="filterFlowAggregationPort">
                     <input type="checkbox" class="btn-check" name="srcport"
-                           id="filterFlowAggPortSrc" {{ bind(flowAggSrcPort) }}>
+                           id="filterFlowAggPortSrc" {{ bind(flows_agg_srcport) }}>
                     <label class="btn btn-outline-primary" for="filterFlowAggPortSrc">Source</label>
                     <input type="checkbox" class="btn-check" name="dstport"
-                           id="filterFlowAggPortDst" {{ bind(flowAggDstPort) }}>
+                           id="filterFlowAggPortDst" {{ bind(flows_agg_dstport) }}>
                     <label class="btn btn-outline-primary" for="filterFlowAggPortDst">Destination</label>
                 </div>
             </div>
@@ -107,32 +107,32 @@
                 <label class="filter-sublabel">IP Aggregation</label>
                 <div class="row g-1">
                     <div class="col-6">
-                        <select data-attr:disabled="${{ flowAggBidirectional.id() }}"
+                        <select data-attr:disabled="${{ flows_agg_bidirectional.id() }}"
                                 class="form-select form-select-sm"
-                                {{ bind(flowAggSrcIp) }}>
+                                {{ bind(flows_agg_srcip) }}>
                             <option value="none">Src: None</option>
                             <option value="srcip">Src: IP</option>
                             <option value="srcip4">Src: IPv4 /</option>
                             <option value="srcip6">Src: IPv6 /</option>
                         </select>
-                        <input data-attr:disabled="${{ flowAggSrcIp.id() }} == 'srcip' || ${{ flowAggSrcIp.id() }} == 'none'"
+                        <input data-attr:disabled="${{ flows_agg_srcip.id() }} == 'srcip' || ${{ flows_agg_srcip.id() }} == 'none'"
                                placeholder="24" type="text"
                                class="form-control form-control-sm mt-1" style="width:3.5rem"
-                               {{ bind(flowAggSrcIpPrefix) }}>
+                               {{ bind(flows_agg_srcip_prefix) }}>
                     </div>
                     <div class="col-6">
-                        <select data-attr:disabled="${{ flowAggBidirectional.id() }}"
+                        <select data-attr:disabled="${{ flows_agg_bidirectional.id() }}"
                                 class="form-select form-select-sm"
-                                {{ bind(flowAggDstIp) }}>
+                                {{ bind(flows_agg_dstip) }}>
                             <option value="none">Dst: None</option>
                             <option value="dstip">Dst: IP</option>
                             <option value="dstip4">Dst: IPv4 /</option>
                             <option value="dstip6">Dst: IPv6 /</option>
                         </select>
-                        <input data-attr:disabled="${{ flowAggDstIp.id() }} == 'dstip' || ${{ flowAggDstIp.id() }} == 'none'"
+                        <input data-attr:disabled="${{ flows_agg_dstip.id() }} == 'dstip' || ${{ flows_agg_dstip.id() }} == 'none'"
                                placeholder="24" type="text"
                                class="form-control form-control-sm mt-1" style="width:3.5rem"
-                               {{ bind(flowAggDstIpPrefix) }}>
+                               {{ bind(flows_agg_dstip_prefix) }}>
                     </div>
                 </div>
             </div>
@@ -142,7 +142,7 @@
                 <label class="filter-sublabel">Options</label>
                 <div id="flowsFilterOther">
                     <input type="checkbox" class="btn-check" name="ordertstart"
-                           id="flowsFilterOrderTstart" {{ bind(flowOrderByTstart) }}>
+                           id="flowsFilterOrderTstart" {{ bind(flows_orderByTstart) }}>
                     <label class="btn btn-outline-primary btn-sm" for="flowsFilterOrderTstart">Order by tstart</label>
                 </div>
             </div>
@@ -158,7 +158,7 @@
                     class="btn btn-primary"
                     data-indicator:flows._indicator
                     data-class:loading="$flows._indicator"
-                    data-on:click="$_flows_queried = true; @post('{{ action_flowActions }}')">
+                    data-on:click="$_flows_queried = true; @post('{{ flowActions.url() }}')">
                 <span data-show="!$flows._indicator">Process data</span>
                 <span class="spinner-grow spinner-grow-sm" data-show="$flows._indicator" role="status" aria-hidden="true"></span>
                 <span data-show="$flows._indicator">Processing…</span>
@@ -168,7 +168,7 @@
                 class="btn btn-outline-danger btn-sm ms-1"
                 style="display:none"
                 data-show="$flows._indicator"
-                data-on:click="@post('{{ action_killNfdump }}')">Kill</button>
+                data-on:click="@post('{{ killNfdump.url() }}')">Kill</button>
     </div>
 
 </div>

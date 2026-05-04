@@ -45,15 +45,15 @@
                 <td>
                     <div class="d-flex gap-1 flex-wrap">
                         <button class="btn btn-sm btn-primary"
-                                data-attr:disabled="${{ importRunning.id() }}"
-                                data-show="!${{ importRunning.id() }}"
-                                data-on:click="${{ adminTargetProfile.id() }} = '{{ profile }}'; @post('{{ action_triggerImport }}')">
+                                data-attr:disabled="${{ import_running.id() }}"
+                                data-show="!${{ import_running.id() }}"
+                                data-on:click="${{ admin_target_profile.id() }} = '{{ profile }}'; @post('{{ triggerImport.url() }}')">
                             Trigger
                         </button>
                         <button class="btn btn-sm btn-outline-danger"
-                                data-attr:disabled="${{ importRunning.id() }}"
-                                data-show="!${{ confirmRescan.id() }} && !${{ importRunning.id() }}"
-                                data-on:click="${{ adminTargetProfile.id() }} = '{{ profile }}'; ${{ confirmRescan.id() }} = true">
+                                data-attr:disabled="${{ import_running.id() }}"
+                                data-show="!${{ confirm_rescan.id() }} && !${{ import_running.id() }}"
+                                data-on:click="${{ admin_target_profile.id() }} = '{{ profile }}'; ${{ confirm_rescan.id() }} = true">
                             Rescan
                         </button>
                     </div>
@@ -64,20 +64,20 @@
         </table>
 
         {# Shared confirm-rescan dialog (shown after clicking Rescan for any profile) #}
-        <div data-show="${{ confirmRescan.id() }}" style="display: none;" class="mb-2">
+        <div data-show="${{ confirm_rescan.id() }}" style="display: none;" class="mb-2">
             <div class="d-flex gap-2 align-items-center flex-wrap">
                 <span class="text-danger fw-semibold small">
                     ⚠ Resets all {{ deployDatasource }} data for
-                    <strong><span data-text="${{ adminTargetProfile.id() }}"></span></strong>
+                    <strong><span data-text="${{ admin_target_profile.id() }}"></span></strong>
                     and re-imports from scratch.
                 </span>
                 <button class="btn btn-danger btn-sm"
-                        data-attr:disabled="${{ importRunning.id() }}"
-                        data-on:click="@post('{{ action_forceRescan }}')">
+                        data-attr:disabled="${{ import_running.id() }}"
+                        data-on:click="@post('{{ forceRescan.url() }}')">
                     Confirm &amp; Rescan
                 </button>
                 <button class="btn btn-secondary btn-sm"
-                        data-on:click="${{ confirmRescan.id() }} = false">
+                        data-on:click="${{ confirm_rescan.id() }} = false">
                     Cancel
                 </button>
             </div>
@@ -86,9 +86,9 @@
         {# Cancel — only visible while an import is running #}
         <div class="d-flex gap-2 align-items-center flex-wrap">
             <button class="btn btn-warning"
-                    data-show="${{ importRunning.id() }}" style="display: none;"
+                    data-show="${{ import_running.id() }}" style="display: none;"
                     data-indicator:_cancel_loading
-                    data-on:click="@post('{{ action_cancelImport }}')">
+                    data-on:click="@post('{{ cancelImport.url() }}')">
                 <span data-show="$_cancel_loading" style="display: none;" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
                 <svg data-show="!$_cancel_loading" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle me-1" viewBox="0 0 16 16">
                     <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
@@ -101,8 +101,8 @@
             {% if hasPorts %}
             <div class="form-check ms-2 my-auto">
                 <input type="checkbox" class="form-check-input" id="adminScanPorts"
-                       {{ bind(importScanPorts) }}
-                       data-attr:disabled="${{ importRunning.id() }}">
+                       {{ bind(import_scan_ports) }}
+                       data-attr:disabled="${{ import_running.id() }}">
                 <label class="form-check-label small" for="adminScanPorts">Scan ports</label>
             </div>
             {% endif %}
@@ -115,9 +115,9 @@
 
         {# Trigger import: catch up on any new nfcapd files since last import #}
         <button class="btn btn-primary"
-                data-attr:disabled="${{ importRunning.id() }}"
-                data-show="!${{ importRunning.id() }}"
-                data-on:click="@post('{{ action_triggerImport }}')">
+                data-attr:disabled="${{ import_running.id() }}"
+                data-show="!${{ import_running.id() }}"
+                data-on:click="@post('{{ triggerImport.url() }}')">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise me-1" viewBox="0 0 16 16">
                 <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
                 <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
@@ -127,9 +127,9 @@
 
         {# Two-step confirm for destructive Force Rescan #}
         <button class="btn btn-outline-danger"
-                data-attr:disabled="${{ importRunning.id() }}"
-                data-show="!${{ confirmRescan.id() }} && !${{ importRunning.id() }}"
-                data-on:click="${{ confirmRescan.id() }} = true">
+                data-attr:disabled="${{ import_running.id() }}"
+                data-show="!${{ confirm_rescan.id() }} && !${{ import_running.id() }}"
+                data-on:click="${{ confirm_rescan.id() }} = true">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-counterclockwise me-1" viewBox="0 0 16 16">
                 <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2z"/>
                 <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308c-.12.1-.12.284 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466"/>
@@ -139,9 +139,9 @@
 
         {# Cancel — only visible while an import is running #}
         <button class="btn btn-warning"
-                data-show="${{ importRunning.id() }}" style="display: none;"
+                data-show="${{ import_running.id() }}" style="display: none;"
                 data-indicator:_cancel_loading
-                data-on:click="@post('{{ action_cancelImport }}')">
+                data-on:click="@post('{{ cancelImport.url() }}')">
             <span data-show="$_cancel_loading" style="display: none;" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
             <svg data-show="!$_cancel_loading" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle me-1" viewBox="0 0 16 16">
                 <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
@@ -150,18 +150,18 @@
             Cancel Import
         </button>
 
-        <div data-show="${{ confirmRescan.id() }}" style="display: none;">
+        <div data-show="${{ confirm_rescan.id() }}" style="display: none;">
             <div class="d-flex gap-2 align-items-center flex-wrap">
             <span class="text-danger fw-semibold small">
                 ⚠ Resets all {{ deployDatasource }} data and re-imports from scratch.
             </span>
             <button class="btn btn-danger btn-sm"
-                    data-attr:disabled="${{ importRunning.id() }}"
-                    data-on:click="@post('{{ action_forceRescan }}')">
+                    data-attr:disabled="${{ import_running.id() }}"
+                    data-on:click="@post('{{ forceRescan.url() }}')">
                 Confirm &amp; Rescan
             </button>
             <button class="btn btn-secondary btn-sm"
-                    data-on:click="${{ confirmRescan.id() }} = false">
+                    data-on:click="${{ confirm_rescan.id() }} = false">
                 Cancel
             </button>
             </div>
@@ -171,8 +171,8 @@
         {% if hasPorts %}
         <div class="form-check ms-2 my-auto">
             <input type="checkbox" class="form-check-input" id="adminScanPorts"
-                   {{ bind(importScanPorts) }}
-                   data-attr:disabled="${{ importRunning.id() }}">
+                   {{ bind(import_scan_ports) }}
+                   data-attr:disabled="${{ import_running.id() }}">
             <label class="form-check-label small" for="adminScanPorts">Scan ports</label>
         </div>
         {% endif %}
@@ -185,7 +185,7 @@
 </div>
 
 {# ── Progress bar — visible while import is running ────────────────────────── #}
-<div data-show="${{ importRunning.id() }}" style="display: none;" class="row mt-3 mb-0 justify-content-center">
+<div data-show="${{ import_running.id() }}" style="display: none;" class="row mt-3 mb-0 justify-content-center">
     <div class="col-lg-8">
         <div class="d-flex justify-content-between align-items-center mb-1">
             <small class="text-muted">{{ importStatusText }}</small>
@@ -203,7 +203,7 @@
 </div>
 
 {# ── Import status / log — always shown when there's something to display ──── #}
-{% if importStatusText and not importRunning.getValue() %}
+{% if importStatusText and not import_running.getValue() %}
 <div class="row mt-3 mb-0 justify-content-center">
     <div class="col-lg-8">
         <div class="alert alert-{{ importLog|filter(e => e.level <= 3)|length > 0 ? 'danger' : (importLog|length > 0 ? 'warning' : 'success') }} py-2 mb-0 small">

@@ -1,7 +1,7 @@
 {#
     Graph view panel.
 
-    graphIsLive / graphActualRes / graphLastUpdate are server-pushed signals with
+    graph_isLive / graph_actualResolution / graph_lastUpdate are server-pushed signals with
     underscore-prefixed IDs (graph_isLive_CTXID etc.). The browser never sends them
     back; the server sets them in fetchGraphData() on every re-render.
 
@@ -19,16 +19,16 @@
     <div class="d-flex justify-content-end mb-3 mt-2">
         <div>
             <span class="badge bg-success live-badge"
-                  data-show="${{ graphIsLive.id() }}"
+                  data-show="${{ graph_isLive.id() }}"
                   title="Graph is showing real-time data">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-circle-fill me-1" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8"/></svg>
                 LIVE
-                <span class="fw-light" data-show="${{ graphLastUpdate.id() }} > 0">
-                    last update: <span data-text="new Date(${{ graphLastUpdate.id() }} * 1000).toLocaleString('sv')"></span>
+                <span class="fw-light" data-show="${{ graph_lastUpdate.id() }} > 0">
+                    last update: <span data-text="new Date(${{ graph_lastUpdate.id() }} * 1000).toLocaleString('sv')"></span>
                 </span>
             </span>
             <span class="badge bg-secondary"
-                  data-show="!${{ graphIsLive.id() }}"
+                  data-show="!${{ graph_isLive.id() }}"
                   title="Graph is showing historical data">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-clock-history me-1" viewBox="0 0 16 16">
                     <path d="M8.515 1.019A7 7 0 0 0 8 1V0a8 8 0 0 1 .589.022zm2.004.45a7 7 0 0 0-.985-.299l.219-.976q.576.129 1.126.342zm1.37.71a7 7 0 0 0-.439-.27l.493-.87a8 8 0 0 1 .979.654l-.615.789a7 7 0 0 0-.418-.302zm1.834 1.79a7 7 0 0 0-.653-.796l.724-.69q.406.443.747.933zm.744 1.352a7 7 0 0 0-.214-.468l.893-.45a8 8 0 0 1 .45 1.088l-.95.313a7 7 0 0 0-.179-.483m.53 2.507a7 7 0 0 0-.1-1.025l.985-.17q.1.58.116 1.17zm-.131 1.538q.05-.254.081-.51l.993.123a8 8 0 0 1-.23 1.155l-.964-.267q.069-.247.12-.501m-.952 2.379q.276-.436.486-.908l.914.405q-.24.54-.555 1.038zm-.964 1.205q.183-.183.35-.378l.758.653a8 8 0 0 1-.401.432z"/>
@@ -38,12 +38,12 @@
                 HISTORICAL
             </span>
             <span class="badge bg-info text-dark ms-1"
-                  data-show="${{ graphActualRes.id() }} > 0"
+                  data-show="${{ graph_actualResolution.id() }} > 0"
                   title="Number of data points">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-bar-chart-line me-1" viewBox="0 0 16 16">
                     <path d="M11 2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12h.5a.5.5 0 0 1 0 1H.5a.5.5 0 0 1 0-1H1v-3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3h1V7a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7h1zm1 12h2V2h-2zm-3 0V7H7v7zm-5 0v-3H2v3z"/>
                 </svg>
-                <span data-text="${{ graphActualRes.id() }}"></span> points
+                <span data-text="${{ graph_actualResolution.id() }}"></span> points
             </span>
         </div>
     </div>
@@ -74,15 +74,15 @@
             <p class="filter-label">Resolution</p>
             <div class="mb-2">
                 <label for="resolutionSlider" class="form-label">
-                    Data Points: <strong data-text="${{ graphResolution.id() }}"></strong>
+                    Data Points: <strong data-text="${{ graph_resolution.id() }}"></strong>
                 </label>
                 <input type="range"
                        class="form-range"
                        id="resolutionSlider"
                        min="50" max="2000" step="50"
-                       {{ bind(graphResolution) }}
+                       {{ bind(graph_resolution) }}
                        title="Number of data points (higher = more detail)"
-                       data-on:change__stop="@post('{{ action_refreshGraphs }}')">
+                       data-on:change__stop="@post('{{ refreshGraphs.url() }}')">
                 <div class="d-flex justify-content-between small text-muted">
                     <span>50</span><span>2000</span>
                 </div>

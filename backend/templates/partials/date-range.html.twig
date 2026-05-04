@@ -3,7 +3,7 @@
     datestart / dateend are server-registered signals; bind() emits the correct
     context-scoped data-bind attribute so Datastar sends them back on actions.
 
-    dataRangeMin / dataRangeMax are server-owned signals updated from actual RRD
+    data_range_min / data_range_max are server-owned signals updated from actual RRD
     first/last timestamps so the slider is bounded to real data instead of a
     fixed importYears window.
 #}
@@ -12,8 +12,8 @@
     <nfsen-daterange
         id="dateRangeSlider"
         data-ignore-morph
-        data-attr:data-min="${{ dataRangeMin.id() }} * 1000"
-        data-attr:data-max="${{ dataRangeMax.id() }} * 1000"
+        data-attr:data-min="${{ data_range_min.id() }} * 1000"
+        data-attr:data-max="${{ data_range_max.id() }} * 1000"
         data-attr:data-from="${{ datestart.id() }} * 1000"
         data-attr:data-to="${{ dateend.id() }} * 1000"
         data-ref="_daterangeWidget"

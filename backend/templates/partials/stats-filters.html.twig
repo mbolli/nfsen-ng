@@ -8,8 +8,8 @@
         <p class="filter-label">Top records
             <nfsen-tooltip data-ignore-morph text="Number of top N statistics to display (-n option)." placement="top"></nfsen-tooltip>
         </p>
-        {% set _statsCount = statsCount.int() %}
-        <select {{ bind(statsCount) }} class="form-control form-select">
+        {% set _statsCount = stats_count.int() %}
+        <select {{ bind(stats_count) }} class="form-control form-select">
             {% for n in [10, 20, 50, 100, 200, 500] %}
             <option value="{{ n }}"{{ _statsCount == n ? ' selected' : '' }}>{{ n }}</option>
             {% endfor %}
@@ -23,7 +23,7 @@
         <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
         </p>
-        <select {{ bind(graphSources) }} multiple class="form-control form-select">
+        <select {{ bind(graph_sources) }} multiple class="form-control form-select">
             <option value="any">Any</option>
             {% for source in sources %}
             <option value="{{ source }}" selected>{{ source }}</option>
@@ -39,7 +39,7 @@
             <nfsen-tooltip data-ignore-morph text="Filter syntax like tcpdump. Examples: 'dst port 80', 'bytes > 10M'" placement="right"></nfsen-tooltip>
         </p>
         <textarea class="form-control" id="filterNfdumpTextareaStats"
-                  {{ bind(statsFilter) }} rows="3" autocomplete="on"></textarea>
+                  {{ bind(stats_filter) }} rows="3" autocomplete="on"></textarea>
         <nfsen-filter-manager
             data-ignore-morph
             data-target-textarea="filterNfdumpTextareaStats"
@@ -54,7 +54,7 @@
         <p class="filter-label">Min bytes
             <nfsen-tooltip data-ignore-morph text="Only aggregate flows with at least this many bytes. Prepended as 'bytes &gt; value' filter. Accepts SI suffixes: k, M, G. E.g. '1M'." placement="top"></nfsen-tooltip>
         </p>
-        <input type="text" {{ bind(statsLowerLimit) }} class="form-control" placeholder="e.g. 1M">
+        <input type="text" {{ bind(stats_lower_limit) }} class="form-control" placeholder="e.g. 1M">
         </div>
     </div>
     <div class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
@@ -62,7 +62,7 @@
         <p class="filter-label">Max bytes
             <nfsen-tooltip data-ignore-morph text="Only aggregate flows with at most this many bytes. Prepended as 'bytes &lt; value' filter. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
         </p>
-        <input type="text" {{ bind(statsUpperLimit) }} class="form-control" placeholder="e.g. 100M">
+        <input type="text" {{ bind(stats_upper_limit) }} class="form-control" placeholder="e.g. 100M">
         </div>
     </div>
 
@@ -74,7 +74,7 @@
         </p>
         <div class="form-group">
             <label class="filter-sublabel" for="statsFilterForSelection">Statistic for</label>
-            <select id="statsFilterForSelection" class="form-control form-select" {{ bind(statsFor) }}>
+            <select id="statsFilterForSelection" class="form-control form-select" {{ bind(stats_for) }}>
                 <option value="record" selected>Flow Records</option>
                 <option value="ip">Any IP address</option>
                 <option value="srcip">Src IP address</option>
@@ -134,8 +134,8 @@
         </div>
         <div class="form-group">
             <label class="filter-sublabel" for="statsFilterOrderBySelection">Order by</label>
-            {% set _statsOrderBy = statsOrderBy.string() %}
-            <select id="statsFilterOrderBySelection" class="form-control form-select" {{ bind(statsOrderBy) }}>
+            {% set _statsOrderBy = stats_orderBy.string() %}
+            <select id="statsFilterOrderBySelection" class="form-control form-select" {{ bind(stats_orderBy) }}>
                 <option value="flows"{{ _statsOrderBy == 'flows' ? ' selected' : '' }}>Flows</option>
                 <option value="packets"{{ _statsOrderBy == 'packets' ? ' selected' : '' }}>Packets</option>
                 <option value="bytes"{{ _statsOrderBy == 'bytes' ? ' selected' : '' }}>Bytes</option>
@@ -154,7 +154,7 @@
             <button type="button"
                     class="btn btn-primary"
                     data-indicator:stats._indicator
-                    data-on:click="$_stats_queried = true; @post('{{ action_statsActions }}')">
+                    data-on:click="$_stats_queried = true; @post('{{ statsActions.url() }}')">
                 <span data-show="!$stats._indicator">Process data</span>
                 <span class="spinner-grow spinner-grow-sm" data-show="$stats._indicator" role="status" aria-hidden="true"></span>
                 <span data-show="$stats._indicator">Processing…</span>
@@ -164,21 +164,21 @@
                 class="btn btn-outline-danger btn-sm ms-1"
                 style="display:none"
                 data-show="$stats._indicator"
-                data-on:click="@post('{{ action_killNfdump }}')">Kill</button>
+                data-on:click="@post('{{ killNfdump.url() }}')">Kill</button>
         {# nfcapd file count info — reactive to date range and source changes #}
         <span class="text-muted small align-items-center gap-1" style="display: flex" data-show="$nfcapd._counting">
             <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
             Calculating…
         </span>
-        <span class="text-muted small d-flex align-items-center gap-1" data-show="!$nfcapd._counting && ${{ nfcapdFileCount.id() }} > 0">
+        <span class="text-muted small d-flex align-items-center gap-1" data-show="!$nfcapd._counting && ${{ nfcapd_file_count.id() }} > 0">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" class="bi bi-database flex-shrink-0" viewBox="0 0 16 16">
                 <path d="M4.318 2.687C5.234 2.271 6.536 2 8 2s2.766.27 3.682.687C12.644 3.125 13 3.627 13 4c0 .374-.356.875-1.318 1.313C10.766 5.729 9.464 6 8 6s-2.766-.27-3.682-.687C3.356 4.875 3 4.373 3 4c0-.374.356-.875 1.318-1.313M13 5.698V7c0 .374-.356.875-1.318 1.313C10.766 8.729 9.464 9 8 9s-2.766-.27-3.682-.687C3.356 7.875 3 7.373 3 7V5.698c.271.202.58.378.904.525C5.034 6.771 6.432 7 8 7s2.966-.23 4.096-.777A5 5 0 0 0 13 5.698M3 8.698V10c0 .374.356.875 1.318 1.313C5.234 11.729 6.536 12 8 12s2.766-.27 3.682-.687C12.644 10.875 13 10.373 13 10V8.698c-.271.202-.58.378-.904.525C11.966 9.771 10.568 10 9 10s-2.966-.23-4.096-.777A5 5 0 0 1 3 8.698m0 3V13c0 .374.356.875 1.318 1.313C5.234 14.729 6.536 15 8 15s2.766-.27 3.682-.687C12.644 13.875 13 13.373 13 13v-1.302c-.271.202-.58.378-.904.525C11.966 12.771 10.568 13 9 13s-2.966-.23-4.096-.777A5 5 0 0 1 3 11.698"/>
             </svg>
-            <span data-text="${{ nfcapdFileCount.id() }}"></span> nfcapd files
+            <span data-text="${{ nfcapd_file_count.id() }}"></span> nfcapd files
             <span class="badge bg-warning text-dark"
-                  data-show="${{ nfcapdFileCount.id() }} >= 576 && ${{ nfcapdFileCount.id() }} < 8640">may take a moment</span>
+                  data-show="${{ nfcapd_file_count.id() }} >= 576 && ${{ nfcapd_file_count.id() }} < 8640">may take a moment</span>
             <span class="badge bg-danger"
-                  data-show="${{ nfcapdFileCount.id() }} >= 8640">may take several minutes</span>
+                  data-show="${{ nfcapd_file_count.id() }} >= 8640">may take several minutes</span>
         </span>
         </div>
     </div>

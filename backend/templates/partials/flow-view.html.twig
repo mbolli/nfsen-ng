@@ -21,7 +21,7 @@
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="card-title mb-0">Network Flows</h5>
                     <div class="d-flex align-items-center gap-2">
-                        <span class="badge bg-info" data-text="${{ flowCount.id() }}"></span>
+                        <span class="badge bg-info" data-text="${{ flows_count.id() }}"></span>
                         <span class="text-muted small">flows</span>
                     </div>
                 </div>
@@ -29,7 +29,7 @@
                     {% for n in flowNotifications %}
                     <div class="alert alert-{{ n.type == 'error' ? 'danger' : n.type }} alert-dismissible fade show" role="alert">
                         {{ n.message|raw }}
-                        <button type="button" class="btn-close" data-on:click="@post('{{ action_dismissNotification }}?id={{ n.id }}')" aria-label="Close"></button>
+                        <button type="button" class="btn-close" data-on:click="@post('{{ dismissNotification.url() }}?id={{ n.id }}')" aria-label="Close"></button>
                     </div>
                     {% endfor %}
                 </div>

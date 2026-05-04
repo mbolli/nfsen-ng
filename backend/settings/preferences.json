@@ -11,5 +11,58 @@
         "src net 192.168.0.0\/16"
     ],
     "logPriority": 7,
-    "selectedProfile": "test"
+    "selectedProfile": "live",
+    "alerts": [
+        {
+            "id": "8319d10a036e42dc3d78c3ee8f44b9fa",
+            "name": "high traffic",
+            "enabled": true,
+            "profile": "live",
+            "sources": [
+                "all"
+            ],
+            "metric": "bytes",
+            "operator": ">",
+            "thresholdType": "percent_of_avg",
+            "thresholdValue": 10,
+            "avgWindow": "10m",
+            "cooldownSlots": 3,
+            "notifyEmail": null,
+            "notifyWebhook": null
+        },
+        {
+            "id": "5298562531c897f14ee838f2d2e1fa85",
+            "name": "test",
+            "enabled": true,
+            "profile": "live",
+            "sources": [
+                "all"
+            ],
+            "metric": "bytes",
+            "operator": "<=",
+            "thresholdType": "absolute",
+            "thresholdValue": 1,
+            "avgWindow": "1h",
+            "cooldownSlots": 3,
+            "notifyEmail": null,
+            "notifyWebhook": null
+        },
+        {
+            "id": "3ff9716b39f6ba2c3d2adc1119713ed6",
+            "name": "test2",
+            "enabled": true,
+            "profile": "test",
+            "sources": [
+                "all"
+            ],
+            "metric": "bytes",
+            "operator": "<=",
+            "thresholdType": "absolute",
+            "thresholdValue": 1,
+            "avgWindow": "1h",
+            "cooldownSlots": 3,
+            "notifyEmail": null,
+            "notifyWebhook": null
+        }
+    ]
 }

@@ -2,8 +2,8 @@
     Graph filter controls.
 
     Server signals (registered via $c->signal, sent back on action POSTs):
-      graphDisplay, graphSources, graphPorts, graphProtocols,
-      graphDatatype, graphTrafficUnit, graphResolution
+      graph_display, graph_sources, graph_ports, graph_protocols,
+      graph_datatype, graph_trafficUnit, graph_resolution
 
     Client-local computed / reference signals (underscore-prefixed, never sent to server):
       graph._config  — computed object consumed by nfsen-chart data-attr
@@ -16,10 +16,10 @@
 #}
 <div class="row g-3"
      data-signals='{"_graph_logscale": false, "_graph_stacked": false, "_graph_stepplot": true, "_sourcesDefault": {{ sources|json_encode }}}'
-     data-computed:graph._config="{{ '{' }} sources: ${{ graphSources.id() }}, protocols: ${{ graphProtocols.id() }}, ports: ${{ graphPorts.id() }}, display: ${{ graphDisplay.id() }}, type: ${{ graphDatatype.id() }}, trafficUnit: ${{ graphTrafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot {{ '}' }}"
+     data-computed:graph._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ${{ graph_protocols.id() }}, ports: ${{ graph_ports.id() }}, display: ${{ graph_display.id() }}, type: ${{ graph_datatype.id() }}, trafficUnit: ${{ graph_trafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot {{ '}' }}"
      data-indicator:graph._connecting
-     data-on-interval__duration.15s.leading="!$_disconnected && ${{ graphIsLive.id() }} && @post('{{ action_refreshGraphs }}')""
-     data-on:change__window__throttle.250ms="window.mayUpdateGraph(evt, el) && @post('{{ action_refreshGraphs }}')">
+     data-on-interval__duration.15s.leading="!$_disconnected && ${{ graph_isLive.id() }} && @post('{{ refreshGraphs.url() }}')""
+     data-on:change__window__throttle.250ms="window.mayUpdateGraph(evt, el) && @post('{{ refreshGraphs.url() }}')"&gt;
 
     {# Display type #}
     <div class="col-md-2">
@@ -27,8 +27,8 @@
         <p class="filter-label">Display
             <nfsen-tooltip data-ignore-morph text="Choose what to visualize: individual sources, protocol breakdown, or port statistics." placement="top"></nfsen-tooltip>
         </p>
-        <select id="filterDisplaySelect" class="form-control form-select" {{ bind(graphDisplay) }}
-                data-on:change="el.value === 'protocols' ? ${{ graphProtocols.id() }} = ['tcp', 'udp', 'icmp', 'other'] : (${{ graphProtocols.id() }} = ['any']); el.value === 'sources' && (${{ graphSources.id() }} = $_sourcesDefault)">
+        <select id="filterDisplaySelect" class="form-control form-select" {{ bind(graph_display) }}
+                data-on:change="el.value === 'protocols' ? ${{ graph_protocols.id() }} = ['tcp', 'udp', 'icmp', 'other'] : (${{ graph_protocols.id() }} = ['any']); el.value === 'sources' && (${{ graph_sources.id() }} = $_sourcesDefault)">
             <option value="sources">Sources</option>
             <option value="protocols">Protocols</option>
             <option value="ports">Ports</option>
@@ -44,27 +44,27 @@
         </p>
         <select id="filterSourcesSelect"
                 class="form-control form-select"
-                {{ bind(graphSources) }}
-                data-attr:multiple="${{ graphDisplay.id() }} === 'sources'">
+                {{ bind(graph_sources) }}
+                data-attr:multiple="${{ graph_display.id() }} === 'sources'">
             <option value="any"
-                    data-attr:disabled="${{ graphDisplay.id() }} === 'sources' || ${{ graphDisplay.id() }} === 'protocols'"
-                    data-attr:selected="${{ graphDisplay.id() }} === 'ports'">Any</option>
+                    data-attr:disabled="${{ graph_display.id() }} === 'sources' || ${{ graph_display.id() }} === 'protocols'"
+                    data-attr:selected="${{ graph_display.id() }} === 'ports'">Any</option>
             {% for source in sources %}
             <option value="{{ source }}"
                     selected
-                    data-attr:selected="${{ graphDisplay.id() }} === 'sources'">{{ source }}</option>
+                    data-attr:selected="${{ graph_display.id() }} === 'sources'">{{ source }}</option>
             {% endfor %}
         </select>
         </div>
     </div>
 
     {# Ports — only visible when display = ports #}
-    <div class="col-md-2" id="filterPorts" data-show="${{ graphDisplay.id() }} === 'ports'">
+    <div class="col-md-2" id="filterPorts" data-show="${{ graph_display.id() }} === 'ports'">
         <div class="filter-group">
         <p class="filter-label">Ports
             <nfsen-tooltip data-ignore-morph text="Select ports to track. Each port shows as a separate series." placement="top"></nfsen-tooltip>
         </p>
-        <select id="filterPortsSelect" multiple class="form-control form-select" {{ bind(graphPorts) }}>
+        <select id="filterPortsSelect" multiple class="form-control form-select" {{ bind(graph_ports) }}>
             {% for port in ports %}
             <option value="{{ port }}" selected>{{ port }}</option>
             {% endfor %}
@@ -73,7 +73,7 @@
     </div>
 
     {# Protocols #}
-    <div class="col-md-4" id="filterProtocols" data-signals='{ {{ graphProtocols.id() }}: ["any"]}'>
+    <div class="col-md-4" id="filterProtocols" data-signals='{ {{ graph_protocols.id() }}: ["any"]}'>
         <div class="filter-group">
         <p class="filter-label">Protocols
             <nfsen-tooltip data-ignore-morph text="Filter by protocol. 'Any' shows all traffic." placement="top"></nfsen-tooltip>
@@ -83,16 +83,16 @@
                    class="btn-check"
                    id="filterProtocolAny"
                    value="any"
-                   data-effect="console.log(${{ graphProtocols.id() }}); el.checked = ${{ graphProtocols.id() }}.includes('any') || (${{ graphDisplay.id() }} === 'protocols' && ${{ graphProtocols.id() }}.length >= 4)"
-                   data-on:change="${{ graphDisplay.id() }} !== 'protocols' ? el.checked && (${{ graphProtocols.id() }} = ['any']) : (el.checked ? (${{ graphProtocols.id() }} = ['tcp', 'udp', 'icmp', 'other']) : ${{ graphProtocols.id() }} = ['tcp'])">
+                   data-effect="console.log(${{ graph_protocols.id() }}); el.checked = ${{ graph_protocols.id() }}.includes('any') || (${{ graph_display.id() }} === 'protocols' && ${{ graph_protocols.id() }}.length >= 4)"
+                   data-on:change="${{ graph_display.id() }} !== 'protocols' ? el.checked && (${{ graph_protocols.id() }} = ['any']) : (el.checked ? (${{ graph_protocols.id() }} = ['tcp', 'udp', 'icmp', 'other']) : ${{ graph_protocols.id() }} = ['tcp'])">
             <label class="btn btn-outline-primary btn-sm" for="filterProtocolAny">Any</label>
             {% for value, label in {'tcp': 'TCP', 'udp': 'UDP', 'icmp': 'ICMP', 'other': 'Others'} %}
             <input type="checkbox"
                    class="btn-check"
                    id="filterProtocol{{ value|capitalize }}"
                    value="{{ value }}"
-                   data-effect="console.log(${{ graphProtocols.id() }}); el.checked = ${{ graphProtocols.id() }}.includes('{{ value }}')"
-                   data-on:change="${{ graphDisplay.id() }} !== 'protocols' ? el.checked && (${{ graphProtocols.id() }} = [el.value]) : (el.checked ? ${{ graphProtocols.id() }}.push(el.value) : ${{ graphProtocols.id() }} = ${{ graphProtocols.id() }}.filter(p => p !== el.value))">
+                   data-effect="console.log(${{ graph_protocols.id() }}); el.checked = ${{ graph_protocols.id() }}.includes('{{ value }}')"
+                   data-on:change="${{ graph_display.id() }} !== 'protocols' ? el.checked && (${{ graph_protocols.id() }} = [el.value]) : (el.checked ? ${{ graph_protocols.id() }}.push(el.value) : ${{ graph_protocols.id() }} = ${{ graph_protocols.id() }}.filter(p => p !== el.value))">
             <label class="btn btn-outline-primary btn-sm" for="filterProtocol{{ value|capitalize }}">{{ label }}</label>
             {% endfor %}
         </div>
@@ -109,7 +109,7 @@
             {% for value, label in {'traffic': 'Traffic', 'packets': 'Packets', 'flows': 'Flows'} %}
             <input type="radio" class="btn-check" name="datatype"
                    value="{{ value }}"{% if value == 'traffic' %} checked{% endif %}
-                   id="dataType{{ value|capitalize }}" {{ bind(graphDatatype) }}>
+                   id="dataType{{ value|capitalize }}" {{ bind(graph_datatype) }}>
             <label class="btn btn-outline-primary btn-sm" for="dataType{{ value|capitalize }}">{{ label }}</label>
             {% endfor %}
         </div>
@@ -117,18 +117,18 @@
     </div>
 
     {# Traffic unit — visible only when datatype = traffic #}
-    <div class="col-md-1" id="trafficUnit" data-show="${{ graphDatatype.id() }} === 'traffic'">
+    <div class="col-md-1" id="trafficUnit" data-show="${{ graph_datatype.id() }} === 'traffic'">
         <div class="filter-group">
         <p class="filter-label">Unit
             <nfsen-tooltip data-ignore-morph text="Bits/s (base-2) or Bytes/s (base-10)." placement="top"></nfsen-tooltip>
         </p>
         <div class="btn-group" role="group">
             <input type="radio" class="btn-check" name="trafficUnit" value="bits" checked
-                   id="trafficUnitBits" {{ bind(graphTrafficUnit) }}
+                   id="trafficUnitBits" {{ bind(graph_trafficUnit) }}
                    data-on:change="$graph._widget.updateOptions({ylabel: 'Bits/s', labelsKMG2: true})">
             <label class="btn btn-outline-primary btn-sm" for="trafficUnitBits">Bits</label>
             <input type="radio" class="btn-check" name="trafficUnit" value="bytes"
-                   id="trafficUnitBytes" {{ bind(graphTrafficUnit) }}
+                   id="trafficUnitBytes" {{ bind(graph_trafficUnit) }}
                    data-on:change="$graph._widget.updateOptions({ylabel: 'Bytes/s', labelsKMG2: false})">
             <label class="btn btn-outline-primary btn-sm" for="trafficUnitBytes">Bytes</label>
         </div>

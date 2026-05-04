@@ -26,10 +26,10 @@ $opts = getopt('', ['host::', 'port::', 'source::', 'days::', 'ports::']);
 $vmHost = (string) ($opts['host'] ?? getenv('VM_HOST') ?: 'localhost');
 $vmPort = (int) ($opts['port'] ?? getenv('VM_PORT') ?: 8428);
 $source = (string) ($opts['source'] ?? 'all');
-$days   = max(1, (int) ($opts['days'] ?? 90));
+$days = max(1, (int) ($opts['days'] ?? 90));
 
 $portsOpt = (string) ($opts['ports'] ?? '');
-$ports    = $portsOpt !== ''
+$ports = $portsOpt !== ''
     ? array_values(array_filter(array_map('intval', explode(',', $portsOpt)), fn ($p) => $p > 0))
     : [];
 
@@ -37,7 +37,7 @@ $writeUrl = "http://{$vmHost}:{$vmPort}/api/v1/import/prometheus";
 
 const STEP = 300; // 5-minute resolution (must match Import pipeline)
 
-$now   = (int) (floor(time() / STEP) * STEP);
+$now = (int) (floor(time() / STEP) * STEP);
 $start = $now - ($days * 86400);
 
 printf(
@@ -141,18 +141,18 @@ while ($dayStart < $now) {
         // Port data — each configured port gets ~10 % of source traffic with a TCP-dominant mix.
         $portRatios = ['tcp' => 0.82, 'udp' => 0.10, 'icmp' => 0.02, 'other' => 0.06];
         foreach ($ports as $portNum) {
-            $portShare   = max(0.01, gauss(0.10, 0.30));
-            $portFlows   = max(1, (int) round($sumFlows   * $portShare));
+            $portShare = max(0.01, gauss(0.10, 0.30));
+            $portFlows = max(1, (int) round($sumFlows * $portShare));
             $portPackets = max(1, (int) round($sumPackets * $portShare));
-            $portBytes   = max(1, (int) round($sumBytes   * $portShare));
+            $portBytes = max(1, (int) round($sumBytes * $portShare));
 
-            $portSplits       = jitterRatios($portRatios, 0.10);
-            $portProtoFlows   = [];
+            $portSplits = jitterRatios($portRatios, 0.10);
+            $portProtoFlows = [];
             $portProtoPackets = [];
-            $portProtoBytes   = [];
-            $portAssigned     = 0;
-            $portProtos       = array_keys($portSplits);
-            $portLast         = end($portProtos);
+            $portProtoBytes = [];
+            $portAssigned = 0;
+            $portProtos = array_keys($portSplits);
+            $portLast = end($portProtos);
 
             foreach ($portProtos as $proto) {
                 if ($proto === $portLast) {
@@ -161,13 +161,13 @@ while ($dayStart < $now) {
                     $pf = max(1, (int) round($portFlows * $portSplits[$proto]));
                     $portAssigned += $pf;
                 }
-                [$pktMean, $pktStd]   = $pktModel[$proto];
+                [$pktMean, $pktStd] = $pktModel[$proto];
                 [$byteMean, $byteStd] = $byteModel[$proto];
                 $pp = max(1, (int) round($pf * max(1.0, gauss($pktMean, $pktStd))));
                 $pb = max(1, (int) round($pp * max(1.0, gauss($byteMean, $byteStd))));
-                $portProtoFlows[$proto]   = $pf;
+                $portProtoFlows[$proto] = $pf;
                 $portProtoPackets[$proto] = $pp;
-                $portProtoBytes[$proto]   = $pb;
+                $portProtoBytes[$proto] = $pb;
             }
 
             $lines[] = "nfsen_flows{source=\"{$source}\",port=\"{$portNum}\"} {$portFlows} {$tsMs}";

@@ -26,15 +26,17 @@ declare(strict_types=1);
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
-require_once \dirname(__DIR__) . '/vendor/autoload.php';
+require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\datasources\Rrd;
 
 Config::initialize();
 
-if (!Config::$db instanceof \mbolli\nfsen_ng\datasources\Rrd) {
-    echo "Error: configured datasource is not RRD (got " . Config::$settings->datasourceName . ").\n";
+if (!Config::$db instanceof Rrd) {
+    echo 'Error: configured datasource is not RRD (got ' . Config::$settings->datasourceName . ").\n";
     echo "This script only works with the RRD datasource.\n";
+
     exit(1);
 }
 
@@ -42,18 +44,18 @@ if (!Config::$db instanceof \mbolli\nfsen_ng\datasources\Rrd) {
 
 $opts = getopt('', ['source::', 'profile::', 'days::']);
 
-$source  = (string) ($opts['source']  ?? Config::$settings->sources[0] ?? 'all');
+$source = (string) ($opts['source'] ?? Config::$settings->sources[0] ?? 'all');
 $profile = (string) ($opts['profile'] ?? Config::$settings->nfdumpProfile);
-$days    = max(1, (int) ($opts['days'] ?? 90));
-$ports   = Config::$settings->ports;
+$days = max(1, (int) ($opts['days'] ?? 90));
+$ports = Config::$settings->ports;
 
 const STEP = 300; // 5-minute resolution (must match Import pipeline)
 
-$now   = (int) (floor(time() / STEP) * STEP);
+$now = (int) (floor(time() / STEP) * STEP);
 $start = $now - ($days * 86400);
 
 // Align start to an RRD step boundary
-$start = $start - ($start % STEP);
+$start -= ($start % STEP);
 
 printf(
     "Seeding %d days → %s to %s\nSource: %s  Profile: %s  Ports: %s\nRRD path: %s\n\n",
@@ -74,32 +76,32 @@ const PEAK_FLOWS = 25_000;
 
 // Protocol mix ratios (will be jittered ±8 % per interval).
 $baseRatios = [
-    'tcp'   => 0.63,
-    'udp'   => 0.22,
-    'icmp'  => 0.04,
+    'tcp' => 0.63,
+    'udp' => 0.22,
+    'icmp' => 0.04,
     'other' => 0.11,
 ];
 
 // Avg packets/flow and bytes/packet per protocol (used for Gaussian sampling).
-$pktModel  = ['tcp' => [10.0, 3.0], 'udp' => [4.0, 1.5], 'icmp' => [2.0, 0.5], 'other' => [5.0, 2.0]];
+$pktModel = ['tcp' => [10.0, 3.0], 'udp' => [4.0, 1.5], 'icmp' => [2.0, 0.5], 'other' => [5.0, 2.0]];
 $byteModel = ['tcp' => [800.0, 300.0], 'udp' => [400.0, 150.0], 'icmp' => [64.0, 10.0], 'other' => [500.0, 200.0]];
 
 // ─── Main loop ───────────────────────────────────────────────────────────────
 
 $totalIntervals = 0;
-$totalErrors    = 0;
-$dayStart       = $start;
+$totalErrors = 0;
+$dayStart = $start;
 
 while ($dayStart < $now) {
-    $dayEnd    = min($dayStart + 86400, $now);
-    $dayOk     = 0;
+    $dayEnd = min($dayStart + 86400, $now);
+    $dayOk = 0;
     $dayFailed = 0;
 
     for ($ts = $dayStart; $ts < $dayEnd; $ts += STEP) {
         // Diurnal curve: sin peak at ~13:00 UTC, trough at ~01:00 UTC.
         $hourOfDay = ($ts % 86400) / 3600.0;
-        $sinVal    = sin(M_PI * ($hourOfDay - 7.0) / 12.0); // 0 at 07:00 & 19:00
-        $diurnal   = max(0.04, ($sinVal + 1.0) / 2.0);      // [0.04, 1.0]
+        $sinVal = sin(M_PI * ($hourOfDay - 7.0) / 12.0); // 0 at 07:00 & 19:00
+        $diurnal = max(0.04, ($sinVal + 1.0) / 2.0);      // [0.04, 1.0]
 
         // Weekends are ~30 % quieter.
         $dowFactor = ((int) date('N', $ts) >= 6) ? 0.70 : 1.0;
@@ -108,12 +110,12 @@ while ($dayStart < $now) {
         $totalFlows = max(10, (int) round(PEAK_FLOWS * $diurnal * $dowFactor * gauss(1.0, 0.15)));
 
         // Protocol split: jitter each ratio independently, force sum = 1.
-        $splits      = jitterRatios($baseRatios, 0.08);
-        $protos      = array_keys($splits);
-        $lastProto   = end($protos);
-        $protoFlows   = [];
+        $splits = jitterRatios($baseRatios, 0.08);
+        $protos = array_keys($splits);
+        $lastProto = end($protos);
+        $protoFlows = [];
         $protoPackets = [];
-        $protoBytes   = [];
+        $protoBytes = [];
         $assignedFlows = 0;
 
         foreach ($protos as $proto) {
@@ -124,39 +126,39 @@ while ($dayStart < $now) {
                 $assignedFlows += $f;
             }
 
-            [$pktMean, $pktStd]   = $pktModel[$proto];
+            [$pktMean, $pktStd] = $pktModel[$proto];
             [$byteMean, $byteStd] = $byteModel[$proto];
 
-            $pkts  = max(1, (int) round($f * max(1.0, gauss($pktMean, $pktStd))));
+            $pkts = max(1, (int) round($f * max(1.0, gauss($pktMean, $pktStd))));
             $bytes = max(1, (int) round($pkts * max(1.0, gauss($byteMean, $byteStd))));
 
-            $protoFlows[$proto]   = $f;
+            $protoFlows[$proto] = $f;
             $protoPackets[$proto] = $pkts;
-            $protoBytes[$proto]   = $bytes;
+            $protoBytes[$proto] = $bytes;
         }
 
-        $sumFlows   = array_sum($protoFlows);
+        $sumFlows = array_sum($protoFlows);
         $sumPackets = array_sum($protoPackets);
-        $sumBytes   = array_sum($protoBytes);
+        $sumBytes = array_sum($protoBytes);
 
         // Build the fields array that Rrd::write() expects.
         $fields = [
-            'flows'   => $sumFlows,
+            'flows' => $sumFlows,
             'packets' => $sumPackets,
-            'bytes'   => $sumBytes,
+            'bytes' => $sumBytes,
         ];
         foreach ($protoFlows as $proto => $f) {
-            $fields['flows_' . $proto]   = $f;
+            $fields['flows_' . $proto] = $f;
             $fields['packets_' . $proto] = $protoPackets[$proto];
-            $fields['bytes_' . $proto]   = $protoBytes[$proto];
+            $fields['bytes_' . $proto] = $protoBytes[$proto];
         }
 
         $data = [
-            'fields'         => $fields,
-            'source'         => $source,
-            'port'           => 0,
-            'profile'        => $profile,
-            'date_iso'       => date('Ymd\THis', $ts),
+            'fields' => $fields,
+            'source' => $source,
+            'port' => 0,
+            'profile' => $profile,
+            'date_iso' => date('Ymd\THis', $ts),
             'date_timestamp' => $ts,
         ];
 
@@ -171,18 +173,18 @@ while ($dayStart < $now) {
         // Port data — each configured port gets ~10 % of source traffic with a TCP-dominant mix.
         $portRatios = ['tcp' => 0.82, 'udp' => 0.10, 'icmp' => 0.02, 'other' => 0.06];
         foreach ($ports as $port) {
-            $portShare   = max(0.01, gauss(0.10, 0.30));
-            $portFlows   = max(1, (int) round($sumFlows   * $portShare));
+            $portShare = max(0.01, gauss(0.10, 0.30));
+            $portFlows = max(1, (int) round($sumFlows * $portShare));
             $portPackets = max(1, (int) round($sumPackets * $portShare));
-            $portBytes   = max(1, (int) round($sumBytes   * $portShare));
+            $portBytes = max(1, (int) round($sumBytes * $portShare));
 
-            $portSplits       = jitterRatios($portRatios, 0.10);
-            $portProtoFlows   = [];
+            $portSplits = jitterRatios($portRatios, 0.10);
+            $portProtoFlows = [];
             $portProtoPackets = [];
-            $portProtoBytes   = [];
-            $portAssigned     = 0;
-            $portProtos       = array_keys($portSplits);
-            $portLast         = end($portProtos);
+            $portProtoBytes = [];
+            $portAssigned = 0;
+            $portProtos = array_keys($portSplits);
+            $portLast = end($portProtos);
 
             foreach ($portProtos as $proto) {
                 if ($proto === $portLast) {
@@ -191,32 +193,32 @@ while ($dayStart < $now) {
                     $pf = max(1, (int) round($portFlows * $portSplits[$proto]));
                     $portAssigned += $pf;
                 }
-                [$pktMean, $pktStd]   = $pktModel[$proto];
+                [$pktMean, $pktStd] = $pktModel[$proto];
                 [$byteMean, $byteStd] = $byteModel[$proto];
                 $pp = max(1, (int) round($pf * max(1.0, gauss($pktMean, $pktStd))));
                 $pb = max(1, (int) round($pp * max(1.0, gauss($byteMean, $byteStd))));
-                $portProtoFlows[$proto]   = $pf;
+                $portProtoFlows[$proto] = $pf;
                 $portProtoPackets[$proto] = $pp;
-                $portProtoBytes[$proto]   = $pb;
+                $portProtoBytes[$proto] = $pb;
             }
 
             $portFields = [
-                'flows'   => $portFlows,
+                'flows' => $portFlows,
                 'packets' => $portPackets,
-                'bytes'   => $portBytes,
+                'bytes' => $portBytes,
             ];
             foreach ($portProtoFlows as $proto => $pf) {
-                $portFields['flows_' . $proto]   = $pf;
+                $portFields['flows_' . $proto] = $pf;
                 $portFields['packets_' . $proto] = $portProtoPackets[$proto];
-                $portFields['bytes_' . $proto]   = $portProtoBytes[$proto];
+                $portFields['bytes_' . $proto] = $portProtoBytes[$proto];
             }
 
             $ok = Config::$db->write([
-                'fields'         => $portFields,
-                'source'         => $source,
-                'port'           => $port,
-                'profile'        => $profile,
-                'date_iso'       => date('Ymd\THis', $ts),
+                'fields' => $portFields,
+                'source' => $source,
+                'port' => $port,
+                'profile' => $profile,
+                'date_iso' => date('Ymd\THis', $ts),
                 'date_timestamp' => $ts,
             ]);
             if ($ok) {
@@ -253,7 +255,7 @@ function gauss(float $mean, float $stdFraction): float {
     static $spare = null;
 
     if ($spare !== null) {
-        $z     = $spare;
+        $z = $spare;
         $spare = null;
 
         return $mean + $z * $stdFraction * $mean;
@@ -265,7 +267,7 @@ function gauss(float $mean, float $stdFraction): float {
         $s = $u * $u + $v * $v;
     } while ($s >= 1.0 || $s === 0.0);
 
-    $mul   = sqrt(-2.0 * log($s) / $s);
+    $mul = sqrt(-2.0 * log($s) / $s);
     $spare = $v * $mul;
 
     return $mean + $u * $mul * $stdFraction * $mean;

@@ -1,209 +1,587 @@
 {#
-    User preferences panel — editable in the browser, persisted to preferences.json.
+    Settings panel — merged view combining admin operations (import, health)
+    and configuration (preferences, alerts, system deployment info).
 
-    Fields here are "user-owned" defaults. Deployment config (sources, ports,
-    nfdump paths, datasource, import_years) stays in env vars / settings.php and
-    is shown as read-only for reference.
+    Sub-section navigation is driven by the browser-local $_settingsSection signal.
+    Default section: 'preferences'.
 #}
+<div class="row mt-3 gx-0">
 
-<div class="row justify-content-center mt-4">
-<div class="col-lg-8">
+    {# ── Vertical sub-nav ─────────────────────────────────────────────────── #}
+    <div class="col-auto border-end pe-0" style="min-width: 160px;">
+        <nav class="nav flex-column nav-pills pt-1" role="tablist" aria-label="Settings sections">
 
-{# ── Save feedback toast ─────────────────────────────────────────────────── #}
-{# Error messages from server (success is shown client-side immediately on click) #}
-<div id="settings-toast-container" data-ignore-morph>{{ settingsMessageHtml|raw }}</div>
+            <div class="text-muted text-uppercase px-3 py-1" style="font-size: .7rem; letter-spacing: .05em; font-weight: 600;">Operations</div>
 
-{# ── User Preferences ────────────────────────────────────────────────────── #}
-<div class="card mb-4">
-    <div class="card-header fw-semibold">User Preferences</div>
-    <div class="card-body">
-        <p class="text-muted small mb-3">
-            These settings are saved to <code>preferences.json</code> and applied on top of
-            your deployment configuration. They take effect immediately across all open tabs.
-        </p>
+            <a href="#" role="tab"
+               class="nav-link d-flex align-items-center gap-2 py-2 rounded-0 position-relative"
+               data-class:active="$_settingsSection === 'import'"
+               data-on:click__prevent="$_settingsSection = 'import'">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-arrow-clockwise flex-shrink-0" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+                    <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
+                </svg>
+                Import
+                <span class="ms-auto badge rounded-pill bg-warning p-1"
+                      data-show="${{ import_running.id() }}" style="display:none;"
+                      title="Import in progress">
+                    <span class="visually-hidden">running</span>
+                </span>
+            </a>
 
-        <div class="row g-3">
+            <a href="#" role="tab"
+               class="nav-link d-flex align-items-center gap-2 py-2 rounded-0"
+               data-class:active="$_settingsSection === 'health'"
+               data-on:click__prevent="$_settingsSection = 'health'">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-activity flex-shrink-0" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M6 2a.5.5 0 0 1 .47.33L10 12.036l1.53-4.208A.5.5 0 0 1 12 7.5h3.5a.5.5 0 0 1 0 1h-3.15l-1.88 5.17a.5.5 0 0 1-.94 0L6 3.964 4.47 8.171A.5.5 0 0 1 4 8.5H.5a.5.5 0 0 1 0-1h3.15l1.88-5.17A.5.5 0 0 1 6 2"/>
+                </svg>
+                Health
+            </a>
 
-            {# Default view #}
-            <div class="col-md-4">
-                <label class="form-label fw-semibold small">Default view</label>
-                {% set _v = settings_defaultView.string() %}
-                <select class="form-select form-select-sm" {{ bind(settings_defaultView) }}>
-                    <option value="graphs" {{ _v == 'graphs' ? 'selected' : '' }}>Graphs</option>
-                    <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
-                    <option value="statistics" {{ _v == 'statistics' ? 'selected' : '' }}>Statistics</option>
-                </select>
-            </div>
+            <div class="text-muted text-uppercase px-3 pt-3 pb-1" style="font-size: .7rem; letter-spacing: .05em; font-weight: 600;">Configuration</div>
 
-            {# Default log level #}
-            <div class="col-md-4">
-                <label class="form-label fw-semibold small">Log level</label>
-                {% set _v = settings_logPriority.string() %}
-                <select class="form-select form-select-sm" {{ bind(settings_logPriority) }}>
-                    <option value="debug" {{ _v == 'debug' ? 'selected' : '' }}>Debug</option>
-                    <option value="info" {{ _v == 'info' ? 'selected' : '' }}>Info</option>
-                    <option value="notice" {{ _v == 'notice' ? 'selected' : '' }}>Notice</option>
-                    <option value="warning" {{ _v == 'warning' ? 'selected' : '' }}>Warning</option>
-                    <option value="error" {{ _v == 'error' ? 'selected' : '' }}>Error</option>
-                </select>
-            </div>
+            <a href="#" role="tab"
+               class="nav-link d-flex align-items-center gap-2 py-2 rounded-0"
+               data-class:active="$_settingsSection === 'preferences'"
+               data-on:click__prevent="$_settingsSection = 'preferences'">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-sliders flex-shrink-0" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M11.5 2a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3M9.05 3a2.5 2.5 0 0 1 4.9 0H16v1h-2.05a2.5 2.5 0 0 1-4.9 0H0V3zM4.5 7a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3M2.05 8a2.5 2.5 0 0 1 4.9 0H16v1H6.95a2.5 2.5 0 0 1-4.9 0H0V8zm9.45 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3m-2.45 1a2.5 2.5 0 0 1 4.9 0H16v1h-2.05a2.5 2.5 0 0 1-4.9 0H0v-1z"/>
+                </svg>
+                Preferences
+            </a>
 
-        </div>{# /row #}
+            <a href="#" role="tab"
+               class="nav-link d-flex align-items-center gap-2 py-2 rounded-0"
+               data-class:active="$_settingsSection === 'alerts'"
+               data-on:click__prevent="$_settingsSection = 'alerts'">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-bell flex-shrink-0" viewBox="0 0 16 16">
+                    <path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2M8 1.918l-.797.161A4 4 0 0 0 4 6c0 .628-.134 2.197-.459 3.742-.16.767-.376 1.566-.663 2.258h10.244c-.287-.692-.502-1.491-.663-2.258C12.134 8.197 12 6.628 12 6a4 4 0 0 0-3.203-3.92zM14.22 12c.223.447.481.801.78 1H1c.299-.199.557-.553.78-1C2.68 10.2 3 6.88 3 6c0-2.42 1.72-4.44 4.005-4.901a1 1 0 1 1 1.99 0A5 5 0 0 1 13 6c0 .88.32 4.2 1.22 6"/>
+                </svg>
+                Alerts
+            </a>
 
-        <hr class="my-3">
-        <h6 class="text-muted small text-uppercase mb-3">Graph defaults</h6>
+            <a href="#" role="tab"
+               class="nav-link d-flex align-items-center gap-2 py-2 rounded-0"
+               data-class:active="$_settingsSection === 'system'"
+               data-on:click__prevent="$_settingsSection = 'system'">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-hdd-stack flex-shrink-0" viewBox="0 0 16 16">
+                    <path d="M14 10a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1zM2 9a2 2 0 0 0-2 2v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1a2 2 0 0 0-2-2z"/>
+                    <path d="M5 11.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0m-2 0a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0M14 6a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM2 5a2 2 0 0 0-2 2v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/>
+                    <path d="M5 7.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0m-2 0a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0M14 2a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zM2 1a2 2 0 0 0-2 2v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2z"/>
+                    <path d="M5 3.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0m-2 0a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0"/>
+                </svg>
+                System
+            </a>
 
-        <div class="row g-3">
+        </nav>
+    </div>
 
-            {# Default graph display #}
-            <div class="col-md-4">
-                <label class="form-label fw-semibold small">Display</label>
-                {% set _v = settings_graphDisplay.string() %}
-                <select class="form-select form-select-sm" {{ bind(settings_graphDisplay) }}>
-                    <option value="sources" {{ _v == 'sources' ? 'selected' : '' }}>Sources</option>
-                    <option value="ports" {{ _v == 'ports' ? 'selected' : '' }}>Ports</option>
-                    <option value="protocols" {{ _v == 'protocols' ? 'selected' : '' }}>Protocols</option>
-                </select>
-            </div>
+    {# ── Content panels ───────────────────────────────────────────────────── #}
+    <div class="col ps-4">
 
-            {# Default graph datatype #}
-            <div class="col-md-4">
-                <label class="form-label fw-semibold small">Datatype</label>
-                {% set _v = settings_graphDatatype.string() %}
-                <select class="form-select form-select-sm" {{ bind(settings_graphDatatype) }}>
-                    <option value="traffic" {{ _v == 'traffic' ? 'selected' : '' }}>Traffic (bits/s)</option>
-                    <option value="packets" {{ _v == 'packets' ? 'selected' : '' }}>Packets/s</option>
-                    <option value="bytes" {{ _v == 'bytes' ? 'selected' : '' }}>Bytes</option>
-                    <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
-                </select>
-            </div>
+        {# ── Import section ───────────────────────────────────────────────── #}
+        <div data-show="$_settingsSection == 'import'" style="display:none;">
 
-            {# Default graph protocols #}
-            <div class="col-md-4">
-                <label class="form-label fw-semibold small">Protocols</label>
-                {% set _protos = settings_graphProtocols.array() %}
-                <select class="form-select form-select-sm" {{ bind(settings_graphProtocols) }} multiple>
-                    <option value="any" {{ 'any' in _protos ? 'selected' : '' }}>Any</option>
-                    <option value="tcp" {{ 'tcp' in _protos ? 'selected' : '' }}>TCP</option>
-                    <option value="udp" {{ 'udp' in _protos ? 'selected' : '' }}>UDP</option>
-                    <option value="icmp" {{ 'icmp' in _protos ? 'selected' : '' }}>ICMP</option>
-                    <option value="other" {{ 'other' in _protos ? 'selected' : '' }}>Other</option>
-                </select>
-                <div class="form-text">Hold Ctrl/⌘ to select multiple.</div>
-            </div>
+            {# ── Action buttons ────────────────────────────────────────────── #}
+            <div class="mt-4">
 
-        </div>{# /row #}
+            {% if daemonDisabled or daemonsInfo is empty %}
 
-        <hr class="my-3">
-        <h6 class="text-muted small text-uppercase mb-3">Flow &amp; statistics defaults</h6>
+                <p class="text-muted small mb-0">
+                    Import daemon is disabled (<code>NFSEN_SKIP_DAEMON=1</code>).
+                </p>
 
-        <div class="row g-3">
+            {% elseif daemonsInfo|length > 1 %}
 
-            {# Default flow limit #}
-            <div class="col-md-4">
-                <label class="form-label fw-semibold small">Flow limit</label>
-                {% set _v = settings_flowLimit.int() %}
-                <select class="form-select form-select-sm" {{ bind(settings_flowLimit) }}>
-                    {% for n in [20, 50, 100, 500, 1000, 10000] %}
-                    <option value="{{ n }}" {{ _v == n ? 'selected' : '' }}>{{ n }}</option>
+                {# ── Multi-profile daemon table ──────────────────────────── #}
+                <div class="card mb-3">
+                    <div class="card-header fw-semibold py-2 small d-flex justify-content-between align-items-center">
+                        Import Daemon
+                    </div>
+                    <div class="card-body p-0">
+                <table class="table table-sm table-hover mb-0 small align-middle">
+                    <thead class="table-active">
+                        <tr>
+                            <th class="ps-3">Profile</th>
+                            <th>Status</th>
+                            <th>Last auto-import</th>
+                            <th>Dirs watched</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for profile, info in daemonsInfo %}
+                    <tr>
+                        <td class="ps-3 font-monospace">{{ profile }}</td>
+                        <td>
+                            {% if info.ready %}
+                                <span class="badge bg-success">ready</span>
+                            {% else %}
+                                <span class="badge bg-warning-subtle text-warning-emphasis">init&hellip;</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if info.lastAutoImport > 0 %}
+                                <span data-text="new Date({{ info.lastAutoImport }} * 1000).toLocaleString('sv')"></span>
+                            {% else %}
+                                <span class="text-muted">never</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ info.watchCount }}</td>
+                        <td>
+                            <div class="d-flex gap-1 flex-wrap">
+                                <button class="btn btn-sm btn-primary"
+                                        data-attr:disabled="${{ import_running.id() }}"
+                                        data-show="!${{ import_running.id() }}"
+                                        data-on:click="${{ admin_target_profile.id() }} = '{{ profile }}'; @post('{{ triggerImport.url() }}')">
+                                    Trigger
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger"
+                                        data-attr:disabled="${{ import_running.id() }}"
+                                        data-show="!${{ confirm_rescan.id() }} && !${{ import_running.id() }}"
+                                        data-on:click="${{ admin_target_profile.id() }} = '{{ profile }}'; ${{ confirm_rescan.id() }} = true">
+                                    Rescan
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
                     {% endfor %}
-                </select>
+                    </tbody>
+                </table>
+                    </div>
+                </div>
+
+                {# Shared confirm-rescan dialog (shown after clicking Rescan for any profile) #}
+                <div data-show="${{ confirm_rescan.id() }}" style="display: none;" class="mb-2">
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                        <span class="text-danger fw-semibold small">
+                            ⚠ Resets all {{ deployDatasource }} data for
+                            <strong><span data-text="${{ admin_target_profile.id() }}"></span></strong>
+                            and re-imports from scratch.
+                        </span>
+                        <button class="btn btn-danger btn-sm"
+                                data-attr:disabled="${{ import_running.id() }}"
+                                data-on:click="@post('{{ forceRescan.url() }}')">
+                            Confirm &amp; Rescan
+                        </button>
+                        <button class="btn btn-secondary btn-sm"
+                                data-on:click="${{ confirm_rescan.id() }} = false">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+
+                {# Cancel — only visible while an import is running #}
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <button class="btn btn-warning"
+                            data-show="${{ import_running.id() }}" style="display: none;"
+                            data-indicator:_cancel_loading
+                            data-on:click="@post('{{ cancelImport.url() }}')">
+                        <span data-show="$_cancel_loading" style="display: none;" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                        <svg data-show="!$_cancel_loading" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle me-1" viewBox="0 0 16 16">
+                            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"/>
+                        </svg>
+                        Cancel Import
+                    </button>
+
+                    {# Port-scanning toggle — only shown when ports are configured in settings #}
+                    {% if hasPorts %}
+                    <div class="form-check ms-2 my-auto">
+                        <input type="checkbox" class="form-check-input" id="adminScanPorts"
+                               {{ bind(import_scan_ports) }}
+                               data-attr:disabled="${{ import_running.id() }}">
+                        <label class="form-check-label small" for="adminScanPorts">Scan ports</label>
+                    </div>
+                    {% endif %}
+                </div>
+
+            {% else %}
+
+                {# ── Single-profile action buttons ───────────────────────── #}
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+
+                <button class="btn btn-primary"
+                        data-attr:disabled="${{ import_running.id() }}"
+                        data-show="!${{ import_running.id() }}"
+                        data-on:click="@post('{{ triggerImport.url() }}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise me-1" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+                        <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
+                    </svg>
+                    Trigger Import
+                </button>
+
+                <button class="btn btn-outline-danger"
+                        data-attr:disabled="${{ import_running.id() }}"
+                        data-show="!${{ confirm_rescan.id() }} && !${{ import_running.id() }}"
+                        data-on:click="${{ confirm_rescan.id() }} = true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-counterclockwise me-1" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2z"/>
+                        <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308c-.12.1-.12.284 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466"/>
+                    </svg>
+                    Force Rescan
+                </button>
+
+                <button class="btn btn-warning"
+                        data-show="${{ import_running.id() }}" style="display: none;"
+                        data-indicator:_cancel_loading
+                        data-on:click="@post('{{ cancelImport.url() }}')">
+                    <span data-show="$_cancel_loading" style="display: none;" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                    <svg data-show="!$_cancel_loading" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle me-1" viewBox="0 0 16 16">
+                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                        <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"/>
+                    </svg>
+                    Cancel Import
+                </button>
+
+                <div data-show="${{ confirm_rescan.id() }}" style="display: none;">
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <span class="text-danger fw-semibold small">
+                        ⚠ Resets all {{ deployDatasource }} data and re-imports from scratch.
+                    </span>
+                    <button class="btn btn-danger btn-sm"
+                            data-attr:disabled="${{ import_running.id() }}"
+                            data-on:click="@post('{{ forceRescan.url() }}')">
+                        Confirm &amp; Rescan
+                    </button>
+                    <button class="btn btn-secondary btn-sm"
+                            data-on:click="${{ confirm_rescan.id() }} = false">
+                        Cancel
+                    </button>
+                    </div>
+                </div>
+
+                {# Port-scanning toggle — only shown when ports are configured in settings #}
+                {% if hasPorts %}
+                <div class="form-check ms-2 my-auto">
+                    <input type="checkbox" class="form-check-input" id="adminScanPorts"
+                           {{ bind(import_scan_ports) }}
+                           data-attr:disabled="${{ import_running.id() }}">
+                    <label class="form-check-label small" for="adminScanPorts">Scan ports</label>
+                </div>
+                {% endif %}
+
+                </div>
+
+            {% endif %}
+
+            </div>{# /action buttons #}
+
+            {# ── Progress bar — visible while import is running ────────────── #}
+            <div data-show="${{ import_running.id() }}" style="display: none;" class="mt-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <small class="text-muted">{{ importStatusText }}</small>
+                    <small class="fw-semibold">{{ importProgress }}%{% if importEta %} &mdash; {{ importEta }}{% endif %}</small>
+                </div>
+                <div class="progress mb-2" style="height: 22px;" role="progressbar"
+                     aria-valuenow="{{ importProgress }}" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated"
+                         style="width: {{ importProgress }}%"></div>
+                </div>
+                <div class="text-muted small{{ importCurrentFile ? '' : ' invisible' }}">
+                    Current: <code>{{ importCurrentFile ?: '…' }}</code>
+                </div>
             </div>
 
-            {# Default stats order-by #}
-            <div class="col-md-4">
-                <label class="form-label fw-semibold small">Statistics order by</label>
-                {% set _v = settings_statsOrderBy.string() %}
-                <select class="form-select form-select-sm" {{ bind(settings_statsOrderBy) }}>
-                    <option value="bytes" {{ _v == 'bytes' ? 'selected' : '' }}>Bytes</option>
-                    <option value="packets" {{ _v == 'packets' ? 'selected' : '' }}>Packets</option>
-                    <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
-                    <option value="pps" {{ _v == 'pps' ? 'selected' : '' }}>Packets/s</option>
-                    <option value="bps" {{ _v == 'bps' ? 'selected' : '' }}>Bits/s</option>
-                    <option value="bpp" {{ _v == 'bpp' ? 'selected' : '' }}>Bytes/packet</option>
-                </select>
+            {# ── Import status — shown after completion ─────────────────────── #}
+            {% if importStatusText and not import_running.getValue() %}
+            <div class="mt-3">
+                <div class="alert alert-{{ importLog|filter(e => e.level <= 3)|length > 0 ? 'danger' : (importLog|length > 0 ? 'warning' : 'success') }} py-2 mb-0 small">
+                    {{ importStatusText }}
+                </div>
+            </div>
+            {% endif %}
+
+            {# ── Import log ────────────────────────────────────────────────── #}
+            {% if importLog|length > 0 %}
+            <div class="mt-3">
+                <div class="card border-warning">
+                    <div class="card-header py-1 small fw-semibold text-warning-emphasis bg-warning-subtle">
+                        Import log ({{ importLog|length }} warning{{ importLog|length != 1 ? 's' : '' }})
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="overflow-auto" style="max-height: 240px;">
+                            <table class="table table-sm table-borderless mb-0 font-monospace small">
+                                <tbody>
+                                {% for entry in importLog|reverse %}
+                                    <tr class="{{ entry.level <= 3 ? 'table-danger' : 'table-warning' }}">
+                                        <td class="ps-2 text-nowrap text-muted" style="width:1%">{{ entry.ts|date('H:i:s') }}</td>
+                                        <td class="ps-3">{{ entry.msg }}</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>{# /import section #}
+
+        {# ── Health section ───────────────────────────────────────────────── #}
+        <div data-show="$_settingsSection == 'health'" style="display:none;">
+
+            {% set hcErrors = healthChecks|filter(c => c.status == 'error')|length %}
+            {% set hcWarnings = healthChecks|filter(c => c.status == 'warning')|length %}
+            <div class="mt-4">
+                <div class="card">
+                    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                        System Health
+                        <span>
+                            {% if hcErrors > 0 %}
+                                <span class="badge bg-danger">{{ hcErrors }} error{{ hcErrors != 1 ? 's' : '' }}</span>
+                            {% elseif hcWarnings > 0 %}
+                                <span class="badge bg-warning-subtle text-warning-emphasis">{{ hcWarnings }} warning{{ hcWarnings != 1 ? 's' : '' }}</span>
+                            {% else %}
+                                <span class="badge bg-success">All checks passed</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                {% for check in healthChecks %}
+                                {% if loop.first or check.group != healthChecks[loop.index0 - 1].group %}
+                                <tr class="table-active">
+                                    <td colspan="2" class="ps-3 py-1 small fw-semibold text-muted text-uppercase" style="letter-spacing:.04em; font-size:.7rem">{{ check.group }}</td>
+                                </tr>
+                                {% endif %}
+                                <tr class="{{ check.status == 'error' ? 'table-danger' : (check.status == 'warning' ? 'table-warning' : '') }}">
+                                    <td class="ps-3 text-nowrap" style="width:40%">
+                                        <span class="text-{{ check.status == 'error' ? 'danger' : (check.status == 'warning' ? 'warning' : 'success') }}">●</span>
+                                        {{ check.label }}
+                                    </td>
+                                    <td class="text-muted small">
+                                        {% if check.code %}<code>{{ check.detail }}</code>{% else %}{{ check.detail|raw }}{% endif %}
+                                        {% if check.epoch > 0 %}
+                                            <br><span class="font-monospace" style="font-size:.85em" data-text="new Date({{ check.epoch }} * 1000).toLocaleString('sv')">{{ check.epoch|date('Y-m-d H:i:s') }}</span>
+                                        {% endif %}
+                                        {% if check.hint %}
+                                            <br><small class="text-muted" style="opacity:.65; font-size:.78em">{{ check.hint }}</small>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="2" class="text-muted ps-3 py-2 fst-italic">No checks available.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
-        </div>{# /row #}
+        </div>{# /health section #}
 
-        <hr class="my-3">
-        <h6 class="text-muted small text-uppercase mb-3">Filter presets</h6>
+        {# ── Preferences section (default) ────────────────────────────────── #}
+        <div data-show="$_settingsSection == 'preferences'">
 
-        <div class="row g-3">
-            <div class="col-12">
-                <label class="form-label fw-semibold small">
-                    nfdump filter presets
-                    <span class="text-muted fw-normal">(one per line — available as quick-select in the Flows and Statistics tabs)</span>
-                </label>
-                <textarea id="settings-filters-textarea"
-                          class="form-control form-control-sm font-monospace"
-                          {{ bind(settings_filtersText) }}
-                          rows="5"
-                          placeholder="proto tcp&#10;dst port 443&#10;host 192.168.1.1"></textarea>
-            </div>
-        </div>{# /row #}
+            {# Save feedback toast #}
+            <div id="settings-toast-container" data-ignore-morph class="mt-3">{{ settingsMessageHtml|raw }}</div>
 
-        <div class="d-flex justify-content-end mt-3">
-            <button class="btn btn-primary btn-sm"
-                    data-indicator:_settings_saving
-                    data-on:click="document.dispatchEvent(new CustomEvent('nfsen-global-filters-updated',{detail:{filters:(document.getElementById('settings-filters-textarea')?.value||'').split('\n').map(s=>s.trim()).filter(s=>s)}})); window.showMessage('success', 'Preferences saved.', true, '#settings-toast-container'); @post('{{ saveSettings.url() }}')">
-                <span data-show="$_settings_saving" style="display:none;"
-                      class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                Save preferences
-            </button>
+            <div class="card mt-3">
+                <div class="card-header fw-semibold">User Preferences</div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        These settings are saved to <code>preferences.json</code> and applied on top of
+                        your deployment configuration. They take effect immediately across all open tabs.
+                    </p>
+
+                    <div class="row g-3">
+
+                        {# Default view #}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold small">Default view</label>
+                            {% set _v = settings_defaultView.string() %}
+                            <select class="form-select form-select-sm" {{ bind(settings_defaultView) }}>
+                                <option value="graphs" {{ _v == 'graphs' ? 'selected' : '' }}>Graphs</option>
+                                <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
+                                <option value="statistics" {{ _v == 'statistics' ? 'selected' : '' }}>Statistics</option>
+                            </select>
+                        </div>
+
+                        {# Default log level #}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold small">Log level</label>
+                            {% set _v = settings_logPriority.string() %}
+                            <select class="form-select form-select-sm" {{ bind(settings_logPriority) }}>
+                                <option value="debug" {{ _v == 'debug' ? 'selected' : '' }}>Debug</option>
+                                <option value="info" {{ _v == 'info' ? 'selected' : '' }}>Info</option>
+                                <option value="notice" {{ _v == 'notice' ? 'selected' : '' }}>Notice</option>
+                                <option value="warning" {{ _v == 'warning' ? 'selected' : '' }}>Warning</option>
+                                <option value="error" {{ _v == 'error' ? 'selected' : '' }}>Error</option>
+                            </select>
+                        </div>
+
+                    </div>{# /row #}
+
+                    <hr class="my-3">
+                    <h6 class="text-muted small text-uppercase mb-3">Graph defaults</h6>
+
+                    <div class="row g-3">
+
+                        {# Default graph display #}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold small">Display</label>
+                            {% set _v = settings_graphDisplay.string() %}
+                            <select class="form-select form-select-sm" {{ bind(settings_graphDisplay) }}>
+                                <option value="sources" {{ _v == 'sources' ? 'selected' : '' }}>Sources</option>
+                                <option value="ports" {{ _v == 'ports' ? 'selected' : '' }}>Ports</option>
+                                <option value="protocols" {{ _v == 'protocols' ? 'selected' : '' }}>Protocols</option>
+                            </select>
+                        </div>
+
+                        {# Default graph datatype #}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold small">Datatype</label>
+                            {% set _v = settings_graphDatatype.string() %}
+                            <select class="form-select form-select-sm" {{ bind(settings_graphDatatype) }}>
+                                <option value="traffic" {{ _v == 'traffic' ? 'selected' : '' }}>Traffic (bits/s)</option>
+                                <option value="packets" {{ _v == 'packets' ? 'selected' : '' }}>Packets/s</option>
+                                <option value="bytes" {{ _v == 'bytes' ? 'selected' : '' }}>Bytes</option>
+                                <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
+                            </select>
+                        </div>
+
+                        {# Default graph protocols #}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold small">Protocols</label>
+                            {% set _protos = settings_graphProtocols.array() %}
+                            <select class="form-select form-select-sm" {{ bind(settings_graphProtocols) }} multiple>
+                                <option value="any" {{ 'any' in _protos ? 'selected' : '' }}>Any</option>
+                                <option value="tcp" {{ 'tcp' in _protos ? 'selected' : '' }}>TCP</option>
+                                <option value="udp" {{ 'udp' in _protos ? 'selected' : '' }}>UDP</option>
+                                <option value="icmp" {{ 'icmp' in _protos ? 'selected' : '' }}>ICMP</option>
+                                <option value="other" {{ 'other' in _protos ? 'selected' : '' }}>Other</option>
+                            </select>
+                            <div class="form-text">Hold Ctrl/⌘ to select multiple.</div>
+                        </div>
+
+                    </div>{# /row #}
+
+                    <hr class="my-3">
+                    <h6 class="text-muted small text-uppercase mb-3">Flow &amp; statistics defaults</h6>
+
+                    <div class="row g-3">
+
+                        {# Default flow limit #}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold small">Flow limit</label>
+                            {% set _v = settings_flowLimit.int() %}
+                            <select class="form-select form-select-sm" {{ bind(settings_flowLimit) }}>
+                                {% for n in [20, 50, 100, 500, 1000, 10000] %}
+                                <option value="{{ n }}" {{ _v == n ? 'selected' : '' }}>{{ n }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        {# Default stats order-by #}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold small">Statistics order by</label>
+                            {% set _v = settings_statsOrderBy.string() %}
+                            <select class="form-select form-select-sm" {{ bind(settings_statsOrderBy) }}>
+                                <option value="bytes" {{ _v == 'bytes' ? 'selected' : '' }}>Bytes</option>
+                                <option value="packets" {{ _v == 'packets' ? 'selected' : '' }}>Packets</option>
+                                <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
+                                <option value="pps" {{ _v == 'pps' ? 'selected' : '' }}>Packets/s</option>
+                                <option value="bps" {{ _v == 'bps' ? 'selected' : '' }}>Bits/s</option>
+                                <option value="bpp" {{ _v == 'bpp' ? 'selected' : '' }}>Bytes/packet</option>
+                            </select>
+                        </div>
+
+                    </div>{# /row #}
+
+                    <hr class="my-3">
+                    <h6 class="text-muted small text-uppercase mb-3">Filter presets</h6>
+
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label fw-semibold small">
+                                nfdump filter presets
+                                <span class="text-muted fw-normal">(one per line — available as quick-select in the Flows and Statistics tabs)</span>
+                            </label>
+                            <textarea id="settings-filters-textarea"
+                                      class="form-control form-control-sm font-monospace"
+                                      {{ bind(settings_filtersText) }}
+                                      rows="5"
+                                      placeholder="proto tcp&#10;dst port 443&#10;host 192.168.1.1"></textarea>
+                        </div>
+                    </div>{# /row #}
+
+                    <div class="d-flex justify-content-end mt-3">
+                        <button class="btn btn-primary btn-sm"
+                                data-indicator:_settings_saving
+                                data-on:click="document.dispatchEvent(new CustomEvent('nfsen-global-filters-updated',{detail:{filters:(document.getElementById('settings-filters-textarea')?.value||'').split('\n').map(s=>s.trim()).filter(s=>s)}})); window.showMessage('success', 'Preferences saved.', true, '#settings-toast-container'); @post('{{ saveSettings.url() }}')">
+                            <span data-show="$_settings_saving" style="display:none;"
+                                  class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                            Save preferences
+                        </button>
+                    </div>
+
+                </div>{# /card-body #}
+            </div>{# /card #}
+
+        </div>{# /preferences section #}
+
+        {# ── Alerts section ───────────────────────────────────────────────── #}
+        <div data-show="$_settingsSection == 'alerts'" style="display:none;" class="mt-3">
+            {% include 'partials/alerts-settings.html.twig' %}
         </div>
 
-    </div>{# /card-body #}
-</div>{# /card #}
+        {# ── System section ───────────────────────────────────────────────── #}
+        <div data-show="$_settingsSection == 'system'" style="display:none;">
 
-{# ── Alert Rules ─────────────────────────────────────────────────────────── #}
-{% include 'partials/alerts-settings.html.twig' %}
+            <div class="card mt-4">
+                <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                    Deployment configuration
+                    <span class="badge bg-secondary fw-normal">read-only</span>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        These values come from environment variables or <code>settings.php</code>.
+                        Restart the container to apply changes.
+                    </p>
+                    <table class="table table-sm table-borderless small mb-0">
+                        <tbody>
+                            <tr>
+                                <td class="text-muted" style="width:40%">Sources</td>
+                                <td><code>{{ sources|join(', ') ?: '(none configured)' }}</code></td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Ports</td>
+                                <td><code>{{ ports|join(', ') ?: '(none configured)' }}</code></td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Datasource</td>
+                                <td><code>{{ deployDatasource }}</code></td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Import years</td>
+                                <td><code>{{ deployImportYears }}</code></td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">nfdump binary</td>
+                                <td><code>{{ deployNfdumpBinary }}</code></td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Profiles data path</td>
+                                <td><code>{{ deployNfdumpProfiles }}</code></td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Preferences file</td>
+                                <td><code>{{ deployPrefsFile }}</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-{# ── Deployment configuration (read-only) ───────────────────────────────── #}
-<div class="card mb-4">
-    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-        Deployment configuration
-        <span class="badge bg-secondary fw-normal">read-only</span>
-    </div>
-    <div class="card-body">
-        <p class="text-muted small mb-3">
-            These values come from environment variables or <code>settings.php</code>.
-            Restart the container to apply changes.
-        </p>
-        <table class="table table-sm table-borderless small mb-0">
-            <tbody>
-                <tr>
-                    <td class="text-muted" style="width:40%">Sources</td>
-                    <td><code>{{ sources|join(', ') ?: '(none configured)' }}</code></td>
-                </tr>
-                <tr>
-                    <td class="text-muted">Ports</td>
-                    <td><code>{{ ports|join(', ') ?: '(none configured)' }}</code></td>
-                </tr>
-                <tr>
-                    <td class="text-muted">Datasource</td>
-                    <td><code>{{ deployDatasource }}</code></td>
-                </tr>
-                <tr>
-                    <td class="text-muted">Import years</td>
-                    <td><code>{{ deployImportYears }}</code></td>
-                </tr>
-                <tr>
-                    <td class="text-muted">nfdump binary</td>
-                    <td><code>{{ deployNfdumpBinary }}</code></td>
-                </tr>
-                <tr>
-                    <td class="text-muted">Profiles data path</td>
-                    <td><code>{{ deployNfdumpProfiles }}</code></td>
-                </tr>
-                <tr>
-                    <td class="text-muted">Preferences file</td>
-                    <td><code>{{ deployPrefsFile }}</code></td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-</div>
+        </div>{# /system section #}
 
-</div>{# /col #}
+    </div>{# /content panels #}
+
 </div>{# /row #}

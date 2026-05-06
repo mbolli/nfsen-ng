@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"
-    data-signals__ifmissing="{_darkMode: false, _currentView: '{{ defaults.view ?? 'graphs' }}'}"
+    data-signals__ifmissing="{_darkMode: false, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences'}"
     data-init="$_darkMode = (localStorage.getItem('nfsen_theme') === 'dark')"
     data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'"
     data-effect="localStorage.setItem('nfsen_theme',$_darkMode?'dark':'light')">
@@ -85,7 +85,7 @@
          data-show="${{ import_running.id() }}"
          style="display:none; cursor:pointer;"
          class="border-bottom mb-2"
-         data-on:click="$_currentView = 'admin'"
+         data-on:click="$_currentView = 'settings'; $_settingsSection = 'import'"
          title="Import in progress — click to view details">
         <div class="progress rounded-0" style="height:4px;">
             <div class="progress-bar progress-bar-striped progress-bar-animated"
@@ -115,7 +115,7 @@
 
         <div class="filter row align-items-start bg-body-tertiary border-bottom py-3 mb-3"
              style="flex-direction: row"
-             data-show="$_currentView != 'admin' && $_currentView != 'settings'"
+             data-show="$_currentView != 'settings'"
              data-indicator:nfcapd._counting
              data-on:change__window__throttle.1000ms="($_currentView === 'flows' || $_currentView === 'statistics') && evt.target.closest('nfsen-daterange') && @post('{{ countFiles.url() }}')">
             <div class="col-12">
@@ -149,9 +149,6 @@
         </div>
         <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
             {% include 'partials/stats-view.html.twig' %}
-        </div>
-        <div data-show="$_currentView == 'admin'" class="col-12" style="display: none;">
-            {% include 'partials/admin.html.twig' %}
         </div>
         <div data-show="$_currentView == 'settings'" class="col-12" style="display: none;">
             {% include 'partials/settings.html.twig' %}

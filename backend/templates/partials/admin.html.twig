@@ -31,7 +31,7 @@
                     {% if info.ready %}
                         <span class="badge bg-success">ready</span>
                     {% else %}
-                        <span class="badge bg-warning text-dark">init&hellip;</span>
+                        <span class="badge bg-warning-subtle text-warning-emphasis">init&hellip;</span>
                     {% endif %}
                 </td>
                 <td>
@@ -250,7 +250,7 @@
                     {% if hcErrors > 0 %}
                         <span class="badge bg-danger">{{ hcErrors }} error{{ hcErrors != 1 ? 's' : '' }}</span>
                     {% elseif hcWarnings > 0 %}
-                        <span class="badge bg-warning text-dark">{{ hcWarnings }} warning{{ hcWarnings != 1 ? 's' : '' }}</span>
+                        <span class="badge bg-warning-subtle text-warning-emphasis">{{ hcWarnings }} warning{{ hcWarnings != 1 ? 's' : '' }}</span>
                     {% else %}
                         <span class="badge bg-success">All checks passed</span>
                     {% endif %}

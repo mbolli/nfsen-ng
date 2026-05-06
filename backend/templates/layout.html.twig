@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" 
-    data-signals__ifmissing="{_darkMode: false, _currentView: '{{ defaults.view ?? 'graphs' }}'}" 
+<html lang="en"
+    data-signals__ifmissing="{_darkMode: false, _currentView: '{{ defaults.view ?? 'graphs' }}'}"
     data-init="$_darkMode = (localStorage.getItem('nfsen_theme') === 'dark')"
-    data-effect="localStorage.setItem('nfsen_theme',$_darkMode?'dark':'light')"
-    data-style:filter="$_darkMode && 'invert(0.85)'">
+    data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'"
+    data-effect="localStorage.setItem('nfsen_theme',$_darkMode?'dark':'light')">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -23,7 +23,6 @@
                              ((evt.detail.type.startsWith('datastar') && ($_disconnected = false)) ||
                              (['retrying', 'error', 'finished'].includes(evt.detail.type) && ($_disconnected = true)))">
     <meta data-init="window.addEventListener('beforeunload', () => { navigator.sendBeacon('{{ basePath }}_session/close', '{{ contextId }}'); });">
-
     <link rel="stylesheet" type="text/css" href="{{ basePath }}frontend/css/bootstrap.min.css">
     <link rel="stylesheet" type="text/css" href="{{ basePath }}frontend/css/dygraph.css">
     <link rel="stylesheet" type="text/css" href="{{ basePath }}frontend/css/nouislider.min.css?v={{ version }}">
@@ -114,7 +113,7 @@
              data-text="${{ _error.id() }}"
              style="display: none;"></div>
 
-        <div class="filter row align-items-start bg-light border-bottom py-3 mb-3"
+        <div class="filter row align-items-start bg-body-tertiary border-bottom py-3 mb-3"
              style="flex-direction: row"
              data-show="$_currentView != 'admin' && $_currentView != 'settings'"
              data-indicator:nfcapd._counting
@@ -222,6 +221,8 @@
     {# Fixed overlay (bottom-right). New toasts injected here when alerts fire  #}
     {# or via window.showMessage(). data-ignore-morph keeps JS-appended toasts. #}
     <div id="alerts-toast-container" data-ignore-morph>{{ alertFiredHtml|raw }}</div>
+
+    <script>window.withViewTransition = fn => document.startViewTransition ? document.startViewTransition(fn) : fn();</script>
 
 </body>
 </html>

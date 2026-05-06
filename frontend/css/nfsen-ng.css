@@ -1,51 +1,46 @@
-/* general */
 
-@media (prefers-color-scheme: light) {
-    html {
-        filter: invert(0);
-    }
-    :root {
-    }
-}
-@media (prefers-color-scheme: dark) {
-    html {
-        filter: invert(0.85);
-    }
-    :root {
-    }
-}
-html {
-    filter: none;
+/* Header: full-width bottom border; nav-tabs border is suppressed to avoid a partial line */
+header {
+    border-bottom: 1px solid var(--bs-border-color);
 }
 
-:root {
-    --bs-primary: #ccc;
+header .nav-tabs {
+    border-bottom: none;
 }
 
+header .nav-tabs .nav-link.active {
+    border-bottom-color: transparent;
+}
+
+/* Nav links: use body colour (adapts to both themes) */
 .nav {
-    --bs-nav-link-color: #000;
-    --bs-link-color-rgb: 0, 0, 0;
+    --bs-nav-link-color: var(--bs-body-color);
+    --bs-link-color-rgb: var(--bs-body-color-rgb);
 }
 
-.btn-outline-primary {
-    --bs-btn-bg: #fff;
-    --bs-btn-color: #000;
-    --bs-btn-border-color: #ccc;
-    --bs-btn-hover-bg: #ccc;
-    --bs-btn-hover-border-color: #ccc;
-    --bs-btn-active-bg: #ccc;
-    --bs-btn-active-border-color: #ccc;
-    --bs-btn-active-color: #000;
-    --bs-gradient: linear-gradient(#000 0%, #fff 100%);
-    --bs-btn-disabled-color: #000;
-    --bs-btn-disabled-border-color: #000;
-}
+/* ── Light-mode-only Bootstrap token overrides ─────────────────────────── */
+[data-bs-theme="light"] {
+    --bs-primary: #ccc;
 
-/* light grey background for active nav links */
-.nav-tabs .nav-link.active {
-    --bs-nav-tabs-link-active-bg: rgba(var(--bs-light-rgb), 1);
-    border-bottom: 1px solid rgb(var(--bs-light-rgb));
-    font-weight: bold;
+    .btn-outline-primary {
+        --bs-btn-bg: #fff;
+        --bs-btn-color: #000;
+        --bs-btn-border-color: #ccc;
+        --bs-btn-hover-bg: #ccc;
+        --bs-btn-hover-border-color: #ccc;
+        --bs-btn-active-bg: #ccc;
+        --bs-btn-active-border-color: #ccc;
+        --bs-btn-active-color: #000;
+        --bs-gradient: linear-gradient(#000 0%, #fff 100%);
+        --bs-btn-disabled-color: #000;
+        --bs-btn-disabled-border-color: #000;
+    }
+
+    /* light grey background for active nav links */
+    .nav-tabs .nav-link.active {
+        --bs-nav-tabs-link-active-bg: var(--bs-tertiary-bg);
+        font-weight: bold;
+    }
 }
 
 .btn.disabled,
@@ -56,6 +51,18 @@ fieldset:disabled .btn {
 
 textarea {
     resize: none;
+}
+
+/* Range input thumb — neutral across both themes */
+input[type='range'] {
+    accent-color: var(--bs-secondary-color);
+}
+input[type='range']::-webkit-slider-thumb {
+    background: var(--bs-secondary-color);
+}
+input[type='range']::-moz-range-thumb {
+    background: var(--bs-secondary-color);
+    border: none;
 }
 
 code,
@@ -73,8 +80,19 @@ pre,
 /* graph */
 
 /* View Transitions for chart updates: simple crossfade */
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
+
 ::view-transition-old(nfsen-chart) { animation: 150ms ease-in  both fade-out; }
 ::view-transition-new(nfsen-chart) { animation: 250ms ease-out both fade-in;  }
+
+/* View Transitions for tab switching */
+main.tab-content {
+    view-transition-name: tab-content;
+}
+
+::view-transition-old(tab-content) { animation: 100ms ease-in  both fade-out; }
+::view-transition-new(tab-content) { animation: 200ms ease-out both fade-in;  }
 
 #flowDiv .dygraph-title {
     font-size: 1.5rem;
@@ -90,7 +108,7 @@ pre,
 }
 
 #legend span.highlight {
-    background-color: #eee;
+    background-color: var(--bs-secondary-bg);
 }
 
 #series label {
@@ -142,7 +160,7 @@ pre,
 }
 
 .column-selector-menu label:hover {
-    background-color: #f8f9fa;
+    background-color: var(--bs-tertiary-bg);
 }
 
 .column-selector-menu input[type='checkbox'] {
@@ -190,7 +208,7 @@ th.sortable {
 }
 
 th.sortable:hover {
-    background-color: rgba(0, 0, 0, 0.05);
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.06);
 }
 
 th.sortable .sort-icon {
@@ -202,7 +220,7 @@ th.sortable .sort-icon {
 
 th.sortable.sort-asc,
 th.sortable.sort-desc {
-    background-color: rgba(0, 0, 0, 0.08);
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.1);
     font-weight: 600;
 }
 
@@ -234,7 +252,6 @@ th.sortable.sort-desc {
    - Circular white handles (22×22 px) with subtle shadow
    - Small grid/pip labels below the track
    - Floating tooltips above handles, styled like the old irs-from/irs-to bubbles
-   Dark mode: the page-level invert(0.85) on <html> inverts these automatically.
 ──────────────────────────────────────────────────────────────────────────── */
 
 nfsen-daterange {
@@ -251,8 +268,8 @@ nfsen-daterange .daterange-slider {
 .noUi-target {
     height: 8px;
     border-radius: 4px;
-    background: #e8e8e8;
-    border: 1px solid #bbb;
+    background: var(--bs-secondary-bg);
+    border: 1px solid var(--bs-border-color);
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
@@ -273,8 +290,8 @@ nfsen-daterange .daterange-slider {
     right: -11px !important;
     top: -8px !important;
     border-radius: 50%;
-    background: #fff;
-    border: 1px solid #bbb;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     cursor: default;
 }
@@ -284,7 +301,7 @@ nfsen-daterange .daterange-slider {
     display: none;
 }
 .noUi-handle:hover {
-    border-color: #999;
+    border-color: var(--bs-emphasis-color);
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
 }
 .noUi-handle:focus {
@@ -294,8 +311,8 @@ nfsen-daterange .daterange-slider {
 
 /* Floating tooltips above handles */
 .noUi-tooltip {
-    background: rgba(0, 0, 0, 0.3);
-    color: #fff;
+    background: var(--bs-tooltip-bg);
+    color: var(--bs-tooltip-color);
     border: none;
     border-radius: 3px;
     font-size: 10px;
@@ -313,7 +330,7 @@ nfsen-daterange .daterange-slider {
 }
 .noUi-marker-horizontal.noUi-marker {
     height: 8px;
-    background: #99a4ac;
+    background: var(--bs-secondary-color);
     width: 1px;
 }
 .noUi-marker-horizontal.noUi-marker-large,
@@ -324,7 +341,7 @@ nfsen-daterange .daterange-slider {
     height: 6px;
 }
 .noUi-value {
-    color: #99a4ac;
+    color: var(--bs-secondary-color);
     font-size: 9px;
     line-height: 1;
     padding: 0 3px;
@@ -332,8 +349,8 @@ nfsen-daterange .daterange-slider {
 
 /* ── Tooltip component (no-library replacement for bootstrap.Tooltip) ────── */
 .nfsen-tip-popup {
-    background: rgba(0, 0, 0, 0.75);
-    color: #fff;
+    background: var(--bs-tooltip-bg);
+    color: var(--bs-tooltip-color);
     padding: 3px 8px;
     border-radius: 3px;
     font-size: 11px;
@@ -358,10 +375,10 @@ nfsen-daterange .daterange-slider {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    color: #6c757d;
+    color: var(--bs-secondary-color);
     margin-bottom: 0.5rem;
     padding-bottom: 0.3rem;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    border-bottom: 1px solid rgba(var(--bs-body-color-rgb), 0.15);
     display: flex;
     align-items: center;
     gap: 0.25rem;
@@ -370,8 +387,8 @@ nfsen-daterange .daterange-slider {
 
 /* Card-like visual group for each filter section */
 .filter-group {
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.07);
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
     border-radius: 0.375rem;
     padding: 0.75rem 0.875rem;
 }
@@ -382,15 +399,15 @@ nfsen-daterange .daterange-slider {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.09em;
-    color: #9ca3af;
+    color: var(--bs-secondary-color);
     margin-bottom: 0.375rem;
     display: block;
 }
 
 /* Graph options row below the chart — contained panel look */
 #graphOptions {
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.07);
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
     border-radius: 0.375rem;
     padding: 0.875rem 0.75rem;
     margin-top: 1rem !important;
@@ -406,6 +423,8 @@ dialog#ip-modal-inner {
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
 }
 dialog#ip-modal-inner::backdrop {
     background: rgba(0, 0, 0, 0.5);
@@ -446,4 +465,36 @@ dialog#ip-modal-inner::backdrop {
 @keyframes toast-shrink {
     from { transform: scaleX(1); }
     to   { transform: scaleX(0); }
+}
+
+/* ── Dark mode: neutral btn-outline-primary (match light-mode grey intent) ── */
+[data-bs-theme="dark"] {
+    .btn-outline-primary {
+        --bs-btn-bg: transparent;
+        --bs-btn-color: var(--bs-body-color);
+        --bs-btn-border-color: var(--bs-border-color);
+        --bs-btn-hover-bg: var(--bs-secondary-bg);
+        --bs-btn-hover-border-color: var(--bs-border-color);
+        --bs-btn-active-bg: var(--bs-secondary-bg);
+        --bs-btn-active-border-color: var(--bs-border-color);
+        --bs-btn-active-color: var(--bs-body-color);
+        --bs-gradient: none;
+        --bs-btn-disabled-color: var(--bs-secondary-color);
+        --bs-btn-disabled-border-color: var(--bs-border-color);
+    }
+
+    /* Active nav tab: use tertiary bg to match filter area */
+    .nav-tabs .nav-link.active {
+        --bs-nav-tabs-link-active-bg: var(--bs-tertiary-bg);
+        font-weight: bold;
+    }
+
+    /* Dygraphs: axis labels and legend */
+    .dygraph-axis-label {
+        color: var(--bs-body-color);
+    }
+    .dygraph-legend {
+        background: var(--bs-secondary-bg);
+        color: var(--bs-body-color);
+    }
 }

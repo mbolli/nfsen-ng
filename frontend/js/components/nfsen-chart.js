@@ -21,12 +21,22 @@ export class NfsenChart extends HTMLElement {
             if (this.dygraph) this.dygraph.resize();
         });
         this._resizeObserver.observe(this);
+
+        // Re-apply canvas colours when the user toggles dark/light mode
+        this._themeObserver = new MutationObserver(() => {
+            if (this.dygraph) this.dygraph.updateOptions(this.getDygraphThemeColors());
+        });
+        this._themeObserver.observe(document.documentElement, { attributeFilter: ['data-bs-theme'] });
     }
 
     disconnectedCallback() {
         if (this._resizeObserver) {
             this._resizeObserver.disconnect();
             this._resizeObserver = null;
+        }
+        if (this._themeObserver) {
+            this._themeObserver.disconnect();
+            this._themeObserver = null;
         }
         if (this.dygraph) {
             this.dygraph.destroy();
@@ -58,6 +68,28 @@ export class NfsenChart extends HTMLElement {
      * @param {number} timeout - Maximum time to wait in milliseconds (default: 5000)
      * @returns {Promise<boolean>} - Resolves to true if loaded, false if timeout
      */
+    getDygraphThemeColors() {
+        const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        return {
+            backgroundColor:                isDark ? '#212529' : '#ffffff',
+            highlightSeriesBackgroundColor: isDark ? '#212529' : '#ffffff',
+            axisLineColor:                  isDark ? '#495057' : '#dee2e6',
+            gridLineColor:                  isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)',
+            rangeSelectorBackgroundColor:   isDark ? '#2b3035' : '#f8f9fa',
+            rangeSelectorPlotStrokeColor:   isDark ? '#adb5bd' : '#888888',
+            rangeSelectorPlotFillColor:     isDark ? '#495057' : '#cccccc',
+            // Brighter series colors on dark canvas; identical to Dygraph defaults on light
+            colorSaturation:                isDark ? 0.7  : 1.0,
+            colorValue:                     isDark ? 0.85 : 0.5,
+            highlightSeriesOpts: {
+                strokeWidth: 2,
+                strokeBorderWidth: 1,
+                strokeBorderColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)',
+                highlightCircleSize: 5,
+            },
+        };
+    }
+
     async waitForDygraph(timeout = 5000) {
         const startTime = Date.now();
 
@@ -214,13 +246,7 @@ export class NfsenChart extends HTMLElement {
             dateWindow: [chartData[0][0], chartData[chartData.length - 1][0]],
             zoomCallback: this.handleZoom.bind(this),
             clickCallback: this.handleClick.bind(this),
-            highlightSeriesOpts: {
-                strokeWidth: 2,
-                strokeBorderWidth: 1,
-                highlightCircleSize: 5,
-            },
-            rangeSelectorPlotStrokeColor: '#888888',
-            rangeSelectorPlotFillColor: '#cccccc',
+            ...this.getDygraphThemeColors(),
         };
 
         try {

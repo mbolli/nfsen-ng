@@ -13,10 +13,15 @@
     {% elseif daemonsInfo|length > 1 %}
 
         {# ── Multi-profile daemon table ─────────────────────────────────── #}
-        <table class="table table-sm table-bordered mb-2 small align-middle">
-            <thead class="table-light">
+        <div class="card mb-3">
+            <div class="card-header fw-semibold py-2 small d-flex justify-content-between align-items-center">
+                Import Daemon
+            </div>
+            <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0 small align-middle">
+            <thead class="table-active">
                 <tr>
-                    <th>Profile</th>
+                    <th class="ps-3">Profile</th>
                     <th>Status</th>
                     <th>Last auto-import</th>
                     <th>Dirs watched</th>
@@ -26,7 +31,7 @@
             <tbody>
             {% for profile, info in daemonsInfo %}
             <tr>
-                <td class="font-monospace">{{ profile }}</td>
+                <td class="ps-3 font-monospace">{{ profile }}</td>
                 <td>
                     {% if info.ready %}
                         <span class="badge bg-success">ready</span>
@@ -62,6 +67,8 @@
             {% endfor %}
             </tbody>
         </table>
+            </div>
+        </div>
 
         {# Shared confirm-rescan dialog (shown after clicking Rescan for any profile) #}
         <div data-show="${{ confirm_rescan.id() }}" style="display: none;" class="mb-2">
@@ -261,7 +268,7 @@
                     <tbody>
                         {% for check in healthChecks %}
                         {% if loop.first or check.group != healthChecks[loop.index0 - 1].group %}
-                        <tr class="table-light">
+                        <tr class="table-active">
                             <td colspan="2" class="ps-3 py-1 small fw-semibold text-muted text-uppercase" style="letter-spacing:.04em; font-size:.7rem">{{ check.group }}</td>
                         </tr>
                         {% endif %}

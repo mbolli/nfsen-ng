@@ -32,14 +32,14 @@
         },
         {
             "id": "5298562531c897f14ee838f2d2e1fa85",
-            "name": "test",
+            "name": "zero bytes",
             "enabled": true,
             "profile": "live",
             "sources": [
                 "all"
             ],
             "metric": "bytes",
-            "operator": "<=",
+            "operator": "<",
             "thresholdType": "absolute",
             "thresholdValue": 1,
             "avgWindow": "1h",

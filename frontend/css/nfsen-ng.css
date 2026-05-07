@@ -497,4 +497,16 @@ dialog#ip-modal-inner::backdrop {
         background: var(--bs-secondary-bg);
         color: var(--bs-body-color);
     }
+
+    /* Health table: mute warning/danger row backgrounds so they don't glare */
+    .table > tbody > tr.table-warning {
+        --bs-table-bg: color-mix(in srgb, var(--bs-warning) 12%, var(--bs-body-bg));
+        --bs-table-color: var(--bs-body-color);
+        --bs-table-striped-bg: color-mix(in srgb, var(--bs-warning) 15%, var(--bs-body-bg));
+    }
+    .table > tbody > tr.table-danger {
+        --bs-table-bg: color-mix(in srgb, var(--bs-danger) 14%, var(--bs-body-bg));
+        --bs-table-color: var(--bs-body-color);
+        --bs-table-striped-bg: color-mix(in srgb, var(--bs-danger) 17%, var(--bs-body-bg));
+    }
 }

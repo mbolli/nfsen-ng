@@ -19,7 +19,7 @@
     <meta data-signals='{"via_ctx":"{{ contextId }}","_disconnected":false}'>
     <meta data-indicator="_connecting"
           data-on-interval__duration.15s.leading="!$_connecting && @get('{{ basePath }}_sse')"
-          data-on-datastar-fetch="el === evt.detail.el &&
+          data-on:datastar-fetch="el === evt.detail.el &&
                              ((evt.detail.type.startsWith('datastar') && ($_disconnected = false)) ||
                              (['retrying', 'error', 'finished'].includes(evt.detail.type) && ($_disconnected = true)))">
     <meta data-init="window.addEventListener('beforeunload', () => { navigator.sendBeacon('{{ basePath }}_session/close', '{{ contextId }}'); });">

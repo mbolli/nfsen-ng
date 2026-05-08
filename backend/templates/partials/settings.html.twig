@@ -380,9 +380,6 @@
         {# ── Preferences section (default) ────────────────────────────────── #}
         <div data-show="$_settingsSection == 'preferences'">
 
-            {# Save feedback toast #}
-            <div id="settings-toast-container" data-ignore-morph class="mt-3">{{ settingsMessageHtml|raw }}</div>
-
             <div class="card mt-3">
                 <div class="card-header fw-semibold">User Preferences</div>
                 <div class="card-body">
@@ -541,7 +538,7 @@
                     <div class="d-flex justify-content-end mt-3">
                         <button class="btn btn-primary btn-sm"
                                 data-indicator:_settings_saving
-                                data-on:click="document.dispatchEvent(new CustomEvent('nfsen-global-filters-updated',{detail:{filters:(document.getElementById('settings-filters-textarea')?.value||'').split('\n').map(s=>s.trim()).filter(s=>s)}})); window.showMessage('success', 'Preferences saved.', true, '#settings-toast-container'); @post('{{ saveSettings.url() }}')">
+                                data-on:click="document.dispatchEvent(new CustomEvent('nfsen-global-filters-updated',{detail:{filters:(document.getElementById('settings-filters-textarea')?.value||'').split('\n').map(s=>s.trim()).filter(s=>s)}})); window.showMessage('success', 'Preferences saved.', true); @post('{{ saveSettings.url() }}')">
                             <span data-show="$_settings_saving" style="display:none;"
                                   class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
                             Save preferences

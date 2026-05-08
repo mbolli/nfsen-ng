@@ -86,6 +86,7 @@ final class GraphActions {
             $activeSources
         ));
         $graphLastUpdate->setValue($lastWrite > 0 ? $lastWrite : time(), broadcast: false);
+        $error->setValue('', broadcast: false);
 
         return $data;
     }

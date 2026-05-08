@@ -26,6 +26,7 @@ final class UserPreferences {
         public readonly int $logPriority,
         public readonly string $selectedProfile = 'live',
         public readonly array $alerts = [],
+        public readonly string $displayTimezone = 'browser',
     ) {}
 
     /**
@@ -65,6 +66,9 @@ final class UserPreferences {
             logPriority: (int) ($data['logPriority'] ?? LOG_INFO),
             selectedProfile: (string) ($data['selectedProfile'] ?? 'live'),
             alerts: $alerts,
+            displayTimezone: \in_array((string) ($data['displayTimezone'] ?? 'browser'), ['browser', 'server'], true)
+                ? (string) ($data['displayTimezone'] ?? 'browser')
+                : 'browser',
         );
     }
 
@@ -83,6 +87,7 @@ final class UserPreferences {
             ->withFilters($this->filters)
             ->withLogPriority($this->logPriority)
             ->withAlerts($this->alerts)
+            ->withDisplayTimezone($this->displayTimezone)
         ;
     }
 
@@ -125,6 +130,7 @@ final class UserPreferences {
             'logPriority' => $this->logPriority,
             'selectedProfile' => $this->selectedProfile,
             'alerts' => array_map(fn (AlertRule $r) => $r->toArray(), $this->alerts),
+            'displayTimezone' => $this->displayTimezone,
         ];
     }
 

@@ -222,6 +222,13 @@ $app->page('/', function (Context $c) use ($app): void {
     );
     $settingsMessage = $c->signal('', 'settings_message');
 
+    // Timezone signals — both server-owned (read-only for browser)
+    // serverTz: PHP/container operating timezone (TZ env, typically UTC in Docker)
+    // nfcapdTz: timezone nfcapd writes filenames in (NFCAPD_TZ env, e.g. Europe/Berlin)
+    $serverTz = $c->signal(date_default_timezone_get(), 'serverTz');
+    $nfcapdTz = $c->signal(Config::nfcapdTimezone()->getName(), 'nfcapdTz');
+    $displayTz = $c->signal(Config::$settings->displayTimezone, 'displayTz', clientWritable: true);
+
     // Alert rule form signals — used to create/edit individual alert rules in Settings
     $alertFormId = $c->signal('', 'alert_form_id', clientWritable: true);
     $alertFormName = $c->signal('', 'alert_form_name', clientWritable: true);

@@ -7,8 +7,20 @@
     "defaultStatsOrderBy": "bytes",
     "filters": [
         "proto tcp",
+        "proto udp",
+        "proto icmp",
+        "dst port 80",
         "dst port 443",
-        "src net 192.168.0.0\/16"
+        "src port 53 or dst port 53",
+        "src net 192.168.0.0\/16",
+        "dst net 10.0.0.0\/8",
+        "dst port 22",
+        "dst port 3389",
+        "dst port 3306",
+        "flags S and not flags A",
+        "flags R",
+        "packets > 100",
+        "bytes > 1000000"
     ],
     "logPriority": 7,
     "selectedProfile": "live",
@@ -64,5 +76,6 @@
             "notifyEmail": null,
             "notifyWebhook": null
         }
-    ]
+    ],
+    "displayTimezone": "browser"
 }

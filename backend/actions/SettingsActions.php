@@ -27,6 +27,7 @@ final class SettingsActions {
             $settingsFiltersText = $c->getSignal('settings_filtersText');
             $settingsLogPriority = $c->getSignal('settings_logPriority');
             $settingsMessage = $c->getSignal('settings_message');
+            $displayTz = $c->getSignal('displayTz');
             \assert(
                 $settingsDefaultView !== null
                 && $settingsGraphDisplay !== null
@@ -37,6 +38,7 @@ final class SettingsActions {
                 && $settingsFiltersText !== null
                 && $settingsLogPriority !== null
                 && $settingsMessage !== null
+                && $displayTz !== null
             );
 
             $rawFilters = array_values(array_filter(
@@ -56,6 +58,7 @@ final class SettingsActions {
                     'filters' => $rawFilters,
                     'logPriority' => Settings::logLevelFromString($settingsLogPriority->string()),
                     'alerts' => array_map(fn (AlertRule $r) => $r->toArray(), $existingPrefs !== null ? $existingPrefs->alerts : []),
+                    'displayTimezone' => $displayTz->string(),
                 ]);
 
                 $prefs->save(Config::$prefsFile);

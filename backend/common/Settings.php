@@ -83,6 +83,7 @@ final class Settings {
         /** @var AlertRule[] Alert rules stored in preferences.json */
         public private(set) array $alerts,
         public private(set) string $alertEmailFrom,
+        public private(set) string $displayTimezone,
         private array $datasourceConfigs,
     ) {}
 
@@ -126,6 +127,7 @@ final class Settings {
             netboxToken: (string) ($raw['general']['netbox_token'] ?? (string) (getenv('NFSEN_NETBOX_TOKEN') ?: '')),
             alerts: [],
             alertEmailFrom: (string) ($raw['general']['alert_email_from'] ?? (string) (getenv('NFSEN_ALERT_EMAIL_FROM') ?: '')),
+            displayTimezone: 'browser',
             datasourceConfigs: (array) ($raw['db'] ?? []),
         );
     }
@@ -205,6 +207,7 @@ final class Settings {
             netboxToken: (string) (getenv('NFSEN_NETBOX_TOKEN') ?: ''),
             alerts: [],
             alertEmailFrom: (string) (getenv('NFSEN_ALERT_EMAIL_FROM') ?: ''),
+            displayTimezone: 'browser',
             datasourceConfigs: $datasourceConfigs,
         );
     }
@@ -395,6 +398,13 @@ final class Settings {
     public function withAlerts(array $alerts): self {
         $clone = clone $this;
         $clone->alerts = $alerts;
+
+        return $clone;
+    }
+
+    public function withDisplayTimezone(string $timezone): self {
+        $clone = clone $this;
+        $clone->displayTimezone = \in_array($timezone, ['browser', 'server'], true) ? $timezone : 'browser';
 
         return $clone;
     }

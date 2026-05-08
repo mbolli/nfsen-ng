@@ -19,6 +19,34 @@ abstract class Config {
 
     private function __construct() {}
 
+    /**
+     * Return the DateTimeZone used to interpret nfcapd filenames.
+     *
+     * Reads NFCAPD_TZ env var first; falls back to the PHP effective timezone
+     * (which itself comes from date.timezone ini or the TZ env var).
+     * Cached after first call — safe to call before initialize().
+     *
+     * @throws \InvalidArgumentException if NFCAPD_TZ is set to an invalid timezone identifier
+     */
+    public static function nfcapdTimezone(): \DateTimeZone {
+        static $tz = null;
+        if ($tz !== null) {
+            return $tz;
+        }
+        $env = getenv('NFCAPD_TZ');
+        if ($env !== false && $env !== '') {
+            try {
+                $tz = new \DateTimeZone($env);
+            } catch (\Exception) {
+                throw new \InvalidArgumentException("NFCAPD_TZ='{$env}' is not a valid timezone identifier.");
+            }
+        } else {
+            $tz = new \DateTimeZone(date_default_timezone_get());
+        }
+
+        return $tz;
+    }
+
     public static function initialize(bool $initProcessor = false): void {
         global $nfsen_config;
         if (self::$initialized === true) {

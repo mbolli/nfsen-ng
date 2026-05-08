@@ -462,8 +462,8 @@ class Nfdump implements Processor {
         // ── Find start file: iterate day directories forward ──────────────────
         // O(days) rather than O(5-min-slots): avoids the old 10 000-iteration cap
         // that caused silent failures when data started months into the range.
-        $cur = (new \DateTime())->setTimestamp($startTs);
-        $endDay = (new \DateTime())->setTimestamp($endTs);
+        $cur = (new \DateTime('', Config::nfcapdTimezone()))->setTimestamp($startTs);
+        $endDay = (new \DateTime('', Config::nfcapdTimezone()))->setTimestamp($endTs);
 
         while ($cur->format('Ymd') <= $endDay->format('Ymd')) {
             $dayPath = $cur->format('Y/m/d');
@@ -480,7 +480,7 @@ class Nfdump implements Processor {
                         continue;
                     }
 
-                    $dt = \DateTime::createFromFormat('YmdHi', $m[1]);
+                    $dt = \DateTime::createFromFormat('YmdHi', $m[1], Config::nfcapdTimezone());
                     if ($dt === false) {
                         continue;
                     }
@@ -507,8 +507,8 @@ class Nfdump implements Processor {
         }
 
         // ── Find end file: iterate day directories backward ───────────────────
-        $cur = (new \DateTime())->setTimestamp($endTs);
-        $startDay = (new \DateTime())->setTimestamp($startTs);
+        $cur = (new \DateTime('', Config::nfcapdTimezone()))->setTimestamp($endTs);
+        $startDay = (new \DateTime('', Config::nfcapdTimezone()))->setTimestamp($startTs);
 
         while ($cur->format('Ymd') >= $startDay->format('Ymd')) {
             $dayPath = $cur->format('Y/m/d');
@@ -525,7 +525,7 @@ class Nfdump implements Processor {
                         continue;
                     }
 
-                    $dt = \DateTime::createFromFormat('YmdHi', $m[1]);
+                    $dt = \DateTime::createFromFormat('YmdHi', $m[1], Config::nfcapdTimezone());
                     if ($dt === false) {
                         continue;
                     }

@@ -34,8 +34,8 @@ final class Helpers {
         $count = 0;
 
         foreach ($sources as $source) {
-            $cur = (new \DateTime())->setTimestamp($ds);
-            $end = (new \DateTime())->setTimestamp($de);
+            $cur = (new \DateTime('', Config::nfcapdTimezone()))->setTimestamp($ds);
+            $end = (new \DateTime('', Config::nfcapdTimezone()))->setTimestamp($de);
 
             while ($cur->format('Ymd') <= $end->format('Ymd')) {
                 $dayPath = $sourcePath
@@ -54,7 +54,7 @@ final class Helpers {
                         continue;
                     }
 
-                    $dt = \DateTime::createFromFormat('YmdHi', $m[1]);
+                    $dt = \DateTime::createFromFormat('YmdHi', $m[1], Config::nfcapdTimezone());
                     if ($dt === false) {
                         continue;
                     }

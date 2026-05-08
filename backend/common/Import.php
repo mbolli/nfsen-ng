@@ -48,9 +48,10 @@ class Import {
             if ($this->force === false) {
                 $lastUpdateDb = Config::$db->last_update($source, 0, $this->profile ?? Config::$settings->nfdumpProfile);
                 if ($lastUpdateDb > 0) {
-                    $lastUpdate = (new \DateTime())->setTimestamp($lastUpdateDb);
+                    $nfcapdTz = Config::nfcapdTimezone();
+                    $lastUpdate = (new \DateTime('', $nfcapdTz))->setTimestamp($lastUpdateDb);
                     $date->setTimestamp($lastUpdateDb);
-                    $date->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+                    $date->setTimezone($nfcapdTz);
                 }
             }
 
@@ -74,7 +75,7 @@ class Import {
                     }
                     if ($lastUpdate !== null) {
                         try {
-                            if ((new \DateTime($m[1])) <= $lastUpdate) {
+                            if ((new \DateTime($m[1], Config::nfcapdTimezone())) <= $lastUpdate) {
                                 continue;
                             }
                         } catch (\Exception) {
@@ -233,7 +234,7 @@ class Import {
                         if (\count($fileDate) !== 2) {
                             throw new \LengthException('Bad file name format of nfcapd file: ' . $file);
                         }
-                        $fileDatetime = new \DateTime($fileDate[1]);
+                        $fileDatetime = new \DateTime($fileDate[1], Config::nfcapdTimezone());
                     } catch (\LengthException $e) {
                         $this->d->log('Caught exception: ' . $e->getMessage(), LOG_DEBUG);
 
@@ -352,14 +353,14 @@ class Import {
             return false;
         } // nothing to import
 
-        $fileDatetime = new \DateTime($date[1]);
+        $nfcapdTz = Config::nfcapdTimezone();
+        $fileDatetime = new \DateTime($date[1], $nfcapdTz);
 
         // get last updated time from database
         $lastUpdateDb = Config::$db->last_update($source, $port, $this->profile ?? Config::$settings->nfdumpProfile);
         $lastUpdate = null;
         if ($lastUpdateDb !== 0) {
-            $lastUpdate = new \DateTime();
-            $lastUpdate->setTimestamp($lastUpdateDb);
+            $lastUpdate = (new \DateTime('', $nfcapdTz))->setTimestamp($lastUpdateDb);
         }
 
         // prevent attempt to import the same file again
@@ -441,7 +442,7 @@ class Import {
             return false;
         }
 
-        $date = new \DateTime(substr($statsPath, -12));
+        $date = new \DateTime(substr($statsPath, -12), Config::nfcapdTimezone());
         $data = [
             'fields' => [],
             'source' => $source,
@@ -538,7 +539,7 @@ class Import {
 
         // parse and turn into usable data
 
-        $date = new \DateTime(substr($statsPath, -12));
+        $date = new \DateTime(substr($statsPath, -12), Config::nfcapdTimezone());
         $data = [
             'fields' => [
                 'flows' => 0,

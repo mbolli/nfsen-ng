@@ -31,7 +31,6 @@ final class AlertActions {
             $alertFormCooldownSlots = $c->getSignal('alert_form_cooldownSlots');
             $alertFormNotifyEmail = $c->getSignal('alert_form_notifyEmail');
             $alertFormNotifyWebhook = $c->getSignal('alert_form_notifyWebhook');
-            $settingsMessage = $c->getSignal('settings_message');
             \assert(
                 $alertFormId !== null
                 && $alertFormName !== null
@@ -46,7 +45,6 @@ final class AlertActions {
                 && $alertFormCooldownSlots !== null
                 && $alertFormNotifyEmail !== null
                 && $alertFormNotifyWebhook !== null
-                && $settingsMessage !== null
             );
             $id = trim($alertFormId->string());
 
@@ -90,18 +88,13 @@ final class AlertActions {
                 $alertFormId->setValue('', broadcast: false);
                 $alertFormName->setValue('', broadcast: false);
             } catch (\Throwable $e) {
-                $settingsMessage->setValue(
-                    Helpers::makeToast('error', 'Save failed: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES)),
-                    broadcast: false
-                );
+                $errJs = json_encode('Save failed: ' . $e->getMessage(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+                $c->execScript("window.showMessage('error', {$errJs})");
             }
             $c->sync();
-            $settingsMessage->setValue('', broadcast: false);
         }, 'save-alert');
 
         $c->action(static function (Context $c): void {
-            $settingsMessage = $c->getSignal('settings_message');
-            \assert($settingsMessage !== null);
             $id = $c->input('id') ?? '';
             if ($id === '') {
                 return;
@@ -116,18 +109,13 @@ final class AlertActions {
                 $newPrefs->save(Config::$prefsFile);
                 Config::$settings = $newPrefs->applyTo(Config::$settings);
             } catch (\Throwable $e) {
-                $settingsMessage->setValue(
-                    Helpers::makeToast('error', 'Delete failed: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES)),
-                    broadcast: false
-                );
+                $errJs = json_encode('Delete failed: ' . $e->getMessage(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+                $c->execScript("window.showMessage('error', {$errJs})");
             }
             $c->sync();
-            $settingsMessage->setValue('', broadcast: false);
         }, 'delete-alert');
 
         $c->action(static function (Context $c): void {
-            $settingsMessage = $c->getSignal('settings_message');
-            \assert($settingsMessage !== null);
             $id = $c->input('id') ?? '';
             if ($id === '') {
                 return;
@@ -145,13 +133,10 @@ final class AlertActions {
                 $newPrefs->save(Config::$prefsFile);
                 Config::$settings = $newPrefs->applyTo(Config::$settings);
             } catch (\Throwable $e) {
-                $settingsMessage->setValue(
-                    Helpers::makeToast('error', 'Toggle failed: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES)),
-                    broadcast: false
-                );
+                $errJs = json_encode('Toggle failed: ' . $e->getMessage(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+                $c->execScript("window.showMessage('error', {$errJs})");
             }
             $c->sync();
-            $settingsMessage->setValue('', broadcast: false);
         }, 'toggle-alert');
 
         $c->action(static function (Context $c) use ($app): void {

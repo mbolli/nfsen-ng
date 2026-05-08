@@ -107,7 +107,7 @@ $app->page('/', function (Context $c) use ($app): void {
     // Server-owned (never client-writable), used to bound the date-range slider.
     $dataRangeMin = $c->signal(time() - Config::$settings->importYears * 365 * 86400, 'data_range_min');
     $dataRangeMax = $c->signal(time(), 'data_range_max');
-    $error = $c->signal($fatalError, '_error');
+    $error = $c->signal('', '_error');
 
     // Graph filter signals (client-writable — filter UI updates these)
     $graphDisplay = $c->signal(
@@ -220,7 +220,6 @@ $app->page('/', function (Context $c) use ($app): void {
         'settings_logPriority',
         clientWritable: true
     );
-    $settingsMessage = $c->signal('', 'settings_message');
 
     // Timezone signals — both server-owned (read-only for browser)
     // serverTz: PHP/container operating timezone (TZ env, typically UTC in Docker)
@@ -316,7 +315,6 @@ $app->page('/', function (Context $c) use ($app): void {
         $importRunning = $c->getSignal('import_running');
         $selectedProfile = $c->getSignal('selected_profile');
         $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
-        $settingsMessage = $c->getSignal('settings_message');
         assert(
             $datestart !== null
             && $dateend !== null
@@ -324,7 +322,6 @@ $app->page('/', function (Context $c) use ($app): void {
             && $importRunning !== null
             && $selectedProfile !== null
             && $nfcapdFileCount !== null
-            && $settingsMessage !== null
         );
 
         // Sync importRunning signal to daemon lock state so all tabs reflect the
@@ -481,9 +478,6 @@ $app->page('/', function (Context $c) use ($app): void {
             'ports' => Config::$settings->ports,
             'filters' => Config::$settings->filters,
             'defaults' => ['view' => Config::$settings->defaultView],
-
-            // ── Settings message (plain string, not a Signal) ─────────────
-            'settingsMessageHtml' => $settingsMessage->string(),
 
             // ── Deployment config (read-only display in Settings tab) ─────
             'deployDatasource' => Config::$settings->datasourceName,

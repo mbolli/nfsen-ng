@@ -26,7 +26,6 @@ final class SettingsActions {
             $settingsStatsOrderBy = $c->getSignal('settings_statsOrderBy');
             $settingsFiltersText = $c->getSignal('settings_filtersText');
             $settingsLogPriority = $c->getSignal('settings_logPriority');
-            $settingsMessage = $c->getSignal('settings_message');
             $displayTz = $c->getSignal('displayTz');
             \assert(
                 $settingsDefaultView !== null
@@ -37,7 +36,6 @@ final class SettingsActions {
                 && $settingsStatsOrderBy !== null
                 && $settingsFiltersText !== null
                 && $settingsLogPriority !== null
-                && $settingsMessage !== null
                 && $displayTz !== null
             );
 
@@ -66,14 +64,11 @@ final class SettingsActions {
 
                 $settingsFiltersText->setValue(implode("\n", $prefs->filters), broadcast: false);
             } catch (\Throwable $e) {
-                $settingsMessage->setValue(
-                    Helpers::makeToast('error', 'Failed to save: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES)),
-                    broadcast: false
-                );
+                $errJs = json_encode('Failed to save: ' . $e->getMessage(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+                $c->execScript("window.showMessage('error', {$errJs})");
             }
 
             $c->sync();
-            $settingsMessage->setValue('', broadcast: false);
             if (!empty($app->getClients())) {
                 $app->broadcast('settings:saved');
             }

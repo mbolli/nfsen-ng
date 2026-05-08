@@ -10,17 +10,6 @@ use mbolli\nfsen_ng\common\Config;
  * Shared static helpers used by multiple action classes.
  */
 final class Helpers {
-    /** Build an nfsen-toast HTML snippet. */
-    public static function makeToast(string $type, string $message, bool $autoDismiss = false): string {
-        return \sprintf(
-            '<nfsen-toast id="toast-%s" data-type="%s" data-message="%s"%s></nfsen-toast>',
-            bin2hex(random_bytes(4)),
-            htmlspecialchars($type, ENT_QUOTES),
-            htmlspecialchars($message, ENT_QUOTES),
-            $autoDismiss ? ' data-auto-dismiss="true"' : ''
-        );
-    }
-
     /**
      * Count nfcapd files in a date range for the given sources.
      * Scans the filesystem path structure: profiles-data/profile/source/YYYY/MM/DD/.

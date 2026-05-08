@@ -189,7 +189,7 @@ final class AlertManager {
               . 'Value:   ' . number_format((float) $entry['value'], 2) . "\n"
               . 'Profile: ' . $rule->profile . "\n"
               . 'Sources: ' . implode(', ', (array) $entry['sources']) . "\n"
-              . 'Time:    ' . date('Y-m-d H:i:s', (int) $entry['ts']) . " UTC\n";
+              . 'Time:    ' . gmdate('Y-m-d H:i:s', (int) $entry['ts']) . " UTC\n";
 
         $headers = "From: {$this->emailFrom}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8";
         @mail((string) $rule->notifyEmail, $subject, $body, $headers);

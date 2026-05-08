@@ -73,7 +73,7 @@ class HealthChecker {
         $storageGroup = $datasource === 'victoriametrics' ? 'VictoriaMetrics' : 'RRD Storage';
 
         // Group display order (index = sort priority)
-        $groupOrder = array_flip(['PHP Extensions', 'nfdump', 'Sources', 'Import Daemon', 'nfcapd Paths', $storageGroup]);
+        $groupOrder = array_flip(['PHP Extensions', 'Timezone', 'nfdump', 'Sources', 'Import Daemon', 'nfcapd Paths', $storageGroup]);
 
         // ── 1. PHP Extensions ────────────────────────────────────────────────
         $phpVer = PHP_VERSION;
@@ -116,7 +116,105 @@ class HealthChecker {
             'PHP Extensions'
         );
 
-        // ── 2. nfdump ────────────────────────────────────────────────────────
+        // ── 2. Timezone ──────────────────────────────────────────────────────────
+
+        $phpTz = date_default_timezone_get();
+        $iniTz = (string) \ini_get('date.timezone');
+        $envTz = (string) (getenv('TZ') ?: '');
+
+        // Detect non-IANA abbreviations (e.g. CET, EST) — browsers reject them in Intl APIs
+        $isNonIana = $iniTz === '' && !str_contains($phpTz, '/')
+            && !\in_array($phpTz, ['UTC', 'GMT'], true);
+
+        $tzStatus = 'ok';
+        $tzDetail = $phpTz;
+        $tzHint = '';
+
+        if ($iniTz !== '' && $envTz !== '' && strcasecmp($iniTz, $envTz) !== 0) {
+            $tzStatus = 'warning';
+            $tzDetail = $phpTz;
+            $tzHint = "php.ini date.timezone='{$iniTz}' overrides TZ env var '{$envTz}' — set NFCAPD_TZ explicitly if nfcapd uses a different timezone";
+        } elseif ($isNonIana) {
+            $tzStatus = 'warning';
+            $tzHint = "'{$phpTz}' is not an IANA timezone identifier — browser Intl APIs may reject it for date display. Use a region/city form (e.g. Europe/London)";
+        }
+
+        $add('tz_php', 'PHP timezone', $tzStatus, $tzDetail, 'Timezone', false, $tzHint);
+
+        // nfcapd timezone
+        $nfcapdTzEnv = (string) (getenv('NFCAPD_TZ') ?: '');
+        if ($nfcapdTzEnv !== '') {
+            try {
+                $nfcapdTz = new \DateTimeZone($nfcapdTzEnv);
+                $add('tz_nfcapd', 'nfcapd timezone', 'ok', $nfcapdTz->getName(), 'Timezone', false, 'Explicit override active via NFCAPD_TZ');
+            } catch (\Exception) {
+                $add('tz_nfcapd', 'nfcapd timezone', 'error', $nfcapdTzEnv, 'Timezone', true, 'NFCAPD_TZ is not a valid timezone identifier — nfcapd filenames will be parsed in PHP default timezone instead');
+            }
+        } else {
+            $add('tz_nfcapd', 'nfcapd timezone', 'ok', $phpTz, 'Timezone', false, 'Inherited from PHP timezone — set NFCAPD_TZ if nfcapd runs in a different timezone');
+        }
+
+        // nfcapd file time plausibility — parse the most recent filename and check it's not in the future
+        $plausibilityDone = false;
+        $nfcapdTzResolved = Config::nfcapdTimezone();
+        $profilesDataP = rtrim($settings->nfdumpProfilesData, '/\\');
+        $sourcesP = $settings->sources;
+        if ($profilesDataP !== '' && !empty($sourcesP)) {
+            foreach (Config::detectProfiles() as $profileP) {
+                foreach ($sourcesP as $sourceP) {
+                    $basePath = $profilesDataP . \DIRECTORY_SEPARATOR . $profileP . \DIRECTORY_SEPARATOR . $sourceP;
+                    // Check today then yesterday
+                    foreach ([0, -86400] as $offset) {
+                        $dt = new \DateTimeImmutable('now', $nfcapdTzResolved);
+                        if ($offset !== 0) {
+                            $dt = $dt->modify('-1 day');
+                        }
+                        $dayDir = $basePath . \DIRECTORY_SEPARATOR . $dt->format('Y') . \DIRECTORY_SEPARATOR . $dt->format('m') . \DIRECTORY_SEPARATOR . $dt->format('d');
+                        $files = glob($dayDir . \DIRECTORY_SEPARATOR . 'nfcapd.[0-9]*') ?: [];
+                        if (empty($files)) {
+                            continue;
+                        }
+                        // Find the most recent filename by name (lexicographic = chronological for YYYYMMDDHHII)
+                        rsort($files);
+                        $newest = basename($files[0]);
+                        if (!preg_match('/^nfcapd\.(\d{12})$/', $newest, $fm)) {
+                            continue;
+                        }
+                        $fileDt = \DateTime::createFromFormat('YmdHi', $fm[1], $nfcapdTzResolved);
+                        if ($fileDt === false) {
+                            continue;
+                        }
+                        $fileEpoch = $fileDt->getTimestamp();
+                        $now = time();
+                        $plausibilityDone = true;
+                        if ($fileEpoch > $now + 1800) {
+                            $minutesAhead = (int) round(($fileEpoch - $now) / 60);
+                            $add(
+                                'tz_plausibility',
+                                'nfcapd file time',
+                                'warning',
+                                "Most recent file ({$newest}) is {$minutesAhead} min in the future",
+                                'Timezone',
+                                false,
+                                'Check NFCAPD_TZ — nfcapd filenames may be in a different timezone than configured'
+                            );
+                        } else {
+                            $fileAge = $ageStr($now - $fileEpoch);
+                            $add('tz_plausibility', 'nfcapd file time', 'ok', "Most recent: {$newest} ({$fileAge} ago)", 'Timezone');
+                        }
+
+                        break 3; // Found a file — stop searching
+                    }
+                }
+            }
+        }
+
+        if (!$plausibilityDone) {
+            // No files found — freshness checks in section 5 will cover this
+            $add('tz_plausibility', 'nfcapd file time', 'ok', 'No files found to check', 'Timezone');
+        }
+
+        // ── 3. nfdump ────────────────────────────────────────────────────────────
         $binary = $settings->nfdumpBinary;
         if ($binary === '') {
             $add('nfdump_binary', 'nfdump binary', 'error', 'nfdump.binary not set in config', 'nfdump');
@@ -180,7 +278,7 @@ class HealthChecker {
             'nfdump'
         );
 
-        // ── 3. Sources ───────────────────────────────────────────────────────
+        // ── 4. Sources ───────────────────────────────────────────────────────
         $sources = $settings->sources;
         $add(
             'sources_nonempty',
@@ -191,7 +289,7 @@ class HealthChecker {
             !empty($sources)
         );
 
-        // ── 4. Import Daemon ─────────────────────────────────────────────────
+        // ── 5. Import Daemon ─────────────────────────────────────────────────
         if ($daemonDisabled) {
             $add(
                 'daemon_status',
@@ -229,7 +327,7 @@ class HealthChecker {
             }
         }
 
-        // ── 5. nfcapd Paths ──────────────────────────────────────────────────
+        // ── 6. nfcapd Paths ──────────────────────────────────────────────────
         $profilesData = rtrim($settings->nfdumpProfilesData, '/\\');
         $profiles = Config::detectProfiles();
         $multiProfile = \count($profiles) > 1;
@@ -291,8 +389,9 @@ class HealthChecker {
                         continue;
                     }
 
-                    // Capture freshness: check today's YYYY/MM/DD dir
-                    $today = date('Y') . \DIRECTORY_SEPARATOR . date('m') . \DIRECTORY_SEPARATOR . date('d');
+                    // Capture freshness: check today's YYYY/MM/DD dir (in nfcapd timezone)
+                    $todayDt = new \DateTimeImmutable('now', Config::nfcapdTimezone());
+                    $today = $todayDt->format('Y') . \DIRECTORY_SEPARATOR . $todayDt->format('m') . \DIRECTORY_SEPARATOR . $todayDt->format('d');
                     $todayDir = $sourcePath . \DIRECTORY_SEPARATOR . $today;
                     $freshnessLabel = $multiProfile ? "Freshness {$source} ({$profile})" : "Capture freshness: {$source}";
                     if (!is_dir($todayDir)) {
@@ -333,7 +432,7 @@ class HealthChecker {
             }
         }
 
-        // ── 6. Storage ───────────────────────────────────────────────────────
+        // ── 7. Storage ───────────────────────────────────────────────────────
         // Delegated to the active datasource implementation — each knows its
         // own connectivity checks, file paths, and per-source freshness logic.
         if (isset(Config::$db)) {

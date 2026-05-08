@@ -3,76 +3,88 @@
  * Encapsulates noUiSlider with Datastar integration.
  * Replaces the former jQuery + ion.rangeSlider implementation.
  */
+import { getHours, getMinutes, formatDatePart } from './tz-utils.js';
 
 // ── Date formatting helpers ─────────────────────────────────────────────────
 
 const _pad = (n) => String(n).padStart(2, '0');
 
+// Retrieve timezone preference from the component's data attributes (set via Datastar).
+// Falls back to 'browser' / 'UTC' when not present.
+function getTzContext(el) {
+    return {
+        displayTz: el?.getAttribute('data-display-tz') || 'browser',
+        nfcapdTz:  el?.getAttribute('data-nfcapd-tz')  || 'UTC',
+    };
+}
+
 /**
  * Format a timestamp for grid pip labels based on the total visible span.
  * Adapts granularity: time-only for ≤24 h, date only for larger spans.
  */
-function formatPipLabel(ms, totalSpanMs) {
+function formatPipLabel(ms, totalSpanMs, el) {
     const d = new Date(ms);
+    const { displayTz, nfcapdTz } = getTzContext(el);
     if (totalSpanMs <= 24 * 3600_000) {
         // ≤24 h → "HH:MM"
-        return `${_pad(d.getHours())}:${_pad(d.getMinutes())}`;
-    }
-    if (totalSpanMs <= 7 * 86400_000) {
-        // ≤7 days → "DD MMM"
-        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        return `${_pad(getHours(d, displayTz, nfcapdTz))}:${_pad(getMinutes(d, displayTz, nfcapdTz))}`;
     }
     if (totalSpanMs <= 90 * 86400_000) {
         // ≤90 days → "DD MMM"
-        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        return formatDatePart(d, displayTz, nfcapdTz, { day: '2-digit', month: 'short' });
     }
     // >90 days → "MMM 'YY"
-    const mon = d.toLocaleDateString('en-GB', { month: 'short' });
-    return `${mon} '${String(d.getFullYear()).slice(2)}`;
+    const mon = formatDatePart(d, displayTz, nfcapdTz, { month: 'short' });
+    const year = formatDatePart(d, displayTz, nfcapdTz, { year: '2-digit' });
+    return `${mon} '${year}`;
 }
 
 /**
  * Format a timestamp for floating handle tooltips based on the selected span.
  * Shows time when the selected range is ≤24 h.
  */
-function formatTooltip(ms, selectedSpanMs) {
+function formatTooltip(ms, selectedSpanMs, el) {
     const d = new Date(ms);
+    const { displayTz, nfcapdTz } = getTzContext(el);
     if (selectedSpanMs <= 24 * 3600_000) {
         // ≤24 h → "HH:MM"
-        return `${_pad(d.getHours())}:${_pad(d.getMinutes())}`;
+        return `${_pad(getHours(d, displayTz, nfcapdTz))}:${_pad(getMinutes(d, displayTz, nfcapdTz))}`;
     }
     if (selectedSpanMs <= 7 * 86400_000) {
         // ≤7 days → "ddd DD MMM HH:MM"
-        const day = d.toLocaleDateString('en-GB', { weekday: 'short' });
-        const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-        return `${day} ${date} ${_pad(d.getHours())}:${_pad(d.getMinutes())}`;
+        const day  = formatDatePart(d, displayTz, nfcapdTz, { weekday: 'short' });
+        const date = formatDatePart(d, displayTz, nfcapdTz, { day: '2-digit', month: 'short' });
+        return `${day} ${date} ${_pad(getHours(d, displayTz, nfcapdTz))}:${_pad(getMinutes(d, displayTz, nfcapdTz))}`;
     }
     // >7 days → "YYYY-MM-DD"
-    return `${d.getFullYear()}-${_pad(d.getMonth() + 1)}-${_pad(d.getDate())}`;
+    const y = formatDatePart(d, displayTz, nfcapdTz, { year: 'numeric' });
+    const m = formatDatePart(d, displayTz, nfcapdTz, { month: '2-digit' });
+    const day = formatDatePart(d, displayTz, nfcapdTz, { day: '2-digit' });
+    return `${y}-${m}-${day}`;
 }
 
 /**
  * Build noUiSlider pips config from a min/max range.
  * Uses ~8 large ticks across the span, with sub-ticks in between.
  */
-function buildPipsConfig(minMs, maxMs) {
+function buildPipsConfig(minMs, maxMs, el) {
     const spanMs = maxMs - minMs;
     return {
         mode: 'positions',
         values: [0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100],
         density: 4,
         format: {
-            to: (v) => formatPipLabel(v, spanMs),
+            to: (v) => formatPipLabel(v, spanMs, el),
         },
     };
 }
 
 /** Build tooltip formatters for the two handles. */
-function buildTooltips(from, to) {
+function buildTooltips(from, to, el) {
     const span = to - from;
     return [
-        { to: (v) => formatTooltip(v, span) },
-        { to: (v) => formatTooltip(v, span) },
+        { to: (v) => formatTooltip(v, span, el) },
+        { to: (v) => formatTooltip(v, span, el) },
     ];
 }
 
@@ -119,8 +131,8 @@ export class NfsenDateRange extends HTMLElement {
             connect:   true,
             behaviour: 'drag-tap',
             range:     { min: minMs, max: maxMs },
-            tooltips:  buildTooltips(fromMs, toMs),
-            pips:      buildPipsConfig(minMs, maxMs),
+            tooltips:  buildTooltips(fromMs, toMs, this),
+            pips:      buildPipsConfig(minMs, maxMs, this),
             format: {
                 to:   (v) => Math.round(v),
                 from: (v) => parseInt(v),
@@ -133,7 +145,7 @@ export class NfsenDateRange extends HTMLElement {
             const [from, to] = values.map(Number);
             // Refresh tooltip format to reflect the new selected span
             this.slider.noUiSlider.updateOptions({
-                tooltips: buildTooltips(from, to),
+            tooltips: buildTooltips(from, to, this),
             }, false); // false = do not re-render (tooltips update themselves)
             this._emitRangeChange(from, to);
         });
@@ -162,7 +174,7 @@ export class NfsenDateRange extends HTMLElement {
     /** Programmatically set the selected range and fire range-change. */
     updateRange(from, to) {
         if (!this.slider?.noUiSlider) return;
-        this.slider.noUiSlider.updateOptions({ tooltips: buildTooltips(from, to) }, false);
+        this.slider.noUiSlider.updateOptions({ tooltips: buildTooltips(from, to, this) }, false);
         this.slider.noUiSlider.set([from, to]);
         this._emitRangeChange(from, to);
     }
@@ -206,12 +218,23 @@ export class NfsenDateRange extends HTMLElement {
     // ── Attribute observation ─────────────────────────────────────────────────
 
     static get observedAttributes() {
-        return ['data-min', 'data-max', 'data-from', 'data-to'];
+        return ['data-min', 'data-max', 'data-from', 'data-to', 'data-display-tz', 'data-nfcapd-tz'];
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
         if (oldValue === newValue || !this.isConnected || !this.slider?.noUiSlider) return;
         if (!this.offsetWidth) return; // not yet laid out — skip to avoid geometry errors
+
+        // TZ attributes changed — rebuild pips and tooltips with new timezone context
+        if (name === 'data-display-tz' || name === 'data-nfcapd-tz') {
+            const ns = this.slider.noUiSlider;
+            const [curFrom, curTo] = ns.get(true).map(Number);
+            const { min, max } = ns.options.range;
+            ns.updateOptions({ pips: buildPipsConfig(min, max, this) }, true);
+            ns.updateOptions({ tooltips: buildTooltips(curFrom, curTo, this) }, false);
+
+            return;
+        }
 
         // Batch: multiple attrs may fire in the same microtask
         if (!this._pendingUpdates) this._pendingUpdates = {};
@@ -235,7 +258,7 @@ export class NfsenDateRange extends HTMLElement {
                 const newMax = upd.max ?? curRange.max;
                 ns.updateOptions({
                     range: { min: newMin, max: newMax },
-                    pips:  buildPipsConfig(newMin, newMax),
+                    pips:  buildPipsConfig(newMin, newMax, this),
                 }, true); // true = fire re-render
             }
 
@@ -244,7 +267,7 @@ export class NfsenDateRange extends HTMLElement {
             const newFrom = upd.from ?? curFrom;
             const newTo   = upd.to   ?? curTo;
             if (newFrom !== curFrom || newTo !== curTo) {
-                ns.updateOptions({ tooltips: buildTooltips(newFrom, newTo) }, false);
+                ns.updateOptions({ tooltips: buildTooltips(newFrom, newTo, this) }, false);
                 ns.set([newFrom, newTo]);
             }
         }, 0);

@@ -2,6 +2,7 @@
  * NfsenChart Web Component
  * Encapsulates Dygraphs charting library with Datastar integration
  */
+import { tzOptions } from './tz-utils.js';
 export class NfsenChart extends HTMLElement {
     constructor() {
         super();
@@ -184,6 +185,10 @@ export class NfsenChart extends HTMLElement {
 
         const type = config.type || 'flows';
         const trafficUnit = config.trafficUnit || 'bits';
+        const displayTz = config.displayTz || 'browser';
+        const nfcapdTz = config.nfcapdTz || 'UTC';
+        const tzOpts = tzOptions(displayTz, nfcapdTz);
+        const dateFmt = (ms) => new Date(ms).toLocaleString(undefined, tzOpts);
 
         if (!chartData || chartData.length === 0) {
             if (this.dygraph) {
@@ -205,6 +210,8 @@ export class NfsenChart extends HTMLElement {
                 file: chartData,
                 // Reset dateWindow to show the full range of new data (not the previous zoom)
                 dateWindow: [chartData[0][0], chartData[chartData.length - 1][0]],
+                axes: { x: { axisLabelFormatter: dateFmt } },
+                xValueFormatter: dateFmt,
             };
 
             const doUpdate = () => {
@@ -246,6 +253,8 @@ export class NfsenChart extends HTMLElement {
             dateWindow: [chartData[0][0], chartData[chartData.length - 1][0]],
             zoomCallback: this.handleZoom.bind(this),
             clickCallback: this.handleClick.bind(this),
+            axes: { x: { axisLabelFormatter: dateFmt } },
+            xValueFormatter: dateFmt,
             ...this.getDygraphThemeColors(),
         };
 

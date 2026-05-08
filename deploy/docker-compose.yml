@@ -28,6 +28,9 @@ services:
       - /var/nfdump/profiles-data:/data/nfsen-ng
     environment:
       - TZ=UTC
+      # Uncomment and set to the timezone nfcapd ran in if it differs from TZ above.
+      # Only needed for bare-metal setups where nfcapd used a non-UTC timezone.
+      # - NFCAPD_TZ=Europe/Berlin
 
       # ── Sources & ports ───────────────────────────────────────────────────────
       # Required: set to your actual nfcapd source names and ports to track.

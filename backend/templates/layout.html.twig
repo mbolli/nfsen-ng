@@ -201,6 +201,10 @@
         })();
     </script>
 
+    <script type="module">
+        import { tzOptions } from '{{ basePath }}frontend/js/components/tz-utils.js?v={{ version }}';
+        window.tzOptions = tzOptions;
+    </script>
     <script type="module" src="{{ basePath }}frontend/js/datastar.js?v={{ version }}"></script>
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-chart.js?v={{ version }}"></script>
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-table.js?v={{ version }}"></script>

@@ -28,6 +28,9 @@ services:
       - ..:/var/www/html/nfsen-ng
     environment:
       - TZ=UTC
+      # Uncomment and set to the timezone nfcapd ran in if it differs from TZ above.
+      # Only needed for bare-metal setups where nfcapd used a non-UTC timezone.
+      # - NFCAPD_TZ=Europe/Berlin
       - NFSEN_NFDUMP_PROFILES=/data/nfsen-ng
       - NFSEN_IMPORT_YEARS=3
       # VictoriaMetrics configuration

@@ -123,7 +123,7 @@
                         </td>
                         <td>
                             {% if info.lastAutoImport > 0 %}
-                                <span data-text="new Date({{ info.lastAutoImport }} * 1000).toLocaleString('sv')"></span>
+                                <span data-text="new Date({{ info.lastAutoImport }} * 1000).toLocaleString(undefined, tzOptions(${{ displayTz.id() }}, ${{ nfcapdTz.id() }}))"></span>
                             {% else %}
                                 <span class="text-muted">never</span>
                             {% endif %}
@@ -307,7 +307,7 @@
                                 <tbody>
                                 {% for entry in importLog|reverse %}
                                     <tr class="{{ entry.level <= 3 ? 'table-danger' : 'table-warning' }}">
-                                        <td class="ps-2 text-nowrap text-muted" style="width:1%">{{ entry.ts|date('H:i:s') }}</td>
+                                        <td class="ps-2 text-nowrap text-muted" style="width:1%"><span data-text="new Date({{ entry.ts }} * 1000).toLocaleString('sv', {timeStyle:'medium'})">{{ entry.ts|date('H:i:s') }}</span></td>
                                         <td class="ps-3">{{ entry.msg }}</td>
                                     </tr>
                                 {% endfor %}
@@ -357,7 +357,7 @@
                                     <td class="text-muted small">
                                         {% if check.code %}<code>{{ check.detail }}</code>{% else %}{{ check.detail|raw }}{% endif %}
                                         {% if check.epoch > 0 %}
-                                            <br><span class="font-monospace" style="font-size:.85em" data-text="new Date({{ check.epoch }} * 1000).toLocaleString('sv')">{{ check.epoch|date('Y-m-d H:i:s') }}</span>
+                                            <br><span class="font-monospace" style="font-size:.85em" data-text="new Date({{ check.epoch }} * 1000).toLocaleString(undefined, tzOptions(${{ displayTz.id() }}, ${{ nfcapdTz.id() }}))">{{ check.epoch|date('Y-m-d H:i:s') }}</span>
                                         {% endif %}
                                         {% if check.hint %}
                                             <br><small class="text-muted" style="opacity:.65; font-size:.78em">{{ check.hint }}</small>
@@ -493,6 +493,32 @@
                             </select>
                         </div>
 
+                    </div>{# /row #}
+
+                    <hr class="my-3">
+                    <h6 class="text-muted small text-uppercase mb-3">Date &amp; time display</h6>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold small">Timezone</label>
+                            <div class="form-text mb-2">Choose which timezone to use when displaying dates in charts and timestamps.</div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="displayTz" id="displayTz_browser"
+                                       value="browser"
+                                       {{ bind(displayTz) }}>
+                                <label class="form-check-label" for="displayTz_browser">
+                                    Browser timezone <span class="text-muted">(your local time)</span>
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="displayTz" id="displayTz_server"
+                                       value="server"
+                                       {{ bind(displayTz) }}>
+                                <label class="form-check-label" for="displayTz_server">
+                                    Capture timezone (<span data-text="${{ nfcapdTz.id() }}"></span>)
+                                </label>
+                            </div>
+                        </div>
                     </div>{# /row #}
 
                     <hr class="my-3">

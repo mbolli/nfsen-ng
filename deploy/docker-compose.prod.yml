@@ -16,6 +16,9 @@ services:
       - ../backend/settings/settings.php:/var/www/html/nfsen-ng/backend/settings/settings.php:ro  # Custom settings
     environment:
       - TZ=UTC
+      # Uncomment and set to the timezone nfcapd ran in if it differs from TZ above.
+      # Only needed for bare-metal setups where nfcapd used a non-UTC timezone.
+      # - NFCAPD_TZ=Europe/Berlin
       - NFSEN_RRD_PATH=/var/nfsen-ng/rrd  # Store RRD files on separate volume
       
       # Import configuration (see ENVIRONMENT_VARIABLES.md for details)

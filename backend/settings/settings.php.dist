@@ -19,6 +19,13 @@
  *   - database name = datasource class name (case-sensitive)
  *   - log priority should be one of the predefined core constants prefixed with LOG_
  *   - you can use getenv() to read environment variables
+ *
+ * Bare-metal timezone note:
+ *   If nfcapd ran (or runs) in a non-UTC timezone on the host system, set the
+ *   NFCAPD_TZ environment variable to the IANA timezone identifier of that host
+ *   so that nfsen-ng parses nfcapd filenames with the correct timezone.
+ *   Example: NFCAPD_TZ=Europe/Berlin
+ *   When unset, nfsen-ng falls back to PHP's effective timezone (date_default_timezone_get()).
  */
 
 $nfsen_config = [

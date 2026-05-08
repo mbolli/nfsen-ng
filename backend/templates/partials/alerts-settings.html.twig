@@ -299,7 +299,7 @@
                 {% for entry in alertLog %}
                 <tr>
                     <td class="text-nowrap">
-                        <span data-text="new Date({{ entry.ts }} * 1000).toLocaleString('sv')">{{ entry.ts }}</span>
+                        <span data-text="new Date({{ entry.ts }} * 1000).toLocaleString(undefined, tzOptions(${{ displayTz.id() }}, ${{ nfcapdTz.id() }}))">{{ entry.ts }}</span>
                     </td>
                     <td>{{ entry.rule|e }}</td>
                     <td><code>{{ entry.metric|e }}</code></td>

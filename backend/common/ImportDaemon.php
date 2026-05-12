@@ -176,12 +176,66 @@ class ImportDaemon {
         // no directories are watched yet (e.g. today's dir appeared after startup).
         if (\count($this->watches) === 0 || time() - $this->lastPathUpdate >= 3600) {
             $this->debug->log('ImportDaemon: refreshing inotify watches', LOG_DEBUG);
+            $before = $this->watches;
             $this->addCurrentPaths();
             $this->lastPathUpdate = time();
+
+            // Import any files that arrived in a newly-watched directory before
+            // the watch was registered (e.g. the first nfcapd slot(s) after midnight).
+            foreach (array_diff_key($this->watches, $before) as $path => $info) {
+                $this->catchUpDirectory($path, $info['source'], $onImportDone);
+            }
         }
     }
 
     // ─── Internals ───────────────────────────────────────────────────────────
+
+    /**
+     * Scan a directory for nfcapd files that already exist on disk and import
+     * any that have not been processed yet. Called after a new inotify watch is
+     * registered so that files written between directory creation and watch
+     * registration are not silently skipped.
+     */
+    private function catchUpDirectory(string $path, string $source, callable $onImportDone): void {
+        $profilePath = Config::$settings->nfdumpProfilesData
+            . \DIRECTORY_SEPARATOR
+            . $this->profile;
+        $sources = Config::$settings->sources;
+        $isLastSource = $source === end($sources);
+
+        foreach (scandir($path) ?: [] as $filename) {
+            if (!preg_match('/^nfcapd\.\d{12}$/', $filename)) {
+                continue;
+            }
+
+            $fullPath = $path . \DIRECTORY_SEPARATOR . $filename;
+            $fileKey = $fullPath . ':' . @filemtime($fullPath);
+            if (isset($this->processedFiles[$fileKey])) {
+                continue;
+            }
+            $this->processedFiles[$fileKey] = time();
+
+            $relativePath = str_replace(
+                $profilePath . \DIRECTORY_SEPARATOR . $source . \DIRECTORY_SEPARATOR,
+                '',
+                $fullPath
+            );
+
+            try {
+                if ($this->importer === null) {
+                    $this->importer = new Import();
+                    $this->importer->setQuiet(true);
+                    $this->importer->setVerbose(false);
+                }
+                $this->importer->importFile($relativePath, $source, $isLastSource);
+                $this->debug->log("ImportDaemon: catch-up imported {$filename} (source: {$source})", LOG_INFO);
+                $this->lastAutoImportTime = time();
+                $onImportDone();
+            } catch (\Throwable $e) {
+                $this->debug->log("ImportDaemon: catch-up error {$filename}: " . $e->getMessage(), LOG_ERR);
+            }
+        }
+    }
 
     private function initWatches(): void {
         $inotify = @inotify_init();

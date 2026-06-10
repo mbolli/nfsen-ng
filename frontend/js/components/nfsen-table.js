@@ -6,47 +6,59 @@
  */
 
 export class NfsenTable extends HTMLElement {
+    static STORAGE_KEY_HIDDEN = 'nfsen-table-hidden-columns';
+    static STORAGE_KEY_SORT = 'nfsen-table-sort';
+
     constructor() {
         super();
         this.tableId = this.id || 'defaultTable';
         this.hiddenColumns = this.loadHiddenColumns();
         this._currentView = 'table'; // 'table' or 'original'
-        this.sortState = { column: null, direction: 'asc' }; // Track sort state
+        this.sortState = this.loadSortState();
     }
 
     connectedCallback() {
         // Initial setup
         this.setupTable();
 
-        // Re-run setup when content changes (triggered by SSE patches)
-        // Use a simple event-based approach instead of MutationObserver
-        this.addEventListener('DOMNodeInserted', () => {
-            // Debounce to avoid multiple calls
+        // Re-run setup when SSE morphing replaces inner HTML (restores column visibility, etc.)
+        this._observer = new MutationObserver(() => {
             clearTimeout(this.setupTimeout);
             this.setupTimeout = setTimeout(() => this.setupTable(), 50);
         });
+        this._observer.observe(this, { childList: true, subtree: true });
     }
 
     disconnectedCallback() {
         clearTimeout(this.setupTimeout);
+        if (this._observer) {
+            this._observer.disconnect();
+            this._observer = null;
+        }
     }
 
     /**
      * Setup table features (sorting, visibility, etc.)
      */
     setupTable() {
+        // Pause observation to avoid retriggering on our own DOM mutations (replaceChild, etc.)
+        if (this._observer) this._observer.disconnect();
+        this.hiddenColumns = this.loadHiddenColumns();
+        this.sortState = this.loadSortState();
         this.applyColumnVisibility();
         this.attachViewSwitcherListeners();
         this.addExportButtons();
         this.addColumnSelector();
         this.attachSortHandlers();
+        this.reapplySortState();
+        if (this._observer) this._observer.observe(this, { childList: true, subtree: true });
     }
 
     /**
      * Load hidden columns from localStorage
      */
     loadHiddenColumns() {
-        const key = `nfsen-table-hidden-columns-${this.tableId}`;
+        const key = `${NfsenTable.STORAGE_KEY_HIDDEN}-${this.tableId}`;
         const stored = localStorage.getItem(key);
         return stored ? JSON.parse(stored) : [];
     }
@@ -55,8 +67,25 @@ export class NfsenTable extends HTMLElement {
      * Save hidden columns to localStorage
      */
     saveHiddenColumns() {
-        const key = `nfsen-table-hidden-columns-${this.tableId}`;
+        const key = `${NfsenTable.STORAGE_KEY_HIDDEN}-${this.tableId}`;
         localStorage.setItem(key, JSON.stringify(this.hiddenColumns));
+    }
+
+    /**
+     * Load sort state from localStorage
+     */
+    loadSortState() {
+        const key = `${NfsenTable.STORAGE_KEY_SORT}-${this.tableId}`;
+        const stored = localStorage.getItem(key);
+        return stored ? JSON.parse(stored) : { column: null, direction: 'asc' };
+    }
+
+    /**
+     * Save sort state to localStorage
+     */
+    saveSortState() {
+        const key = `${NfsenTable.STORAGE_KEY_SORT}-${this.tableId}`;
+        localStorage.setItem(key, JSON.stringify(this.sortState));
     }
 
     /**
@@ -438,6 +467,22 @@ export class NfsenTable extends HTMLElement {
     }
 
     /**
+     * Re-apply the current sort state after an SSE re-render without toggling direction.
+     */
+    reapplySortState() {
+        const { column, direction } = this.sortState;
+        if (column === null) return;
+
+        const table = this.querySelector('table');
+        if (!table) return;
+
+        const headers = table.querySelectorAll('thead th.sortable');
+        if (headers[column]) {
+            this.sortTable(column, headers[column], direction);
+        }
+    }
+
+    /**
      * Attach click handlers to table headers for sorting
      */
     attachSortHandlers() {
@@ -457,9 +502,10 @@ export class NfsenTable extends HTMLElement {
     }
 
     /**
-     * Sort table by column index
+     * Sort table by column index.
+     * Pass forceDirection to re-apply an existing sort without toggling.
      */
-    sortTable(columnIndex, headerElement) {
+    sortTable(columnIndex, headerElement, forceDirection = null) {
         const table = this.querySelector('table');
         if (!table) return;
 
@@ -467,14 +513,19 @@ export class NfsenTable extends HTMLElement {
         const rows = Array.from(tbody.querySelectorAll('tr'));
 
         // Determine sort direction
-        let direction = 'asc';
-        if (this.sortState.column === columnIndex) {
+        let direction;
+        if (forceDirection !== null) {
+            direction = forceDirection;
+        } else if (this.sortState.column === columnIndex) {
             // Toggle direction if same column
             direction = this.sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            direction = 'asc';
         }
 
         // Update sort state
         this.sortState = { column: columnIndex, direction };
+        this.saveSortState();
 
         // Update header indicators
         this.updateSortIndicators(headerElement, direction);

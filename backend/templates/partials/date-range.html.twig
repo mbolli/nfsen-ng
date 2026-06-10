@@ -25,7 +25,7 @@
 </div>
 
 <div class="d-flex justify-content-end gap-2 flex-wrap mb-4 date-range-controls"
-     data-signals__ifmissing='{"_activeDuration": 86400000, "_autoSyncGraph": false}'>
+     data-signals__ifmissing='{"_activeDuration": 86400000, "_autoSyncGraph": false, "_customDurationVal": "", "_customDurationUnit": 3600000}'>
 
     {# Quick-select preset windows #}
     <div class="btn-group" id="date_slot" role="group">
@@ -43,6 +43,23 @@
             {{ label }}
         </button>
         {% endfor %}
+    </div>
+
+    {# Custom duration input #}
+    <div class="input-group input-group-sm" style="width: auto;">
+        <input type="number" min="1" class="form-control" style="width: 3rem;"
+               placeholder="0"
+               data-on:input="$_customDurationVal = el.value"
+               data-on:keydown="if (event.key === 'Enter') { const ms = $_customDurationVal * $_customDurationUnit; if (ms > 0) { document.getElementById('dateRangeSlider').setQuickRange(ms); $_activeDuration = 0; } }">
+        <select class="form-select" style="width: 4.5rem;" data-on:change="$_customDurationUnit = Number(el.value)">
+            <option value="3600000">h</option>
+            <option value="86400000">d</option>
+            <option value="604800000">w</option>
+        </select>
+        <button class="btn btn-outline-primary" type="button"
+                data-on:click="const ms = $_customDurationVal * $_customDurationUnit; if (ms > 0) { document.getElementById('dateRangeSlider').setQuickRange(ms); $_activeDuration = 0; }">
+            Apply
+        </button>
     </div>
 
     {# Previous / next / jump-to-now #}

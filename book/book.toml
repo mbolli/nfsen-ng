@@ -9,3 +9,5 @@ default-theme = "light"
 preferred-dark-theme = "navy"
 fold.enable = true
 git-repository-url = "https://github.com/mbolli/nfsen-ng"
+additional-css = ["theme/lightbox.css"]
+additional-js = ["theme/lightbox.js"]

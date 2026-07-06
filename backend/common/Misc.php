@@ -55,4 +55,21 @@ class Misc {
         // If neither method works, return 0
         return 0;
     }
+
+    /**
+     * Whether a process-inspection tool (pgrep or ps) is available.
+     * countProcessesByName() silently returns 0 without either — surfaced as a
+     * health check so a missing procps package doesn't masquerade as
+     * "no other nfdump processes running".
+     */
+    public static function hasProcessInspectionTool(): bool {
+        exec('command -v pgrep 2>/dev/null', $pgrepOutput);
+        if (!empty($pgrepOutput)) {
+            return true;
+        }
+
+        exec('command -v ps 2>/dev/null', $psOutput);
+
+        return !empty($psOutput);
+    }
 }

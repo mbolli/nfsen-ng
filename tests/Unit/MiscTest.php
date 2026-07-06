@@ -57,4 +57,21 @@ describe('Misc', function (): void {
             expect($result)->toBeGreaterThanOrEqual(1);
         });
     });
+
+    describe('hasProcessInspectionTool', function (): void {
+        test('returns true when ps or pgrep is on PATH', function (): void {
+            expect(Misc::hasProcessInspectionTool())->toBeTrue();
+        });
+
+        test('returns false when neither ps nor pgrep is on PATH', function (): void {
+            $originalPath = getenv('PATH');
+            putenv('PATH=/nonexistent-empty-dir');
+
+            $result = Misc::hasProcessInspectionTool();
+
+            putenv('PATH=' . $originalPath);
+
+            expect($result)->toBeFalse();
+        });
+    });
 });

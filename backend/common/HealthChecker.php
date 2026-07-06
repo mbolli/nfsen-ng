@@ -278,6 +278,20 @@ class HealthChecker {
             'nfdump'
         );
 
+        // Misc::countProcessesByName() (used to enforce nfdumpMaxProcesses) silently
+        // returns 0 when neither tool is present, so the concurrency guard never
+        // trips — surface that as a warning rather than let it fail invisibly.
+        $hasProcTool = Misc::hasProcessInspectionTool();
+        $add(
+            'nfdump_process_inspection',
+            'Process inspection',
+            $hasProcTool ? 'ok' : 'warning',
+            $hasProcTool ? 'ps/pgrep available' : 'Neither ps nor pgrep found',
+            'nfdump',
+            false,
+            $hasProcTool ? '' : 'Max processes above is not enforced — install procps (provides ps and pgrep) in the container image'
+        );
+
         // ── 4. Sources ───────────────────────────────────────────────────────
         $sources = $settings->sources;
         $add(

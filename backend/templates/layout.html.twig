@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"
     data-signals__ifmissing="{_darkMode: false, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences'}"
-    data-init="$_darkMode = (localStorage.getItem('nfsen_theme') === 'dark')"
+    data-init="$_darkMode = localStorage.getItem('nfsen_theme') ? localStorage.getItem('nfsen_theme') === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches"
     data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'"
     data-effect="localStorage.setItem('nfsen_theme',$_darkMode?'dark':'light')">
 <head>
@@ -117,7 +117,7 @@
              style="flex-direction: row"
              data-show="$_currentView != 'settings'"
              data-indicator:nfcapd._counting
-             data-on:change__window__throttle.1000ms="($_currentView === 'flows' || $_currentView === 'statistics') && evt.target.closest('nfsen-daterange') && @post('{{ countFiles.url() }}')">
+             data-on:change__window__throttle.1000ms="($_currentView === 'flows' || $_currentView === 'statistics' || $_currentView === 'sankey') && evt.target.closest('nfsen-daterange') && @post('{{ countFiles.url() }}')">
             <div class="col-12">
                 <div class="card">
                     <div class="card-body">
@@ -134,6 +134,9 @@
                         <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
                             {% include 'partials/stats-filters.html.twig' %}
                         </div>
+                        <div data-show="$_currentView == 'sankey'" class="col-12" style="display: none;">
+                            {% include 'partials/sankey-filters.html.twig' %}
+                        </div>
 
                     </div>
                 </div>
@@ -149,6 +152,9 @@
         </div>
         <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
             {% include 'partials/stats-view.html.twig' %}
+        </div>
+        <div data-show="$_currentView == 'sankey'" class="col-12" style="display: none;">
+            {% include 'partials/sankey-view.html.twig' %}
         </div>
         <div data-show="$_currentView == 'settings'" class="col-12" style="display: none;">
             {% include 'partials/settings.html.twig' %}
@@ -179,6 +185,7 @@
     {# ── JS ────────────────────────────────────────────────────────────────── #}
     <script src="{{ basePath }}frontend/js/nouislider.min.js"></script>
     <script src="{{ basePath }}frontend/js/dygraph.min.js"></script>
+    <script src="{{ basePath }}frontend/js/echarts.min.js"></script>
 
     <script type="module">
         /**
@@ -207,6 +214,7 @@
     </script>
     <script type="module" src="{{ basePath }}frontend/js/datastar.js?v={{ version }}"></script>
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-chart.js?v={{ version }}"></script>
+    <script type="module" src="{{ basePath }}frontend/js/components/nfsen-sankey.js?v={{ version }}"></script>
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-table.js?v={{ version }}"></script>
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-daterange.js?v={{ version }}"></script>
     <script type="module" src="{{ basePath }}frontend/js/components/nfsen-toast.js?v={{ version }}"></script>

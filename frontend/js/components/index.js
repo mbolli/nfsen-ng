@@ -5,6 +5,7 @@
 
 // Import all components
 import './nfsen-chart.js';
+import './nfsen-sankey.js';
 import './nfsen-table.js';
 import './nfsen-daterange.js';
 import './nfsen-toast.js';

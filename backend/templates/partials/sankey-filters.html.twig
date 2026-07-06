@@ -1,0 +1,123 @@
+{#
+    Sankey diagram filter controls.
+#}
+<div class="row g-3">
+    {# Top N pairs #}
+    <div id="filterSankeyTopN" class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
+        <div class="filter-group">
+        <p class="filter-label">Top pairs
+            <nfsen-tooltip data-ignore-morph text="Number of top N src -> dst pairs to display (-n option)." placement="top"></nfsen-tooltip>
+        </p>
+        {% set _sankeyTopN = sankey_topN.int() %}
+        <select {{ bind(sankey_topN) }} class="form-control form-select">
+            {% for n in [10, 20, 50, 100, 200] %}
+            <option value="{{ n }}"{{ _sankeyTopN == n ? ' selected' : '' }}>{{ n }}</option>
+            {% endfor %}
+        </select>
+        </div>
+    </div>
+
+    {# Sources #}
+    <div id="filterSankeySources" class="col-xs-6 col-sm-3 col-md-2">
+        <div class="filter-group">
+        <p class="filter-label">Sources
+            <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
+        </p>
+        <select {{ bind(graph_sources) }} multiple class="form-control form-select">
+            <option value="any">Any</option>
+            {% for source in sources %}
+            <option value="{{ source }}" selected>{{ source }}</option>
+            {% endfor %}
+        </select>
+        </div>
+    </div>
+
+    {# NFDUMP filter #}
+    <div class="col-xs-12 col-sm-7 col-md-4">
+        <div class="filter-group">
+        <p class="filter-label">NFDUMP filter
+            <nfsen-tooltip data-ignore-morph text="Filter syntax like tcpdump. Examples: 'dst port 80', 'bytes > 10M'" placement="right"></nfsen-tooltip>
+        </p>
+        <textarea class="form-control" id="filterNfdumpTextareaSankey"
+                  {{ bind(sankey_filter) }} rows="3" autocomplete="on"></textarea>
+        <nfsen-filter-manager
+            data-ignore-morph
+            data-target-textarea="filterNfdumpTextareaSankey"
+            data-default-filters="{{ filters|json_encode }}">
+        </nfsen-filter-manager>
+        </div>
+    </div>
+
+    {# Byte thresholds — prepended to the nfdump filter expression #}
+    <div class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
+        <div class="filter-group">
+        <p class="filter-label">Min bytes
+            <nfsen-tooltip data-ignore-morph text="Only aggregate flows with at least this many bytes. Prepended as 'bytes &gt; value' filter. Accepts SI suffixes: k, M, G. E.g. '1M'." placement="top"></nfsen-tooltip>
+        </p>
+        <input type="text" {{ bind(sankey_lower_limit) }} class="form-control" placeholder="e.g. 1M">
+        </div>
+    </div>
+    <div class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
+        <div class="filter-group">
+        <p class="filter-label">Max bytes
+            <nfsen-tooltip data-ignore-morph text="Only aggregate flows with at most this many bytes. Prepended as 'bytes &lt; value' filter. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
+        </p>
+        <input type="text" {{ bind(sankey_upper_limit) }} class="form-control" placeholder="e.g. 100M">
+        </div>
+    </div>
+
+    {# Metric — which volume ranks/sizes the top-N pairs and links #}
+    <div id="filterSankeyMetric" class="col-xs-6 col-sm-3 col-md-2">
+        <div class="filter-group">
+        <p class="filter-label">Rank / size by
+            <nfsen-tooltip data-ignore-morph text="Which metric selects the top N pairs (-O option) and sizes the link ribbons." placement="top"></nfsen-tooltip>
+        </p>
+        {% set _sankeyMetric = sankey_metric.string() %}
+        <div class="btn-group" role="group">
+            <input type="radio" class="btn-check" name="sankeyMetric" value="bytes"{{ _sankeyMetric != 'packets' ? ' checked' : '' }}
+                   id="sankeyMetricBytes" {{ bind(sankey_metric) }}>
+            <label class="btn btn-outline-primary btn-sm" for="sankeyMetricBytes">Bytes</label>
+            <input type="radio" class="btn-check" name="sankeyMetric" value="packets"{{ _sankeyMetric == 'packets' ? ' checked' : '' }}
+                   id="sankeyMetricPackets" {{ bind(sankey_metric) }}>
+            <label class="btn btn-outline-primary btn-sm" for="sankeyMetricPackets">Packets</label>
+        </div>
+        </div>
+    </div>
+
+    {# Submit #}
+    <div class="col-12 border-top mt-3 pt-3">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+        <nfsen-tooltip data-ignore-morph text="Generate the Sankey diagram using nfdump -a with current filters" placement="top" no-icon>
+            <button type="button"
+                    class="btn btn-primary"
+                    data-indicator:sankey._indicator
+                    data-on:click="$_sankey_queried = true; @post('{{ sankeyActions.url() }}')">
+                <span data-show="!$sankey._indicator">Process data</span>
+                <span class="spinner-grow spinner-grow-sm" data-show="$sankey._indicator" role="status" aria-hidden="true"></span>
+                <span data-show="$sankey._indicator">Processing…</span>
+            </button>
+        </nfsen-tooltip>
+        <button type="button"
+                class="btn btn-outline-danger btn-sm ms-1"
+                style="display:none"
+                data-show="$sankey._indicator"
+                data-on:click="@post('{{ killNfdump.url() }}')">Kill</button>
+        {# nfcapd file count info — reactive to date range and source changes #}
+        <span class="text-muted small align-items-center gap-1" style="display: flex" data-show="$nfcapd._counting">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Calculating…
+        </span>
+        <span class="text-muted small d-flex align-items-center gap-1" data-show="!$nfcapd._counting && ${{ nfcapd_file_count.id() }} > 0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" class="bi bi-database flex-shrink-0" viewBox="0 0 16 16">
+                <path d="M4.318 2.687C5.234 2.271 6.536 2 8 2s2.766.27 3.682.687C12.644 3.125 13 3.627 13 4c0 .374-.356.875-1.318 1.313C10.766 5.729 9.464 6 8 6s-2.766-.27-3.682-.687C3.356 4.875 3 4.373 3 4c0-.374.356-.875 1.318-1.313M13 5.698V7c0 .374-.356.875-1.318 1.313C10.766 8.729 9.464 9 8 9s-2.766-.27-3.682-.687C3.356 7.875 3 7.373 3 7V5.698c.271.202.58.378.904.525C5.034 6.771 6.432 7 8 7s2.966-.23 4.096-.777A5 5 0 0 0 13 5.698M3 8.698V10c0 .374.356.875 1.318 1.313C5.234 11.729 6.536 12 8 12s2.766-.27 3.682-.687C12.644 10.875 13 10.373 13 10V8.698c-.271.202-.58.378-.904.525C11.966 9.771 10.568 10 9 10s-2.966-.23-4.096-.777A5 5 0 0 1 3 8.698m0 3V13c0 .374.356.875 1.318 1.313C5.234 14.729 6.536 15 8 15s2.766-.27 3.682-.687C12.644 13.875 13 13.373 13 13v-1.302c-.271.202-.58.378-.904.525C11.966 12.771 10.568 13 9 13s-2.966-.23-4.096-.777A5 5 0 0 1 3 11.698m0 3V13c0 .374.356.875 1.318 1.313C5.234 14.729 6.536 15 8 15s2.766-.27 3.682-.687C12.644 13.875 13 13.373 13 13v-1.302c-.271.202-.58.378-.904.525C11.966 12.771 10.568 13 9 13s-2.966-.23-4.096-.777A5 5 0 0 1 3 11.698"/>
+            </svg>
+            <span data-text="${{ nfcapd_file_count.id() }}"></span> nfcapd files
+            <span class="badge bg-warning-subtle text-warning-emphasis"
+                  data-show="${{ nfcapd_file_count.id() }} >= 576 && ${{ nfcapd_file_count.id() }} < 8640">may take a moment</span>
+            <span class="badge bg-danger"
+                  data-show="${{ nfcapd_file_count.id() }} >= 8640">may take several minutes</span>
+        </span>
+        </div>
+    </div>
+
+</div>

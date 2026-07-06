@@ -105,6 +105,81 @@ describe('Nfdump', function (): void {
         });
     });
 
+    describe('parseWhitespaceDelimitedAggregation', function (): void {
+        // Sample lines captured from a real `nfdump -a -A srcip,dstip -O bytes -n 5 -N
+        // -o 'fmt:%sa %da %ibyt %ipkt %fl'` run, including the header row and footer/summary
+        // lines that must be skipped rather than mis-parsed as data rows.
+        $headers = ['sa', 'da', 'ibyt', 'ipkt', 'fl'];
+
+        test('parses data rows into structured associative arrays', function () use ($headers): void {
+            $lines = [
+                '  172.24.154.108     149.126.4.47 1658542255   114225  1290',
+                '  172.24.154.108    140.82.113.22 1189726929   763701  6050',
+            ];
+
+            $result = Nfdump::parseWhitespaceDelimitedAggregation($lines, $headers);
+
+            expect($result)->toHaveCount(2);
+            expect($result[0])->toBe([
+                'sa' => '172.24.154.108',
+                'da' => '149.126.4.47',
+                'ibyt' => '1658542255',
+                'ipkt' => '114225',
+                'fl' => '1290',
+            ]);
+            expect($result[1]['da'])->toBe('140.82.113.22');
+        });
+
+        test('skips the human-readable header row', function () use ($headers): void {
+            $lines = ['     Src IP Addr      Dst IP Addr  In Byte   In Pkt Flows'];
+
+            expect(Nfdump::parseWhitespaceDelimitedAggregation($lines, $headers))->toBe([]);
+        });
+
+        test('skips summary, time window, and footer lines', function () use ($headers): void {
+            $lines = [
+                'Summary: total flows: 518178, total bytes: 27890469207, total packets: 35111524, avg bps: 25467, avg pps: 4, avg bpp: 794',
+                'Time window: 2025-11-24 15:34:44 - 2026-03-06 01:12:34',
+                'Total flows processed: 518178, passed: 518178, Blocks skipped: 0, Bytes read: 55015208',
+                'Sys: 1.9041s User: 0.3358s Wall: 2.4564s flows/second: 210953.4 Runtime: 2.4566s',
+            ];
+
+            expect(Nfdump::parseWhitespaceDelimitedAggregation($lines, $headers))->toBe([]);
+        });
+
+        test('skips blank lines', function () use ($headers): void {
+            $lines = ['', '   ', '  172.24.154.108     149.126.4.47 1658542255   114225  1290'];
+
+            expect(Nfdump::parseWhitespaceDelimitedAggregation($lines, $headers))->toHaveCount(1);
+        });
+
+        test('handles a full realistic multi-line output block', function () use ($headers): void {
+            $lines = [
+                '     Src IP Addr      Dst IP Addr  In Byte   In Pkt Flows',
+                '  172.24.154.108     149.126.4.47 1658542255   114225  1290',
+                '  172.24.154.108    140.82.113.22 1189726929   763701  6050',
+                '    3.165.190.89   172.24.154.108 1058946029    33241     2',
+                '  172.24.154.108    140.82.112.21 1020774220   686645  5761',
+                ' 192.178.170.207   172.24.154.108  981611937   103935    77',
+                'Summary: total flows: 518178, total bytes: 27890469207, total packets: 35111524, avg bps: 25467, avg pps: 4, avg bpp: 794',
+                'Time window: 2025-11-24 15:34:44 - 2026-03-06 01:12:34',
+                'Total flows processed: 518178, passed: 518178, Blocks skipped: 0, Bytes read: 55015208',
+                'Sys: 1.9041s User: 0.3358s Wall: 2.4564s flows/second: 210953.4 Runtime: 2.4566s',
+            ];
+
+            $result = Nfdump::parseWhitespaceDelimitedAggregation($lines, $headers);
+
+            expect($result)->toHaveCount(5);
+            expect($result[2])->toBe([
+                'sa' => '3.165.190.89',
+                'da' => '172.24.154.108',
+                'ibyt' => '1058946029',
+                'ipkt' => '33241',
+                'fl' => '2',
+            ]);
+        });
+    });
+
     describe('setFilter', function (): void {
         test('accepts filter string', function (): void {
             $nfdump = new Nfdump();

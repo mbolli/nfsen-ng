@@ -315,6 +315,24 @@ class Nfdump implements Processor {
         // - Other aggregations (-A*) WITH -o csv produce proper parseable CSV
         // Note: setOption() method automatically forces csv when json+aggregation is requested
         $isBidirectional = isset($this->cfg['option']['-B']) || (isset($this->cfg['option']['-a']) && str_contains($this->cfg['option']['-a'], 'B'));
+
+        // Custom whitespace-delimited aggregation format (e.g. 'fmt:%sa %da %ibyt %ipkt %fl') —
+        // used by SankeyActions to get per-pair flow counts, which the fixed -o csv aggregation
+        // schema below doesn't include. Structurally parseable, unlike the raw fixed-width branch.
+        if (isset($this->cfg['option']['-a']) && !$isBidirectional && str_starts_with((string) $this->cfg['format'], 'fmt:')) {
+            $result = [
+                'command' => $command,
+                'rawOutput' => $rawOutput,
+                'decoded' => self::parseWhitespaceDelimitedAggregation($output, $this->get_output_format($this->cfg['format'])),
+            ];
+
+            if (!empty($stderr)) {
+                $result['stderr'] = trim($stderr);
+            }
+
+            return $result;
+        }
+
         $isAggregationWithoutCsv = isset($this->cfg['option']['-a']) && $this->cfg['format'] !== 'csv';
 
         if ($isBidirectional || $isAggregationWithoutCsv) {
@@ -609,6 +627,39 @@ class Nfdump implements Processor {
         }
 
         return implode(' and ', $parts);
+    }
+
+    /**
+     * Parse whitespace-delimited aggregated nfdump output (custom 'fmt:' format strings) into
+     * structured rows. Skips nfdump's own header/summary/footer lines by requiring an exact
+     * column-count match against $headers — those lines never happen to match by construction
+     * (the human-readable header row has multi-word column labels, and summary/footer lines are
+     * comma/colon-laden with a different token count).
+     *
+     * @param array<string> $lines   Raw output lines from nfdump
+     * @param array<string> $headers Column names, in order, as derived from the fmt: string
+     *
+     * @return array<array<string, string>>
+     */
+    public static function parseWhitespaceDelimitedAggregation(array $lines, array $headers): array {
+        $headerCount = \count($headers);
+        $decoded = [];
+
+        foreach ($lines as $line) {
+            $trimmed = trim((string) $line);
+            if ($trimmed === '') {
+                continue;
+            }
+
+            $fields = preg_split('/\s+/', $trimmed);
+            if ($fields === false || \count($fields) !== $headerCount) {
+                continue;
+            }
+
+            $decoded[] = array_combine($headers, $fields);
+        }
+
+        return $decoded;
     }
 
     public function get_output_format($format): array {

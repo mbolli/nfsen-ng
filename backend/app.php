@@ -29,6 +29,7 @@ use mbolli\nfsen_ng\actions\FlowActions;
 use mbolli\nfsen_ng\actions\GraphActions;
 use mbolli\nfsen_ng\actions\Helpers;
 use mbolli\nfsen_ng\actions\ImportActions;
+use mbolli\nfsen_ng\actions\SankeyActions;
 use mbolli\nfsen_ng\actions\SettingsActions;
 use mbolli\nfsen_ng\actions\StatsActions;
 use mbolli\nfsen_ng\actions\UtilityActions;
@@ -171,6 +172,14 @@ $app->page('/', function (Context $c) use ($app): void {
     // nfcapd file count — updated by count-files action and on initial render
     $nfcapdFileCount = $c->signal(0, 'nfcapd_file_count');
 
+    // Sankey signals
+    $sankeyFilter = $c->signal('', 'sankey_filter', clientWritable: true);
+    $sankeyTopN = $c->signal(20, 'sankey_topN', clientWritable: true);
+    $sankeyMetric = $c->signal('bytes', 'sankey_metric', clientWritable: true);
+    // Byte thresholds for sankey — prepended as filter expressions (bytes > / bytes <)
+    $sankeyLowerLimit = $c->signal('', 'sankey_lower_limit', clientWritable: true);
+    $sankeyUpperLimit = $c->signal('', 'sankey_upper_limit', clientWritable: true);
+
     // Admin / import signals
     /** @var null|ImportDaemon $daemon */
     $daemon = $app->globalState('daemon', null);
@@ -248,10 +257,12 @@ $app->page('/', function (Context $c) use ($app): void {
     // These carry large result sets between the action and the view closure.
     $flowTableHtml = '';
     $statsTableHtml = '';
+    $sankeyData = '';
     // Notifications persist across broadcasts until explicitly dismissed server-side.
     // Each entry: ['id' => hex_string, 'type' => 'success'|'warning'|'error', 'message' => html_string]
     $flowNotifications = [];
     $statsNotifications = [];
+    $sankeyNotifications = [];
 
     // ── Subscribe to import and RRD broadcasts ──────────────────────────────
     // admin:import — live progress pushed from the import coroutine to all admin tabs
@@ -266,6 +277,7 @@ $app->page('/', function (Context $c) use ($app): void {
     GraphActions::register($c);
     FlowActions::register($c, $flowNotifications, $flowTableHtml);
     StatsActions::register($c, $flowNotifications, $statsNotifications, $statsTableHtml);
+    SankeyActions::register($c, $sankeyNotifications, $sankeyData);
     ImportActions::register($c, $app);
     SettingsActions::register($c, $app);
     AlertActions::register($c, $app);
@@ -301,8 +313,10 @@ $app->page('/', function (Context $c) use ($app): void {
         $app,
         &$flowNotifications,
         &$statsNotifications,
+        &$sankeyNotifications,
         &$flowTableHtml,
         &$statsTableHtml,
+        &$sankeyData,
         &$lastGraphFetch,
         &$cachedGraphData,
         &$cachedImportSources,
@@ -493,6 +507,8 @@ $app->page('/', function (Context $c) use ($app): void {
             'flowNotifications' => $flowNotifications,
             'statsTableHtml' => $statsTableHtml,
             'statsNotifications' => $statsNotifications,
+            'sankeyData' => $sankeyData !== '' ? $sankeyData : '{"nodes":[],"links":[]}',
+            'sankeyNotifications' => $sankeyNotifications,
 
             // ── Admin / import ────────────────────────────────────────────
             'hasPorts' => !empty(Config::$settings->ports),

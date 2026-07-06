@@ -1,0 +1,47 @@
+{#
+    Sankey diagram results panel.
+
+    sankeyData is JSON-encoded server-side ({nodes, links}) and embedded directly into
+    data-sankey-data. nfsen-sankey observes that attribute and re-renders the ECharts
+    sankey diagram. DOM morphing updates data-sankey-data on every SSE push without
+    recreating the element (inner canvas has data-ignore-morph).
+#}
+<div class="row mb-4" data-signals__ifmissing='{"_sankey_queried": false}'>
+    <div class="col-12">
+        {# Empty state — shown until the user submits the first query #}
+        <div data-show="!$_sankey_queried" class="text-center py-5 text-muted">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-diagram-3 mb-3 opacity-25" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M6 3.5A1.5 1.5 0 0 1 7.5 2h1A1.5 1.5 0 0 1 10 3.5v1A1.5 1.5 0 0 1 8.5 6v1H14a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0v-1A.5.5 0 0 1 2 7h5.5V6A1.5 1.5 0 0 1 6 4.5zM8.5 5a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5zM0 11.5A1.5 1.5 0 0 1 1.5 10h1A1.5 1.5 0 0 1 4 11.5v1A1.5 1.5 0 0 1 2.5 14h-1A1.5 1.5 0 0 1 0 12.5zm1.5-.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5zm4.5.5A1.5 1.5 0 0 1 7.5 10h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 8.5 14h-1A1.5 1.5 0 0 1 6 12.5zm1.5-.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5zm4.5.5a1.5 1.5 0 0 1 1.5-1.5h1a1.5 1.5 0 0 1 1.5 1.5v1a1.5 1.5 0 0 1-1.5 1.5h-1a1.5 1.5 0 0 1-1.5-1.5zm1.5-.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5z"/>
+            </svg>
+            <p class="mb-1 fw-semibold">No results yet</p>
+            <p class="small">Configure filters above and click <strong>Process data</strong> to generate the Sankey diagram.</p>
+        </div>
+        {# Results card — shown after the first query #}
+        <div data-show="$_sankey_queried">
+        <div class="card" data-class:loading="$sankey._indicator">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Traffic flow</h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-info" data-text="${{ sankey_topN.id() }}"></span>
+                        <span class="text-muted small">pairs</span>
+                    </div>
+                </div>
+                <div id="sankeyMessage">
+                    {% for n in sankeyNotifications %}
+                    <div class="alert alert-{{ n.type == 'error' ? 'danger' : n.type }} alert-dismissible fade show" role="alert">
+                        {{ n.message|raw }}
+                        <button type="button" class="btn-close" data-on:click="@post('{{ dismissSankeyNotification.url() }}?id={{ n.id }}')" aria-label="Close"></button>
+                    </div>
+                    {% endfor %}
+                </div>
+                <nfsen-sankey data-sankey-data="{{ sankeyData }}">
+                    <div class="sankey-container" data-ignore-morph data-ignore style="view-transition-name: nfsen-sankey">
+                        <div class="sankey-canvas" style="width: 100%; height: 500px;"></div>
+                    </div>
+                </nfsen-sankey>
+            </div>
+        </div>
+        </div>
+    </div>
+</div>

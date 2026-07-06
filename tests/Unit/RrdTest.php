@@ -50,27 +50,27 @@ describe('Rrd::get_data_path()', function (): void {
         $this->rrd = new Rrd();
     });
 
-    test('source only → <path>/<source>.rrd', function (): void {
+    test('source only → <path>/<profile>/<source>.rrd', function (): void {
         expect($this->rrd->get_data_path('gateway'))
-            ->toBe('/rrd/data/gateway.rrd')
+            ->toBe('/rrd/data/live/gateway.rrd')
         ;
     });
 
-    test('source + port → <path>/<source>_<port>.rrd', function (): void {
+    test('source + port → <path>/<profile>/<source>_<port>.rrd', function (): void {
         expect($this->rrd->get_data_path('gateway', 80))
-            ->toBe('/rrd/data/gateway_80.rrd')
+            ->toBe('/rrd/data/live/gateway_80.rrd')
         ;
     });
 
-    test('empty source + port → <path>/<port>.rrd', function (): void {
+    test('empty source + port → <path>/<profile>/<port>.rrd', function (): void {
         expect($this->rrd->get_data_path('', 80))
-            ->toBe('/rrd/data/80.rrd')
+            ->toBe('/rrd/data/live/80.rrd')
         ;
     });
 
-    test('empty source + port=0 → <path>/.rrd (edge case)', function (): void {
+    test('empty source + port=0 → <path>/<profile>/.rrd (edge case)', function (): void {
         expect($this->rrd->get_data_path('', 0))
-            ->toBe('/rrd/data/.rrd')
+            ->toBe('/rrd/data/live/.rrd')
         ;
     });
 })->skip(!function_exists('rrd_version'), 'rrd PECL extension not available');
@@ -121,7 +121,7 @@ describe('Rrd::healthChecks() filesystem checks', function (): void {
 
     test('valid writable dir with missing RRD file emits warning per source', function (): void {
         $dir = sys_get_temp_dir() . '/rrd_hc_' . uniqid();
-        mkdir($dir, 0o755, true);
+        mkdir($dir . '/live', 0o755, true);
         makeRrdSettings($dir);
 
         $rrd = new Rrd();
@@ -138,6 +138,7 @@ describe('Rrd::healthChecks() filesystem checks', function (): void {
         $srcCheck = $checks[array_search('rrd_data_gw', $ids, true)];
         expect($srcCheck['status'])->toBe('warning');
 
+        rmdir($dir . '/live');
         rmdir($dir);
     });
 

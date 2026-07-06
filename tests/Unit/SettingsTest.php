@@ -89,6 +89,12 @@ describe('Settings::fromArray()', function (): void {
 
 describe('Settings::fromEnv()', function (): void {
     test('returns instance with defaults when no env vars set', function (): void {
+        // The ambient environment (e.g. this app's own docker-compose.dev.yml)
+        // may already export NFSEN_SOURCES/NFSEN_PORTS for the running app —
+        // clear them so this test genuinely exercises the "unset" defaults.
+        putenv('NFSEN_SOURCES');
+        putenv('NFSEN_PORTS');
+
         $s = Settings::fromEnv();
 
         expect($s->datasourceName)->toBe('RRD')

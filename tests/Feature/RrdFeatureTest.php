@@ -55,13 +55,15 @@ function makeRrdFeatureSettings(int $importYears = 3): string {
  */
 function cleanRrdDir(string $dir): void {
     if (is_dir($dir)) {
-        foreach (glob($dir . '/*.rrd') ?: [] as $file) {
+        // *.rrd.first sidecar files (see Rrd::write()) live alongside the .rrd
+        // file, so match both with *.rrd*.
+        foreach (glob($dir . '/*.rrd*') ?: [] as $file) {
             unlink($file);
         }
-        // Also recurse one level for port sub-dirs if any
+        // Also recurse one level for profile/port sub-dirs if any
         foreach (glob($dir . '/*') ?: [] as $entry) {
             if (is_dir($entry)) {
-                foreach (glob($entry . '/*.rrd') ?: [] as $f) {
+                foreach (glob($entry . '/*.rrd*') ?: [] as $f) {
                     unlink($f);
                 }
                 @rmdir($entry);
@@ -86,7 +88,7 @@ describe('Rrd file creation and structure validation', function (): void {
     test('create() produces a valid RRD file', function (): void {
         $result = $this->rrd->create('test-src');
         expect($result)->toBeTrue();
-        expect(file_exists($this->dir . '/test-src.rrd'))->toBeTrue();
+        expect(file_exists($this->dir . '/live/test-src.rrd'))->toBeTrue();
     });
 
     test('validateStructure() passes after create() with matching import_years', function (): void {
@@ -99,14 +101,14 @@ describe('Rrd file creation and structure validation', function (): void {
 
     test('create() with reset=true recreates an existing file', function (): void {
         $this->rrd->create('test-src');
-        $firstMtime = filemtime($this->dir . '/test-src.rrd');
+        $firstMtime = filemtime($this->dir . '/live/test-src.rrd');
 
         // Slight sleep to ensure mtime differs
         sleep(1);
 
         $result = $this->rrd->create('test-src', 0, true);
         expect($result)->toBeTrue();
-        $newMtime = filemtime($this->dir . '/test-src.rrd');
+        $newMtime = filemtime($this->dir . '/live/test-src.rrd');
         expect($newMtime)->toBeGreaterThan($firstMtime);
     });
 

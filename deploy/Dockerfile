@@ -19,6 +19,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     unzip wget curl \
     libssl-dev libcurl4-openssl-dev libnghttp2-dev \
     netbase bind9-host \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Add nfdump to PATH

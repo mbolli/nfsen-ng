@@ -85,7 +85,7 @@ function makeVmSettings(): void {
 describe('VictoriaMetrics basic interface methods', function (): void {
     beforeEach(function (): void {
         makeVmSettings();
-        $this->vm = new TestVM();
+        $this->vm = new VictoriaMetricsTest();
     });
 
     test('reset() always returns true', function (): void {
@@ -107,7 +107,7 @@ describe('VictoriaMetrics basic interface methods', function (): void {
 describe('VictoriaMetrics::write()', function (): void {
     beforeEach(function (): void {
         makeVmSettings();
-        $this->vm = new TestVM();
+        $this->vm = new VictoriaMetricsTest();
         $this->ts = 1700000000; // arbitrary fixed Unix epoch
     });
 
@@ -210,7 +210,7 @@ describe('VictoriaMetrics::write()', function (): void {
 describe('VictoriaMetrics::get_graph_data()', function (): void {
     beforeEach(function (): void {
         makeVmSettings();
-        $this->vm = new TestVM();
+        $this->vm = new VictoriaMetricsTest();
         $this->start = 1700000000;
         $this->end = $this->start + 3600;
     });
@@ -348,7 +348,7 @@ describe('VictoriaMetrics::get_graph_data()', function (): void {
 describe('VictoriaMetrics output format alignment', function (): void {
     beforeEach(function (): void {
         makeVmSettings();
-        $this->vm = new TestVM();
+        $this->vm = new VictoriaMetricsTest();
         $this->start = 1700000000;
         $this->end = $this->start + 600;
     });
@@ -402,7 +402,7 @@ describe('VictoriaMetrics output format alignment', function (): void {
                 $this->responses = $responses;
             }
 
-            protected function httpGet(string $url): string {
+            protected function httpGet(string $url, int $timeout = 30): string {
                 return $this->responses[$this->callCount++] ?? '{"status":"success","data":{"result":[]}}';
             }
 
@@ -439,7 +439,7 @@ describe('VictoriaMetrics output format alignment', function (): void {
 describe('VictoriaMetrics::date_boundaries() and last_update()', function (): void {
     beforeEach(function (): void {
         makeVmSettings();
-        $this->vm = new TestVM();
+        $this->vm = new VictoriaMetricsTest();
     });
 
     test('date_boundaries() returns [firstTs, lastTs] from VM response', function (): void {
@@ -489,7 +489,7 @@ describe('VictoriaMetrics::date_boundaries() and last_update()', function (): vo
 
     test('last_update() returns 0 when httpGet throws', function (): void {
         $vm = new class extends VictoriaMetrics {
-            protected function httpGet(string $url): string {
+            protected function httpGet(string $url, int $timeout = 30): string {
                 throw new Exception('connection refused');
             }
 
@@ -512,7 +512,7 @@ describe('VictoriaMetrics::date_boundaries() and last_update()', function (): vo
 describe('VictoriaMetrics::healthChecks()', function (): void {
     beforeEach(function (): void {
         makeVmSettings();
-        $this->vm = new TestVM();
+        $this->vm = new VictoriaMetricsTest();
     });
 
     test('always returns vm_config and import_years entries', function (): void {

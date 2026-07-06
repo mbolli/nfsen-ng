@@ -16,7 +16,7 @@ hardcoded path).
 | `flow-actions` | `FlowActions.php` | Run the Flows tab's nfdump query and re-render the table |
 | `stats-actions` | `StatsActions.php` | Run the Statistics tab's `-s` query |
 | `dismiss-notification` | `StatsActions.php` | Dismiss a flow/stats-panel notification |
-| `count-files` | `StatsActions.php` | Recount matching nfcapd files (feeds the ETA/progress display) |
+| `count-files` | `StatsActions.php` | Recount matching nfcapd files (feeds the Statistics/Sankey "may take a moment" query-time warning, not the import progress bar) |
 | `sankey-actions` | `SankeyActions.php` | Run the Sankey tab's aggregation query |
 | `dismiss-sankey-notification` | `SankeyActions.php` | Dismiss a Sankey-panel notification |
 | `change-profile` | `GraphActions.php` | Switch the active nfdump profile |
@@ -25,7 +25,7 @@ hardcoded path).
 | `trigger-import` | `ImportActions.php` | Manual catch-up import for a profile |
 | `force-rescan` | `ImportActions.php` | Reset + re-import a profile (destructive, confirmation-gated) |
 | `cancel-import` | `ImportActions.php` | Cancel an in-progress manual import |
-| `ip-info` | `UtilityActions.php` | Reverse-DNS/Netbox lookup modal |
+| `ip-info` | `UtilityActions.php` | Reverse-DNS lookup modal, plus geo-IP (public IPs) or Netbox (private IPs) |
 | `kill-nfdump` | `UtilityActions.php` | Send SIGTERM to the currently-running nfdump subprocess |
 
 ## Reading an action's exact contract

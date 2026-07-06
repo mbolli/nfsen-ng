@@ -3,7 +3,7 @@
 ```bash
 composer test              # everything
 composer test-coverage     # with coverage
-docker compose exec nfsen pest   # from inside the dev container
+docker compose exec nfsen vendor/bin/pest   # from inside the dev container
 ```
 
 Tests are [Pest](https://pestphp.com/) PHP, split into `tests/Unit/` (pure

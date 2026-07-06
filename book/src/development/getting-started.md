@@ -36,9 +36,9 @@ composer test-phpstan    # static analysis, level 5
 composer fix              # auto-format PHP (php-cs-fixer)
 composer before-commit   # fix + phpstan — run this before every PHP commit
 
-pnpm install              # JS deps (also copies datastar.js into frontend/js/)
-pnpm run lint              # ESLint
-pnpm run format            # Prettier
+pnpm install              # JS deps (also vendors datastar/nouislider/echarts into frontend/js/)
+pnpm run lint              # Biome lint
+pnpm run format            # Biome format --write
 ```
 
 See [Project Structure](structure.md) for where things live,

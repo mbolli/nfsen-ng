@@ -12,12 +12,18 @@ backend/
   settings/                settings.php(.dist) (deployment config) + preferences.json (user-saved)
 frontend/
   js/components/            Web Components: nfsen-chart, nfsen-table, nfsen-daterange, nfsen-sankey, ...
-  js/datastar.js            vendored Datastar client (copied in by `pnpm install`)
+  js/datastar.js, nouislider.min.js, echarts.min.js
+                            vendored, copied in by `pnpm install`'s postinstall (see package.json)
 tests/
   Unit/                    Pest unit tests — one file per class, roughly
   Feature/                 tests that exercise real I/O (RRD file creation, etc.)
 deploy/
   Dockerfile, Dockerfile.dev, docker-compose*.yml, Caddyfile*
+.github/workflows/
+  release.yml              version bump + tag, manually triggered
+  docker-publish.yml       builds/pushes the app + Caddy images to GHCR
+  mdbook.yml               builds this book and deploys it to GitHub Pages
+                            on every push to master that touches book/**
 book/
   book.toml, src/          this book
   _capture.mjs             screenshot driver — see the Introduction of this chapter's source

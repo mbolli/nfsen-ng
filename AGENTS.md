@@ -1,7 +1,7 @@
 # nfsen-ng — Agent Instructions
 
 nfsen-ng is a modern web-based NetFlow analyzer (nfsen replacement).
-**Stack:** PHP 8.4 + OpenSwoole, php-via (coroutine HTTP server), Datastar (SSE hypermedia), Twig templates, Dygraphs, RRD/VictoriaMetrics.
+**Stack:** PHP 8.4 + OpenSwoole, php-via (coroutine HTTP server), Datastar (SSE hypermedia), Twig templates, Apache ECharts, RRD/VictoriaMetrics.
 
 ## Dev Stack
 

@@ -1,14 +1,56 @@
 /**
  * NfsenChart Web Component
- * Encapsulates Dygraphs charting library with Datastar integration
+ * Encapsulates Apache ECharts with Datastar integration.
+ *
+ * Public interface (tag, attributes, methods) is unchanged from the previous
+ * Dygraphs-backed implementation — graph-view.html.twig, graph-filters.html.twig,
+ * and date-range.html.twig all keep calling the same methods with the same
+ * Dygraph-shaped option keys (logscale, stackedGraph, stepPlot, labelsKMG2, ...).
+ * Those keys are translated internally in updateOptions() rather than changing
+ * every call site — see docs/features/dygraph-to-echarts.md.
  */
 import { tzOptions } from './tz-utils.js';
+
+/** Binary-prefixed (K=1024) formatter, matching Dygraph's labelsKMG2 for bits/bytes. */
+function formatKMG2(value) {
+    const units = ['', 'K', 'M', 'G', 'T'];
+    let v = value;
+    let i = 0;
+    while (Math.abs(v) >= 1024 && i < units.length - 1) {
+        v /= 1024;
+        i++;
+    }
+    return `${Number.isInteger(v) ? v : v.toFixed(2)}${units[i]}`;
+}
+
+/** Decimal-prefixed (K=1000) formatter, matching Dygraph's labelsKMB for flows/packets. */
+function formatKMB(value) {
+    const units = ['', 'K', 'M', 'B'];
+    let v = value;
+    let i = 0;
+    while (Math.abs(v) >= 1000 && i < units.length - 1) {
+        v /= 1000;
+        i++;
+    }
+    return `${Number.isInteger(v) ? v : v.toFixed(2)}${units[i]}`;
+}
+
 export class NfsenChart extends HTMLElement {
     constructor() {
         super();
-        this.dygraph = null;
+        this.chart = null;
         this.config = null;
         this.container = null;
+        this.currentLabels = null;
+        this.lastChartData = null;
+        // Style state tracked across separate updateOptions() calls (each toggle button
+        // in graph-filters.html.twig calls updateOptions() with only its own key set).
+        this._logscale = false;
+        this._stacked = false;
+        this._stepPlot = true;
+        this._labelsKMB = false;
+        this._labelsKMG2 = false;
+        this._ylabel = '';
     }
 
     connectedCallback() {
@@ -16,16 +58,20 @@ export class NfsenChart extends HTMLElement {
         // Initialize chart when data is provided via Datastar signals
         this.initializeChart();
 
-        // Resize Dygraph whenever the container changes dimensions (handles responsive
-        // layout changes and sidebar-toggling without a hard page reload)
+        // Resize whenever the container changes dimensions (handles responsive
+        // layout changes and sidebar-toggling without a hard page reload). Observe
+        // the canvas container itself, not just the custom element — the outer
+        // <nfsen-chart> can already be at its final size while the inner div is
+        // still settling, which is exactly when ECharts needs to re-measure.
         this._resizeObserver = new ResizeObserver(() => {
-            if (this.dygraph) this.dygraph.resize();
+            if (this.chart) this.chart.resize();
         });
         this._resizeObserver.observe(this);
+        if (this.container) this._resizeObserver.observe(this.container);
 
         // Re-apply canvas colours when the user toggles dark/light mode
         this._themeObserver = new MutationObserver(() => {
-            if (this.dygraph) this.dygraph.updateOptions(this.getDygraphThemeColors());
+            if (this.chart) this.applyTheme();
         });
         this._themeObserver.observe(document.documentElement, { attributeFilter: ['data-bs-theme'] });
     }
@@ -39,10 +85,7 @@ export class NfsenChart extends HTMLElement {
             this._themeObserver.disconnect();
             this._themeObserver = null;
         }
-        if (this.dygraph) {
-            this.dygraph.destroy();
-            this.dygraph = null;
-        }
+        this.destroy();
     }
 
     /**
@@ -65,36 +108,14 @@ export class NfsenChart extends HTMLElement {
     }
 
     /**
-     * Wait for Dygraph library to be loaded
+     * Wait for the ECharts library to be loaded
      * @param {number} timeout - Maximum time to wait in milliseconds (default: 5000)
      * @returns {Promise<boolean>} - Resolves to true if loaded, false if timeout
      */
-    getDygraphThemeColors() {
-        const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
-        return {
-            backgroundColor: isDark ? '#212529' : '#ffffff',
-            highlightSeriesBackgroundColor: isDark ? '#212529' : '#ffffff',
-            axisLineColor: isDark ? '#495057' : '#dee2e6',
-            gridLineColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)',
-            rangeSelectorBackgroundColor: isDark ? '#2b3035' : '#f8f9fa',
-            rangeSelectorPlotStrokeColor: isDark ? '#adb5bd' : '#888888',
-            rangeSelectorPlotFillColor: isDark ? '#495057' : '#cccccc',
-            // Brighter series colors on dark canvas; identical to Dygraph defaults on light
-            colorSaturation: isDark ? 0.7 : 1.0,
-            colorValue: isDark ? 0.85 : 0.5,
-            highlightSeriesOpts: {
-                strokeWidth: 2,
-                strokeBorderWidth: 1,
-                strokeBorderColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)',
-                highlightCircleSize: 5,
-            },
-        };
-    }
-
-    async waitForDygraph(timeout = 5000) {
+    async waitForECharts(timeout = 5000) {
         const startTime = Date.now();
 
-        while (!window.Dygraph) {
+        while (!window.echarts) {
             if (Date.now() - startTime > timeout) {
                 return false;
             }
@@ -105,6 +126,53 @@ export class NfsenChart extends HTMLElement {
         return true;
     }
 
+    getThemeColors() {
+        const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        return {
+            backgroundColor: isDark ? '#212529' : '#ffffff',
+            textColor: isDark ? '#dee2e6' : '#212529',
+            axisLineColor: isDark ? '#495057' : '#dee2e6',
+            splitLineColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)',
+            tooltipBg: isDark ? '#2b3035' : '#ffffff',
+            tooltipBorder: isDark ? '#495057' : '#dee2e6',
+            dataZoomBg: isDark ? '#2b3035' : '#f8f9fa',
+            dataZoomFill: isDark ? '#495057' : '#cccccc',
+            // Brighter series colors on a dark canvas, similar in spirit to the old
+            // Dygraph colorSaturation/colorValue adjustment.
+            palette: isDark
+                ? ['#4dd0e1', '#81c784', '#ffb74d', '#e57373', '#ba68c8', '#90a4ae', '#f06292', '#a1887f']
+                : ['#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd', '#607d8b', '#e91e8c', '#795548'],
+        };
+    }
+
+    /** Re-apply theme colors without rebuilding series/axis data. */
+    applyTheme() {
+        if (!this.chart) return;
+        const theme = this.getThemeColors();
+        this.chart.setOption(
+            {
+                backgroundColor: theme.backgroundColor,
+                color: theme.palette,
+                textStyle: { color: theme.textColor },
+                title: { textStyle: { color: theme.textColor } },
+                xAxis: {
+                    axisLine: { lineStyle: { color: theme.axisLineColor } },
+                    splitLine: { lineStyle: { color: theme.splitLineColor } },
+                },
+                yAxis: {
+                    axisLine: { lineStyle: { color: theme.axisLineColor } },
+                    splitLine: { lineStyle: { color: theme.splitLineColor } },
+                },
+                tooltip: { backgroundColor: theme.tooltipBg, borderColor: theme.tooltipBorder, textStyle: { color: theme.textColor } },
+                dataZoom: [
+                    {},
+                    { backgroundColor: theme.dataZoomBg, fillerColor: theme.dataZoomFill, textStyle: { color: theme.textColor } },
+                ],
+            },
+            false
+        );
+    }
+
     async initializeChart() {
         // Ensure container is available (attributeChangedCallback fires before connectedCallback during upgrade)
         if (!this.container) {
@@ -112,12 +180,12 @@ export class NfsenChart extends HTMLElement {
             if (!this.container) return;
         }
 
-        // Wait for Dygraph library to load
-        if (!window.Dygraph) {
-            this.showMessage('Waiting for Dygraph library...', 'info');
-            const loaded = await this.waitForDygraph();
+        // Wait for ECharts to load
+        if (!window.echarts) {
+            this.showMessage('Waiting for ECharts library...', 'info');
+            const loaded = await this.waitForECharts();
             if (!loaded) {
-                this.showMessage('Dygraph library failed to load', 'error');
+                this.showMessage('ECharts library failed to load', 'error');
                 return;
             }
         }
@@ -154,21 +222,33 @@ export class NfsenChart extends HTMLElement {
 
     /**
      * Get the current zoom/pan range from the graph
-     * @returns {Object} {from: timestamp_ms, to: timestamp_ms}
+     * @returns {Object|null} {from: timestamp_ms, to: timestamp_ms}
      */
     getCurrentRange() {
-        if (this.dygraph) {
-            const range = this.dygraph.xAxisRange();
+        if (!this.chart) return null;
+
+        const opt = this.chart.getOption();
+        const dz = opt.dataZoom?.[0];
+        if (dz && dz.startValue != null && dz.endValue != null) {
+            return { from: Math.floor(dz.startValue), to: Math.floor(dz.endValue) };
+        }
+
+        // No zoom interaction has happened yet — dataZoom start/end are still percentages.
+        // Fall back to the full data range.
+        if (this.lastChartData?.length) {
+            const first = this.lastChartData[0][0];
+            const last = this.lastChartData[this.lastChartData.length - 1][0];
             return {
-                from: Math.floor(range[0]),
-                to: Math.floor(range[1]),
+                from: Math.floor(first instanceof Date ? first.getTime() : first),
+                to: Math.floor(last instanceof Date ? last.getTime() : last),
             };
         }
+
         return null;
     }
 
     updateChart(data, config) {
-        // Transform RRD data format to Dygraphs format if needed
+        // Transform RRD data format to a row-per-timestamp array, same shape as before
         let chartData = data;
         let labels = ['Date'];
 
@@ -188,34 +268,32 @@ export class NfsenChart extends HTMLElement {
         const displayTz = config.displayTz || 'browser';
         const nfcapdTz = config.nfcapdTz || 'UTC';
         const tzOpts = tzOptions(displayTz, nfcapdTz);
-        const dateFmt = (ms) => new Date(ms).toLocaleString(undefined, tzOpts);
+        this.dateFmt = (ms) => new Date(ms).toLocaleString(undefined, tzOpts);
 
         if (!chartData || chartData.length === 0) {
-            if (this.dygraph) {
-                this.dygraph.destroy();
-                this.dygraph = null;
+            this.lastChartData = null;
+            if (this.chart) {
+                this.chart.dispose();
+                this.chart = null;
             }
             this.showMessage('No data available for the selected range.', 'info');
             return;
         }
 
-        // If chart exists, just update it instead of recreating
-        if (this.dygraph) {
-            const updateConfig = {
-                title: this.getTitle(config.display, config.sources, config.protocols, config.ports, type),
-                labels: labels,
-                ylabel: type !== 'traffic' ? `${type.toUpperCase()}/s` : `${trafficUnit}/s`,
-                labelsKMB: type === 'flows' || type === 'packets',
-                labelsKMG2: trafficUnit === 'bits' || trafficUnit === 'bytes',
-                file: chartData,
-                // Reset dateWindow to show the full range of new data (not the previous zoom)
-                dateWindow: [chartData[0][0], chartData[chartData.length - 1][0]],
-                axes: { x: { axisLabelFormatter: dateFmt } },
-                xValueFormatter: dateFmt,
-            };
+        this.lastChartData = chartData;
+        this._ylabel = type !== 'traffic' ? `${type.toUpperCase()}/s` : `${trafficUnit}/s`;
+        this._labelsKMB = type === 'flows' || type === 'packets';
+        this._labelsKMG2 = trafficUnit === 'bits' || trafficUnit === 'bytes';
+        this._stepPlot = config.stepplot !== undefined ? config.stepplot : true;
+        this._logscale = config.logscale || false;
+        this._stacked = config.stacked || false;
 
+        const title = this.getTitle(config.display, config.sources, config.protocols, config.ports, type);
+        const option = this.buildOption(chartData, labels, title);
+
+        if (this.chart) {
             const doUpdate = () => {
-                this.dygraph.updateOptions(updateConfig);
+                this.chart.setOption(option, true);
                 if (JSON.stringify(labels) !== JSON.stringify(this.currentLabels)) {
                     this.currentLabels = labels;
                     this.populateSeriesControls(labels.slice(1));
@@ -233,46 +311,97 @@ export class NfsenChart extends HTMLElement {
             return;
         }
 
-        // Create new Dygraph instance
-        this.config = {
-            width: 'auto',
-            title: this.getTitle(config.display, config.sources, config.protocols, config.ports, type),
-            labels: labels,
-            ylabel: type !== 'traffic' ? `${type.toUpperCase()}/s` : `${trafficUnit}/s`,
-            xlabel: 'TIME',
-            labelsKMB: type === 'flows' || type === 'packets',
-            labelsKMG2: trafficUnit === 'bits' || trafficUnit === 'bytes',
-            labelsDiv: document.getElementById('legend'),
-            labelsSeparateLines: true,
-            legend: 'always',
-            stepPlot: config.stepplot !== undefined ? config.stepplot : true,
-            logscale: config.logscale || false,
-            stackedGraph: config.stacked || false,
-            fillGraph: config.stacked || false,
-            showRangeSelector: true,
-            dateWindow: [chartData[0][0], chartData[chartData.length - 1][0]],
-            zoomCallback: this.handleZoom.bind(this),
-            clickCallback: this.handleClick.bind(this),
-            axes: { x: { axisLabelFormatter: dateFmt } },
-            xValueFormatter: dateFmt,
-            ...this.getDygraphThemeColors(),
-        };
-
         try {
-            this.dygraph = new window.Dygraph(this.container, chartData, this.config);
+            // showMessage() may have left a message div behind (error/empty/loading state) —
+            // clear it before creating a fresh ECharts instance on the container.
+            this.container.innerHTML = '';
+            this.chart = window.echarts.init(this.container);
+            // Defensive: if the container's layout hadn't fully settled yet at init time,
+            // ECharts may have measured a stale/undersized width. Re-measure once on the
+            // next frame so the chart isn't permanently stuck at that size.
+            requestAnimationFrame(() => this.chart?.resize());
+
+            this.chart.setOption(option, true);
             this.currentLabels = labels;
             // Populate series visibility checkboxes
             this.populateSeriesControls(labels.slice(1)); // Skip 'Date' label
 
-            // Set up interaction model to detect panning
-            this.setupPanHandler();
+            // Single event covers main-plot zoom, pan, and range-selector drag alike —
+            // ECharts fires the same 'datazoom' event for all three, and for programmatic
+            // dispatchAction({type: 'dataZoom', ...}) calls too (used by click-to-zoom below).
+            this.chart.on('datazoom', () => this.handleZoom());
 
-            // Set up range selector interaction handler
-            this.setupRangeSelectorHandler();
+            // Click a data point to zoom into a 5-minute window around it
+            this.chart.on('click', (params) => this.handleClick(params));
+
+            // Keep the external #legend div in sync with the hovered x-position
+            this.chart.on('updateAxisPointer', (params) => this.updateExternalLegend(params));
         } catch (e) {
-            console.error('Error creating Dygraph:', e);
+            console.error('Error creating chart:', e);
             this.showMessage(`Error creating chart: ${e.message}`, 'error');
         }
+    }
+
+    /**
+     * Build the full ECharts option object for the current data + style state.
+     * Used both for initial creation and for updates (always passed with notMerge:true),
+     * which sidesteps the index/id merge subtleties of partial option patches.
+     */
+    buildOption(chartData, labels, title) {
+        const theme = this.getThemeColors();
+        const seriesNames = labels.slice(1);
+        const formatY = this._labelsKMG2 ? formatKMG2 : this._labelsKMB ? formatKMB : (v) => String(v);
+
+        return {
+            backgroundColor: theme.backgroundColor,
+            color: theme.palette,
+            textStyle: { color: theme.textColor },
+            title: { text: title, textStyle: { color: theme.textColor, fontSize: 14 } },
+            grid: { left: 60, right: 20, top: 40, bottom: 70 },
+            legend: { show: false }, // external #series checkboxes + #legend div are used instead
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: theme.tooltipBg,
+                borderColor: theme.tooltipBorder,
+                textStyle: { color: theme.textColor },
+                valueFormatter: formatY,
+            },
+            xAxis: {
+                type: 'time',
+                name: 'TIME',
+                axisLine: { lineStyle: { color: theme.axisLineColor } },
+                splitLine: { lineStyle: { color: theme.splitLineColor } },
+                axisLabel: { formatter: (ms) => this.dateFmt(ms), hideOverlap: true },
+            },
+            yAxis: {
+                type: this._logscale ? 'log' : 'value',
+                name: this._ylabel,
+                axisLine: { lineStyle: { color: theme.axisLineColor } },
+                splitLine: { lineStyle: { color: theme.splitLineColor } },
+                axisLabel: { formatter: formatY },
+            },
+            dataZoom: [
+                { type: 'inside', xAxisIndex: 0 },
+                {
+                    type: 'slider',
+                    xAxisIndex: 0,
+                    showDataShadow: true,
+                    backgroundColor: theme.dataZoomBg,
+                    fillerColor: theme.dataZoomFill,
+                    textStyle: { color: theme.textColor },
+                },
+            ],
+            dataset: { source: chartData },
+            series: seriesNames.map((name, i) => ({
+                name,
+                type: 'line',
+                showSymbol: false,
+                step: this._stepPlot ? 'end' : false,
+                stack: this._stacked ? 'total' : undefined,
+                areaStyle: this._stacked ? {} : undefined,
+                encode: { x: 0, y: i + 1 },
+            })),
+        };
     }
 
     getTitle(display, sources, protocols, ports, type) {
@@ -294,106 +423,59 @@ export class NfsenChart extends HTMLElement {
     }
 
     /**
-     * Handle zoom events from Dygraph
+     * Handle zoom/pan/range-selector-drag events (all fire the same 'datazoom' event).
      */
-    handleZoom(minDate, maxDate, _yRanges) {
-        // Enable sync button when graph is zoomed or panned
+    handleZoom() {
+        const range = this.getCurrentRange();
+        if (!range) return;
+
         this.updateSyncButtonState(true);
-
-        // Expose zoomed range as attributes
-        const from = Math.floor(minDate);
-        const to = Math.floor(maxDate);
-        this.setAttribute('data-zoom-start', from);
-        this.setAttribute('data-zoom-end', to);
-
-        // Notify listeners (e.g. auto-sync slider)
-        this.dispatchEvent(new CustomEvent('graph-zoom', { bubbles: true, detail: { from, to } }));
+        this.setAttribute('data-zoom-start', range.from);
+        this.setAttribute('data-zoom-end', range.to);
+        this.dispatchEvent(new CustomEvent('graph-zoom', { bubbles: true, detail: { from: range.from, to: range.to } }));
     }
 
     /**
-     * Handle click events on data points
-     * Allows user to click a point and zoom in to a 5-minute window around it
+     * Handle click events on data points.
+     * Allows user to click a point and zoom in to a 5-minute window around it.
      */
-    handleClick(_e, x, _points) {
+    handleClick(params) {
+        if (params.componentType !== 'series' || !params.value) return;
         if (!confirm('Zoom in to this data point?')) {
             return;
         }
-        const from = x;
-        const to = x + 300000;
-        if (this.dygraph) {
-            this.dygraph.updateOptions({
-                dateWindow: [from, to],
-            });
+        const x = params.value[0] instanceof Date ? params.value[0].getTime() : Number(params.value[0]);
+        if (this.chart) {
+            // Dispatching a dataZoom action fires the same 'datazoom' event a manual zoom
+            // would, so handleZoom() above takes care of the sync-button/attribute/event work.
+            this.chart.dispatchAction({ type: 'dataZoom', startValue: x, endValue: x + 300000 });
         }
-        this.updateSyncButtonState(true);
-        this.setAttribute('data-zoom-start', Math.floor(from));
-        this.setAttribute('data-zoom-end', Math.floor(to));
     }
 
     /**
-     * Set up pan handler to detect when user pans the graph
+     * Update the external #legend div to show the series values at the hovered x-position,
+     * matching the Dygraph labelsDiv behavior. ECharts has no built-in "render legend into
+     * an arbitrary external DOM node" option, so this is hand-rolled.
      */
-    setupPanHandler() {
-        if (!this.dygraph) return;
+    updateExternalLegend(params) {
+        const legendEl = document.getElementById('legend');
+        if (!legendEl || !this.chart) return;
 
-        // Save original endPan function if not already saved
-        if (!this.originalEndPan) {
-            this.originalEndPan = window.Dygraph.defaultInteractionModel.endPan;
+        const dataIndex = params.dataIndex;
+        const source = this.lastChartData;
+        if (dataIndex == null || !source || !source[dataIndex]) {
+            return;
         }
 
-        // Replace with our own that also enables sync button
-        window.Dygraph.defaultInteractionModel.endPan = (event, g, context) => {
-            // Call original
-            if (this.originalEndPan) {
-                this.originalEndPan(event, g, context);
-            }
+        const [ts, ...values] = source[dataIndex];
+        const tsMs = ts instanceof Date ? ts.getTime() : ts;
+        const formatY = this._labelsKMG2 ? formatKMG2 : this._labelsKMB ? formatKMB : (v) => String(v);
+        const seriesNames = (this.currentLabels || []).slice(1);
 
-            // Enable sync button after panning and fire zoom event
-            this.updateSyncButtonState(true);
-            const [from, to] = g.xAxisRange();
-            this.setAttribute('data-zoom-start', Math.floor(from));
-            this.setAttribute('data-zoom-end', Math.floor(to));
-            this.dispatchEvent(new CustomEvent('graph-zoom', { bubbles: true, detail: { from: Math.floor(from), to: Math.floor(to) } }));
-        };
-    }
-
-    /**
-     * Set up range selector handler to detect when user drags the range selector
-     */
-    setupRangeSelectorHandler() {
-        if (!this.dygraph) return;
-
-        // Wait for Dygraph to render the range selector
-        setTimeout(() => {
-            const rangeSelectorElements = this.container.querySelectorAll('.dygraph-rangesel-fgcanvas, .dygraph-rangesel-zoomhandle');
-
-            rangeSelectorElements.forEach((element) => {
-                // Track if we're currently dragging the range selector
-                element.addEventListener('mousedown', () => {
-                    this.rangeSelectorActive = true;
-
-                    // Set up mouseup handler
-                    const handleMouseUp = () => {
-                        if (this.rangeSelectorActive) {
-                            this.rangeSelectorActive = false;
-                            // Enable sync button after range selector drag
-                            this.updateSyncButtonState(true);
-                            if (this.dygraph) {
-                                const [from, to] = this.dygraph.xAxisRange();
-                                this.setAttribute('data-zoom-start', Math.floor(from));
-                                this.setAttribute('data-zoom-end', Math.floor(to));
-                                this.dispatchEvent(
-                                    new CustomEvent('graph-zoom', { bubbles: true, detail: { from: Math.floor(from), to: Math.floor(to) } })
-                                );
-                            }
-                        }
-                        document.removeEventListener('mouseup', handleMouseUp);
-                    };
-
-                    document.addEventListener('mouseup', handleMouseUp);
-                });
-            });
-        }, 100);
+        const rows = seriesNames
+            .map((name, i) => `<div>${escapeHtml(name)}: <b>${values[i] != null ? formatY(values[i]) : '—'}</b></div>`)
+            .join('');
+        legendEl.innerHTML = `<div class="fw-semibold">${escapeHtml(this.dateFmt(tsMs))}</div>${rows}`;
     }
 
     // Method to update chart data (can be called from Datastar)
@@ -440,26 +522,54 @@ export class NfsenChart extends HTMLElement {
         });
     }
 
-    // Public API methods to match Dygraph API for backward compatibility
-    // These allow the old nfsen-ng.js code to interact with the chart
+    // Public API methods — same names/shapes as the previous Dygraphs-backed implementation
+    // so graph-view.html.twig / graph-filters.html.twig / date-range.html.twig need no changes.
 
     /**
      * Resize the chart (called when container size changes)
      */
     resize() {
-        if (this.dygraph) {
-            this.dygraph.resize();
+        if (this.chart) {
+            this.chart.resize();
         }
     }
 
     /**
-     * Update chart options (e.g., stepPlot, stackedGraph, logscale)
-     * @param {Object} options - Dygraph options to update
+     * Update chart options. Accepts the same Dygraph-shaped keys the templates already
+     * send (logscale, stackedGraph, fillGraph, stepPlot, ylabel, labelsKMG2) and translates
+     * them into ECharts option patches internally.
+     * @param {Object} options
      */
     updateOptions(options) {
-        if (this.dygraph) {
-            this.dygraph.updateOptions(options);
-        }
+        if (!this.chart || !this.currentLabels) return;
+
+        if ('logscale' in options) this._logscale = options.logscale;
+        if ('stackedGraph' in options) this._stacked = options.stackedGraph;
+        if ('fillGraph' in options) this._stacked = options.fillGraph;
+        if ('stepPlot' in options) this._stepPlot = options.stepPlot;
+        if ('ylabel' in options) this._ylabel = options.ylabel;
+        if ('labelsKMG2' in options) this._labelsKMG2 = options.labelsKMG2;
+
+        const formatY = this._labelsKMG2 ? formatKMG2 : this._labelsKMB ? formatKMB : (v) => String(v);
+        const seriesNames = this.currentLabels.slice(1);
+
+        this.chart.setOption(
+            {
+                yAxis: {
+                    type: this._logscale ? 'log' : 'value',
+                    name: this._ylabel,
+                    axisLabel: { formatter: formatY },
+                },
+                series: seriesNames.map((name, i) => ({
+                    name,
+                    step: this._stepPlot ? 'end' : false,
+                    stack: this._stacked ? 'total' : undefined,
+                    areaStyle: this._stacked ? {} : undefined,
+                    encode: { x: 0, y: i + 1 },
+                })),
+            },
+            false
+        );
     }
 
     /**
@@ -468,42 +578,44 @@ export class NfsenChart extends HTMLElement {
      * @param {boolean} visible - Whether the series should be visible
      */
     setVisibility(seriesIndex, visible) {
-        if (this.dygraph) {
-            // Dygraph expects 0-based index where 0 is the first data series (not the date column)
-            this.dygraph.setVisibility(seriesIndex, visible);
-        }
+        if (!this.chart || !this.currentLabels) return;
+        const seriesName = this.currentLabels[seriesIndex + 1];
+        if (!seriesName) return;
+        // legend.selected controls series visibility regardless of whether the legend
+        // widget itself is shown (it's hidden here — see legend: {show:false} in buildOption).
+        this.chart.setOption({ legend: { selected: { [seriesName]: visible } } }, false);
     }
 
     /**
      * Get the current x-axis range
-     * @returns {Array} [minX, maxX] where values are timestamps
+     * @returns {Array|null} [minX, maxX] where values are timestamps
      */
     xAxisRange() {
-        if (this.dygraph) {
-            return this.dygraph.xAxisRange();
-        }
-        return null;
+        const range = this.getCurrentRange();
+        return range ? [range.from, range.to] : null;
     }
 
     /**
      * Check if the chart is currently zoomed
-     * @param {string} axis - 'x' or 'y'
      * @returns {boolean}
      */
-    isZoomed(axis) {
-        if (this.dygraph) {
-            return this.dygraph.isZoomed(axis);
-        }
-        return false;
+    isZoomed() {
+        const range = this.getCurrentRange();
+        if (!range || !this.lastChartData?.length) return false;
+        const first = this.lastChartData[0][0];
+        const last = this.lastChartData[this.lastChartData.length - 1][0];
+        const fullFrom = first instanceof Date ? first.getTime() : first;
+        const fullTo = last instanceof Date ? last.getTime() : last;
+        return range.from > fullFrom || range.to < fullTo;
     }
 
     /**
      * Destroy the chart
      */
     destroy() {
-        if (this.dygraph) {
-            this.dygraph.destroy();
-            this.dygraph = null;
+        if (this.chart) {
+            this.chart.dispose();
+            this.chart = null;
         }
     }
 
@@ -513,6 +625,10 @@ export class NfsenChart extends HTMLElement {
     toJSON() {
         return this.tagName;
     }
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
 // Register the custom element

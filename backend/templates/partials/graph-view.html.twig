@@ -131,19 +131,22 @@
             </div>
         </div>
 
-        {# Series visibility checkboxes — populated by nfsen-chart when it renders #}
+        {# Series visibility checkboxes — populated by nfsen-chart when it renders.
+           data-ignore-morph/data-ignore: this div is empty in the server-rendered HTML and
+           filled in entirely by JS; without these, an SSE-pushed morph shortly after load
+           wipes the checkboxes back out before the user ever sees them. #}
         <div class="col-md-2">
             <div class="filter-group">
             <p class="filter-label">Series Visibility</p>
-            <div id="series"></div>
+            <div id="series" data-ignore-morph data-ignore></div>
             </div>
         </div>
 
-        {# Dygraph legend #}
+        {# Chart legend — populated by nfsen-chart on hover; same data-ignore-morph reasoning as #series #}
         <div class="col-md-3">
             <div class="filter-group">
             <p class="filter-label">Legend</p>
-            <div id="legend"></div>
+            <div id="legend" data-ignore-morph data-ignore></div>
             </div>
         </div>
 

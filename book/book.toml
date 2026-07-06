@@ -1,0 +1,11 @@
+[book]
+title = "nfsen-ng"
+authors = ["Michael Bolli"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+fold.enable = true
+git-repository-url = "https://github.com/mbolli/nfsen-ng"

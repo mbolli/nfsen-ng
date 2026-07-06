@@ -14,3 +14,8 @@ node_modules/
 *.pdf
 
 wiki
+
+# mdBook build output
+book/book/
+# _capture.mjs visible-diff scratch (regenerated per run)
+book/.capture-diffs/

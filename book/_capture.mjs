@@ -67,6 +67,15 @@ const FUZZ = process.env.FUZZ || '2%';
 const DIFF_THRESHOLD = Number(process.env.DIFF_THRESHOLD ?? '0.0002');
 const PORT = 9334; // Chrome's own remote-debugging port, unrelated to the app's port
 const W = 1440, H = 1000;
+// Device pixel ratio for captured screenshots. Chrome is launched at
+// --force-device-scale-factor=1 (so the CSS layout math above stays simple),
+// then overridden to this via Emulation.setDeviceMetricsOverride right after
+// connecting -- CSS layout is unaffected (same W x H viewport), only the
+// output pixel density changes, same technique DevTools' own device toolbar
+// uses. 1.5x sharpens text/lines on high-DPI displays without the ~4x file
+// size hit of a full 2x (quantization already claws back most of the size
+// difference -- see the palette-quantization commit).
+const DPR = 1.5;
 
 // Newest non-snap Playwright Chrome (snap chromium can't write screenshots to /tmp).
 function resolveChrome() {
@@ -444,6 +453,7 @@ async function main() {
   await connect(await wsEndpoint());
   await send('Page.enable');
   await send('Runtime.enable');
+  await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: DPR, mobile: false });
 
   console.log('loading', BASE);
   await navigate(BASE + '/');

@@ -72,16 +72,16 @@ export class NfsenChart extends HTMLElement {
     getDygraphThemeColors() {
         const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
         return {
-            backgroundColor:                isDark ? '#212529' : '#ffffff',
+            backgroundColor: isDark ? '#212529' : '#ffffff',
             highlightSeriesBackgroundColor: isDark ? '#212529' : '#ffffff',
-            axisLineColor:                  isDark ? '#495057' : '#dee2e6',
-            gridLineColor:                  isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)',
-            rangeSelectorBackgroundColor:   isDark ? '#2b3035' : '#f8f9fa',
-            rangeSelectorPlotStrokeColor:   isDark ? '#adb5bd' : '#888888',
-            rangeSelectorPlotFillColor:     isDark ? '#495057' : '#cccccc',
+            axisLineColor: isDark ? '#495057' : '#dee2e6',
+            gridLineColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)',
+            rangeSelectorBackgroundColor: isDark ? '#2b3035' : '#f8f9fa',
+            rangeSelectorPlotStrokeColor: isDark ? '#adb5bd' : '#888888',
+            rangeSelectorPlotFillColor: isDark ? '#495057' : '#cccccc',
             // Brighter series colors on dark canvas; identical to Dygraph defaults on light
-            colorSaturation:                isDark ? 0.7  : 1.0,
-            colorValue:                     isDark ? 0.85 : 0.5,
+            colorSaturation: isDark ? 0.7 : 1.0,
+            colorValue: isDark ? 0.85 : 0.5,
             highlightSeriesOpts: {
                 strokeWidth: 2,
                 strokeBorderWidth: 1,
@@ -178,7 +178,7 @@ export class NfsenChart extends HTMLElement {
 
             // Convert {timestamp: [values]} to [[Date, val1, val2, ...]]
             chartData = Object.entries(data.data).map(([timestamp, values]) => {
-                const date = new Date(parseInt(timestamp) * 1000);
+                const date = new Date(parseInt(timestamp, 10) * 1000);
                 return [date, ...values];
             });
         }
@@ -204,7 +204,7 @@ export class NfsenChart extends HTMLElement {
             const updateConfig = {
                 title: this.getTitle(config.display, config.sources, config.protocols, config.ports, type),
                 labels: labels,
-                ylabel: type !== 'traffic' ? type.toUpperCase() + '/s' : trafficUnit + '/s',
+                ylabel: type !== 'traffic' ? `${type.toUpperCase()}/s` : `${trafficUnit}/s`,
                 labelsKMB: type === 'flows' || type === 'packets',
                 labelsKMG2: trafficUnit === 'bits' || trafficUnit === 'bytes',
                 file: chartData,
@@ -238,7 +238,7 @@ export class NfsenChart extends HTMLElement {
             width: 'auto',
             title: this.getTitle(config.display, config.sources, config.protocols, config.ports, type),
             labels: labels,
-            ylabel: type !== 'traffic' ? type.toUpperCase() + '/s' : trafficUnit + '/s',
+            ylabel: type !== 'traffic' ? `${type.toUpperCase()}/s` : `${trafficUnit}/s`,
             xlabel: 'TIME',
             labelsKMB: type === 'flows' || type === 'packets',
             labelsKMG2: trafficUnit === 'bits' || trafficUnit === 'bytes',
@@ -279,20 +279,24 @@ export class NfsenChart extends HTMLElement {
         const parse = (v) => {
             if (Array.isArray(v)) return v;
             if (typeof v === 'string') {
-                try { return JSON.parse(v); } catch { return [v]; }
+                try {
+                    return JSON.parse(v);
+                } catch {
+                    return [v];
+                }
             }
             return [v];
         };
         const displayItems = parse(display === 'sources' ? sources : display === 'protocols' ? protocols : ports);
         const cat = displayItems.length > 1 ? display : display.replace(/s$/, ''); // singular form
-        const titleSuffix = displayItems.length > 4 ? displayItems.length + ' ' + cat : cat + ' ' + displayItems.join(', ');
-        return type + ' for ' + titleSuffix;
+        const titleSuffix = displayItems.length > 4 ? `${displayItems.length} ${cat}` : `${cat} ${displayItems.join(', ')}`;
+        return `${type} for ${titleSuffix}`;
     }
 
     /**
      * Handle zoom events from Dygraph
      */
-    handleZoom(minDate, maxDate, yRanges) {
+    handleZoom(minDate, maxDate, _yRanges) {
         // Enable sync button when graph is zoomed or panned
         this.updateSyncButtonState(true);
 
@@ -310,7 +314,7 @@ export class NfsenChart extends HTMLElement {
      * Handle click events on data points
      * Allows user to click a point and zoom in to a 5-minute window around it
      */
-    handleClick(e, x, points) {
+    handleClick(_e, x, _points) {
         if (!confirm('Zoom in to this data point?')) {
             return;
         }
@@ -378,7 +382,9 @@ export class NfsenChart extends HTMLElement {
                                 const [from, to] = this.dygraph.xAxisRange();
                                 this.setAttribute('data-zoom-start', Math.floor(from));
                                 this.setAttribute('data-zoom-end', Math.floor(to));
-                                this.dispatchEvent(new CustomEvent('graph-zoom', { bubbles: true, detail: { from: Math.floor(from), to: Math.floor(to) } }));
+                                this.dispatchEvent(
+                                    new CustomEvent('graph-zoom', { bubbles: true, detail: { from: Math.floor(from), to: Math.floor(to) } })
+                                );
                             }
                         }
                         document.removeEventListener('mouseup', handleMouseUp);
@@ -395,7 +401,7 @@ export class NfsenChart extends HTMLElement {
         return ['data-chart-data', 'data-chart-config'];
     }
 
-    attributeChangedCallback(name, oldValue, newValue) {
+    attributeChangedCallback(_name, oldValue, newValue) {
         if (oldValue !== newValue && this.isConnected && newValue !== null) {
             this.initializeChart();
         }

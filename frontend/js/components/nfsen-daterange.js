@@ -3,7 +3,7 @@
  * Encapsulates noUiSlider with Datastar integration.
  * Replaces the former jQuery + ion.rangeSlider implementation.
  */
-import { getHours, getMinutes, formatDatePart } from './tz-utils.js';
+import { formatDatePart, getHours, getMinutes } from './tz-utils.js';
 
 // ── Date formatting helpers ─────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@ const _pad = (n) => String(n).padStart(2, '0');
 function getTzContext(el) {
     return {
         displayTz: el?.getAttribute('data-display-tz') || 'browser',
-        nfcapdTz:  el?.getAttribute('data-nfcapd-tz')  || 'UTC',
+        nfcapdTz: el?.getAttribute('data-nfcapd-tz') || 'UTC',
     };
 }
 
@@ -52,7 +52,7 @@ function formatTooltip(ms, selectedSpanMs, el) {
     }
     if (selectedSpanMs <= 7 * 86400_000) {
         // ≤7 days → "ddd DD MMM HH:MM"
-        const day  = formatDatePart(d, displayTz, nfcapdTz, { weekday: 'short' });
+        const day = formatDatePart(d, displayTz, nfcapdTz, { weekday: 'short' });
         const date = formatDatePart(d, displayTz, nfcapdTz, { day: '2-digit', month: 'short' });
         return `${day} ${date} ${_pad(getHours(d, displayTz, nfcapdTz))}:${_pad(getMinutes(d, displayTz, nfcapdTz))}`;
     }
@@ -82,10 +82,7 @@ function buildPipsConfig(minMs, maxMs, el) {
 /** Build tooltip formatters for the two handles. */
 function buildTooltips(from, to, el) {
     const span = to - from;
-    return [
-        { to: (v) => formatTooltip(v, span, el) },
-        { to: (v) => formatTooltip(v, span, el) },
-    ];
+    return [{ to: (v) => formatTooltip(v, span, el) }, { to: (v) => formatTooltip(v, span, el) }];
 }
 
 // ── Web Component ───────────────────────────────────────────────────────────
@@ -121,21 +118,21 @@ export class NfsenDateRange extends HTMLElement {
             return;
         }
 
-        const minMs  = parseInt(this.getAttribute('data-min')  || Date.now() - 86400_000);
-        const maxMs  = parseInt(this.getAttribute('data-max')  || Date.now());
-        const fromMs = parseInt(this.getAttribute('data-from') || minMs);
-        const toMs   = parseInt(this.getAttribute('data-to')   || maxMs);
+        const minMs = parseInt(this.getAttribute('data-min') || Date.now() - 86400_000, 10);
+        const maxMs = parseInt(this.getAttribute('data-max') || Date.now(), 10);
+        const fromMs = parseInt(this.getAttribute('data-from') || minMs, 10);
+        const toMs = parseInt(this.getAttribute('data-to') || maxMs, 10);
 
         window.noUiSlider.create(this.slider, {
-            start:     [fromMs, toMs],
-            connect:   true,
+            start: [fromMs, toMs],
+            connect: true,
             behaviour: 'drag-tap',
-            range:     { min: minMs, max: maxMs },
-            tooltips:  buildTooltips(fromMs, toMs, this),
-            pips:      buildPipsConfig(minMs, maxMs, this),
+            range: { min: minMs, max: maxMs },
+            tooltips: buildTooltips(fromMs, toMs, this),
+            pips: buildPipsConfig(minMs, maxMs, this),
             format: {
-                to:   (v) => Math.round(v),
-                from: (v) => parseInt(v),
+                to: (v) => Math.round(v),
+                from: (v) => parseInt(v, 10),
             },
         });
 
@@ -144,9 +141,12 @@ export class NfsenDateRange extends HTMLElement {
         this.slider.noUiSlider.on('change', (values) => {
             const [from, to] = values.map(Number);
             // Refresh tooltip format to reflect the new selected span
-            this.slider.noUiSlider.updateOptions({
-            tooltips: buildTooltips(from, to, this),
-            }, false); // false = do not re-render (tooltips update themselves)
+            this.slider.noUiSlider.updateOptions(
+                {
+                    tooltips: buildTooltips(from, to, this),
+                },
+                false
+            ); // false = do not re-render (tooltips update themselves)
             this._emitRangeChange(from, to);
         });
     }
@@ -161,9 +161,9 @@ export class NfsenDateRange extends HTMLElement {
                     from,
                     to,
                     fromDate: new Date(from),
-                    toDate:   new Date(to),
+                    toDate: new Date(to),
                 },
-                bubbles:  true,
+                bubbles: true,
                 composed: true,
             })
         );
@@ -238,10 +238,10 @@ export class NfsenDateRange extends HTMLElement {
 
         // Batch: multiple attrs may fire in the same microtask
         if (!this._pendingUpdates) this._pendingUpdates = {};
-        if (name === 'data-min')  this._pendingUpdates.min  = parseInt(newValue);
-        if (name === 'data-max')  this._pendingUpdates.max  = parseInt(newValue);
-        if (name === 'data-from') this._pendingUpdates.from = parseInt(newValue);
-        if (name === 'data-to')   this._pendingUpdates.to   = parseInt(newValue);
+        if (name === 'data-min') this._pendingUpdates.min = parseInt(newValue, 10);
+        if (name === 'data-max') this._pendingUpdates.max = parseInt(newValue, 10);
+        if (name === 'data-from') this._pendingUpdates.from = parseInt(newValue, 10);
+        if (name === 'data-to') this._pendingUpdates.to = parseInt(newValue, 10);
 
         clearTimeout(this._updateTimer);
         this._updateTimer = setTimeout(() => {
@@ -256,16 +256,19 @@ export class NfsenDateRange extends HTMLElement {
             if (upd.min !== undefined || upd.max !== undefined) {
                 const newMin = upd.min ?? curRange.min;
                 const newMax = upd.max ?? curRange.max;
-                ns.updateOptions({
-                    range: { min: newMin, max: newMax },
-                    pips:  buildPipsConfig(newMin, newMax, this),
-                }, true); // true = fire re-render
+                ns.updateOptions(
+                    {
+                        range: { min: newMin, max: newMax },
+                        pips: buildPipsConfig(newMin, newMax, this),
+                    },
+                    true
+                ); // true = fire re-render
             }
 
             // Update handle positions if from/to changed
             const [curFrom, curTo] = ns.get(true).map(Number);
             const newFrom = upd.from ?? curFrom;
-            const newTo   = upd.to   ?? curTo;
+            const newTo = upd.to ?? curTo;
             if (newFrom !== curFrom || newTo !== curTo) {
                 ns.updateOptions({ tooltips: buildTooltips(newFrom, newTo, this) }, false);
                 ns.set([newFrom, newTo]);

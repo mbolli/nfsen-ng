@@ -246,7 +246,7 @@ export class NfsenTable extends HTMLElement {
                 let value = row[header] || '';
                 // Escape quotes and wrap in quotes if contains comma or quote
                 if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-                    value = '"' + value.replace(/"/g, '""') + '"';
+                    value = `"${value.replace(/"/g, '""')}"`;
                 }
                 return value;
             });
@@ -399,11 +399,15 @@ export class NfsenTable extends HTMLElement {
                 if (e.target.checked) {
                     // Show all columns
                     this.hiddenColumns = [];
-                    columnCheckboxes.forEach((cb) => (cb.checked = true));
+                    columnCheckboxes.forEach((cb) => {
+                        cb.checked = true;
+                    });
                 } else {
                     // Hide all columns
                     this.hiddenColumns = headers.map((h) => h.textContent.trim());
-                    columnCheckboxes.forEach((cb) => (cb.checked = false));
+                    columnCheckboxes.forEach((cb) => {
+                        cb.checked = false;
+                    });
                 }
                 this.saveHiddenColumns();
                 this.applyColumnVisibility();
@@ -544,7 +548,9 @@ export class NfsenTable extends HTMLElement {
         });
 
         // Re-append sorted rows
-        rows.forEach((row) => tbody.appendChild(row));
+        rows.forEach((row) => {
+            tbody.appendChild(row);
+        });
 
         // Re-apply column visibility after sorting
         this.applyColumnVisibility();
@@ -564,7 +570,7 @@ export class NfsenTable extends HTMLElement {
 
         let result = 0;
 
-        if (!isNaN(numA) && !isNaN(numB)) {
+        if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
             // Both are numbers
             result = numA - numB;
         } else {

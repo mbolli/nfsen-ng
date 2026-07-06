@@ -32,9 +32,7 @@ class NfsenToast extends HTMLElement {
     render(type, message, autoDismiss = false) {
         const alertType = type === 'error' ? 'danger' : type;
         const icon = this.getIcon(type);
-        const progressBar = autoDismiss
-            ? `<div class="toast-progress" style="animation-duration:${this.autoDismissDelay}ms"></div>`
-            : '';
+        const progressBar = autoDismiss ? `<div class="toast-progress" style="animation-duration:${this.autoDismissDelay}ms"></div>` : '';
 
         this.innerHTML = `
             <div class="alert alert-${alertType} alert-dismissible fade show" role="alert">
@@ -86,7 +84,7 @@ customElements.define('nfsen-toast', NfsenToast);
 
 // Global helper function for client-side usage
 // containerSelector: optional CSS selector for the target container (should have data-ignore-morph)
-window.showMessage = function (type, message, autoDismiss = false, containerSelector = null) {
+window.showMessage = (type, message, autoDismiss = false, containerSelector = null) => {
     // Create a new toast element
     const toast = document.createElement('nfsen-toast');
     toast.dataset.type = type;

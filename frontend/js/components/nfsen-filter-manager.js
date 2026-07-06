@@ -35,7 +35,7 @@ class NfsenFilterManager extends HTMLElement {
         if (name === 'data-default-filters' && newValue !== oldValue) {
             try {
                 this.defaultFilters = newValue ? JSON.parse(newValue) : [];
-            } catch (e) {
+            } catch (_e) {
                 this.defaultFilters = [];
             }
             // Only reload if the component has already rendered
@@ -275,7 +275,7 @@ class NfsenFilterManager extends HTMLElement {
             return;
         }
 
-        let filters = this.getStoredFilters();
+        const filters = this.getStoredFilters();
 
         // Check if filter already exists
         if (filters.includes(currentFilter)) {

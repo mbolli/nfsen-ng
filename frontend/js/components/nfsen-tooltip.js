@@ -31,7 +31,7 @@ class NfsenTooltip extends HTMLElement {
         return ['text', 'placement', 'no-icon'];
     }
 
-    attributeChangedCallback(name, oldValue, newValue) {
+    attributeChangedCallback(_name, oldValue, newValue) {
         if (oldValue !== newValue && this.isConnected) {
             this.disposeTooltip();
             this.render();
@@ -40,8 +40,8 @@ class NfsenTooltip extends HTMLElement {
     }
 
     render() {
-        const text = this.getAttribute('text') || 'No tooltip text provided';
-        const placement = this.getAttribute('placement') || 'right';
+        const _text = this.getAttribute('text') || 'No tooltip text provided';
+        const _placement = this.getAttribute('placement') || 'right';
         const noIcon = this.hasAttribute('no-icon');
 
         if (noIcon) {
@@ -93,37 +93,39 @@ class NfsenTooltip extends HTMLElement {
             switch (placement) {
                 case 'top':
                     left = r.left + r.width / 2 - t.width / 2;
-                    top  = r.top - t.height - gap;
+                    top = r.top - t.height - gap;
                     break;
                 case 'bottom':
                     left = r.left + r.width / 2 - t.width / 2;
-                    top  = r.bottom + gap;
+                    top = r.bottom + gap;
                     break;
                 case 'left':
                     left = r.left - t.width - gap;
-                    top  = r.top + r.height / 2 - t.height / 2;
+                    top = r.top + r.height / 2 - t.height / 2;
                     break;
                 default: // right
                     left = r.right + gap;
-                    top  = r.top + r.height / 2 - t.height / 2;
+                    top = r.top + r.height / 2 - t.height / 2;
             }
             // Keep inside viewport
-            left = Math.max(4, Math.min(left, window.innerWidth  - t.width  - 4));
-            top  = Math.max(4, Math.min(top,  window.innerHeight - t.height - 4));
-            tip.style.left = left + 'px';
-            tip.style.top  = top  + 'px';
+            left = Math.max(4, Math.min(left, window.innerWidth - t.width - 4));
+            top = Math.max(4, Math.min(top, window.innerHeight - t.height - 4));
+            tip.style.left = `${left}px`;
+            tip.style.top = `${top}px`;
         };
-        const hide = () => { tip.style.display = 'none'; };
+        const hide = () => {
+            tip.style.display = 'none';
+        };
 
         trigger.addEventListener('mouseenter', show);
         trigger.addEventListener('mouseleave', hide);
-        trigger.addEventListener('focusin',    show);
-        trigger.addEventListener('focusout',   hide);
+        trigger.addEventListener('focusin', show);
+        trigger.addEventListener('focusout', hide);
 
         // Store handlers for cleanup
         this._showHandler = show;
         this._hideHandler = hide;
-        this._triggerEl   = trigger;
+        this._triggerEl = trigger;
     }
 
     disposeTooltip() {
@@ -134,8 +136,8 @@ class NfsenTooltip extends HTMLElement {
         if (this._triggerEl) {
             this._triggerEl.removeEventListener('mouseenter', this._showHandler);
             this._triggerEl.removeEventListener('mouseleave', this._hideHandler);
-            this._triggerEl.removeEventListener('focusin',    this._showHandler);
-            this._triggerEl.removeEventListener('focusout',   this._hideHandler);
+            this._triggerEl.removeEventListener('focusin', this._showHandler);
+            this._triggerEl.removeEventListener('focusout', this._hideHandler);
             this._triggerEl = null;
         }
     }
@@ -145,4 +147,3 @@ class NfsenTooltip extends HTMLElement {
 customElements.define('nfsen-tooltip', NfsenTooltip);
 
 export { NfsenTooltip };
-

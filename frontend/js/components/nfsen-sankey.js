@@ -138,8 +138,8 @@ export class NfsenSankey extends HTMLElement {
     }
 
     updateChart(payload) {
-        const nodes = (payload && payload.nodes) || [];
-        const links = (payload && payload.links) || [];
+        const nodes = payload?.nodes || [];
+        const links = payload?.links || [];
 
         if (!nodes.length || !links.length) {
             this.lastPayload = null;
@@ -154,8 +154,8 @@ export class NfsenSankey extends HTMLElement {
     renderChart(payload) {
         if (!this.container) return;
 
-        const nodes = (payload && payload.nodes) || [];
-        const links = (payload && payload.links) || [];
+        const nodes = payload?.nodes || [];
+        const links = payload?.links || [];
 
         if (!this.chart) {
             // showMessage() may have left a message div behind (error/empty state) — clear it
@@ -166,7 +166,7 @@ export class NfsenSankey extends HTMLElement {
             // after the results card switched from display:none to visible), ECharts
             // may have measured a stale/undersized width at init time. Re-measure once
             // on the next frame so the diagram isn't permanently stuck at that size.
-            requestAnimationFrame(() => this.chart && this.chart.resize());
+            requestAnimationFrame(() => this.chart?.resize());
         }
 
         const theme = this.getThemeColors();
@@ -186,11 +186,13 @@ export class NfsenSankey extends HTMLElement {
                         if (params.dataType === 'edge') {
                             const src = params.data.source.replace(/^src:/, '');
                             const dst = params.data.target.replace(/^dst:/, '');
-                            return `${src} &rarr; ${dst}<br>` +
+                            return (
+                                `${src} &rarr; ${dst}<br>` +
                                 `Volume: <b>${formatBytes(params.data.value)}</b><br>` +
-                                `Flows: <b>${formatNumber(params.data.flows || 0)}</b>`;
+                                `Flows: <b>${formatNumber(params.data.flows || 0)}</b>`
+                            );
                         }
-                        const label = (params.data && params.data.label) || params.name;
+                        const label = params.data?.label || params.name;
                         return label;
                     },
                 },
@@ -241,7 +243,7 @@ export class NfsenSankey extends HTMLElement {
         return ['data-sankey-data'];
     }
 
-    attributeChangedCallback(name, oldValue, newValue) {
+    attributeChangedCallback(_name, oldValue, newValue) {
         if (oldValue !== newValue && this.isConnected && newValue !== null) {
             this.initializeChart();
         }

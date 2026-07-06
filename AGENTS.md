@@ -25,8 +25,8 @@ composer before-commit  # fix + phpstan
 **Always run `composer before-commit` after a set of PHP changes and fix any reported errors before committing.**
 
 pnpm install            # Install JS deps (copies datastar.js to frontend/js/)
-pnpm run lint           # ESLint frontend/
-pnpm run format         # Prettier frontend/
+pnpm run lint           # Biome lint frontend/js/components + frontend/css/nfsen-ng.css
+pnpm run format         # Biome format (write) frontend/js/components + frontend/css/nfsen-ng.css
 ```
 
 ## Architecture

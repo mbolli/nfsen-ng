@@ -25,6 +25,6 @@ essentially a form over nfdump's CLI surface, not a reimplementation of it.
 
 ## IP details
 
-Clicking an IP address cell opens a modal with reverse-DNS (and, if
-configured, [Netbox](../features/ip-info.md)) information for that address —
-see [IP Info Lookup](ip-info.md).
+Clicking an IP address cell opens a modal with reverse-DNS plus either
+public-IP geolocation or (for private IPs) Netbox data — see
+[IP Info Lookup](ip-info.md).

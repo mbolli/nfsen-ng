@@ -168,6 +168,21 @@ async function waitJs(expr, { timeout = 9000, label = expr } = {}) {
 // helper injected page-side: drive the real Datastar-bound controls the way
 // a human would, rather than poking $_currentView/$_settingsSection directly.
 const HELPERS = `
+// Set a <select data-bind> element's value (found by CSS selector, since
+// Datastar's bind() generates a hashed data-bind attribute, not a stable
+// id) and dispatch input/change so Datastar's own binding notices, the same
+// way a real user picking an option would -- used to cap "Limit Flows"
+// before shooting the flows table so the screenshot isn't hundreds of rows
+// tall.
+window.__setSelect = function(selector, value){
+  var e = document.querySelector(selector);
+  if (!e) return false;
+  var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+  setter.call(e, String(value));
+  e.dispatchEvent(new Event('input', {bubbles:true}));
+  e.dispatchEvent(new Event('change', {bubbles:true}));
+  return true;
+};
 // Click the first element with a data-on:click* attribute (nfsen-ng uses both
 // data-on:click and data-on:click__prevent) whose expression contains sub --
 // this is how every nav tab / settings sub-nav link is wired (see
@@ -186,9 +201,15 @@ window.__clickAttr = function(sub){
   }
   return false;
 };
+// Only considers VISIBLE matches (offsetParent !== null) -- nfsen-ng's
+// immediate-mode rendering keeps every tab's markup in the DOM at once
+// (hidden via data-show/display:none), so identical button text (e.g. every
+// data tab's own "Process data" button) exists multiple times simultaneously
+// and an unfiltered match would always hit the first (likely wrong, hidden)
+// one regardless of which tab is actually showing.
 window.__clickText = function(text, tag){
   var els = document.querySelectorAll(tag || 'button,a');
-  var el = [...els].find(e => e.textContent.trim().includes(text));
+  var el = [...els].find(e => e.offsetParent !== null && e.textContent.trim().includes(text));
   if(el){ el.click(); return true; } return false;
 };
 // Returns the element right after the first heading whose text includes
@@ -402,10 +423,15 @@ async function selectYearRange() {
 async function processData({ timeout = 20000 } = {}) {
   const clicked = await evaluate(`__clickText('Process data', 'button')`);
   if (!clicked) throw new Error('"Process data" button not found');
-  await sleep(300);
   // The spinner element is always in the DOM (Datastar toggles display:none
   // via data-show, never removes it) -- check visibility, not existence.
-  await waitJs(`(function(){var s=document.querySelector('.spinner-grow');return !s||s.offsetParent===null;})()`, { timeout, label: 'Process data query to finish' });
+  // Wait for it to APPEAR first: there's a beat between click() and the
+  // fetch actually starting, and a query that finishes fast enough (or an
+  // indicator that hasn't flipped yet) can otherwise look indistinguishable
+  // from "already done", letting the shot fire mid-query.
+  const isVisible = `(function(){var s=document.querySelector('.spinner-grow');return !!s&&s.offsetParent!==null;})()`;
+  await waitJs(isVisible, { timeout: 5000, label: 'Process data query to start' }).catch(() => {});
+  await waitJs(`!(${isVisible})`, { timeout, label: 'Process data query to finish' });
   await sleep(300);
 }
 
@@ -441,6 +467,10 @@ async function main() {
   // ---- 01: Flows -- the flow table browser ----
   console.log('shot 01 flows');
   await go(`_currentView = 'flows'`);
+  // Cap the result count before running the query -- real historical data
+  // (via the Year range above) can mean hundreds of rows, which makes for
+  // an unreasonably tall documentation screenshot.
+  await evaluate(`__setSelect('#filterFlowsLimit select', 20)`);
   await processData(); // Flows doesn't auto-query on date/filter change -- see processData()'s doc comment
   await shot('01-page-flows');
 

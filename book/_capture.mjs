@@ -386,7 +386,11 @@ async function shot(name, clipSel) {
   writeFileSync(lightFile, Buffer.from(light.data, 'base64'));
   writeFileSync(darkFile, Buffer.from(dark.data, 'base64'));
 
-  execFileSync('convert', [lightFile, darkFile, '+append', newFile]);
+  // Quantize to a 256-color palette (like TinyPNG) while stitching -- these
+  // are flat-color UI screenshots, not photos, so this is a ~65-75% size
+  // cut with no visible loss (checked against the Sankey diagram's gradient
+  // bands specifically, the case most likely to show banding: none seen).
+  execFileSync('convert', [lightFile, darkFile, '+append', '+dither', '-colors', '256', '-strip', newFile]);
   unlinkSync(lightFile);
   unlinkSync(darkFile);
 

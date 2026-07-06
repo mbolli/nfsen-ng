@@ -4,10 +4,6 @@ Tracked as [GitHub issues](https://github.com/mbolli/nfsen-ng/issues).
 
 ## In progress
 
-- **[#152 — Sankey diagram](https://github.com/mbolli/nfsen-ng/issues/152).**
-  The Sankey tab (see [Sankey Diagram](features/sankey.md)) exists and
-  renders, backed by a dedicated aggregation query and ECharts — under
-  active development.
 - **[#150 — Alerts improvement](https://github.com/mbolli/nfsen-ng/issues/150).**
   Host/subnet and protocol-scoped alerting, implemented as a freeform nfdump
   traffic filter on a rule (see [Alerts](features/alerts.md)) rather than
@@ -26,6 +22,11 @@ Tracked as [GitHub issues](https://github.com/mbolli/nfsen-ng/issues).
 
 ## Recently shipped
 
+- **[#152 — Sankey diagram](https://github.com/mbolli/nfsen-ng/issues/152).**
+  The Sankey tab (see [Sankey Diagram](features/sankey.md)) aggregates
+  flows into top-N src/dst pairs and renders them with ECharts.
+- Migrated the Graphs tab from Dygraphs to Apache ECharts, so the whole app
+  now shares one charting library instead of two.
 - Custom-duration date range input (presets weren't granular enough for
   every use case).
 - Column visibility/sort-order persistence across SSE table re-renders.

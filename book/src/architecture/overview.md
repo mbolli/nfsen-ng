@@ -25,7 +25,7 @@ Signals + Actions + SSE (php-via / Datastar) → browser
 | Templates | Twig |
 | Flow decoding | [nfdump](https://github.com/phaag/nfdump) CLI, invoked as a subprocess |
 | Storage | RRD (default) or VictoriaMetrics, pluggable per the `Datasource` interface |
-| Charts | Dygraphs (time-series), ECharts (Sankey) |
+| Charts | Apache ECharts (time-series graphs and Sankey diagram) |
 
 ## Why one long-running process
 

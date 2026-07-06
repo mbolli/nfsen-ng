@@ -1,8 +1,8 @@
 # Traffic Graphs
 
 The default landing tab: time-series traffic graphs rendered with
-[Dygraphs](https://dygraphs.com/), driven by the shared date-range control
-(top of every data tab) and a filter panel.
+[Apache ECharts](https://echarts.apache.org/), driven by the shared date-range
+control (top of every data tab) and a filter panel.
 
 ![Graphs tab](../images/00-page-graphs.png)
 
@@ -27,5 +27,5 @@ refresh.
 
 Below the chart: a data-points slider (points to render, trading resolution
 for render cost), linear/logarithmic scale, stacked/line series display, and
-step/curve plot style — all client-side Dygraphs options, no server
+step/curve plot style — all client-side ECharts options, no server
 round-trip.

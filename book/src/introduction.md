@@ -33,6 +33,5 @@ fit together; [Features](features/graphs.md) walks each screen; and
 
 ## Status
 
-This book documents the `v1.0.0-RC.1` line. The Sankey diagram (§[Sankey
-Diagram](features/sankey.md)) is under active development — see the
-[Roadmap](roadmap.md) for what's tracked and what's next.
+This book documents the `v1.0.0-RC.1` line — see the [Roadmap](roadmap.md)
+for what's tracked and what's next.

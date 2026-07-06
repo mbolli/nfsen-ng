@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\common;
 
 use mbolli\nfsen_ng\datasources\Datasource;
+use mbolli\nfsen_ng\processor\Nfdump;
 use OpenSwoole\Coroutine;
 use OpenSwoole\Coroutine\Http\Client;
 
@@ -59,7 +60,7 @@ final class AlertManager {
                 continue;
             }
 
-            $current = $this->db->fetchLatestSlot($rule->sources, $profile);
+            $current = $this->fetchCurrentSlot($rule, $profile);
             $threshold = $this->computeThreshold($rule, $current);
             $value = $current[$rule->metric] ?? 0.0;
 
@@ -83,6 +84,19 @@ final class AlertManager {
         $this->saveState();
 
         return $fired;
+    }
+
+    /**
+     * Fetch the current metric slot for a rule, honouring its optional nfdumpFilter.
+     * Shared by runPeriodic() and the test-alert action so both evaluate a rule
+     * identically.
+     *
+     * @return array{flows: float, packets: float, bytes: float}
+     */
+    public function fetchCurrentSlot(AlertRule $rule, string $profile): array {
+        return $rule->nfdumpFilter !== null
+            ? $this->fetchFilteredSlot($rule, $profile)
+            : $this->db->fetchLatestSlot($rule->sources, $profile);
     }
 
     /**
@@ -119,13 +133,6 @@ final class AlertManager {
         return \array_slice($this->log, 0, max(1, $n));
     }
 
-    // ── Notifications ──────────────────────────────────────────────────────────
-
-    /**
-     * Append a log entry, send email and/or webhook as configured.
-     *
-     * @param array{flows: float, packets: float, bytes: float} $values
-     */
     public function dispatchNotifications(AlertRule $rule, array $values, int $ts): void {
         $entry = [
             'ts' => $ts,
@@ -177,6 +184,58 @@ final class AlertManager {
         }
 
         $this->atomicWrite($this->statePath, (string) json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    // ── Notifications ──────────────────────────────────────────────────────────
+
+    /**
+     * Run nfdump over the latest 5-min slot with the rule's nfdumpFilter and return
+     * aggregate flows/packets/bytes.  Falls back to zeros on any nfdump error so the
+     * caller can still evaluate the threshold (and presumably not fire).
+     *
+     * @return array{flows: float, packets: float, bytes: float}
+     */
+    private function fetchFilteredSlot(AlertRule $rule, string $profile): array {
+        $empty = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+
+        if (Nfdump::$runningPid !== null) {
+            return $empty; // another nfdump is running; skip rather than queue
+        }
+
+        try {
+            $now = time();
+            $nfdump = Nfdump::getInstance();
+            $nfdump->reset();
+            $nfdump->setProfile($profile);
+            $nfdump->setOption('-R', [$now - 300, $now]);
+
+            $sources = $rule->sources;
+            if (\count($sources) > 1) {
+                $nfdump->setOption('-M', implode(':', $sources));
+            } elseif (\count($sources) === 1) {
+                $nfdump->setOption('-M', $sources[0]);
+            }
+
+            $nfdump->setFilter($rule->nfdumpFilter ?? '');
+            $nfdump->setOption('-o', 'json');
+            $result = $nfdump->execute();
+
+            $flows = 0.0;
+            $packets = 0.0;
+            $bytes = 0.0;
+            foreach ($result['decoded'] as $record) {
+                if (!\is_array($record)) {
+                    continue;
+                }
+                $flows += (float) ($record['fl'] ?? 1);
+                $packets += (float) ($record['ipkt'] ?? 0);
+                $bytes += (float) ($record['ibyt'] ?? 0);
+            }
+
+            return ['flows' => $flows, 'packets' => $packets, 'bytes' => $bytes];
+        } catch (\Throwable) {
+            return $empty;
+        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

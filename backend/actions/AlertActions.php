@@ -31,6 +31,7 @@ final class AlertActions {
             $alertFormCooldownSlots = $c->getSignal('alert_form_cooldownSlots');
             $alertFormNotifyEmail = $c->getSignal('alert_form_notifyEmail');
             $alertFormNotifyWebhook = $c->getSignal('alert_form_notifyWebhook');
+            $alertFormNfdumpFilter = $c->getSignal('alert_form_nfdumpFilter');
             \assert(
                 $alertFormId !== null
                 && $alertFormName !== null
@@ -45,6 +46,7 @@ final class AlertActions {
                 && $alertFormCooldownSlots !== null
                 && $alertFormNotifyEmail !== null
                 && $alertFormNotifyWebhook !== null
+                && $alertFormNfdumpFilter !== null
             );
             $id = trim($alertFormId->string());
 
@@ -63,6 +65,7 @@ final class AlertActions {
                     'cooldownSlots' => $alertFormCooldownSlots->int(),
                     'notifyEmail' => $alertFormNotifyEmail->string(),
                     'notifyWebhook' => $alertFormNotifyWebhook->string(),
+                    'nfdumpFilter' => $alertFormNfdumpFilter->string(),
                 ]);
 
                 $prefs = UserPreferences::load(Config::$prefsFile) ?? UserPreferences::fromArray([]);
@@ -170,7 +173,7 @@ final class AlertActions {
             }
 
             try {
-                $current = Config::$db->fetchLatestSlot($rule->sources, $rule->profile);
+                $current = $alertMgr->fetchCurrentSlot($rule, $rule->profile);
                 $threshold = $alertMgr->computeThreshold($rule, $current);
                 $value = $current[$rule->metric] ?? 0.0;
 

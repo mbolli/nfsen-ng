@@ -28,6 +28,8 @@ final class AlertRule {
         public readonly int $cooldownSlots,
         public readonly ?string $notifyEmail,
         public readonly ?string $notifyWebhook,
+        /** Optional nfdump filter expression, e.g. "proto icmp" or "net 192.168.1.0/24" */
+        public readonly ?string $nfdumpFilter = null,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -46,6 +48,7 @@ final class AlertRule {
             cooldownSlots: max(0, (int) ($data['cooldownSlots'] ?? 3)),
             notifyEmail: isset($data['notifyEmail']) && $data['notifyEmail'] !== '' ? (string) $data['notifyEmail'] : null,
             notifyWebhook: isset($data['notifyWebhook']) && $data['notifyWebhook'] !== '' ? (string) $data['notifyWebhook'] : null,
+            nfdumpFilter: isset($data['nfdumpFilter']) && $data['nfdumpFilter'] !== '' ? (string) $data['nfdumpFilter'] : null,
         );
     }
 
@@ -65,6 +68,7 @@ final class AlertRule {
             'cooldownSlots' => $this->cooldownSlots,
             'notifyEmail' => $this->notifyEmail,
             'notifyWebhook' => $this->notifyWebhook,
+            'nfdumpFilter' => $this->nfdumpFilter,
         ];
     }
 
@@ -83,6 +87,7 @@ final class AlertRule {
             cooldownSlots: $this->cooldownSlots,
             notifyEmail: $this->notifyEmail,
             notifyWebhook: $this->notifyWebhook,
+            nfdumpFilter: $this->nfdumpFilter,
         );
     }
 }

@@ -48,6 +48,9 @@
                         {% else %}
                             {{ rule.thresholdValue|number_format(0) }}% of {{ rule.avgWindow }} avg
                         {% endif %}
+                        {% if rule.nfdumpFilter %}
+                            <br><span class="text-muted" title="nfdump filter">⊂ {{ rule.nfdumpFilter|e }}</span>
+                        {% endif %}
                     </td>
                     <td>
                         {% if rule.notifyEmail %}<span title="{{ rule.notifyEmail|e }}" class="me-1">✉</span>{% endif %}
@@ -79,6 +82,7 @@
                                     ${{ alert_form_cooldownSlots.id() }} = {{ rule.cooldownSlots }};
                                     ${{ alert_form_notifyEmail.id() }} = '{{ rule.notifyEmail|default('')|e('js') }}';
                                     ${{ alert_form_notifyWebhook.id() }} = '{{ rule.notifyWebhook|default('')|e('js') }}';
+                                    ${{ alert_form_nfdumpFilter.id() }} = '{{ rule.nfdumpFilter|default('')|e('js') }}';
                                     document.getElementById('alert-form-card').scrollIntoView({behavior:'smooth'})">
                             ✏
                         </button>
@@ -222,6 +226,22 @@
                 <div class="form-text">Slots to suppress re-triggering after a fire.</div>
             </div>
 
+        </div>{# /row #}
+
+        <hr class="my-3">
+        <h6 class="text-muted small text-uppercase mb-3">Traffic filter <span class="text-muted fw-normal text-lowercase">(optional)</span></h6>
+
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label fw-semibold small">nfdump filter expression</label>
+                <input type="text" class="form-control form-control-sm font-monospace"
+                       placeholder="e.g. proto icmp  |  net 192.168.1.0/24  |  src net 10.0.0.0/8 and proto tcp"
+                       {{ bind(alert_form_nfdumpFilter) }}>
+                <div class="form-text">
+                    When set, the alert evaluates only flows matching this expression (runs nfdump on the latest slot).
+                    Leave blank to use pre-aggregated RRD/VictoriaMetrics totals.
+                </div>
+            </div>
         </div>{# /row #}
 
         <hr class="my-3">

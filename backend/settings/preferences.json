@@ -40,7 +40,8 @@
             "avgWindow": "10m",
             "cooldownSlots": 3,
             "notifyEmail": null,
-            "notifyWebhook": null
+            "notifyWebhook": null,
+            "nfdumpFilter": null
         },
         {
             "id": "5298562531c897f14ee838f2d2e1fa85",
@@ -57,7 +58,8 @@
             "avgWindow": "1h",
             "cooldownSlots": 3,
             "notifyEmail": null,
-            "notifyWebhook": null
+            "notifyWebhook": null,
+            "nfdumpFilter": null
         },
         {
             "id": "3ff9716b39f6ba2c3d2adc1119713ed6",
@@ -74,7 +76,8 @@
             "avgWindow": "1h",
             "cooldownSlots": 3,
             "notifyEmail": null,
-            "notifyWebhook": null
+            "notifyWebhook": null,
+            "nfdumpFilter": null
         }
     ],
     "displayTimezone": "browser"

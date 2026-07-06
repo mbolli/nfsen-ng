@@ -311,6 +311,7 @@ describe('AlertRule roundtrip', function (): void {
             'cooldownSlots' => 5,
             'notifyEmail' => 'alert@example.com',
             'notifyWebhook' => 'https://example.com/hook',
+            'nfdumpFilter' => 'proto icmp',
         ];
 
         $rule = AlertRule::fromArray($data);

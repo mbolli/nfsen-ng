@@ -242,6 +242,7 @@ $app->page('/', function (Context $c) use ($app): void {
     $alertFormCooldownSlots = $c->signal(3, 'alert_form_cooldownSlots', clientWritable: true);
     $alertFormNotifyEmail = $c->signal('', 'alert_form_notifyEmail', clientWritable: true);
     $alertFormNotifyWebhook = $c->signal('', 'alert_form_notifyWebhook', clientWritable: true);
+    $alertFormNfdumpFilter = $c->signal('', 'alert_form_nfdumpFilter', clientWritable: true);
 
     // ── State containers (plain PHP — NOT signals, not sent to browser) ──────
     // These carry large result sets between the action and the view closure.

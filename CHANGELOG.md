@@ -5,6 +5,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Sankey diagram tab visualizing src→dst traffic flow ([#152](https://github.com/mbolli/nfsen-ng/issues/152))
+- `DEMO_MODE` with a synthetic live-data generator (`DemoDaemon`) for running the UI without a real capture pipeline
+- `displayTimezone` user preference (browser vs. capture timezone), applied across chart/date-range formatting and alert emails
+- Custom duration input (numeric + h/d/w unit) alongside the date-range preset buttons ([#148](https://github.com/mbolli/nfsen-ng/issues/148))
+- Optional nfdump traffic filter on alert rules
+- Health check: surface missing `ps`/`pgrep` as a warning
+- Animated tab switching via the View Transitions API
+- mdBook documentation site, published to GitHub Pages on every push to `book/`
+- End-to-end browser test suite (`tests/e2e/`): drives a real headless Chrome over raw CDP (no Playwright/Puppeteer dependency) against every tab — smoke, graphs, flows, statistics, sankey, settings, alerts — plus a `npm run test-e2e` runner
+
+### Changed
+
+- Graphs tab migrated from Dygraphs to Apache ECharts
+- Frontend linting/formatting migrated from ESLint+Prettier to Biome
+- `php-via` upgraded to `~0.10.0`, resolving 15 Dependabot alerts
+- Settings and Admin tabs merged into a single Settings tab with vertical sub-navigation
+- Dark mode migrated from a `filter:invert` hack to Bootstrap 5.3's `data-bs-theme`
+- Settings/alert/graph-reconnect toast notifications consolidated to a single bottom-right container
+
+### Fixed
+
+- Table column visibility and sort state now persist across SSE re-renders, not just full page reloads ([#151](https://github.com/mbolli/nfsen-ng/issues/151))
+- Import daemon catches up nfcapd files written before its inotify watch was registered, e.g. the first slot(s) after a midnight day-directory rollover ([#146](https://github.com/mbolli/nfsen-ng/issues/146))
+- Graph `_error` signal now clears on a subsequent successful load instead of staying stuck
+- nfcapd filenames are parsed in `NFCAPD_TZ` instead of always UTC
+- Alert emails use `gmdate()`; added timezone-related health checks
+- Alerts Delete/Enable/Test-fire buttons were a silent no-op: `@post(url, {id: '...'})` passes its second argument as Datastar request *options*, not a body payload, so `id` never reached `$c->input('id')` — switched to a query-string id, matching the working pattern used elsewhere in the app
+- ECharts race condition: rapid datatype switching could call `setOption` on an already-disposed chart instance and crash
+- `procps` installed in the test image; stale `Rrd`/`Settings`/`VictoriaMetrics` test fixtures repaired
+
 ---
 
 ## [1.0.0-RC.1] — 2026-05-04

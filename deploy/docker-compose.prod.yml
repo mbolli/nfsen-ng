@@ -12,7 +12,6 @@ services:
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng:ro
       - rrd-data:/var/nfsen-ng/rrd  # Persistent RRD database storage
-      - nfsen-frontend:/var/www/html/nfsen-ng/frontend  # Share frontend with Caddy
       - ../backend/settings/settings.php:/var/www/html/nfsen-ng/backend/settings/settings.php:ro  # Custom settings
     environment:
       - TZ=UTC
@@ -36,9 +35,7 @@ services:
     restart: unless-stopped
   
   caddy:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.caddy
+    image: caddy:latest
     container_name: nfsen-caddy
     ports:
       - "80:80"  # External HTTP port
@@ -46,7 +43,6 @@ services:
       - "443:443/udp"  # HTTP/3
     volumes:
       - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
-      - nfsen-frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files from nfsen container
       - caddy_data:/data  # Certificate storage
       - caddy_config:/config  # Caddy config storage
     depends_on:
@@ -55,6 +51,5 @@ services:
 
 volumes:
   rrd-data:  # Persistent storage for RRD database files
-  nfsen-frontend:  # Shared volume for frontend files between nfsen and caddy
   caddy_data:
   caddy_config:

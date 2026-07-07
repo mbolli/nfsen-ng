@@ -21,7 +21,7 @@ deploy/
   Dockerfile, Dockerfile.dev, docker-compose*.yml, Caddyfile*
 .github/workflows/
   release.yml              version bump + tag, manually triggered
-  docker-publish.yml       builds/pushes the app + Caddy images to GHCR
+  docker-publish.yml       builds/pushes the app image to GHCR (bundled Caddy uses the stock image)
   mdbook.yml               builds this book and deploys it to GitHub Pages
                             on every push to master that touches book/**
 book/

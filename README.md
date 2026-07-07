@@ -32,7 +32,7 @@ docker compose --profile proxy up -d
 docker compose up -d
 ```
 
-Images are published on GHCR: [`ghcr.io/mbolli/nfsen-ng`](https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng) (app) and [`ghcr.io/mbolli/nfsen-ng-caddy`](https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng-caddy) (Caddy with Brotli). Pre-1.0, pin an explicit version tag from [Releases](https://github.com/mbolli/nfsen-ng/releases) — `:latest` is only published once a stable (non-pre-release) version ships; `:edge` always tracks the newest `master` build.
+The app image is published on GHCR: [`ghcr.io/mbolli/nfsen-ng`](https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng). The bundled-Caddy profile uses the stock [`caddy:latest`](https://hub.docker.com/_/caddy) image — no custom build needed, since php-via serves and Brotli-compresses static assets itself. Pre-1.0, pin an explicit version tag from [Releases](https://github.com/mbolli/nfsen-ng/releases) — `:latest` is only published once a stable (non-pre-release) version ships; `:edge` always tracks the newest `master` build.
 
 **Development** (source mounted, auto-reload on file change):
 

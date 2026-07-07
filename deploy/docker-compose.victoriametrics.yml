@@ -45,15 +45,12 @@ services:
       - nfsen-ng
 
   caddy:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.caddy
+    image: caddy:latest
     container_name: nfsen-caddy
     ports:
       - "8080:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../frontend:/var/www/html/nfsen-ng/frontend:ro
     depends_on:
       - nfsen
     restart: unless-stopped

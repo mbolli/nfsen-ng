@@ -3,7 +3,7 @@
 #
 # Two deployment modes:
 #
-#   1. With bundled Caddy (TLS, Brotli/zstd, static files):
+#   1. With bundled Caddy (TLS, HTTP/3):
 #        docker compose --profile proxy up -d
 #      Access at https://<your-domain>  (port 80/443)
 #
@@ -66,10 +66,7 @@ services:
     restart: unless-stopped
   
   caddy:
-    image: ghcr.io/mbolli/nfsen-ng-caddy:latest
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.caddy
+    image: caddy:latest
     container_name: nfsen-caddy
     ports:
       - "80:80"  # External HTTP port
@@ -77,7 +74,6 @@ services:
       - "443:443/udp"  # HTTP/3
     volumes:
       - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
-      - ../frontend:/var/www/html/nfsen-ng/frontend:ro  # Static files
       - caddy_data:/data  # Certificate storage
       - caddy_config:/config  # Caddy config storage
     depends_on:

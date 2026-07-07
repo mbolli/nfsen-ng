@@ -7,20 +7,8 @@
 		Referrer-Policy strict-origin-when-cross-origin
 	}
 
-	# Serve static files from frontend directory
-	# Caddy compresses these directly (php-via never sees /frontend/* requests)
-	#
-	# ⚠  BARE-METAL USERS: change the path below to wherever you cloned nfsen-ng.
-	#    Example: if you cloned to /var/www/nfsen-ng, use `root * /var/www/nfsen-ng`
-	#    The Docker images mount the repo at /var/www/html/nfsen-ng, which is
-	#    why that path is the default here.
-	handle /frontend/* {
-		encode br zstd gzip
-		root * /var/www/html/nfsen-ng
-		file_server
-		header Cache-Control "public, max-age=31536000"
-	}
-
-	# Proxy everything else to Swoole container
+	# Everything, including /frontend/* static assets, is proxied to Swoole.
+	# php-via serves + Brotli-compresses static files itself (see backend/app.php's
+	# withStaticDir()) so Caddy doesn't need its own static handler or compression.
 	reverse_proxy nfsen:9000
 }

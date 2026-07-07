@@ -15,6 +15,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Alert rules with an nfdump traffic filter always evaluated to zero, so they could never fire — `AlertManager::fetchFilteredSlot()` set nfdump's `-R` (time range) option before `-M` (sources), but `-R` resolves file paths immediately using the sources `-M` records, so it always found zero nfcapd files ([#153](https://github.com/mbolli/nfsen-ng/issues/153))
+- The Flows/Statistics/Sankey NFDUMP filter (and other free-text fields) could be silently cleared by an unrelated SSE re-render while the user was still typing ([#151](https://github.com/mbolli/nfsen-ng/issues/151)) — the vendored Datastar bundle predated the `v1.0.2` release's fix for exactly this case (a morph compared a `<textarea>`'s live value against the incoming server render instead of against its own `defaultValue`, so any not-yet-submitted edit lost to the next full-page patch). Upgraded the pin from an untagged commit to `v1.0.2` and added an import map (`frontend/js/components/datastar-persist.js` resolves `datastar` via a bare specifier) so a second, independent copy of the engine can't get loaded by a differently-cache-busted relative import.
+- A forced page reload (e.g. when the SSE context's cleanup grace period elapses while a tab is backgrounded) always reset the active tab to Graphs and dark mode to the system default ([#151](https://github.com/mbolli/nfsen-ng/issues/151)). Added a `data-persist` Datastar attribute plugin that round-trips the current tab, settings sub-section, dark-mode choice, and graph display preferences (log scale, stacked/line, step/curve plot, follow-zoom) through `localStorage`, so a forced reload restores them instead of resetting to defaults.
 
 ### Security
 

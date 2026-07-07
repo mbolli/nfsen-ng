@@ -95,11 +95,13 @@
             <div class="filter-group">
             <p class="filter-label">Graph Scale</p>
             <div class="btn-group" role="group" id="graph_linlog">
-                <input type="radio" class="btn-check" name="scale" value="linear" checked
+                <input type="radio" class="btn-check" name="scale" value="linear"
+                       data-attr:checked="$_graph_logscale == false"
                        id="graph_linlog_linear"
                        data-on:change__stop="$_graph_logscale = false; $graph._widget.updateOptions({logscale: false})">
                 <label for="graph_linlog_linear" class="btn btn-outline-primary btn-sm">Linear</label>
                 <input type="radio" class="btn-check" name="scale" value="logarithmic"
+                       data-attr:checked="$_graph_logscale == true"
                        id="graph_linlog_log"
                        data-on:change__stop="$_graph_logscale = true; $graph._widget.updateOptions({logscale: true})">
                 <label for="graph_linlog_log" class="btn btn-outline-primary btn-sm">Logarithmic</label>
@@ -113,17 +115,21 @@
             <p class="filter-label">Series Display</p>
             <div class="btn-group" role="group"
                  data-on:change__stop="const stacked = evt.target.value === 'stacked'; $_graph_stacked = stacked; $graph._widget.updateOptions({stackedGraph: stacked, fillGraph: stacked})">
-                <input type="radio" class="btn-check" name="type" value="stacked" id="graph_linestacked_stacked">
+                <input type="radio" class="btn-check" name="type" value="stacked" id="graph_linestacked_stacked"
+                       data-attr:checked="$_graph_stacked == true">
                 <label class="btn btn-outline-primary btn-sm" for="graph_linestacked_stacked">Stacked</label>
-                <input type="radio" class="btn-check" name="type" value="line" checked id="graph_linestacked_line">
+                <input type="radio" class="btn-check" name="type" value="line" id="graph_linestacked_line"
+                       data-attr:checked="$_graph_stacked == false">
                 <label class="btn btn-outline-primary btn-sm" for="graph_linestacked_line">Line</label>
             </div><br>
             <div class="btn-group mt-2" role="group" id="graph_lineplot">
-                <input type="radio" class="btn-check" name="lineplot" value="step" checked
+                <input type="radio" class="btn-check" name="lineplot" value="step"
+                       data-attr:checked="$_graph_stepplot == true"
                        id="graph_lineplot_step"
                        data-on:change__stop="$_graph_stepplot = true; $graph._widget.updateOptions({stepPlot: true})">
                 <label class="btn btn-outline-primary btn-sm" for="graph_lineplot_step">Step plot</label>
                 <input type="radio" class="btn-check" name="lineplot" value="curve"
+                       data-attr:checked="$_graph_stepplot == false"
                        id="graph_lineplot_curve"
                        data-on:change__stop="$_graph_stepplot = false; $graph._widget.updateOptions({stepPlot: false})">
                 <label class="btn btn-outline-primary btn-sm" for="graph_lineplot_curve">Curve plot</label>

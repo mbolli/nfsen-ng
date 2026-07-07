@@ -10,7 +10,7 @@
     "postinstall": "cp node_modules/datastar/bundles/datastar.* frontend/js && cp node_modules/nouislider/dist/nouislider.min.js frontend/js/ && cp node_modules/nouislider/dist/nouislider.min.css frontend/css/ && cp node_modules/echarts/dist/echarts.min.js frontend/js/"
   },
   "dependencies": {
-    "datastar": "github:starfederation/datastar",
+    "datastar": "github:starfederation/datastar#v1.0.2",
     "echarts": "^6.1.0",
     "nouislider": "^15.8.1"
   },

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en"
     data-signals__ifmissing="{_darkMode: false, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences'}"
-    data-init="$_darkMode = localStorage.getItem('nfsen_theme') ? localStorage.getItem('nfsen_theme') === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches"
-    data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'"
-    data-effect="localStorage.setItem('nfsen_theme',$_darkMode?'dark':'light')">
+    data-persist="{_darkMode: $_darkMode, _currentView: $_currentView, _settingsSection: $_settingsSection, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _autoSyncGraph: $_autoSyncGraph}"
+    data-init="localStorage.getItem('nfsen-persist:_darkMode') === null && ($_darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches)"
+    data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -31,7 +31,10 @@
 {#
     _currentView: purely browser-local navigation signal (underscore prefix).
     The server never reads it — in immediate mode every tab's content is always
-    rendered and Datastar data-show handles visibility client-side.
+    rendered and Datastar data-show handles visibility client-side. Persisted
+    via data-persist (see html tag above) so a forced reload (e.g. after the
+    SSE context's cleanup grace period expires while the tab is backgrounded)
+    restores the tab the user was on instead of defaulting to Graphs.
 #}
 <body class="p-2">
     {# ── Reconnect banner ─────────────────────────────────────────────────── #}
@@ -210,7 +213,18 @@
         import { tzOptions } from '{{ basePath }}js/components/tz-utils.js?v={{ version }}';
         window.tzOptions = tzOptions;
     </script>
+
+    {#
+        Import map so datastar-persist.js's `import ... from 'datastar'` resolves
+        to the exact same module instance as this script tag. A relative import
+        (`../datastar.js`) would resolve to a URL without the `?v=` cache-busting
+        query string, which the module loader treats as a DIFFERENT module —
+        loading the whole engine a second time with its own MutationObserver,
+        signal store, etc. Mirrors mbolli/datastar-attribute-prop's own approach.
+    #}
+    <script type="importmap">{"imports": {"datastar": "{{ basePath }}js/datastar.js?v={{ version }}"}}</script>
     <script type="module" src="{{ basePath }}js/datastar.js?v={{ version }}"></script>
+    <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ version }}"></script>
     <script type="module" src="{{ basePath }}js/components/nfsen-chart.js?v={{ version }}"></script>
     <script type="module" src="{{ basePath }}js/components/nfsen-sankey.js?v={{ version }}"></script>
     <script type="module" src="{{ basePath }}js/components/nfsen-table.js?v={{ version }}"></script>

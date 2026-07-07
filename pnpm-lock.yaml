@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       datastar:
-        specifier: github:starfederation/datastar
-        version: https://codeload.github.com/starfederation/datastar/tar.gz/1f919a9ce73f06e0ca7d9ccb7dc7e83534f172ca
+        specifier: github:starfederation/datastar#v1.0.2
+        version: https://codeload.github.com/starfederation/datastar/tar.gz/5cce9fcdda43cb443b4e5e596b67cef903619831
       echarts:
         specifier: ^6.1.0
         version: 6.1.0
@@ -77,8 +77,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  datastar@https://codeload.github.com/starfederation/datastar/tar.gz/1f919a9ce73f06e0ca7d9ccb7dc7e83534f172ca:
-    resolution: {tarball: https://codeload.github.com/starfederation/datastar/tar.gz/1f919a9ce73f06e0ca7d9ccb7dc7e83534f172ca}
+  datastar@https://codeload.github.com/starfederation/datastar/tar.gz/5cce9fcdda43cb443b4e5e596b67cef903619831:
+    resolution: {tarball: https://codeload.github.com/starfederation/datastar/tar.gz/5cce9fcdda43cb443b4e5e596b67cef903619831}
     version: 0.0.0
 
   echarts@6.1.0:
@@ -130,7 +130,7 @@ snapshots:
   '@biomejs/cli-win32-x64@2.5.2':
     optional: true
 
-  datastar@https://codeload.github.com/starfederation/datastar/tar.gz/1f919a9ce73f06e0ca7d9ccb7dc7e83534f172ca: {}
+  datastar@https://codeload.github.com/starfederation/datastar/tar.gz/5cce9fcdda43cb443b4e5e596b67cef903619831: {}
 
   echarts@6.1.0:
     dependencies:

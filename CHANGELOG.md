@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+---
+
+## [1.0.0-beta.1] — 2026-07-07
+
 ### Added
 
 - Sankey diagram tab visualizing src→dst traffic flow ([#152](https://github.com/mbolli/nfsen-ng/issues/152))
@@ -36,6 +40,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Alerts Delete/Enable/Test-fire buttons were a silent no-op: `@post(url, {id: '...'})` passes its second argument as Datastar request *options*, not a body payload, so `id` never reached `$c->input('id')` — switched to a query-string id, matching the working pattern used elsewhere in the app
 - ECharts race condition: rapid datatype switching could call `setOption` on an already-disposed chart instance and crash
 - `procps` installed in the test image; stale `Rrd`/`Settings`/`VictoriaMetrics` test fixtures repaired
+- Graphs zoom-slider fill color was an off-palette gray, reading too dark against the light theme
 
 ---
 

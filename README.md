@@ -1,5 +1,6 @@
 # nfsen-ng
 
+[![GitHub release](https://img.shields.io/github/v/release/mbolli/nfsen-ng?style=flat-square)](https://github.com/mbolli/nfsen-ng/releases)
 [![GitHub license](https://img.shields.io/github/license/mbolli/nfsen-ng.svg?style=flat-square)](https://github.com/mbolli/nfsen-ng/blob/master/LICENSE)
 [![GitHub issues](https://img.shields.io/github/issues/mbolli/nfsen-ng.svg?style=flat-square)](https://github.com/mbolli/nfsen-ng/issues)
 [![GitHub last commit](https://img.shields.io/github/last-commit/mbolli/nfsen-ng?style=flat-square)](https://github.com/mbolli/nfsen-ng/commits/master)
@@ -11,7 +12,7 @@
 
 nfsen-ng is a modern, in-place replacement for the ageing [NfSen](http://nfsen.sourceforge.net/) web frontend. It sits on top of the existing [nfdump](https://github.com/phaag/nfdump) tools and adds real-time SSE push, a responsive UI, and support for RRD or VictoriaMetrics as the storage backend.
 
-![nfsen-ng dashboard overview](https://github.com/mbolli/nfsen-ng/assets/722725/c3df942e-3d3c-4ef9-86ad-4e5780c7b6d8)
+![nfsen-ng dashboard overview, light and dark](https://raw.githubusercontent.com/mbolli/nfsen-ng/master/book/src/images/00-page-graphs.png)
 
 ## Quick start
 
@@ -29,7 +30,7 @@ docker compose --profile proxy up -d
 docker compose up -d
 ```
 
-Images are published on GHCR: [`ghcr.io/mbolli/nfsen-ng`](https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng) (app) and [`ghcr.io/mbolli/nfsen-ng-caddy`](https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng-caddy) (Caddy with Brotli).
+Images are published on GHCR: [`ghcr.io/mbolli/nfsen-ng`](https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng) (app) and [`ghcr.io/mbolli/nfsen-ng-caddy`](https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng-caddy) (Caddy with Brotli). Pre-1.0, pin an explicit version tag from [Releases](https://github.com/mbolli/nfsen-ng/releases) — `:latest` is only published once a stable (non-pre-release) version ships; `:edge` always tracks the newest `master` build.
 
 **Development** (source mounted, auto-reload on file change):
 
@@ -43,12 +44,7 @@ Set `NFSEN_SOURCES`, `NFSEN_NFDUMP_PROFILES`, and other options as environment v
 
 ## Documentation
 
-All documentation lives in the [wiki](https://github.com/mbolli/nfsen-ng/wiki):
+The full user guide and developer reference now live in the **[nfsen-ng book](https://mbolli.github.io/nfsen-ng/)** — installation, configuration, every tab's feature docs, and the architecture/signals/SSE internals for contributors.
 
-- [Installation](https://github.com/mbolli/nfsen-ng/wiki/Installation) — Docker and bare-metal setup, systemd service
-- [Configuration](https://github.com/mbolli/nfsen-ng/wiki/Configuration) — settings file, all environment variables
-- [Import & admin](https://github.com/mbolli/nfsen-ng/wiki/CLI) — initial import, force rescan, daemon controls
-- [Architecture](https://github.com/mbolli/nfsen-ng/wiki/Architecture) — component overview, signals, compression
-- [VictoriaMetrics](https://github.com/mbolli/nfsen-ng/wiki/VictoriaMetrics) — alternative datasource setup
-- [Upgrading from v0](https://github.com/mbolli/nfsen-ng/wiki/Upgrading-from-v0) — migration guide
+Migrating from the old v0.x NfSen-style release? See the [wiki upgrade guide](https://github.com/mbolli/nfsen-ng/wiki/Upgrading-from-v0).
 

@@ -136,7 +136,7 @@ export class NfsenChart extends HTMLElement {
             tooltipBg: isDark ? '#2b3035' : '#ffffff',
             tooltipBorder: isDark ? '#495057' : '#dee2e6',
             dataZoomBg: isDark ? '#2b3035' : '#f8f9fa',
-            dataZoomFill: isDark ? '#495057' : '#cccccc',
+            dataZoomFill: isDark ? '#495057' : '#dee2e6',
             // Brighter series colors on a dark canvas, similar in spirit to the old
             // Dygraph colorSaturation/colorValue adjustment.
             palette: isDark

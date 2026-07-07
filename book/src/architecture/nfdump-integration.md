@@ -18,6 +18,19 @@ string to `-f` fails with a `path does not exist` error rather than a filter
 syntax error, which is easy to misdiagnose if you're testing a filter by
 hand outside the app.
 
+**`-M` must be registered before `-R`.** Unlike the other options, `-R`'s
+handler doesn't just store its value — it calls `convert_date_to_path()`
+immediately, which resolves the requested time range to actual nfcapd file
+paths by scanning the sources `-M`'s handler has recorded so far. Register
+`-R` first and that scan sees zero sources, silently finds no files, and
+throws — which callers that swallow the exception (as
+[Alerts](../features/alerts.md)'s filtered-evaluation path does, to fail
+safe on a malformed filter) will misread as "filter matched nothing" instead
+of "options were set in the wrong order." This is exactly how a filtered
+alert rule ended up unable to ever fire
+([#153](https://github.com/mbolli/nfsen-ng/issues/153)): `-R` was registered
+before `-M`.
+
 ## Execution
 
 `execute()` runs the command via `proc_open` (prefixed with `exec` so

@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Bundled Caddy no longer serves `/frontend/*` static assets directly — everything is proxied to php-via, which already serves and Brotli-compresses static files itself. Retired the custom `caddy-cbrotli` build (`deploy/Dockerfile.caddy`, `ghcr.io/mbolli/nfsen-ng-caddy`); the bundled-Caddy profile now uses the stock `caddy:latest` image. Bare-metal Caddy configs copied from the old template continue to work unchanged; the `handle /frontend/*` block can be dropped if desired, but isn't required.
+- Alert webhook payload now also includes `title`/`message`/`body` fields, so the webhook URL can point directly at a Gotify (`.../message?token=...`) or Apprise API (`.../notify/...`) endpoint without an intermediary ([#153](https://github.com/mbolli/nfsen-ng/issues/153))
+
+### Fixed
+
+- Alert rules with an nfdump traffic filter always evaluated to zero, so they could never fire — `AlertManager::fetchFilteredSlot()` set nfdump's `-R` (time range) option before `-M` (sources), but `-R` resolves file paths immediately using the sources `-M` records, so it always found zero nfcapd files ([#153](https://github.com/mbolli/nfsen-ng/issues/153))
 
 ---
 

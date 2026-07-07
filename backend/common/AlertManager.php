@@ -207,14 +207,17 @@ final class AlertManager {
             $nfdump = Nfdump::getInstance();
             $nfdump->reset();
             $nfdump->setProfile($profile);
-            $nfdump->setOption('-R', [$now - 300, $now]);
 
+            // -M must be set before -R: Nfdump::setOption('-R', ...) resolves nfcapd file
+            // paths immediately using the sources recorded by the -M handler.
             $sources = $rule->sources;
             if (\count($sources) > 1) {
                 $nfdump->setOption('-M', implode(':', $sources));
             } elseif (\count($sources) === 1) {
                 $nfdump->setOption('-M', $sources[0]);
             }
+
+            $nfdump->setOption('-R', [$now - 300, $now]);
 
             $nfdump->setFilter($rule->nfdumpFilter ?? '');
             $nfdump->setOption('-o', 'json');
@@ -264,6 +267,15 @@ final class AlertManager {
             return;
         }
 
+        $title = "nfsen-ng alert: {$rule->name}";
+        $message = sprintf(
+            '%s = %s (profile: %s, sources: %s)',
+            $rule->metric,
+            number_format((float) $entry['value'], 2),
+            $rule->profile,
+            implode(', ', (array) $entry['sources'])
+        );
+
         $payload = json_encode([
             'event' => 'alert_fired',
             'rule' => $rule->name,
@@ -272,6 +284,13 @@ final class AlertManager {
             'profile' => $rule->profile,
             'sources' => $rule->sources,
             'ts' => $entry['ts'],
+            // Gotify's POST /message requires a top-level "message" string; Apprise's
+            // POST /notify/<key> requires "body" instead. Sending both lets the webhook
+            // URL point directly at either (e.g. https://gotify.example/message?token=...)
+            // without an intermediary.
+            'title' => $title,
+            'message' => $message,
+            'body' => $message,
         ], JSON_UNESCAPED_SLASHES);
 
         if ($payload === false) {

@@ -272,7 +272,7 @@
                 <input type="url" class="form-control form-control-sm"
                        placeholder="https://hooks.example.com/alert"
                        {{ bind(alert_form_notifyWebhook) }}>
-                <div class="form-text">HTTP POST with JSON payload. Must start with <code>http://</code> or <code>https://</code>.</div>
+                <div class="form-text">HTTP POST with JSON payload (includes <code>title</code>/<code>message</code>/<code>body</code> for direct Gotify or Apprise API compatibility). Must start with <code>http://</code> or <code>https://</code>.</div>
             </div>
 
         </div>{# /row #}

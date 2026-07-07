@@ -335,6 +335,42 @@ describe('Nfdump', function (): void {
 
             $rmdir('/tmp/test-profiles-data/live/gateway/2024');
         });
+
+        // Uses a dedicated year (2023) so these tests can't collide with the shared
+        // '2024' directory used by other tests in this describe block.
+        test('setOption(-R) finds no files when called before setOption(-M), even if matching files exist', function () use ($base, $mkfile, $rmdir): void {
+            // setOption('-R', ...) calls convert_date_to_path() immediately, which reads
+            // sources recorded by the '-M' handler. If '-R' is set first, sources are still
+            // empty and no files are found — this is the trap AlertManager::fetchFilteredSlot()
+            // hit (it set -R before -M, so filtered alert checks always evaluated to zero).
+            $mkfile($base, '202306010000');
+            $mkfile($base, '202306011000');
+
+            $nfdump = new Nfdump();
+
+            expect(fn () => $nfdump->setOption('-R', [
+                (new DateTime('2023-06-01 00:00'))->getTimestamp(),
+                (new DateTime('2023-06-01 10:00'))->getTimestamp(),
+            ]))->toThrow(Exception::class, 'No nfcapd data files found for the requested time range.');
+
+            $rmdir('/tmp/test-profiles-data/live/gateway/2023');
+        });
+
+        test('setOption(-M) then setOption(-R) finds files (correct order)', function () use ($base, $mkfile, $rmdir): void {
+            $mkfile($base, '202306010000');
+            $mkfile($base, '202306011000');
+
+            $nfdump = new Nfdump();
+            $nfdump->setOption('-M', 'gateway');
+            $nfdump->setOption('-R', [
+                (new DateTime('2023-06-01 00:00'))->getTimestamp(),
+                (new DateTime('2023-06-01 10:00'))->getTimestamp(),
+            ]);
+
+            expect(true)->toBeTrue(); // no exception thrown
+
+            $rmdir('/tmp/test-profiles-data/live/gateway/2023');
+        });
     });
 
     describe('singleton pattern', function (): void {

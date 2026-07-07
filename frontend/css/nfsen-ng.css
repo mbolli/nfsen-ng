@@ -425,6 +425,16 @@ nfsen-daterange .daterange-slider {
     display: block;
 }
 
+/* sankey */
+
+/* nfsen-sankey.js grows .sankey-canvas taller than its 500px default when a query
+   returns many nodes (see computeCanvasHeight) — scroll the card instead of letting
+   the page grow unbounded. */
+.sankey-container {
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
 /* Graph options row below the chart — contained panel look */
 #graphOptions {
     background: var(--bs-tertiary-bg);

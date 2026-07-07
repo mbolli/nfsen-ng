@@ -151,11 +151,30 @@ export class NfsenSankey extends HTMLElement {
         this.renderChart(payload);
     }
 
+    /**
+     * Sankey node labels collide vertically once too many nodes are packed into a
+     * fixed-height canvas (GitHub issue #152 — 100+ nodes per column reduced to an
+     * unreadable smear of overlapping text). Give each node a minimum vertical
+     * allowance so labels on either column stay legible, growing the canvas (the
+     * outer .sankey-container scrolls, see nfsen-ng.css) instead of shrinking
+     * node/label spacing indefinitely.
+     */
+    computeCanvasHeight(nodes) {
+        const MIN_HEIGHT = 500;
+        const PX_PER_NODE = 16;
+        const srcCount = nodes.filter((n) => n.name.startsWith('src:')).length;
+        const dstCount = nodes.length - srcCount;
+        const maxPerColumn = Math.max(srcCount, dstCount, 1);
+        return Math.max(MIN_HEIGHT, maxPerColumn * PX_PER_NODE);
+    }
+
     renderChart(payload) {
         if (!this.container) return;
 
         const nodes = payload?.nodes || [];
         const links = payload?.links || [];
+
+        this.container.style.height = `${this.computeCanvasHeight(nodes)}px`;
 
         if (!this.chart) {
             // showMessage() may have left a message div behind (error/empty state) — clear it
@@ -167,6 +186,10 @@ export class NfsenSankey extends HTMLElement {
             // may have measured a stale/undersized width at init time. Re-measure once
             // on the next frame so the diagram isn't permanently stuck at that size.
             requestAnimationFrame(() => this.chart?.resize());
+        } else {
+            // Container height may have just changed above (new payload, different node
+            // count) — re-measure so ECharts doesn't keep rendering at the old size.
+            this.chart.resize();
         }
 
         const theme = this.getThemeColors();

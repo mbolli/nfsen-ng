@@ -6,6 +6,7 @@
   "scripts": {
     "lint": "biome lint frontend/js/components frontend/css/nfsen-ng.css",
     "format": "biome format --write frontend/js/components frontend/css/nfsen-ng.css",
+    "test-e2e": "node tests/e2e/run.mjs",
     "postinstall": "cp node_modules/datastar/bundles/datastar.* frontend/js && cp node_modules/nouislider/dist/nouislider.min.js frontend/js/ && cp node_modules/nouislider/dist/nouislider.min.css frontend/css/ && cp node_modules/echarts/dist/echarts.min.js frontend/js/"
   },
   "dependencies": {

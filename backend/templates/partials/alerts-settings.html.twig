@@ -62,7 +62,7 @@
                         <button class="btn btn-outline-info btn-sm py-0 px-1 me-1"
                                 title="Test-fire now (bypasses cooldown)"
                                 data-indicator:_alert_testing_{{ rule.id|replace({'-': '_'}) }}
-                                data-on:click="@post('{{ testAlert.url() }}', {id: '{{ rule.id|e('js') }}'})">
+                                data-on:click="@post('{{ testAlert.url() }}?id={{ rule.id }}')">
                             <span data-show="$_alert_testing_{{ rule.id|replace({'-': '_'}) }}" style="display:none"
                                   class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                             <span data-show="!$_alert_testing_{{ rule.id|replace({'-': '_'}) }}">▶ Test</span>
@@ -89,13 +89,13 @@
                         {# Toggle enabled #}
                         <button class="btn {{ rule.enabled ? 'btn-outline-warning' : 'btn-outline-success' }} btn-sm py-0 px-1 me-1"
                                 title="{{ rule.enabled ? 'Disable' : 'Enable' }}"
-                                data-on:click="@post('{{ toggleAlert.url() }}', {id: '{{ rule.id|e('js') }}'})">
+                                data-on:click="@post('{{ toggleAlert.url() }}?id={{ rule.id }}')">
                             {{ rule.enabled ? '⏸' : '▶' }}
                         </button>
                         {# Delete #}
                         <button class="btn btn-outline-danger btn-sm py-0 px-1"
                                 title="Delete"
-                                data-on:click="if(confirm('Delete rule \'{{ rule.name|e('js') }}\'?')) @post('{{ deleteAlert.url() }}', {id: '{{ rule.id|e('js') }}'})">
+                                data-on:click="if(confirm('Delete rule \'{{ rule.name|e('js') }}\'?')) @post('{{ deleteAlert.url() }}?id={{ rule.id }}')">
                             🗑
                         </button>
                     </td>

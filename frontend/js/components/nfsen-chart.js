@@ -293,6 +293,10 @@ export class NfsenChart extends HTMLElement {
 
         if (this.chart) {
             const doUpdate = () => {
+                // startViewTransition() defers this callback asynchronously -- by the time it
+                // runs, a more recent updateChart() call (e.g. the user switching datatypes
+                // again before this transition finished) may have already disposed this.chart.
+                if (!this.chart) return;
                 this.chart.setOption(option, true);
                 if (JSON.stringify(labels) !== JSON.stringify(this.currentLabels)) {
                     this.currentLabels = labels;

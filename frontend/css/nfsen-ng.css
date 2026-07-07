@@ -115,15 +115,6 @@ main.tab-content {
     animation: 200ms ease-out both fade-in;
 }
 
-#flowDiv .dygraph-title {
-    font-size: 1.5rem;
-    text-transform: uppercase;
-}
-
-#flowDiv .dygraph-ylabel {
-    font-size: 1rem;
-}
-
 #legend span {
     padding: 0.2rem;
 }
@@ -521,15 +512,6 @@ dialog#ip-modal-inner::backdrop {
     .nav-tabs .nav-link.active {
         --bs-nav-tabs-link-active-bg: var(--bs-tertiary-bg);
         font-weight: bold;
-    }
-
-    /* Dygraphs: axis labels and legend */
-    .dygraph-axis-label {
-        color: var(--bs-body-color);
-    }
-    .dygraph-legend {
-        background: var(--bs-secondary-bg);
-        color: var(--bs-body-color);
     }
 
     /* Health table: mute warning/danger row backgrounds so they don't glare */

@@ -374,7 +374,7 @@ function printSummary() {
 // shot captures name/clipSel once with light forced, once with dark forced,
 // and stitches the pair side by side (light left, dark right) via `convert
 // +append`. The 300ms settle after each dark-mode toggle gives Bootstrap's
-// data-bs-theme + Dygraphs/ECharts theme listeners a beat to repaint before
+// data-bs-theme + ECharts theme listeners a beat to repaint before
 // the capture. The stitched result is written to a temp file and handed to
 // commitShot, which only overwrites the committed name.png when it actually
 // differs (see the DIFF_THRESHOLD/FUZZ notes up top).
@@ -408,7 +408,7 @@ async function shot(name, clipSel) {
 }
 
 // go clicks a nav element (via __clickAttr) and settles -- SSE-morphed
-// content needs a beat to render (Dygraphs/ECharts re-init, table re-fetch),
+// content needs a beat to render (ECharts re-init, table re-fetch),
 // same reasoning as shot()'s color-scheme settle.
 async function go(clickSub, { settle = 700 } = {}) {
   const clicked = await evaluate(`__clickAttr(${JSON.stringify(clickSub)})`);

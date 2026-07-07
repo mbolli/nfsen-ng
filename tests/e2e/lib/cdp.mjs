@@ -22,7 +22,7 @@ export const BASE = process.env.BASE || 'http://localhost:8080';
 // see docs note in nfsen-chart.js / nfsen-sankey.js: rapid programmatic
 // interaction (as E2E tests do) can abort a CSS view-transition mid-flight.
 // This is cosmetic (the DOM update it wraps still applies) and reproducible
-// with real dygraph/echarts + view-transition-name usage under fast enough
+// with real ECharts + view-transition-name usage under fast enough
 // interaction, not a regression to chase to zero.
 const BENIGN_ERROR_PATTERNS = [/AbortError: Transition was skipped/];
 

@@ -7,7 +7,7 @@
  * and date-range.html.twig all keep calling the same methods with the same
  * Dygraph-shaped option keys (logscale, stackedGraph, stepPlot, labelsKMG2, ...).
  * Those keys are translated internally in updateOptions() rather than changing
- * every call site — see docs/features/dygraph-to-echarts.md.
+ * every call site.
  */
 import { tzOptions } from './tz-utils.js';
 

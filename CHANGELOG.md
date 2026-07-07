@@ -212,7 +212,8 @@ Full architectural rewrite milestone. Server-rendered hypermedia replaces the jQ
 
 Initial release. See the [wiki comparison page](https://github.com/mbolli/nfsen-ng/wiki/Comparison) for a feature comparison with the original NfSen.
 
-[Unreleased]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-RC.1...HEAD
+[Unreleased]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.1...HEAD
+[1.0.0-beta.1]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-RC.1...v1.0.0-beta.1
 [1.0.0-RC.1]: https://github.com/mbolli/nfsen-ng/compare/v1.0-alpha...v1.0.0-RC.1
 [0.4.0]: https://github.com/mbolli/nfsen-ng/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/mbolli/nfsen-ng/compare/v0.3...v0.3.1

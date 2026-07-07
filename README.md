@@ -12,6 +12,8 @@
 
 nfsen-ng is a modern, in-place replacement for the ageing [NfSen](http://nfsen.sourceforge.net/) web frontend. It sits on top of the existing [nfdump](https://github.com/phaag/nfdump) tools and adds real-time SSE push, a responsive UI, and support for RRD or VictoriaMetrics as the storage backend.
 
+> **Requires Linux.** The backend runs on the [OpenSwoole](https://openswoole.com/) PHP extension, which has no maintained FreeBSD/other-BSD port — see [openswoole/ext-openswoole#233](https://github.com/openswoole/ext-openswoole/issues/233). Docker images are Linux-only.
+
 ![nfsen-ng dashboard overview, light and dark](https://raw.githubusercontent.com/mbolli/nfsen-ng/master/book/src/images/00-page-graphs.png)
 
 ## Quick start

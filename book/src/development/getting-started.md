@@ -1,5 +1,8 @@
 # Getting Started
 
+Requires Linux — OpenSwoole has no maintained FreeBSD/other-BSD port
+([openswoole/ext-openswoole#233](https://github.com/openswoole/ext-openswoole/issues/233)).
+
 ## Quick start (production-ish)
 
 ```bash

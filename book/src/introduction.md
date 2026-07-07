@@ -31,7 +31,11 @@ The [Architecture](architecture/overview.md) chapter covers how these pieces
 fit together; [Features](features/graphs.md) walks each screen; and
 [Development](development/getting-started.md) covers running it locally.
 
+OpenSwoole's FreeBSD/other-BSD port is unmaintained
+([openswoole/ext-openswoole#233](https://github.com/openswoole/ext-openswoole/issues/233)),
+so nfsen-ng currently requires Linux.
+
 ## Status
 
-This book documents the `v1.0.0-RC.1` line — see the [Roadmap](roadmap.md)
+This book documents the `v1.0.0-beta.1` line — see the [Roadmap](roadmap.md)
 for what's tracked and what's next.

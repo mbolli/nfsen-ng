@@ -161,7 +161,7 @@ export class NfsenSankey extends HTMLElement {
      */
     computeCanvasHeight(nodes) {
         const MIN_HEIGHT = 500;
-        const PX_PER_NODE = 16;
+        const PX_PER_NODE = 22;
         const srcCount = nodes.filter((n) => n.name.startsWith('src:')).length;
         const dstCount = nodes.length - srcCount;
         const maxPerColumn = Math.max(srcCount, dstCount, 1);
@@ -229,7 +229,7 @@ export class NfsenSankey extends HTMLElement {
                         left: 130,
                         right: 130,
                         emphasis: { focus: 'adjacency' },
-                        nodeGap: 10,
+                        nodeGap: 16,
                         lineStyle: {
                             color: 'gradient',
                             curveness: 0.5,

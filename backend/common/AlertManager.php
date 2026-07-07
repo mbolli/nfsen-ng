@@ -223,22 +223,36 @@ final class AlertManager {
             $nfdump->setOption('-o', 'json');
             $result = $nfdump->execute();
 
-            $flows = 0.0;
-            $packets = 0.0;
-            $bytes = 0.0;
-            foreach ($result['decoded'] as $record) {
-                if (!\is_array($record)) {
-                    continue;
-                }
-                $flows += (float) ($record['fl'] ?? 1);
-                $packets += (float) ($record['ipkt'] ?? 0);
-                $bytes += (float) ($record['ibyt'] ?? 0);
-            }
-
-            return ['flows' => $flows, 'packets' => $packets, 'bytes' => $bytes];
+            return self::sumDecodedFlowRecords($result['decoded']);
         } catch (\Throwable) {
             return $empty;
         }
+    }
+
+    /**
+     * Sum flows/packets/bytes from nfdump's unaggregated `-o json` decoded records.
+     * Each record already represents exactly one flow (no per-record flow-count field),
+     * and uses `in_packets`/`in_bytes` — the whitespace-aggregation format's `ipkt`/`ibyt`
+     * short names don't exist in this schema.
+     *
+     * @param array<array<string, mixed>> $decoded
+     *
+     * @return array{flows: float, packets: float, bytes: float}
+     */
+    public static function sumDecodedFlowRecords(array $decoded): array {
+        $flows = 0.0;
+        $packets = 0.0;
+        $bytes = 0.0;
+        foreach ($decoded as $record) {
+            if (!\is_array($record)) {
+                continue;
+            }
+            ++$flows;
+            $packets += (float) ($record['in_packets'] ?? 0);
+            $bytes += (float) ($record['in_bytes'] ?? 0);
+        }
+
+        return ['flows' => $flows, 'packets' => $packets, 'bytes' => $bytes];
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

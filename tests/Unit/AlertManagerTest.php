@@ -329,6 +329,49 @@ describe('AlertRule roundtrip', function (): void {
     });
 });
 
+// ── AlertManager::sumDecodedFlowRecords() ──────────────────────────────────
+// Regression coverage for #153 follow-up: nfdump's unaggregated `-o json` schema
+// uses `in_packets`/`in_bytes` and has no per-record flow-count field. A prior
+// version read `ipkt`/`ibyt`/`fl` (the whitespace-aggregation format's field names),
+// so packets/bytes always summed to zero while flows "worked" only by accident
+// (its `?? 1` fallback happened to equal one-record-per-flow).
+
+describe('AlertManager::sumDecodedFlowRecords()', function (): void {
+    test('sums packets/bytes from real nfdump JSON field names, one flow per record', function (): void {
+        $decoded = [
+            ['in_packets' => 1, 'in_bytes' => 76],
+            ['in_packets' => 2, 'in_bytes' => 152],
+        ];
+
+        expect(AlertManager::sumDecodedFlowRecords($decoded))->toBe([
+            'flows' => 2.0,
+            'packets' => 3.0,
+            'bytes' => 228.0,
+        ]);
+    });
+
+    test('returns zeros for an empty result set', function (): void {
+        expect(AlertManager::sumDecodedFlowRecords([]))->toBe([
+            'flows' => 0.0,
+            'packets' => 0.0,
+            'bytes' => 0.0,
+        ]);
+    });
+
+    test('ignores non-array entries and missing fields default to zero', function (): void {
+        $decoded = [
+            ['in_packets' => 5], // in_bytes missing
+            'not-an-array',
+        ];
+
+        expect(AlertManager::sumDecodedFlowRecords($decoded))->toBe([
+            'flows' => 1.0,
+            'packets' => 5.0,
+            'bytes' => 0.0,
+        ]);
+    });
+});
+
 // ── AlertState ────────────────────────────────────────────────────────────
 
 describe('AlertState', function (): void {

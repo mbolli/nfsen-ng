@@ -9,10 +9,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Bundled Caddy no longer serves `/frontend/*` static assets directly — everything is proxied to php-via, which already serves and Brotli-compresses static files itself. Retired the custom `caddy-cbrotli` build (`deploy/Dockerfile.caddy`, `ghcr.io/mbolli/nfsen-ng-caddy`); the bundled-Caddy profile now uses the stock `caddy:latest` image. Bare-metal Caddy configs copied from the old template continue to work unchanged; the `handle /frontend/*` block can be dropped if desired, but isn't required.
 - Alert webhook payload now also includes `title`/`message`/`body` fields, so the webhook URL can point directly at a Gotify (`.../message?token=...`) or Apprise API (`.../notify/...`) endpoint without an intermediary ([#153](https://github.com/mbolli/nfsen-ng/issues/153))
+- Bumped `mbolli/php-via` to `~0.11.0` and switched to its new `Config::withStaticCacheControl()`: versioned static assets (`?v=` cache-busted CSS/JS, `datastar.js`, `via.css`) now get `public, max-age=31536000, immutable`, unversioned vendor libs (`bootstrap.min.css`, `nouislider.min.js`, `echarts.min.js`) get `public, max-age=604800, must-revalidate`, and everything still gets `no-cache` in dev mode. All static responses now emit `ETag`/`Last-Modified` and honor conditional GET, courtesy of the php-via upgrade.
+- `nouislider.min.js` / `echarts.min.js` are now loaded with `defer` instead of blocking the parser — found via a Lighthouse pass while tuning cache headers; nothing consumes them synchronously (only later `type="module"` components do, and those already tolerate late availability).
 
 ### Fixed
 
 - Alert rules with an nfdump traffic filter always evaluated to zero, so they could never fire — `AlertManager::fetchFilteredSlot()` set nfdump's `-R` (time range) option before `-M` (sources), but `-R` resolves file paths immediately using the sources `-M` records, so it always found zero nfcapd files ([#153](https://github.com/mbolli/nfsen-ng/issues/153))
+
+### Security
+
+- `withStaticDir()` was pointed at the project root instead of `frontend/`, and php-via's static-file handler has no extension allowlist — it served any file under that root over plain HTTP, including `composer.json`, every `backend/**/*.php` source file, `backend/settings/settings.php`, and the entire `.git/` directory (i.e. the full commit history, dumpable with any standard git-dumper tool). Scoped `withStaticDir()` to `frontend/` only and dropped the now-redundant `frontend/` prefix from asset URLs in `layout.html.twig` to match.
 
 ---
 

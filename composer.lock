@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "bbbcf6ede6ec6c4cb68d45d0e9cd8cbc",
+    "content-hash": "9fbce0d8b5fac3129cff27c1a7b8cabf",
     "packages": [
         {
             "name": "mbolli/php-via",
-            "version": "v0.10.1",
+            "version": "v0.11.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/mbolli/php-via.git",
-                "reference": "9c0502508a75819b3a03be3489a4fa6cec9e9711"
+                "reference": "e1589a75a5da4f4891e6bafbcb6f4b5c2848dd62"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/mbolli/php-via/zipball/9c0502508a75819b3a03be3489a4fa6cec9e9711",
-                "reference": "9c0502508a75819b3a03be3489a4fa6cec9e9711",
+                "url": "https://api.github.com/repos/mbolli/php-via/zipball/e1589a75a5da4f4891e6bafbcb6f4b5c2848dd62",
+                "reference": "e1589a75a5da4f4891e6bafbcb6f4b5c2848dd62",
                 "shasum": ""
             },
             "require": {
@@ -61,9 +61,9 @@
             "description": "Real-time engine for building reactive web applications in PHP",
             "support": {
                 "issues": "https://github.com/mbolli/php-via/issues",
-                "source": "https://github.com/mbolli/php-via/tree/v0.10.1"
+                "source": "https://github.com/mbolli/php-via/tree/v0.11.0"
             },
-            "time": "2026-06-15T11:24:23+00:00"
+            "time": "2026-07-07T14:28:00+00:00"
         },
         {
             "name": "nyholm/psr7",
@@ -6427,5 +6427,5 @@
         "ext-rrd": "*"
     },
     "platform-dev": {},
-    "plugin-api-version": "2.6.0"
+    "plugin-api-version": "2.9.0"
 }

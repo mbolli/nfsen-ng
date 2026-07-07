@@ -59,7 +59,29 @@ $viaConfig = (new ViaConfig())
     ->withPort(9000)
     ->withDevMode($isDev)
     ->withTemplateDir(__DIR__ . '/templates')
-    ->withStaticDir(__DIR__ . '/..')
+    // Scoped to frontend/ only — NOT the project root. withStaticDir() has no
+    // extension allowlist, so pointing it at the repo root would serve
+    // composer.json, backend/**/*.php, and even .git/* over plain HTTP.
+    ->withStaticDir(__DIR__ . '/../frontend')
+    ->withStaticCacheControl(static function (string $filePath, string $mimeType) use ($isDev): string {
+        // Always revalidate in devMode so local edits under frontend/ show up on
+        // the next reload instead of being cached for up to a year (see below).
+        if ($isDev) {
+            return 'no-cache';
+        }
+
+        // nfsen-ng's own JS/CSS is requested with a `?v={{ version }}` cache-busting
+        // query string (bumped on release, see backend/templates/layout.html.twig),
+        // so a long cache is safe: a version bump changes the URL, not just the
+        // file contents. The vendored third-party libs below are NOT versioned in
+        // the template, so they stay on a shorter, revalidated cache instead.
+        $unversioned = ['bootstrap.min.css', 'nouislider.min.js', 'echarts.min.js'];
+        if (in_array(basename($filePath), $unversioned, true)) {
+            return 'public, max-age=604800, must-revalidate';
+        }
+
+        return 'public, max-age=31536000, immutable';
+    })
     ->withLogLevel($logLevel)
     ->withH2c()
     ->withBrotli()

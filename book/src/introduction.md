@@ -27,8 +27,10 @@ pushing UI updates to the browser over Server-Sent Events using
 client-side framework build step: the server renders Twig templates, and
 Datastar patches the DOM.
 
-The [Architecture](architecture/overview.md) chapter covers how these pieces
-fit together; [Features](features/graphs.md) walks each screen; and
+To get it running, start with [Installation](deployment/installation.md) and
+[Configuration](deployment/configuration.md). The
+[Architecture](architecture/overview.md) chapter covers how these pieces fit
+together; [Features](features/graphs.md) walks each screen; and
 [Development](development/getting-started.md) covers running it locally.
 
 OpenSwoole's FreeBSD/other-BSD port is unmaintained
@@ -37,5 +39,5 @@ so nfsen-ng currently requires Linux.
 
 ## Status
 
-This book documents the `v1.0.0-beta.1` line — see the [Roadmap](roadmap.md)
+This book documents the `v1.0.0-beta.2` line — see the [Roadmap](roadmap.md)
 for what's tracked and what's next.

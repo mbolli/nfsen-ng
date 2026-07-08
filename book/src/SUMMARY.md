@@ -4,6 +4,13 @@
 
 ---
 
+# Deployment
+- [Installation](deployment/installation.md)
+- [Configuration](deployment/configuration.md)
+- [nfdump Profiles](deployment/profiles.md)
+- [VictoriaMetrics](deployment/victoriametrics.md)
+- [Upgrading from v0](deployment/upgrading.md)
+
 # User Guide
 - [What is NetFlow?](guide/what-is-netflow.md)
 - [Quick Tour](guide/quick-tour.md)

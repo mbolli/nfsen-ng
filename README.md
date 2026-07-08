@@ -45,11 +45,11 @@ cd nfsen-ng
 docker compose -f deploy/docker-compose.dev.yml up -d
 ```
 
-Set `NFSEN_SOURCES`, `NFSEN_NFDUMP_PROFILES`, and other options as environment variables in your compose file. See the [wiki](https://github.com/mbolli/nfsen-ng/wiki) for the full guide.
+Set `NFSEN_SOURCES`, `NFSEN_NFDUMP_PROFILES`, and other options as environment variables in your compose file. See [Installation](https://mbolli.github.io/nfsen-ng/deployment/installation.html) and [Configuration](https://mbolli.github.io/nfsen-ng/deployment/configuration.html) in the book for the full guide.
 
 ## Documentation
 
 The full user guide and developer reference now live in the **[nfsen-ng book](https://mbolli.github.io/nfsen-ng/)** — installation, configuration, every tab's feature docs, and the architecture/signals/SSE internals for contributors.
 
-Migrating from the old v0.x NfSen-style release? See the [wiki upgrade guide](https://github.com/mbolli/nfsen-ng/wiki/Upgrading-from-v0).
+Migrating from the old v0.x NfSen-style release? See the [upgrade guide](https://mbolli.github.io/nfsen-ng/deployment/upgrading.html) in the book.
 

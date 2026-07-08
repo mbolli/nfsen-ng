@@ -38,6 +38,7 @@ final class FlowActions {
             $flowAggDstIpPrefix = $c->getSignal('flows_agg_dstip_prefix');
             $flowOrderByTstart = $c->getSignal('flows_orderByTstart');
             $flowCount = $c->getSignal('flows_count');
+            $graphSources = $c->getSignal('graph_sources');
             $ipInfoAction = $c->getAction('ip-info');
             \assert(
                 $datestart !== null
@@ -57,6 +58,7 @@ final class FlowActions {
                 && $flowAggDstIpPrefix !== null
                 && $flowOrderByTstart !== null
                 && $flowCount !== null
+                && $graphSources !== null
             );
             $time = microtime(true);
 
@@ -72,10 +74,10 @@ final class FlowActions {
             ]);
 
             try {
-                $sources = implode(':', Config::$settings->sources);
+                $srcs = Helpers::resolveSources($graphSources->array());
                 $processor = new Config::$processorClass();
                 $processor->setProfile($selectedProfile->string());
-                $processor->setOption('-M', $sources);
+                $processor->setOption('-M', implode(':', $srcs));
                 $processor->setOption('-R', [$datestart->int(), $dateend->int()]);
                 $processor->setOption('-c', $flowLimit->int());
                 $processor->setOption('-o', 'json');

@@ -11,6 +11,25 @@ use mbolli\nfsen_ng\common\Config;
  */
 final class Helpers {
     /**
+     * Resolve the sources selected in the UI (the graph_sources signal) to the
+     * concrete list of sources to pass to nfdump's -M option.
+     *
+     * An empty selection or the special "any" sentinel means "all configured
+     * sources"; otherwise the user's explicit selection is honoured verbatim.
+     *
+     * @param list<string> $selected the graph_sources signal value
+     *
+     * @return list<string>
+     */
+    public static function resolveSources(array $selected): array {
+        if ($selected === [] || \in_array('any', $selected, true)) {
+            return Config::$settings->sources;
+        }
+
+        return $selected;
+    }
+
+    /**
      * Count nfcapd files in a date range for the given sources.
      * Scans the filesystem path structure: profiles-data/profile/source/YYYY/MM/DD/.
      *

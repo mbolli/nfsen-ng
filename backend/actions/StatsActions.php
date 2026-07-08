@@ -55,10 +55,7 @@ final class StatsActions {
             $statsNotifications = [];
 
             try {
-                $srcs = $graphSources->array();
-                if (\in_array('any', $srcs, true) || empty($srcs)) {
-                    $srcs = Config::$settings->sources;
-                }
+                $srcs = Helpers::resolveSources($graphSources->array());
 
                 $processor = new Config::$processorClass();
                 $processor->setProfile($selectedProfile->string());
@@ -137,10 +134,7 @@ final class StatsActions {
             $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
             \assert($datestart !== null && $dateend !== null && $graphSources !== null && $selectedProfile !== null && $nfcapdFileCount !== null);
 
-            $srcs = $graphSources->array();
-            if (\in_array('any', $srcs, true) || empty($srcs)) {
-                $srcs = Config::$settings->sources;
-            }
+            $srcs = Helpers::resolveSources($graphSources->array());
             $nfcapdFileCount->setValue(
                 Helpers::countNfcapdFiles($datestart->int(), $dateend->int(), $srcs, $selectedProfile->string()),
                 broadcast: false

@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+---
+
+## [1.0.0-beta.2] — 2026-07-08
+
 ### Changed
 
 - Bundled Caddy no longer serves `/frontend/*` static assets directly — everything is proxied to php-via, which already serves and Brotli-compresses static files itself. Retired the custom `caddy-cbrotli` build (`deploy/Dockerfile.caddy`, `ghcr.io/mbolli/nfsen-ng-caddy`); the bundled-Caddy profile now uses the stock `caddy:latest` image. Bare-metal Caddy configs copied from the old template continue to work unchanged; the `handle /frontend/*` block can be dropped if desired, but isn't required.
@@ -231,7 +235,8 @@ Full architectural rewrite milestone. Server-rendered hypermedia replaces the jQ
 
 Initial release. See the [wiki comparison page](https://github.com/mbolli/nfsen-ng/wiki/Comparison) for a feature comparison with the original NfSen.
 
-[Unreleased]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.1...HEAD
+[Unreleased]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.2...HEAD
+[1.0.0-beta.2]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.1...v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-RC.1...v1.0.0-beta.1
 [1.0.0-RC.1]: https://github.com/mbolli/nfsen-ng/compare/v1.0-alpha...v1.0.0-RC.1
 [0.4.0]: https://github.com/mbolli/nfsen-ng/compare/v0.3.1...v0.4.0

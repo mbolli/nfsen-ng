@@ -27,6 +27,10 @@ final class SettingsActions {
             $settingsFiltersText = $c->getSignal('settings_filtersText');
             $settingsLogPriority = $c->getSignal('settings_logPriority');
             $displayTz = $c->getSignal('displayTz');
+            $settingsDefaultEmailSubjectTemplate = $c->getSignal('settings_defaultEmailSubjectTemplate');
+            $settingsDefaultEmailBodyTemplate = $c->getSignal('settings_defaultEmailBodyTemplate');
+            $settingsDefaultWebhookTitleTemplate = $c->getSignal('settings_defaultWebhookTitleTemplate');
+            $settingsDefaultWebhookMessageTemplate = $c->getSignal('settings_defaultWebhookMessageTemplate');
             \assert(
                 $settingsDefaultView !== null
                 && $settingsGraphDisplay !== null
@@ -37,6 +41,10 @@ final class SettingsActions {
                 && $settingsFiltersText !== null
                 && $settingsLogPriority !== null
                 && $displayTz !== null
+                && $settingsDefaultEmailSubjectTemplate !== null
+                && $settingsDefaultEmailBodyTemplate !== null
+                && $settingsDefaultWebhookTitleTemplate !== null
+                && $settingsDefaultWebhookMessageTemplate !== null
             );
 
             $rawFilters = array_values(array_filter(
@@ -57,6 +65,10 @@ final class SettingsActions {
                     'logPriority' => Settings::logLevelFromString($settingsLogPriority->string()),
                     'alerts' => array_map(fn (AlertRule $r) => $r->toArray(), $existingPrefs !== null ? $existingPrefs->alerts : []),
                     'displayTimezone' => $displayTz->string(),
+                    'defaultEmailSubjectTemplate' => $settingsDefaultEmailSubjectTemplate->string(),
+                    'defaultEmailBodyTemplate' => $settingsDefaultEmailBodyTemplate->string(),
+                    'defaultWebhookTitleTemplate' => $settingsDefaultWebhookTitleTemplate->string(),
+                    'defaultWebhookMessageTemplate' => $settingsDefaultWebhookMessageTemplate->string(),
                 ]);
 
                 $prefs->save(Config::$prefsFile);

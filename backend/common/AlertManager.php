@@ -16,6 +16,11 @@ use OpenSwoole\Coroutine\Http\Client;
 final class AlertManager {
     private const MAX_LOG_ENTRIES = 50;
 
+    public const DEFAULT_EMAIL_SUBJECT = '[nfsen-ng] Alert: {rule}';
+    public const DEFAULT_EMAIL_BODY = "Alert rule \"{rule}\" fired.\n\nMetric:  {metric}\nValue:   {value}\nProfile: {profile}\nSources: {sources}\nTime:    {time} UTC\n";
+    public const DEFAULT_WEBHOOK_TITLE = 'nfsen-ng alert: {rule}';
+    public const DEFAULT_WEBHOOK_MESSAGE = '{metric} = {value} (profile: {profile}, sources: {sources})';
+
     /** @var array<string, AlertState> Keyed by rule ID */
     private array $states = [];
 
@@ -74,7 +79,7 @@ final class AlertManager {
                 );
                 $this->states[$rule->id] = $state;
 
-                $this->dispatchNotifications($rule, $current, $ts);
+                $this->dispatchNotifications($rule, $current, $threshold, $ts);
                 $fired[] = $rule->name;
             } else {
                 $this->states[$rule->id] = $state;
@@ -133,7 +138,8 @@ final class AlertManager {
         return \array_slice($this->log, 0, max(1, $n));
     }
 
-    public function dispatchNotifications(AlertRule $rule, array $values, int $ts): void {
+    /** @param array{flows: float, packets: float, bytes: float} $values */
+    public function dispatchNotifications(AlertRule $rule, array $values, float $threshold, int $ts): void {
         $entry = [
             'ts' => $ts,
             'rule' => $rule->name,
@@ -148,15 +154,56 @@ final class AlertManager {
         $this->log = \array_slice($this->log, 0, self::MAX_LOG_ENTRIES);
         $this->saveLog();
 
+        $vars = self::buildTemplateVars($rule, $values, $threshold, $ts);
+
         // Email
         if ($rule->notifyEmail !== null && $this->emailFrom !== '') {
-            $this->sendEmail($rule, $entry);
+            $this->sendEmail($rule, $vars);
         }
 
         // Webhook
         if ($rule->notifyWebhook !== null) {
-            $this->sendWebhook($rule, $entry);
+            $this->sendWebhook($rule, $entry, $vars);
         }
+    }
+
+    /**
+     * Build the {token} → formatted-value substitution map for notification templates.
+     * All three flow metrics are always exposed regardless of $rule->metric, since
+     * fetchCurrentSlot() already computes all three in one nfdump/RRD round-trip.
+     *
+     * @param array{flows: float, packets: float, bytes: float} $values
+     *
+     * @return array<string, string>
+     */
+    public static function buildTemplateVars(AlertRule $rule, array $values, float $threshold, int $ts): array {
+        $thresholdDisplay = $threshold === PHP_FLOAT_MAX ? '∞' : number_format($threshold, 2);
+
+        return [
+            '{rule}' => $rule->name,
+            '{metric}' => $rule->metric,
+            '{value}' => number_format((float) ($values[$rule->metric] ?? 0.0), 2),
+            '{threshold}' => $thresholdDisplay,
+            '{operator}' => $rule->operator,
+            '{condition}' => $rule->metric . ' ' . $rule->operator . ' ' . $thresholdDisplay,
+            '{flows}' => number_format((float) ($values['flows'] ?? 0.0), 2),
+            '{packets}' => number_format((float) ($values['packets'] ?? 0.0), 2),
+            '{bytes}' => number_format((float) ($values['bytes'] ?? 0.0), 2),
+            '{profile}' => $rule->profile,
+            '{sources}' => implode(', ', $rule->sources),
+            '{time}' => gmdate('Y-m-d H:i:s', $ts),
+        ];
+    }
+
+    /**
+     * Resolve the effective template string: per-rule override → global default → built-in default.
+     */
+    public static function resolveTemplate(?string $ruleTemplate, string $globalTemplate, string $builtinDefault): string {
+        if ($ruleTemplate !== null && $ruleTemplate !== '') {
+            return $ruleTemplate;
+        }
+
+        return $globalTemplate !== '' ? $globalTemplate : $builtinDefault;
     }
 
     /**
@@ -257,22 +304,20 @@ final class AlertManager {
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
-    /** @param array<string, mixed> $entry */
-    private function sendEmail(AlertRule $rule, array $entry): void {
-        $subject = "[nfsen-ng] Alert: {$rule->name}";
-        $body = "Alert rule \"{$rule->name}\" fired.\n\n"
-              . 'Metric:  ' . $rule->metric . "\n"
-              . 'Value:   ' . number_format((float) $entry['value'], 2) . "\n"
-              . 'Profile: ' . $rule->profile . "\n"
-              . 'Sources: ' . implode(', ', (array) $entry['sources']) . "\n"
-              . 'Time:    ' . gmdate('Y-m-d H:i:s', (int) $entry['ts']) . " UTC\n";
+    /** @param array<string, string> $vars */
+    private function sendEmail(AlertRule $rule, array $vars): void {
+        $subject = strtr(self::resolveTemplate($rule->emailSubjectTemplate, Config::$settings->defaultEmailSubjectTemplate, self::DEFAULT_EMAIL_SUBJECT), $vars);
+        $body = strtr(self::resolveTemplate($rule->emailBodyTemplate, Config::$settings->defaultEmailBodyTemplate, self::DEFAULT_EMAIL_BODY), $vars);
 
         $headers = "From: {$this->emailFrom}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8";
         @mail((string) $rule->notifyEmail, $subject, $body, $headers);
     }
 
-    /** @param array<string, mixed> $entry */
-    private function sendWebhook(AlertRule $rule, array $entry): void {
+    /**
+     * @param array<string, mixed>  $entry JSON payload data (rule/metric/value/profile/sources/ts)
+     * @param array<string, string> $vars  title/message template substitution map
+     */
+    private function sendWebhook(AlertRule $rule, array $entry, array $vars): void {
         $url = (string) $rule->notifyWebhook;
 
         // SSRF guard — only allow http:// and https:// to external hosts
@@ -281,14 +326,8 @@ final class AlertManager {
             return;
         }
 
-        $title = "nfsen-ng alert: {$rule->name}";
-        $message = sprintf(
-            '%s = %s (profile: %s, sources: %s)',
-            $rule->metric,
-            number_format((float) $entry['value'], 2),
-            $rule->profile,
-            implode(', ', (array) $entry['sources'])
-        );
+        $title = strtr(self::resolveTemplate($rule->webhookTitleTemplate, Config::$settings->defaultWebhookTitleTemplate, self::DEFAULT_WEBHOOK_TITLE), $vars);
+        $message = strtr(self::resolveTemplate($rule->webhookMessageTemplate, Config::$settings->defaultWebhookMessageTemplate, self::DEFAULT_WEBHOOK_MESSAGE), $vars);
 
         $payload = json_encode([
             'event' => 'alert_fired',

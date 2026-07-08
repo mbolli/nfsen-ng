@@ -64,6 +64,50 @@ fire (rather than erroring loudly) — double-check the syntax with the
 [Flows](browsing-flows.md) tab first if a filtered alert never seems to
 trigger.
 
+## Customizing the notification text
+
+By default, email and webhook notifications use a fixed subject/title and
+body/message. You can override this — useful for phrasing Gotify or Apprise
+notifications your own way, or inserting the actual traffic numbers into
+the message instead of just getting a generic "an alert fired."
+
+There are two levels, checked in order: a **rule's own override** (if set),
+then a **global default** (if set), then the built-in text shown above as
+each field's placeholder.
+
+**Global defaults** apply to every rule that doesn't set its own override.
+Expand **Default Notification Templates** at the top of the Alerts page:
+
+![Default notification templates](../images/guide-alerts-default-templates.png)
+
+**Per-rule overrides** live in each rule's own form, collapsed behind a
+**Customize email message** / **Customize webhook message** toggle next to
+the Email address / Webhook URL fields:
+
+![Per-rule template override](../images/guide-alerts-template-override.png)
+
+Either way, click into a template field, then click one of the variable
+buttons to insert it at your cursor:
+
+| Variable | Value |
+|---|---|
+| `{rule}` | Rule name |
+| `{metric}` | Which metric fired (`flows`, `packets`, or `bytes`) |
+| `{value}` | That metric's current value |
+| `{threshold}` | The threshold that was crossed |
+| `{operator}` | The comparison operator (`>`, `>=`, `<`, `<=`) |
+| `{condition}` | `{metric} {operator} {threshold}`, combined |
+| `{flows}`, `{packets}`, `{bytes}` | All three counters, regardless of which one the rule watches |
+| `{profile}` | The nfdump profile |
+| `{sources}` | The rule's sources, comma-separated |
+| `{time}` | When the alert fired (UTC) |
+
+The **Preview** box below each pair of fields updates live as you type,
+using made-up example numbers — it's a preview of the *template*, not a
+real fired alert. To see the real, resolved text for a specific rule, use
+the **Test** button (its result includes the actual rendered title/message
+alongside the fire/no-fire verdict).
+
 ## Testing before you rely on it
 
 Click **Test** on any rule to evaluate it immediately against current data

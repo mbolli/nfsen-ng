@@ -525,6 +525,22 @@ async function main() {
   console.log('shot guide-alerts-traffic-filter');
   await shot('guide-alerts-traffic-filter', `__afterHeading('Traffic filter')`);
 
+  // Notification templates (issue #153 follow-up): a global default card
+  // (collapsed by default, above the rule list) plus a per-rule override
+  // section nested under each of the Email/Webhook fields in the rule form
+  // (also collapsed by default) -- expand each via its own toggle button
+  // before shooting, same reasoning as processData()'s spinner wait: the
+  // interesting content is hidden until a real user click reveals it.
+  console.log('shot guide-alerts-default-templates');
+  await evaluate(`__clickText('Customize', 'button')`); // global card's own toggle (its label has no "email"/"webhook" suffix)
+  await sleep(300);
+  await shot('guide-alerts-default-templates', '#alert-default-templates-card');
+
+  console.log('shot guide-alerts-template-override');
+  await evaluate(`__clickText('Customize webhook message', 'button')`);
+  await sleep(300);
+  await shot('guide-alerts-template-override', '#alert-form-webhook-template');
+
   console.log('shot 07 settings/import');
   await go(`_settingsSection = 'import'`, { settle: 400 });
   await shot('07-settings-import');

@@ -30,6 +30,11 @@ final class AlertRule {
         public readonly ?string $notifyWebhook,
         /** Optional nfdump filter expression, e.g. "proto icmp" or "net 192.168.1.0/24" */
         public readonly ?string $nfdumpFilter = null,
+        /** Optional per-rule override; null = fall through to the global default, then the built-in default */
+        public readonly ?string $emailSubjectTemplate = null,
+        public readonly ?string $emailBodyTemplate = null,
+        public readonly ?string $webhookTitleTemplate = null,
+        public readonly ?string $webhookMessageTemplate = null,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -49,6 +54,10 @@ final class AlertRule {
             notifyEmail: isset($data['notifyEmail']) && $data['notifyEmail'] !== '' ? (string) $data['notifyEmail'] : null,
             notifyWebhook: isset($data['notifyWebhook']) && $data['notifyWebhook'] !== '' ? (string) $data['notifyWebhook'] : null,
             nfdumpFilter: isset($data['nfdumpFilter']) && $data['nfdumpFilter'] !== '' ? (string) $data['nfdumpFilter'] : null,
+            emailSubjectTemplate: isset($data['emailSubjectTemplate']) && $data['emailSubjectTemplate'] !== '' ? (string) $data['emailSubjectTemplate'] : null,
+            emailBodyTemplate: isset($data['emailBodyTemplate']) && $data['emailBodyTemplate'] !== '' ? (string) $data['emailBodyTemplate'] : null,
+            webhookTitleTemplate: isset($data['webhookTitleTemplate']) && $data['webhookTitleTemplate'] !== '' ? (string) $data['webhookTitleTemplate'] : null,
+            webhookMessageTemplate: isset($data['webhookMessageTemplate']) && $data['webhookMessageTemplate'] !== '' ? (string) $data['webhookMessageTemplate'] : null,
         );
     }
 
@@ -69,6 +78,10 @@ final class AlertRule {
             'notifyEmail' => $this->notifyEmail,
             'notifyWebhook' => $this->notifyWebhook,
             'nfdumpFilter' => $this->nfdumpFilter,
+            'emailSubjectTemplate' => $this->emailSubjectTemplate,
+            'emailBodyTemplate' => $this->emailBodyTemplate,
+            'webhookTitleTemplate' => $this->webhookTitleTemplate,
+            'webhookMessageTemplate' => $this->webhookMessageTemplate,
         ];
     }
 
@@ -88,6 +101,10 @@ final class AlertRule {
             notifyEmail: $this->notifyEmail,
             notifyWebhook: $this->notifyWebhook,
             nfdumpFilter: $this->nfdumpFilter,
+            emailSubjectTemplate: $this->emailSubjectTemplate,
+            emailBodyTemplate: $this->emailBodyTemplate,
+            webhookTitleTemplate: $this->webhookTitleTemplate,
+            webhookMessageTemplate: $this->webhookMessageTemplate,
         );
     }
 }

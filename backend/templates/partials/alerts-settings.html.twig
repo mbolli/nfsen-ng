@@ -4,6 +4,86 @@
     Notifications: in-app SSE toast, optional email, optional HTTP webhook.
 #}
 
+{% set templateTokens = ['{rule}', '{metric}', '{value}', '{threshold}', '{operator}', '{condition}', '{flows}', '{packets}', '{bytes}', '{profile}', '{sources}', '{time}'] %}
+
+{# ── Default Notification Templates ──────────────────────────────────────── #}
+{# Global fallback used by every rule that doesn't set its own override below.  #}
+<div id="alert-default-templates-card" class="card mb-4"
+     data-signals__ifmissing='{"_alertGlobalTplExpanded": false, "_alertEmailTplExpanded": false, "_alertWebhookTplExpanded": false}'>
+    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+        Default Notification Templates
+        <button type="button" class="btn btn-outline-secondary btn-sm py-0"
+                data-on:click="$_alertGlobalTplExpanded = !$_alertGlobalTplExpanded">
+            <span data-show="!$_alertGlobalTplExpanded">▸ Customize</span>
+            <span data-show="$_alertGlobalTplExpanded" style="display:none">▾ Collapse</span>
+        </button>
+    </div>
+    <div class="card-body" data-show="$_alertGlobalTplExpanded" style="display:none">
+        <p class="text-muted small">
+            Optional. Applies to every alert rule that doesn't set its own override in its own form below.
+            Leave a field blank to keep using the built-in default shown as its placeholder.
+        </p>
+
+        <div class="mb-3">
+            <span class="text-muted small">Click into a field below, then insert:</span>
+            {% for token in templateTokens %}
+            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 me-1 mb-1"
+                    data-on:mousedown__prevent="window.insertAlertToken('{{ token }}')">{{ token }}</button>
+            {% endfor %}
+        </div>
+
+        <div class="row g-3">
+
+            {# Email #}
+            <div class="col-md-6">
+                <label class="form-label fw-semibold small">Email subject template</label>
+                <input type="text" class="form-control form-control-sm mb-2"
+                       placeholder="{{ alertBuiltinEmailSubject }}"
+                       {{ bind(settings_defaultEmailSubjectTemplate) }}>
+
+                <label class="form-label fw-semibold small">Email body template</label>
+                <textarea class="form-control form-control-sm font-monospace mb-2" rows="4"
+                          placeholder="{{ alertBuiltinEmailBody }}"
+                          {{ bind(settings_defaultEmailBodyTemplate) }}></textarea>
+
+                <label class="form-label fw-semibold small d-block">Preview</label>
+                <pre class="small bg-body-tertiary border rounded p-2 mb-0" style="white-space:pre-wrap" data-ignore-morph
+                     data-text="const v = window.buildAlertPreviewVars({});
+                         'Subject: ' + window.renderAlertTemplatePreview(${{ settings_defaultEmailSubjectTemplate.id() }} || '{{ alertBuiltinEmailSubject|e('js') }}', v) + '\n\n' + window.renderAlertTemplatePreview(${{ settings_defaultEmailBodyTemplate.id() }} || '{{ alertBuiltinEmailBody|e('js') }}', v)"></pre>
+            </div>
+
+            {# Webhook #}
+            <div class="col-md-6">
+                <label class="form-label fw-semibold small">Webhook title template</label>
+                <input type="text" class="form-control form-control-sm mb-2"
+                       placeholder="{{ alertBuiltinWebhookTitle }}"
+                       {{ bind(settings_defaultWebhookTitleTemplate) }}>
+
+                <label class="form-label fw-semibold small">Webhook message template</label>
+                <input type="text" class="form-control form-control-sm mb-2"
+                       placeholder="{{ alertBuiltinWebhookMessage }}"
+                       {{ bind(settings_defaultWebhookMessageTemplate) }}>
+
+                <label class="form-label fw-semibold small d-block">Preview</label>
+                <pre class="small bg-body-tertiary border rounded p-2 mb-0" style="white-space:pre-wrap" data-ignore-morph
+                     data-text="const v = window.buildAlertPreviewVars({});
+                         'Title: ' + window.renderAlertTemplatePreview(${{ settings_defaultWebhookTitleTemplate.id() }} || '{{ alertBuiltinWebhookTitle|e('js') }}', v) + '\n' + window.renderAlertTemplatePreview(${{ settings_defaultWebhookMessageTemplate.id() }} || '{{ alertBuiltinWebhookMessage|e('js') }}', v)"></pre>
+            </div>
+
+        </div>{# /row #}
+
+        <div class="d-flex justify-content-end mt-3">
+            <button class="btn btn-primary btn-sm"
+                    data-indicator:_alert_global_tpl_saving
+                    data-on:click="window.showMessage('success', 'Default templates saved.', true); @post('{{ saveSettings.url() }}')">
+                <span data-show="$_alert_global_tpl_saving" style="display:none"
+                      class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                Save default templates
+            </button>
+        </div>
+    </div>
+</div>
+
 {# ── Alert Rules list ──────────────────────────────────────────────────── #}
 <div class="card mb-4">
     <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
@@ -83,6 +163,10 @@
                                     ${{ alert_form_notifyEmail.id() }} = '{{ rule.notifyEmail|default('')|e('js') }}';
                                     ${{ alert_form_notifyWebhook.id() }} = '{{ rule.notifyWebhook|default('')|e('js') }}';
                                     ${{ alert_form_nfdumpFilter.id() }} = '{{ rule.nfdumpFilter|default('')|e('js') }}';
+                                    ${{ alert_form_emailSubjectTemplate.id() }} = '{{ rule.emailSubjectTemplate|default('')|e('js') }}';
+                                    ${{ alert_form_emailBodyTemplate.id() }} = '{{ rule.emailBodyTemplate|default('')|e('js') }}';
+                                    ${{ alert_form_webhookTitleTemplate.id() }} = '{{ rule.webhookTitleTemplate|default('')|e('js') }}';
+                                    ${{ alert_form_webhookMessageTemplate.id() }} = '{{ rule.webhookMessageTemplate|default('')|e('js') }}';
                                     document.getElementById('alert-form-card').scrollIntoView({behavior:'smooth'})">
                             ✏
                         </button>
@@ -264,6 +348,42 @@
                 {% if not alertEmailEnabled %}
                     <div class="form-text text-warning">Set <code>NFSEN_ALERT_EMAIL_FROM</code> env var to enable email.</div>
                 {% endif %}
+
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 mt-1"
+                        data-on:click="$_alertEmailTplExpanded = !$_alertEmailTplExpanded">
+                    <span data-show="!$_alertEmailTplExpanded">▸ Customize email message</span>
+                    <span data-show="$_alertEmailTplExpanded" style="display:none">▾ Collapse</span>
+                </button>
+
+                <div id="alert-form-email-template" class="mt-2 p-2 border rounded bg-body-tertiary" data-show="$_alertEmailTplExpanded" style="display:none">
+                    <label class="form-label fw-semibold small mb-1">Subject template override</label>
+                    <input type="text" class="form-control form-control-sm mb-2"
+                           placeholder="{{ alertEffectiveEmailSubject }}"
+                           {{ bind(alert_form_emailSubjectTemplate) }}>
+
+                    <label class="form-label fw-semibold small mb-1">Body template override</label>
+                    <textarea class="form-control form-control-sm font-monospace mb-2" rows="4"
+                              placeholder="{{ alertEffectiveEmailBody }}"
+                              {{ bind(alert_form_emailBodyTemplate) }}></textarea>
+
+                    <div class="mb-2">
+                        <span class="text-muted small">Click into a field above, then insert:</span>
+                        {% for token in templateTokens %}
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 me-1 mb-1"
+                                data-on:mousedown__prevent="window.insertAlertToken('{{ token }}')">{{ token }}</button>
+                        {% endfor %}
+                    </div>
+
+                    <label class="form-label fw-semibold small d-block mb-1">Preview</label>
+                    <pre class="small bg-body-tertiary border rounded p-2 mb-0" style="white-space:pre-wrap" data-ignore-morph
+                         data-text="const v = window.buildAlertPreviewVars({
+                             rule: ${{ alert_form_name.id() }}, metric: ${{ alert_form_metric.id() }},
+                             operator: ${{ alert_form_operator.id() }}, profile: ${{ alert_form_profile.id() }},
+                             sources: ${{ alert_form_sources.id() }}, thresholdType: ${{ alert_form_thresholdType.id() }},
+                             thresholdValue: ${{ alert_form_thresholdValue.id() }}
+                         });
+                         'Subject: ' + window.renderAlertTemplatePreview(${{ alert_form_emailSubjectTemplate.id() }} || '{{ alertEffectiveEmailSubject|e('js') }}', v) + '\n\n' + window.renderAlertTemplatePreview(${{ alert_form_emailBodyTemplate.id() }} || '{{ alertEffectiveEmailBody|e('js') }}', v)"></pre>
+                </div>
             </div>
 
             {# Webhook #}
@@ -273,6 +393,42 @@
                        placeholder="https://hooks.example.com/alert"
                        {{ bind(alert_form_notifyWebhook) }}>
                 <div class="form-text">HTTP POST with JSON payload (includes <code>title</code>/<code>message</code>/<code>body</code> for direct Gotify or Apprise API compatibility). Must start with <code>http://</code> or <code>https://</code>.</div>
+
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 mt-1"
+                        data-on:click="$_alertWebhookTplExpanded = !$_alertWebhookTplExpanded">
+                    <span data-show="!$_alertWebhookTplExpanded">▸ Customize webhook message</span>
+                    <span data-show="$_alertWebhookTplExpanded" style="display:none">▾ Collapse</span>
+                </button>
+
+                <div id="alert-form-webhook-template" class="mt-2 p-2 border rounded bg-body-tertiary" data-show="$_alertWebhookTplExpanded" style="display:none">
+                    <label class="form-label fw-semibold small mb-1">Title template override</label>
+                    <input type="text" class="form-control form-control-sm mb-2"
+                           placeholder="{{ alertEffectiveWebhookTitle }}"
+                           {{ bind(alert_form_webhookTitleTemplate) }}>
+
+                    <label class="form-label fw-semibold small mb-1">Message template override</label>
+                    <input type="text" class="form-control form-control-sm mb-2"
+                           placeholder="{{ alertEffectiveWebhookMessage }}"
+                           {{ bind(alert_form_webhookMessageTemplate) }}>
+
+                    <div class="mb-2">
+                        <span class="text-muted small">Click into a field above, then insert:</span>
+                        {% for token in templateTokens %}
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 me-1 mb-1"
+                                data-on:mousedown__prevent="window.insertAlertToken('{{ token }}')">{{ token }}</button>
+                        {% endfor %}
+                    </div>
+
+                    <label class="form-label fw-semibold small d-block mb-1">Preview</label>
+                    <pre class="small bg-body-tertiary border rounded p-2 mb-0" style="white-space:pre-wrap" data-ignore-morph
+                         data-text="const v = window.buildAlertPreviewVars({
+                             rule: ${{ alert_form_name.id() }}, metric: ${{ alert_form_metric.id() }},
+                             operator: ${{ alert_form_operator.id() }}, profile: ${{ alert_form_profile.id() }},
+                             sources: ${{ alert_form_sources.id() }}, thresholdType: ${{ alert_form_thresholdType.id() }},
+                             thresholdValue: ${{ alert_form_thresholdValue.id() }}
+                         });
+                         'Title: ' + window.renderAlertTemplatePreview(${{ alert_form_webhookTitleTemplate.id() }} || '{{ alertEffectiveWebhookTitle|e('js') }}', v) + '\n' + window.renderAlertTemplatePreview(${{ alert_form_webhookMessageTemplate.id() }} || '{{ alertEffectiveWebhookMessage|e('js') }}', v)"></pre>
+                </div>
             </div>
 
         </div>{# /row #}

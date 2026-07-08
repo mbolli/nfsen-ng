@@ -84,6 +84,10 @@ final class Settings {
         public private(set) array $alerts,
         public private(set) string $alertEmailFrom,
         public private(set) string $displayTimezone,
+        public private(set) string $defaultEmailSubjectTemplate,
+        public private(set) string $defaultEmailBodyTemplate,
+        public private(set) string $defaultWebhookTitleTemplate,
+        public private(set) string $defaultWebhookMessageTemplate,
         private array $datasourceConfigs,
     ) {}
 
@@ -128,6 +132,10 @@ final class Settings {
             alerts: [],
             alertEmailFrom: (string) ($raw['general']['alert_email_from'] ?? (string) (getenv('NFSEN_ALERT_EMAIL_FROM') ?: '')),
             displayTimezone: 'browser',
+            defaultEmailSubjectTemplate: '',
+            defaultEmailBodyTemplate: '',
+            defaultWebhookTitleTemplate: '',
+            defaultWebhookMessageTemplate: '',
             datasourceConfigs: (array) ($raw['db'] ?? []),
         );
     }
@@ -208,6 +216,10 @@ final class Settings {
             alerts: [],
             alertEmailFrom: (string) (getenv('NFSEN_ALERT_EMAIL_FROM') ?: ''),
             displayTimezone: 'browser',
+            defaultEmailSubjectTemplate: '',
+            defaultEmailBodyTemplate: '',
+            defaultWebhookTitleTemplate: '',
+            defaultWebhookMessageTemplate: '',
             datasourceConfigs: $datasourceConfigs,
         );
     }
@@ -405,6 +417,34 @@ final class Settings {
     public function withDisplayTimezone(string $timezone): self {
         $clone = clone $this;
         $clone->displayTimezone = \in_array($timezone, ['browser', 'server'], true) ? $timezone : 'browser';
+
+        return $clone;
+    }
+
+    public function withDefaultEmailSubjectTemplate(string $template): self {
+        $clone = clone $this;
+        $clone->defaultEmailSubjectTemplate = $template;
+
+        return $clone;
+    }
+
+    public function withDefaultEmailBodyTemplate(string $template): self {
+        $clone = clone $this;
+        $clone->defaultEmailBodyTemplate = $template;
+
+        return $clone;
+    }
+
+    public function withDefaultWebhookTitleTemplate(string $template): self {
+        $clone = clone $this;
+        $clone->defaultWebhookTitleTemplate = $template;
+
+        return $clone;
+    }
+
+    public function withDefaultWebhookMessageTemplate(string $template): self {
+        $clone = clone $this;
+        $clone->defaultWebhookMessageTemplate = $template;
 
         return $clone;
     }

@@ -312,6 +312,10 @@ describe('AlertRule roundtrip', function (): void {
             'notifyEmail' => 'alert@example.com',
             'notifyWebhook' => 'https://example.com/hook',
             'nfdumpFilter' => 'proto icmp',
+            'emailSubjectTemplate' => 'Custom subject {rule}',
+            'emailBodyTemplate' => 'Custom body {value}',
+            'webhookTitleTemplate' => 'Custom title {rule}',
+            'webhookMessageTemplate' => 'Custom message {value}',
         ];
 
         $rule = AlertRule::fromArray($data);
@@ -325,6 +329,18 @@ describe('AlertRule roundtrip', function (): void {
         expect($disabled->enabled)->toBeFalse()
             ->and($rule->enabled)->toBeTrue() // original unchanged
             ->and($disabled->id)->toBe($rule->id)
+        ;
+    });
+
+    test('withEnabled preserves template override fields', function (): void {
+        $rule = makeRule([
+            'webhookTitleTemplate' => 'Custom title {rule}',
+            'emailSubjectTemplate' => 'Custom subject {rule}',
+        ]);
+        $disabled = $rule->withEnabled(false);
+
+        expect($disabled->webhookTitleTemplate)->toBe('Custom title {rule}')
+            ->and($disabled->emailSubjectTemplate)->toBe('Custom subject {rule}')
         ;
     });
 });
@@ -369,6 +385,98 @@ describe('AlertManager::sumDecodedFlowRecords()', function (): void {
             'packets' => 5.0,
             'bytes' => 0.0,
         ]);
+    });
+});
+
+// ── AlertManager::buildTemplateVars() / resolveTemplate() ──────────────────
+// Notification template customization (issue #153 follow-up).
+
+describe('AlertManager::buildTemplateVars()', function (): void {
+    test('builds all 12 tokens with correct formatting', function (): void {
+        $rule = makeRule(['name' => 'My Rule', 'metric' => 'bytes', 'operator' => '>', 'profile' => 'live', 'sources' => ['gw1', 'gw2']]);
+        $values = ['flows' => 1.0, 'packets' => 2.0, 'bytes' => 12345.678];
+        $ts = 1700000000;
+
+        $vars = AlertManager::buildTemplateVars($rule, $values, 1000.0, $ts);
+
+        expect($vars)->toBe([
+            '{rule}' => 'My Rule',
+            '{metric}' => 'bytes',
+            '{value}' => '12,345.68',
+            '{threshold}' => '1,000.00',
+            '{operator}' => '>',
+            '{condition}' => 'bytes > 1,000.00',
+            '{flows}' => '1.00',
+            '{packets}' => '2.00',
+            '{bytes}' => '12,345.68',
+            '{profile}' => 'live',
+            '{sources}' => 'gw1, gw2',
+            '{time}' => gmdate('Y-m-d H:i:s', $ts),
+        ]);
+    });
+
+    test('flows/packets/bytes are all populated regardless of the rule metric', function (): void {
+        $rule = makeRule(['metric' => 'flows']);
+        $vars = AlertManager::buildTemplateVars($rule, ['flows' => 5.0, 'packets' => 10.0, 'bytes' => 999.0], 3.0, 1700000000);
+
+        expect($vars['{flows}'])->toBe('5.00')
+            ->and($vars['{packets}'])->toBe('10.00')
+            ->and($vars['{bytes}'])->toBe('999.00')
+        ;
+    });
+
+    test('threshold shows infinity symbol for the cold-start sentinel', function (): void {
+        $rule = makeRule();
+        $vars = AlertManager::buildTemplateVars($rule, ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0], PHP_FLOAT_MAX, 1700000000);
+
+        expect($vars['{threshold}'])->toBe('∞');
+    });
+});
+
+describe('AlertManager::resolveTemplate()', function (): void {
+    test('rule override wins when non-empty', function (): void {
+        expect(AlertManager::resolveTemplate('rule template', 'global template', 'builtin'))->toBe('rule template');
+    });
+
+    test('falls to global default when rule template is null', function (): void {
+        expect(AlertManager::resolveTemplate(null, 'global template', 'builtin'))->toBe('global template');
+    });
+
+    test('falls to global default when rule template is empty string', function (): void {
+        expect(AlertManager::resolveTemplate('', 'global template', 'builtin'))->toBe('global template');
+    });
+
+    test('falls to built-in default when both rule and global are unset', function (): void {
+        expect(AlertManager::resolveTemplate(null, '', 'builtin'))->toBe('builtin');
+    });
+});
+
+describe('Notification template backward compatibility', function (): void {
+    test('default templates reproduce the exact legacy hardcoded output', function (): void {
+        $rule = makeRule(['name' => 'My Rule', 'metric' => 'bytes', 'profile' => 'live', 'sources' => ['gw1', 'gw2']]);
+        $values = ['flows' => 1.0, 'packets' => 2.0, 'bytes' => 12345.678];
+        $ts = 1700000000;
+        $vars = AlertManager::buildTemplateVars($rule, $values, 1000.0, $ts);
+
+        $subject = strtr(AlertManager::resolveTemplate($rule->emailSubjectTemplate, '', AlertManager::DEFAULT_EMAIL_SUBJECT), $vars);
+        $body = strtr(AlertManager::resolveTemplate($rule->emailBodyTemplate, '', AlertManager::DEFAULT_EMAIL_BODY), $vars);
+        $title = strtr(AlertManager::resolveTemplate($rule->webhookTitleTemplate, '', AlertManager::DEFAULT_WEBHOOK_TITLE), $vars);
+        $message = strtr(AlertManager::resolveTemplate($rule->webhookMessageTemplate, '', AlertManager::DEFAULT_WEBHOOK_MESSAGE), $vars);
+
+        expect($subject)->toBe('[nfsen-ng] Alert: My Rule')
+            ->and($body)->toBe("Alert rule \"My Rule\" fired.\n\nMetric:  bytes\nValue:   12,345.68\nProfile: live\nSources: gw1, gw2\nTime:    " . gmdate('Y-m-d H:i:s', $ts) . " UTC\n")
+            ->and($title)->toBe('nfsen-ng alert: My Rule')
+            ->and($message)->toBe('bytes = 12,345.68 (profile: live, sources: gw1, gw2)')
+        ;
+    });
+
+    test('custom template substitutes known vars and leaves unknown tokens untouched', function (): void {
+        $rule = makeRule(['name' => 'R1', 'metric' => 'flows']);
+        $vars = AlertManager::buildTemplateVars($rule, ['flows' => 5.0, 'packets' => 10.0, 'bytes' => 999.0], 3.0, 1700000000);
+
+        $out = strtr('{rule} fired: {flows}f/{packets}p/{bytes}b thr={threshold} unknown={bogus}', $vars);
+
+        expect($out)->toBe('R1 fired: 5.00f/10.00p/999.00b thr=3.00 unknown={bogus}');
     });
 });
 

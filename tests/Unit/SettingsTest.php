@@ -78,6 +78,10 @@ describe('Settings::fromArray()', function (): void {
             ->and($s->nfdumpProfile)->toBe('live')
             ->and($s->nfdumpMaxProcesses)->toBe(1)
             ->and($s->logPriority)->toBe(LOG_INFO)
+            ->and($s->defaultEmailSubjectTemplate)->toBe('')
+            ->and($s->defaultEmailBodyTemplate)->toBe('')
+            ->and($s->defaultWebhookTitleTemplate)->toBe('')
+            ->and($s->defaultWebhookMessageTemplate)->toBe('')
         ;
     });
 
@@ -196,6 +200,21 @@ describe('Settings with…() fluent mutators', function (): void {
         ;
 
         expect($s->datasourceConfig('RRD'))->toBe(['import_years' => 7, 'data_path' => '/rrd']);
+    });
+
+    test('withDefaultWebhookTitleTemplate/withDefaultEmailSubjectTemplate store the given template', function (): void {
+        $s = Settings::fromArray([])
+            ->withDefaultEmailSubjectTemplate('Custom {rule}')
+            ->withDefaultEmailBodyTemplate('Body {value}')
+            ->withDefaultWebhookTitleTemplate('Title {rule}')
+            ->withDefaultWebhookMessageTemplate('Message {value}')
+        ;
+
+        expect($s->defaultEmailSubjectTemplate)->toBe('Custom {rule}')
+            ->and($s->defaultEmailBodyTemplate)->toBe('Body {value}')
+            ->and($s->defaultWebhookTitleTemplate)->toBe('Title {rule}')
+            ->and($s->defaultWebhookMessageTemplate)->toBe('Message {value}')
+        ;
     });
 
     test('each with…() method is fluent and chainable', function (): void {

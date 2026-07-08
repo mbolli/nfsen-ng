@@ -32,6 +32,10 @@ final class AlertActions {
             $alertFormNotifyEmail = $c->getSignal('alert_form_notifyEmail');
             $alertFormNotifyWebhook = $c->getSignal('alert_form_notifyWebhook');
             $alertFormNfdumpFilter = $c->getSignal('alert_form_nfdumpFilter');
+            $alertFormEmailSubjectTemplate = $c->getSignal('alert_form_emailSubjectTemplate');
+            $alertFormEmailBodyTemplate = $c->getSignal('alert_form_emailBodyTemplate');
+            $alertFormWebhookTitleTemplate = $c->getSignal('alert_form_webhookTitleTemplate');
+            $alertFormWebhookMessageTemplate = $c->getSignal('alert_form_webhookMessageTemplate');
             \assert(
                 $alertFormId !== null
                 && $alertFormName !== null
@@ -47,6 +51,10 @@ final class AlertActions {
                 && $alertFormNotifyEmail !== null
                 && $alertFormNotifyWebhook !== null
                 && $alertFormNfdumpFilter !== null
+                && $alertFormEmailSubjectTemplate !== null
+                && $alertFormEmailBodyTemplate !== null
+                && $alertFormWebhookTitleTemplate !== null
+                && $alertFormWebhookMessageTemplate !== null
             );
             $id = trim($alertFormId->string());
 
@@ -66,6 +74,10 @@ final class AlertActions {
                     'notifyEmail' => $alertFormNotifyEmail->string(),
                     'notifyWebhook' => $alertFormNotifyWebhook->string(),
                     'nfdumpFilter' => $alertFormNfdumpFilter->string(),
+                    'emailSubjectTemplate' => $alertFormEmailSubjectTemplate->string(),
+                    'emailBodyTemplate' => $alertFormEmailBodyTemplate->string(),
+                    'webhookTitleTemplate' => $alertFormWebhookTitleTemplate->string(),
+                    'webhookMessageTemplate' => $alertFormWebhookMessageTemplate->string(),
                 ]);
 
                 $prefs = UserPreferences::load(Config::$prefsFile) ?? UserPreferences::fromArray([]);
@@ -194,8 +206,20 @@ final class AlertActions {
                 $msg = "{$resultLabel} — {$rule->name}: current {$rule->metric} = " . number_format($value, 2) . ", threshold ({$conditionStr})";
 
                 if ($fired) {
-                    $alertMgr->dispatchNotifications($rule, $current, time());
+                    $now = time();
+                    $alertMgr->dispatchNotifications($rule, $current, $threshold, $now);
                     $msg .= '. Notifications dispatched.';
+
+                    $vars = AlertManager::buildTemplateVars($rule, $current, $threshold, $now);
+                    if ($rule->notifyWebhook !== null) {
+                        $title = strtr(AlertManager::resolveTemplate($rule->webhookTitleTemplate, Config::$settings->defaultWebhookTitleTemplate, AlertManager::DEFAULT_WEBHOOK_TITLE), $vars);
+                        $message = strtr(AlertManager::resolveTemplate($rule->webhookMessageTemplate, Config::$settings->defaultWebhookMessageTemplate, AlertManager::DEFAULT_WEBHOOK_MESSAGE), $vars);
+                        $msg .= " | Webhook: \"{$title}\" — {$message}";
+                    }
+                    if ($rule->notifyEmail !== null && Config::$settings->alertEmailFrom !== '') {
+                        $subject = strtr(AlertManager::resolveTemplate($rule->emailSubjectTemplate, Config::$settings->defaultEmailSubjectTemplate, AlertManager::DEFAULT_EMAIL_SUBJECT), $vars);
+                        $msg .= " | Email subject: \"{$subject}\"";
+                    }
                 }
 
                 $type = $fired ? 'warning' : 'success';

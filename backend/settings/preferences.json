@@ -41,7 +41,11 @@
             "cooldownSlots": 3,
             "notifyEmail": null,
             "notifyWebhook": null,
-            "nfdumpFilter": null
+            "nfdumpFilter": null,
+            "emailSubjectTemplate": null,
+            "emailBodyTemplate": null,
+            "webhookTitleTemplate": null,
+            "webhookMessageTemplate": null
         },
         {
             "id": "5298562531c897f14ee838f2d2e1fa85",
@@ -59,7 +63,11 @@
             "cooldownSlots": 3,
             "notifyEmail": null,
             "notifyWebhook": null,
-            "nfdumpFilter": null
+            "nfdumpFilter": null,
+            "emailSubjectTemplate": null,
+            "emailBodyTemplate": null,
+            "webhookTitleTemplate": null,
+            "webhookMessageTemplate": null
         },
         {
             "id": "3ff9716b39f6ba2c3d2adc1119713ed6",
@@ -77,8 +85,16 @@
             "cooldownSlots": 3,
             "notifyEmail": null,
             "notifyWebhook": null,
-            "nfdumpFilter": null
+            "nfdumpFilter": null,
+            "emailSubjectTemplate": null,
+            "emailBodyTemplate": null,
+            "webhookTitleTemplate": null,
+            "webhookMessageTemplate": null
         }
     ],
-    "displayTimezone": "browser"
+    "displayTimezone": "browser",
+    "defaultEmailSubjectTemplate": "",
+    "defaultEmailBodyTemplate": "",
+    "defaultWebhookTitleTemplate": "",
+    "defaultWebhookMessageTemplate": ""
 }

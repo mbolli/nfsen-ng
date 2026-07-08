@@ -251,6 +251,12 @@ $app->page('/', function (Context $c) use ($app): void {
         'settings_logPriority',
         clientWritable: true
     );
+    // Global default notification templates — fall back to AlertManager's built-in
+    // defaults when empty; per-rule templates (below) override these in turn.
+    $settingsDefaultEmailSubjectTemplate = $c->signal(Config::$settings->defaultEmailSubjectTemplate, 'settings_defaultEmailSubjectTemplate', clientWritable: true);
+    $settingsDefaultEmailBodyTemplate = $c->signal(Config::$settings->defaultEmailBodyTemplate, 'settings_defaultEmailBodyTemplate', clientWritable: true);
+    $settingsDefaultWebhookTitleTemplate = $c->signal(Config::$settings->defaultWebhookTitleTemplate, 'settings_defaultWebhookTitleTemplate', clientWritable: true);
+    $settingsDefaultWebhookMessageTemplate = $c->signal(Config::$settings->defaultWebhookMessageTemplate, 'settings_defaultWebhookMessageTemplate', clientWritable: true);
 
     // Timezone signals — both server-owned (read-only for browser)
     // serverTz: PHP/container operating timezone (TZ env, typically UTC in Docker)
@@ -272,7 +278,11 @@ $app->page('/', function (Context $c) use ($app): void {
     $alertFormAvgWindow = $c->signal('1h', 'alert_form_avgWindow', clientWritable: true);
     $alertFormCooldownSlots = $c->signal(3, 'alert_form_cooldownSlots', clientWritable: true);
     $alertFormNotifyEmail = $c->signal('', 'alert_form_notifyEmail', clientWritable: true);
+    $alertFormEmailSubjectTemplate = $c->signal('', 'alert_form_emailSubjectTemplate', clientWritable: true);
+    $alertFormEmailBodyTemplate = $c->signal('', 'alert_form_emailBodyTemplate', clientWritable: true);
     $alertFormNotifyWebhook = $c->signal('', 'alert_form_notifyWebhook', clientWritable: true);
+    $alertFormWebhookTitleTemplate = $c->signal('', 'alert_form_webhookTitleTemplate', clientWritable: true);
+    $alertFormWebhookMessageTemplate = $c->signal('', 'alert_form_webhookMessageTemplate', clientWritable: true);
     $alertFormNfdumpFilter = $c->signal('', 'alert_form_nfdumpFilter', clientWritable: true);
 
     // ── State containers (plain PHP — NOT signals, not sent to browser) ──────
@@ -563,6 +573,20 @@ $app->page('/', function (Context $c) use ($app): void {
             'alertLog' => $alertLog,
             'alertFiredHtml' => $alertFiredHtml,
             'alertEmailEnabled' => Config::$settings->alertEmailFrom !== '',
+
+            // Built-in defaults (bottom of the fallback chain) — shown in the global
+            // template card's placeholders.
+            'alertBuiltinEmailSubject' => AlertManager::DEFAULT_EMAIL_SUBJECT,
+            'alertBuiltinEmailBody' => AlertManager::DEFAULT_EMAIL_BODY,
+            'alertBuiltinWebhookTitle' => AlertManager::DEFAULT_WEBHOOK_TITLE,
+            'alertBuiltinWebhookMessage' => AlertManager::DEFAULT_WEBHOOK_MESSAGE,
+
+            // Currently-effective global-or-builtin templates — shown as placeholders
+            // on the per-rule override fields, so users see what they'd actually inherit.
+            'alertEffectiveEmailSubject' => AlertManager::resolveTemplate(null, Config::$settings->defaultEmailSubjectTemplate, AlertManager::DEFAULT_EMAIL_SUBJECT),
+            'alertEffectiveEmailBody' => AlertManager::resolveTemplate(null, Config::$settings->defaultEmailBodyTemplate, AlertManager::DEFAULT_EMAIL_BODY),
+            'alertEffectiveWebhookTitle' => AlertManager::resolveTemplate(null, Config::$settings->defaultWebhookTitleTemplate, AlertManager::DEFAULT_WEBHOOK_TITLE),
+            'alertEffectiveWebhookMessage' => AlertManager::resolveTemplate(null, Config::$settings->defaultWebhookMessageTemplate, AlertManager::DEFAULT_WEBHOOK_MESSAGE),
         ]);
     }, cacheUpdates: false);
 });

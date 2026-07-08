@@ -222,6 +222,14 @@
         loading the whole engine a second time with its own MutationObserver,
         signal store, etc. Mirrors mbolli/datastar-attribute-prop's own approach.
     #}
+    {#
+        alert-template-preview.js defines window.* helpers read by data-effect
+        attributes in alerts-settings.html.twig, which Datastar evaluates eagerly
+        during its initial DOM walk below -- it must load and run BEFORE
+        datastar.js, unlike the other components/* scripts here (which only need
+        to exist by the time a user later clicks something, not at parse time).
+    #}
+    <script type="module" src="{{ basePath }}js/components/alert-template-preview.js?v={{ version }}"></script>
     <script type="importmap">{"imports": {"datastar": "{{ basePath }}js/datastar.js?v={{ version }}"}}</script>
     <script type="module" src="{{ basePath }}js/datastar.js?v={{ version }}"></script>
     <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ version }}"></script>

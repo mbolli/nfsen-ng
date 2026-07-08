@@ -27,6 +27,10 @@ final class UserPreferences {
         public readonly string $selectedProfile = 'live',
         public readonly array $alerts = [],
         public readonly string $displayTimezone = 'browser',
+        public readonly string $defaultEmailSubjectTemplate = '',
+        public readonly string $defaultEmailBodyTemplate = '',
+        public readonly string $defaultWebhookTitleTemplate = '',
+        public readonly string $defaultWebhookMessageTemplate = '',
     ) {}
 
     /**
@@ -69,6 +73,10 @@ final class UserPreferences {
             displayTimezone: \in_array((string) ($data['displayTimezone'] ?? 'browser'), ['browser', 'server'], true)
                 ? (string) ($data['displayTimezone'] ?? 'browser')
                 : 'browser',
+            defaultEmailSubjectTemplate: (string) ($data['defaultEmailSubjectTemplate'] ?? ''),
+            defaultEmailBodyTemplate: (string) ($data['defaultEmailBodyTemplate'] ?? ''),
+            defaultWebhookTitleTemplate: (string) ($data['defaultWebhookTitleTemplate'] ?? ''),
+            defaultWebhookMessageTemplate: (string) ($data['defaultWebhookMessageTemplate'] ?? ''),
         );
     }
 
@@ -88,6 +96,10 @@ final class UserPreferences {
             ->withLogPriority($this->logPriority)
             ->withAlerts($this->alerts)
             ->withDisplayTimezone($this->displayTimezone)
+            ->withDefaultEmailSubjectTemplate($this->defaultEmailSubjectTemplate)
+            ->withDefaultEmailBodyTemplate($this->defaultEmailBodyTemplate)
+            ->withDefaultWebhookTitleTemplate($this->defaultWebhookTitleTemplate)
+            ->withDefaultWebhookMessageTemplate($this->defaultWebhookMessageTemplate)
         ;
     }
 
@@ -131,6 +143,10 @@ final class UserPreferences {
             'selectedProfile' => $this->selectedProfile,
             'alerts' => array_map(fn (AlertRule $r) => $r->toArray(), $this->alerts),
             'displayTimezone' => $this->displayTimezone,
+            'defaultEmailSubjectTemplate' => $this->defaultEmailSubjectTemplate,
+            'defaultEmailBodyTemplate' => $this->defaultEmailBodyTemplate,
+            'defaultWebhookTitleTemplate' => $this->defaultWebhookTitleTemplate,
+            'defaultWebhookMessageTemplate' => $this->defaultWebhookMessageTemplate,
         ];
     }
 

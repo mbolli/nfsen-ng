@@ -52,3 +52,48 @@ crashing evaluation for every other rule.
 A fired rule's cooldown ticks down once per evaluation cycle regardless of
 whether it fires again; **Recent Alert History** (bottom of the tab) shows
 the last 50 dispatches across all rules, newest first.
+
+## Notification templates
+
+Email subject/body and webhook title/message are built from `{token}`
+templates, not hardcoded strings. Resolution is a 3-tier fallback, checked
+in `AlertManager::resolveTemplate()`:
+
+1. The rule's own override (`AlertRule::$emailSubjectTemplate` /
+   `$emailBodyTemplate` / `$webhookTitleTemplate` / `$webhookMessageTemplate`
+   — nullable, `null` = unset, following the same convention as
+   `$nfdumpFilter`).
+2. A global default, stored in `UserPreferences`/`Settings`
+   (`$defaultEmailSubjectTemplate` etc. — plain `string`, `''` = unset,
+   matching that class's existing convention for fields like
+   `$alertEmailFrom`) and saved via the existing `save-settings` action, not
+   a new one.
+3. `AlertManager`'s built-in `DEFAULT_EMAIL_SUBJECT` / `DEFAULT_EMAIL_BODY` /
+   `DEFAULT_WEBHOOK_TITLE` / `DEFAULT_WEBHOOK_MESSAGE` constants — themselves
+   just `{token}`-templated strings, so the "hardcoded" behavior from before
+   this feature existed is really just tier 3 with tiers 1–2 both empty. A
+   golden test in `AlertManagerTest.php` asserts the resolved+rendered
+   output for an empty-override rule matches that pre-existing hardcoded
+   text byte-for-byte.
+
+`AlertManager::buildTemplateVars()` builds the substitution map (12 tokens —
+see the [user guide](../guide/alerts.md#customizing-the-notification-text)
+for the list); substitution itself is a plain `strtr()`. Notably,
+`{flows}`/`{packets}`/`{bytes}` are always all three populated regardless of
+the rule's own `metric`, since `fetchCurrentSlot()` already computes all
+three together in one nfdump/datasource round-trip — no extra query cost to
+expose them all as template variables.
+
+The Settings UI's live preview (`frontend/js/components/alert-template-preview.js`)
+is a client-side mirror of this same resolve/substitute logic, using fake
+example numbers instead of real fired-alert data — it has no server
+round-trip, so it works for a brand-new, unsaved rule. The preview `<pre>`
+elements carry `data-ignore-morph`, same reasoning as `#series`/`#legend` in
+[graph-view.html.twig](../../../backend/templates/partials/graph-view.html.twig):
+they're empty in the server-rendered HTML and filled in entirely by
+`data-effect`, so without it an SSE-pushed catch-up sync shortly after page
+load morphs them back to the server's (empty) version, wiping the computed
+preview text — confirmed against Datastar's actual `morphNode()`/
+`morphChildren()` source, which reconciles an element's children toward the
+freshly-rendered version whenever `isEqualNode()` says they differ, deleting
+anything client JS added that the server doesn't know about.

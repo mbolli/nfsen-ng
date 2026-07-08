@@ -84,6 +84,20 @@
         </div>
     </div>
 
+    {# Ports — optional middle column (src IP -> dst port -> dst IP) #}
+    <div id="filterSankeyPorts" class="col-xs-6 col-sm-3 col-md-2">
+        <div class="filter-group">
+        <p class="filter-label">Ports
+            <nfsen-tooltip data-ignore-morph text="Add the destination L4 port as a middle column: src IP &rarr; dst port &rarr; dst IP. Aggregates on the port too, so the top-N covers src/port/dst tuples." placement="top"></nfsen-tooltip>
+        </p>
+        <div class="form-check form-switch mt-1">
+            <input class="form-check-input" type="checkbox" role="switch"
+                   id="sankeyShowPorts" {{ bind(sankey_show_ports) }}>
+            <label class="form-check-label" for="sankeyShowPorts">Show dst port</label>
+        </div>
+        </div>
+    </div>
+
     {# Submit #}
     <div class="col-12 border-top mt-3 pt-3">
         <div class="d-flex align-items-center gap-3 flex-wrap">

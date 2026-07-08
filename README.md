@@ -16,8 +16,8 @@ nfsen-ng is a modern, in-place replacement for the ageing [NfSen](http://nfsen.s
 
 ![nfsen-ng dashboard overview, light and dark](https://raw.githubusercontent.com/mbolli/nfsen-ng/master/book/src/images/00-page-graphs.png)
 
-![nfsen-ng Sankey diagram visualizing src->dst traffic flow, light and dark](https://raw.githubusercontent.com/mbolli/nfsen-ng/master/book/src/images/03-page-sankey.png)
-*Sankey traffic-flow diagram, available since v1.0.0-beta.1.*
+![nfsen-ng Sankey diagram visualizing src IP -> dst port -> dst IP traffic flow, light and dark](https://raw.githubusercontent.com/mbolli/nfsen-ng/master/book/src/images/guide-sankey-ports.png)
+*Sankey traffic-flow diagram with the optional destination-port column, available since v1.0.0-beta.1.*
 
 ## Quick start
 

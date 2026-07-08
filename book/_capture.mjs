@@ -192,6 +192,19 @@ window.__setSelect = function(selector, value){
   e.dispatchEvent(new Event('change', {bubbles:true}));
   return true;
 };
+// Same idea as __setSelect but for a Datastar-bound checkbox/switch (e.g. the
+// Sankey "Show dst port" toggle, #sankeyShowPorts) -- set .checked through the
+// native setter and fire input/change so bind() notices, exactly as a user
+// clicking the switch would.
+window.__setCheckbox = function(id, checked){
+  var e = document.getElementById(id);
+  if (!e) return false;
+  var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'checked').set;
+  setter.call(e, !!checked);
+  e.dispatchEvent(new Event('input', {bubbles:true}));
+  e.dispatchEvent(new Event('change', {bubbles:true}));
+  return true;
+};
 // Click the first element with a data-on:click* attribute (nfsen-ng uses both
 // data-on:click and data-on:click__prevent) whose expression contains sub --
 // this is how every nav tab / settings sub-nav link is wired (see
@@ -502,6 +515,15 @@ async function main() {
   await go(`_currentView = 'sankey'`);
   await processData();
   await shot('03-page-sankey');
+
+  // ---- guide: Sankey with the optional ports column enabled (#152 follow-up)
+  //      -- flip the "Show dst port" switch and re-run so the diagram gains the
+  //      middle src IP -> dst port -> dst IP column, then shoot the richer view.
+  console.log('shot guide-sankey-ports');
+  await evaluate(`__setCheckbox('sankeyShowPorts', true)`);
+  await processData();
+  await shot('guide-sankey-ports');
+  await evaluate(`__setCheckbox('sankeyShowPorts', false)`); // restore default for any later re-render
 
   // ---- Settings sub-sections (all under $_currentView === 'settings') ----
   console.log('nav to settings');

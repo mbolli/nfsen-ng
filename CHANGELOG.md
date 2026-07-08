@@ -5,8 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Sankey diagram: optional **Ports** toggle that inserts the destination L4 port as a middle column, turning the src→dst view into src IP → dst port → dst IP ([#152](https://github.com/mbolli/nfsen-ng/issues/152)). When on, the nfdump aggregation key gains `dstport` (`-A srcip,dstport,dstip`) and the payload becomes three columns; the shared middle `port:` nodes pool all traffic per port, with src→port and port→dst ribbons summed so a busy port renders as one node rather than a stack of duplicates.
+
 ### Fixed
 
+- The Flows tab ignored the source selector — picking a single source still queried every configured source ([#155](https://github.com/mbolli/nfsen-ng/issues/155)). The Flows source `<select>` binds to the `graph_sources` signal, but `FlowActions` passed `Config::$settings->sources` (all sources) to nfdump's `-M` unconditionally instead of the selection. It now resolves the selected sources the same way the Statistics tab already did — honouring the "any"/empty = all-sources fallback — via a shared `Helpers::resolveSources()` (also adopted by the Statistics and count-files actions to remove the duplicated logic).
 - The traffic graph's most recent data point always rendered as 0, one slot behind the real latest value ([#154](https://github.com/mbolli/nfsen-ng/issues/154)). RRDtool always returns one trailing empty (NaN) row past the last written slot; `Rrd::get_graph_data()` set that NaN to `null` and then, for the bits/traffic graph, unconditionally ran the `bytes → bits` conversion `$measure *= 8` over it — and PHP evaluates `null * 8` as `0`, so the empty gap became a real zero and the line dropped to the baseline at the right edge. Only the bits traffic graph was affected (flows/packets never multiply, so their gaps stayed `null`). The `*= 8` conversion now runs only on valid measures.
 
 ---

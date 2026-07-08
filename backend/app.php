@@ -199,6 +199,8 @@ $app->page('/', function (Context $c) use ($app): void {
     $sankeyFilter = $c->signal('', 'sankey_filter', clientWritable: true);
     $sankeyTopN = $c->signal(20, 'sankey_topN', clientWritable: true);
     $sankeyMetric = $c->signal('bytes', 'sankey_metric', clientWritable: true);
+    // Optional middle column: src IP -> dst L4 port -> dst IP (three-column Sankey)
+    $sankeyShowPorts = $c->signal(false, 'sankey_show_ports', clientWritable: true);
     // Byte thresholds for sankey — prepended as filter expressions (bytes > / bytes <)
     $sankeyLowerLimit = $c->signal('', 'sankey_lower_limit', clientWritable: true);
     $sankeyUpperLimit = $c->signal('', 'sankey_upper_limit', clientWritable: true);

@@ -31,6 +31,7 @@ final class SankeyActions {
             $sankeyFilter = $c->getSignal('sankey_filter');
             $sankeyTopN = $c->getSignal('sankey_topN');
             $sankeyMetric = $c->getSignal('sankey_metric');
+            $sankeyShowPorts = $c->getSignal('sankey_show_ports');
             $sankeyLowerLimit = $c->getSignal('sankey_lower_limit');
             $sankeyUpperLimit = $c->getSignal('sankey_upper_limit');
             $graphSources = $c->getSignal('graph_sources');
@@ -41,6 +42,7 @@ final class SankeyActions {
                 && $sankeyFilter !== null
                 && $sankeyTopN !== null
                 && $sankeyMetric !== null
+                && $sankeyShowPorts !== null
                 && $sankeyLowerLimit !== null
                 && $sankeyUpperLimit !== null
                 && $graphSources !== null
@@ -56,6 +58,7 @@ final class SankeyActions {
                 }
 
                 $metric = $sankeyMetric->string() === 'packets' ? 'packets' : 'bytes';
+                $showPorts = $sankeyShowPorts->bool();
 
                 $processor = new Config::$processorClass();
                 $processor->setProfile($selectedProfile->string());
@@ -70,14 +73,16 @@ final class SankeyActions {
                 }
                 $processor->setOption('-R', [$ds, $de]);
 
-                $processor->setOption(
-                    '-a',
-                    '-A' . Nfdump::buildAggregationString(['srcip' => 'srcip', 'dstip' => 'dstip'])
-                );
+                // With ports enabled, the destination L4 port joins the aggregation key so
+                // the diagram gains a middle column (src IP -> dst port -> dst IP).
+                $aggregation = $showPorts
+                    ? ['srcip' => 'srcip', 'dstport' => true, 'dstip' => 'dstip']
+                    : ['srcip' => 'srcip', 'dstip' => 'dstip'];
+                $processor->setOption('-a', '-A' . Nfdump::buildAggregationString($aggregation));
                 $processor->setOption('-O', $metric);
                 $processor->setOption('-n', $sankeyTopN->int());
                 $processor->setOption('-N', null);
-                $processor->setOption('-o', 'fmt:%sa %da %ibyt %ipkt %fl');
+                $processor->setOption('-o', $showPorts ? 'fmt:%sa %da %dp %ibyt %ipkt %fl' : 'fmt:%sa %da %ibyt %ipkt %fl');
 
                 // Byte thresholds are prepended to the filter expression, same as Flows/Statistics.
                 $thresholdFilter = Nfdump::buildThresholdFilter(
@@ -96,7 +101,7 @@ final class SankeyActions {
                     throw new \RuntimeException('Invalid data from nfdump processor');
                 }
 
-                $sankeyData = json_encode(self::buildSankeyPayload($rows, $metric), JSON_THROW_ON_ERROR);
+                $sankeyData = json_encode(self::buildSankeyPayload($rows, $metric, $showPorts), JSON_THROW_ON_ERROR);
 
                 $elapsed = round(microtime(true) - $time, 3);
                 $cmd = htmlspecialchars((string) ($result['command'] ?? ''), ENT_QUOTES | ENT_HTML5);
@@ -141,13 +146,23 @@ final class SankeyActions {
      * column — ECharts requires unique node names, and this sidesteps reconciling which
      * column a given IP "belongs" to.
      *
+     * When $showPorts is true the payload gains a middle column: each row carries a
+     * destination port ('dp'), producing src IP -> dst port -> dst IP. See
+     * self::buildPortSankeyPayload() for that three-column variant.
+     *
      * @param array<array<string, string>> $rows
-     * @param string                       $metric 'bytes' or 'packets' — selects the link value field
+     * @param string                       $metric    'bytes' or 'packets' — selects the link value field
+     * @param bool                         $showPorts add a dst-port middle column (three-column layout)
      *
      * @return array{nodes: list<array{name: string, label: string}>, links: list<array{source: string, target: string, value: int, flows: int}>}
      */
-    public static function buildSankeyPayload(array $rows, string $metric): array {
+    public static function buildSankeyPayload(array $rows, string $metric, bool $showPorts = false): array {
         $valueField = $metric === 'packets' ? 'ipkt' : 'ibyt';
+
+        if ($showPorts) {
+            return self::buildPortSankeyPayload($rows, $valueField);
+        }
+
         $nodes = [];
         $links = [];
 
@@ -172,5 +187,73 @@ final class SankeyActions {
         }
 
         return ['nodes' => array_values($nodes), 'links' => $links];
+    }
+
+    /**
+     * Three-column variant of buildSankeyPayload(): src IP -> dst port -> dst IP.
+     *
+     * Each aggregated row (sa/da/dp/…) is split into two links — src->port and
+     * port->dst — that share the middle 'port:<dp>' node. Unlike the strictly
+     * bipartite two-column case, neither half is unique per row (one source hits a
+     * port across many destinations, and one port is reached by many sources), so
+     * both link halves are summed per (source, target) pair to avoid stacking
+     * duplicate ribbons. Volume conservation holds: total flow into a port node
+     * equals total flow out of it.
+     *
+     * Node ids keep the 'src:'/'dst:' prefixes (plus 'port:' for the middle column)
+     * so ECharts' topology-driven layout still yields exactly three ordered columns.
+     * Self-loops (sa === da) and rows missing an endpoint or port are dropped.
+     *
+     * @param array<array<string, string>> $rows
+     * @param string                       $valueField 'ipkt' or 'ibyt'
+     *
+     * @return array{nodes: list<array{name: string, label: string}>, links: list<array{source: string, target: string, value: int, flows: int}>}
+     */
+    private static function buildPortSankeyPayload(array $rows, string $valueField): array {
+        $nodes = [];
+
+        /** @var array<string, array{source: string, target: string, value: int, flows: int}> $links */
+        $links = [];
+
+        foreach ($rows as $row) {
+            $sa = trim((string) ($row['sa'] ?? ''));
+            $da = trim((string) ($row['da'] ?? ''));
+            $dp = trim((string) ($row['dp'] ?? ''));
+            if ($sa === '' || $da === '' || $dp === '' || $sa === $da) {
+                continue;
+            }
+
+            $value = (int) ($row[$valueField] ?? 0);
+            $flows = (int) ($row['fl'] ?? 0);
+
+            $sourceId = 'src:' . $sa;
+            $portId = 'port:' . $dp;
+            $targetId = 'dst:' . $da;
+            $nodes[$sourceId] = ['name' => $sourceId, 'label' => $sa];
+            $nodes[$portId] = ['name' => $portId, 'label' => $dp];
+            $nodes[$targetId] = ['name' => $targetId, 'label' => $da];
+
+            self::accumulateLink($links, $sourceId, $portId, $value, $flows);
+            self::accumulateLink($links, $portId, $targetId, $value, $flows);
+        }
+
+        return ['nodes' => array_values($nodes), 'links' => array_values($links)];
+    }
+
+    /**
+     * Sum a link's value/flows into the accumulator, keyed by its (source, target)
+     * pair, creating it on first sight.
+     *
+     * @param array<string, array{source: string, target: string, value: int, flows: int}> $links
+     */
+    private static function accumulateLink(array &$links, string $source, string $target, int $value, int $flows): void {
+        $key = $source . "\0" . $target;
+        if (isset($links[$key])) {
+            $links[$key]['value'] += $value;
+            $links[$key]['flows'] += $flows;
+
+            return;
+        }
+        $links[$key] = ['source' => $source, 'target' => $target, 'value' => $value, 'flows' => $flows];
     }
 }

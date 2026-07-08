@@ -162,9 +162,12 @@ export class NfsenSankey extends HTMLElement {
     computeCanvasHeight(nodes) {
         const MIN_HEIGHT = 500;
         const PX_PER_NODE = 22;
+        // Height is driven by the tallest column. With the optional ports layout a
+        // third ('port:') column joins src/dst; count each independently.
         const srcCount = nodes.filter((n) => n.name.startsWith('src:')).length;
-        const dstCount = nodes.length - srcCount;
-        const maxPerColumn = Math.max(srcCount, dstCount, 1);
+        const portCount = nodes.filter((n) => n.name.startsWith('port:')).length;
+        const dstCount = nodes.length - srcCount - portCount;
+        const maxPerColumn = Math.max(srcCount, portCount, dstCount, 1);
         return Math.max(MIN_HEIGHT, maxPerColumn * PX_PER_NODE);
     }
 
@@ -206,9 +209,12 @@ export class NfsenSankey extends HTMLElement {
                     borderColor: theme.tooltipBorder,
                     textStyle: { color: theme.textColor },
                     formatter: (params) => {
+                        // Node/edge ids carry a column prefix (src:/port:/dst:) that must
+                        // never surface in the tooltip — strip whichever one applies.
+                        const stripPrefix = (id) => String(id).replace(/^(?:src|port|dst):/, '');
                         if (params.dataType === 'edge') {
-                            const src = params.data.source.replace(/^src:/, '');
-                            const dst = params.data.target.replace(/^dst:/, '');
+                            const src = stripPrefix(params.data.source);
+                            const dst = stripPrefix(params.data.target);
                             return (
                                 `${src} &rarr; ${dst}<br>` +
                                 `Volume: <b>${formatBytes(params.data.value)}</b><br>` +
@@ -245,7 +251,9 @@ export class NfsenSankey extends HTMLElement {
                                 // Source-column nodes sit at the left edge — their default
                                 // 'right' label position would point inward, overlapping the
                                 // ribbons and the destination column. Point outward instead.
-                                position: n.name.startsWith('src:') ? 'left' : 'right',
+                                // Middle 'port:' nodes (ports layout) have ribbons on both
+                                // sides, so sit their label above the node bar to clear them.
+                                position: n.name.startsWith('src:') ? 'left' : n.name.startsWith('port:') ? 'top' : 'right',
                             },
                         })),
                         links: links.map((l) => ({

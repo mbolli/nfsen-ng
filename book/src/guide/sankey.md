@@ -29,3 +29,17 @@ start small (10–20) and widen only if you need to.
 
 Filters (sources, nfdump filter expression, min/max bytes) work the same as
 every other data tab.
+
+## Adding the port dimension
+
+![Sankey with the destination-port middle column enabled](../images/guide-sankey-ports.png)
+
+Flip on **Ports** (Show dst port) to slot the destination L4 port between the
+two IP columns: **src IP → dst port → dst IP**. This answers *what service* a
+conversation is using, not just who talks to whom — e.g. seeing that one host's
+traffic to a server is all `443` while another host's is `22`. The middle
+column pools traffic per port, so a busy port like `443` shows up as one thick
+node fed by every source and fanning out to every destination that used it.
+Because the port joins the aggregation key, **Top pairs** now caps src/port/dst
+tuples rather than plain pairs, so bump it up a little if a busy port thins out
+the view.

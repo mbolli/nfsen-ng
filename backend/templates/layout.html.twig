@@ -24,8 +24,8 @@
                              (['retrying', 'error', 'finished'].includes(evt.detail.type) && ($_disconnected = true)))">
     <meta data-init="window.addEventListener('beforeunload', () => { navigator.sendBeacon('{{ basePath }}_session/close', '{{ contextId }}'); });">
     <link rel="stylesheet" type="text/css" href="{{ basePath }}css/bootstrap.min.css">
-    <link rel="stylesheet" type="text/css" href="{{ basePath }}css/nouislider.min.css?v={{ version }}">
-    <link rel="stylesheet" type="text/css" href="{{ basePath }}css/nfsen-ng.css?v={{ version }}">
+    <link rel="stylesheet" type="text/css" href="{{ basePath }}css/nouislider.min.css?v={{ assetVersion }}">
+    <link rel="stylesheet" type="text/css" href="{{ basePath }}css/nfsen-ng.css?v={{ assetVersion }}">
 </head>
 
 {#
@@ -188,6 +188,30 @@
     <script src="{{ basePath }}js/nouislider.min.js" defer></script>
     <script src="{{ basePath }}js/echarts.min.js" defer></script>
 
+    {#
+        Import map so datastar-persist.js's `import ... from 'datastar'` resolves
+        to the exact same module instance as the main datastar.js script tag
+        below. A relative import (`../datastar.js`) would resolve to a URL
+        without the `?v=` cache-busting query string, which the module loader
+        treats as a DIFFERENT module — loading the whole engine a second time
+        with its own MutationObserver, signal store, etc. Mirrors
+        mbolli/datastar-attribute-prop's own approach.
+
+        MUST be the first `type="module"`-adjacent tag in the document — including
+        before inline `<script type="module">` blocks, not just external ones.
+        Per the import maps spec, an import map is only honoured if no module
+        script has been "prepared" yet, and that step runs the moment the parser
+        reaches ANY module script's tag (inline scripts included — no fetch
+        needed, so it happens immediately), not when it executes. Putting this
+        after any earlier `type="module"` tag silently disables the whole import
+        map — the bare `from 'datastar'` specifier in datastar-persist.js then
+        fails to resolve, so that module (and every signal it was supposed to
+        persist) never loads, in every browser, regardless of cache state. The
+        two `defer` classic scripts above are fine to precede it: only module
+        scripts and modulepreload links trigger the restriction.
+    #}
+    <script type="importmap">{"imports": {"datastar": "{{ basePath }}js/datastar.js?v={{ assetVersion }}"}}</script>
+
     <script type="module">
         /**
          * Returns true only when a filter-change event originated from inside
@@ -210,41 +234,35 @@
     </script>
 
     <script type="module">
-        import { tzOptions } from '{{ basePath }}js/components/tz-utils.js?v={{ version }}';
+        import { tzOptions } from '{{ basePath }}js/components/tz-utils.js?v={{ assetVersion }}';
         window.tzOptions = tzOptions;
     </script>
 
-    {#
-        Import map so datastar-persist.js's `import ... from 'datastar'` resolves
-        to the exact same module instance as this script tag. A relative import
-        (`../datastar.js`) would resolve to a URL without the `?v=` cache-busting
-        query string, which the module loader treats as a DIFFERENT module —
-        loading the whole engine a second time with its own MutationObserver,
-        signal store, etc. Mirrors mbolli/datastar-attribute-prop's own approach.
-    #}
     {#
         alert-template-preview.js defines window.* helpers read by data-effect
         attributes in alerts-settings.html.twig, which Datastar evaluates eagerly
         during its initial DOM walk below -- it must load and run BEFORE
         datastar.js, unlike the other components/* scripts here (which only need
         to exist by the time a user later clicks something, not at parse time).
+        Execution order for external module scripts follows document order
+        regardless of the import map's position, so this still runs before
+        datastar.js below.
     #}
-    <script type="module" src="{{ basePath }}js/components/alert-template-preview.js?v={{ version }}"></script>
-    <script type="importmap">{"imports": {"datastar": "{{ basePath }}js/datastar.js?v={{ version }}"}}</script>
-    <script type="module" src="{{ basePath }}js/datastar.js?v={{ version }}"></script>
-    <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ version }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-chart.js?v={{ version }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-sankey.js?v={{ version }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-table.js?v={{ version }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-daterange.js?v={{ version }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-toast.js?v={{ version }}"></script>
+    <script type="module" src="{{ basePath }}js/components/alert-template-preview.js?v={{ assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/datastar.js?v={{ assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/nfsen-chart.js?v={{ assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/nfsen-sankey.js?v={{ assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/nfsen-table.js?v={{ assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/nfsen-daterange.js?v={{ assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/nfsen-toast.js?v={{ assetVersion }}"></script>
     {# Tooltip popup container — data-ignore-morph prevents Datastar SSE from removing JS-appended tooltips #}
     <div id="nfsen-tip-container" data-ignore-morph></div>
     {# Placeholder for the server-rendered IP info modal fragment #}
     <div id="ip-modal-placeholder"></div>
 
-    <script type="module" src="{{ basePath }}js/components/nfsen-filter-manager.js?v={{ version }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-tooltip.js?v={{ version }}"></script>
+    <script type="module" src="{{ basePath }}js/components/nfsen-filter-manager.js?v={{ assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/nfsen-tooltip.js?v={{ assetVersion }}"></script>
 
     {# ── Alert-fired toast container ──────────────────────────────────────── #}
     {# Fixed overlay (bottom-right). New toasts injected here when alerts fire  #}

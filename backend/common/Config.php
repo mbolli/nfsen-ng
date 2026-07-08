@@ -20,6 +20,44 @@ abstract class Config {
     private function __construct() {}
 
     /**
+     * Cache-busting token for the `?v=` query string on frontend/js and
+     * frontend/css asset URLs (backend/templates/layout.html.twig). php-via
+     * applies `public, max-age=31536000, immutable` to any `?v=`-busted static
+     * response, which is only safe because a changed value produces a new URL.
+     *
+     * Deliberately NOT VERSION: VERSION is hand-bumped on release commits only
+     * (see CHANGELOG.md / `release:` commits), but frontend/ can change in any
+     * commit. A JS/CSS fix that reused VERSION would keep the same URL as
+     * before, so browsers that had already cached the old content under that
+     * URL would never see the fix (only a hard refresh bypasses `immutable`).
+     * Derived from the newest mtime under frontend/js and frontend/css instead,
+     * so every such change invalidates the cache automatically. Memoized for
+     * the lifetime of the worker process — code changes already require a
+     * process restart to take effect, so re-scanning per request buys nothing.
+     */
+    public static function assetVersion(): string {
+        static $version = null;
+        if ($version !== null) {
+            return $version;
+        }
+
+        $maxMtime = 0;
+        $frontendDir = \dirname(__DIR__, 2) . '/frontend';
+        foreach (['js', 'css'] as $sub) {
+            $dir = $frontendDir . '/' . $sub;
+            if (!is_dir($dir)) {
+                continue;
+            }
+            $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS));
+            foreach ($it as $file) {
+                $maxMtime = max($maxMtime, $file->getMTime());
+            }
+        }
+
+        return $version = (string) $maxMtime;
+    }
+
+    /**
      * Return the DateTimeZone used to interpret nfcapd filenames.
      *
      * Reads NFCAPD_TZ env var first; falls back to the PHP effective timezone

@@ -70,11 +70,12 @@ $viaConfig = (new ViaConfig())
             return 'no-cache';
         }
 
-        // nfsen-ng's own JS/CSS is requested with a `?v={{ version }}` cache-busting
-        // query string (bumped on release, see backend/templates/layout.html.twig),
-        // so a long cache is safe: a version bump changes the URL, not just the
-        // file contents. The vendored third-party libs below are NOT versioned in
-        // the template, so they stay on a shorter, revalidated cache instead.
+        // nfsen-ng's own JS/CSS is requested with a `?v={{ assetVersion }}` cache-busting
+        // query string (Config::assetVersion(), derived from frontend/ mtimes — see
+        // its docblock for why this isn't Config::VERSION), so a long cache is safe:
+        // any change to those files changes the URL, not just the file contents. The
+        // vendored third-party libs below are NOT versioned in the template, so they
+        // stay on a shorter, revalidated cache instead.
         $unversioned = ['bootstrap.min.css', 'nouislider.min.js', 'echarts.min.js'];
         if (in_array(basename($filePath), $unversioned, true)) {
             return 'public, max-age=604800, must-revalidate';
@@ -516,6 +517,7 @@ $app->page('/', function (Context $c) use ($app): void {
         return $c->render('layout.html.twig', [
             // ── App metadata ──────────────────────────────────────────────
             'version' => Config::VERSION,
+            'assetVersion' => Config::assetVersion(),
             'fatalError' => $app->globalState('_fatalError', null),
             'connections' => count($app->getClients()),
             'importYears' => Config::$settings->importYears,

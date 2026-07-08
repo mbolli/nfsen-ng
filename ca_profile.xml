@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<CommunityApplications>
+  <Profile>nfsen-ng is a modern, in-place replacement for the ageing NfSen web frontend, built on the nfdump tools. It visualises NetFlow / sFlow / IPFIX traffic with real-time SSE push, a responsive light/dark UI, Sankey traffic-flow diagrams, and RRD or VictoriaMetrics storage. This repository provides the Unraid Community Applications templates in deploy/unraid/: the nfsen-ng web UI and the companion nfcapd collector — both run the single ghcr.io/mbolli/nfsen-ng image, so nfdump, nfcapd and the app all ship together. Mount both containers on the same appdata path and point a NetFlow exporter at the collector. Support via GitHub issues; full docs in the project book.</Profile>
+  <Icon>https://raw.githubusercontent.com/mbolli/nfsen-ng/master/deploy/unraid/nfsen-ng-icon.png</Icon>
+  <WebPage>https://github.com/mbolli/nfsen-ng</WebPage>
+</CommunityApplications>

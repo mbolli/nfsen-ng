@@ -48,7 +48,11 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') }}
+            # Pre-1.0: `latest` follows the newest *released* tag, betas included
+            # (drop `&& !contains(github.ref_name, '-')` to re-gate it to stable only).
+            # The reduced {{major}} / {{major}}.{{minor}} tags stay suppressed on
+            # prereleases by metadata-action's default, so a beta can't claim :1 / :1.0.
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
             type=raw,value=edge,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
 
       - name: Build and push

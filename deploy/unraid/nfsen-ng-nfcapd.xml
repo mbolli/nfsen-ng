@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>nfsen-ng-nfcapd</Name>
+  <Repository>ghcr.io/mbolli/nfsen-ng:latest</Repository>
+  <Registry>https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/mbolli/nfsen-ng/issues</Support>
+  <Project>https://github.com/mbolli/nfsen-ng</Project>
+  <Overview>NetFlow / sFlow / IPFIX collector (nfcapd) for nfsen-ng. It runs the nfcapd daemon from the nfsen-ng image, listening on a UDP port and writing rotated flow files that the nfsen-ng web UI reads.&#13;&#13;Point your router/switch flow exporter (pfSense/OPNsense/MikroTik/…) at this host on the collector port (default 9995/UDP). Mount this container on the SAME appdata path as the nfsen-ng UI, and make sure the write directory's last path segment (default "flows") matches one of the UI's Sources.&#13;&#13;This container has no web interface.</Overview>
+  <Category>Network:Management Tools: Status:Stable</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/mbolli/nfsen-ng/master/deploy/unraid/nfsen-ng-nfcapd.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/mbolli/nfsen-ng/master/deploy/unraid/nfsen-ng-icon.png</Icon>
+  <ExtraParams>--restart unless-stopped --entrypoint /usr/local/nfdump/bin/nfcapd</ExtraParams>
+  <PostArgs>-w /data/nfsen-ng/live/flows -z=lz4 -S 1 -T all -p 9995</PostArgs>
+  <DonateText>Buy the maintainer a beer</DonateText>
+  <DonateLink>https://paypal.me/bolli</DonateLink>
+  <Requires>Install the nfsen-ng UI template too, and mount both containers on the SAME data path (default /mnt/user/appdata/nfsen-ng). The last segment of the write path (-w .../live/&lt;name&gt;, default "flows") must match one of the UI's NFSEN_SOURCES. A device on your network must export flows to this host's collector UDP port.</Requires>
+  <Config Name="Collector port" Target="9995" Default="9995" Mode="udp" Description="UDP port nfcapd listens on. Configure your router's NetFlow/sFlow/IPFIX exporter to send here." Type="Port" Display="always" Required="true" Mask="false">9995</Config>
+  <Config Name="Data (profiles)" Target="/data/nfsen-ng" Default="/mnt/user/appdata/nfsen-ng" Mode="rw" Description="Same data directory the nfsen-ng UI reads. nfcapd writes into live/&lt;source&gt; under it." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/nfsen-ng</Config>
+  <Config Name="Timezone" Target="TZ" Default="UTC" Mode="" Description="Container timezone. Should match the UI container." Type="Variable" Display="always" Required="true" Mask="false">UTC</Config>
+</Container>

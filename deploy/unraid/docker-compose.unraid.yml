@@ -1,0 +1,53 @@
+# nfsen-ng — all-in-one stack for Unraid (Compose Manager plugin)
+#
+# One image, two roles, one shared appdata volume:
+#   • nfsen      — the web UI + import daemon (reads flow files)
+#   • nfcapd     — the NetFlow/sFlow/IPFIX collector (writes flow files)
+#
+# Both run ghcr.io/mbolli/nfsen-ng — nfdump, nfcapd and the app all ship in the
+# one image, so nothing extra is built.
+#
+# ── Requirements you can't put in a container ────────────────────────────────
+# A device on your network must EXPORT flows to this host. Point your router's
+# NetFlow/sFlow/IPFIX exporter (pfSense/OPNsense/MikroTik/…) at:
+#     <unraid-host-ip>:9995   (UDP)
+# Without an exporter the collector receives nothing and the UI stays empty.
+#
+# ── Install (Unraid) ─────────────────────────────────────────────────────────
+# Install the "Compose Manager" plugin from Community Applications, add a new
+# stack, paste this file, set the source name below, and start it. For the
+# native one-click route instead, use the two CA templates in this folder.
+#
+# The source name is just the sub-directory the collector writes into and the
+# UI reads from — it MUST match in both services (NFSEN_SOURCES == the last path
+# segment of nfcapd's -w). Default here: "flows".
+
+services:
+  nfsen:
+    image: ghcr.io/mbolli/nfsen-ng:latest
+    container_name: nfsen-ng
+    ports:
+      - "9000:9000"          # Web UI (front with SWAG / Nginx Proxy Manager for TLS)
+    volumes:
+      - /mnt/user/appdata/nfsen-ng:/data/nfsen-ng
+    environment:
+      - TZ=UTC
+      - NFSEN_SOURCES=flows           # must equal the collector's source dir below
+      - NFSEN_PORTS=80,443,22,53      # ports to track per source in RRD
+      - NFSEN_NFDUMP_PROFILES=/data/nfsen-ng   # must match the volume mount
+      - NFSEN_NFDUMP_BINARY=/usr/local/nfdump/bin/nfdump
+      # - NFSEN_LOG_LEVEL=INFO        # DEBUG, INFO, NOTICE, WARNING, ERR, CRIT, ALERT, EMERG
+      # - NFSEN_IMPORT_YEARS=3        # backfill window on first start
+      # - NFSEN_SKIP_INITIAL_IMPORT=true
+    restart: unless-stopped
+
+  nfcapd:
+    image: ghcr.io/mbolli/nfsen-ng:latest
+    container_name: nfsen-ng-nfcapd
+    entrypoint: ["/usr/local/nfdump/bin/nfcapd"]
+    command: ["-w", "/data/nfsen-ng/live/flows", "-z=lz4", "-S", "1", "-T", "all", "-p", "9995"]
+    ports:
+      - "9995:9995/udp"      # where your router sends NetFlow/sFlow/IPFIX
+    volumes:
+      - /mnt/user/appdata/nfsen-ng:/data/nfsen-ng   # same volume the UI reads
+    restart: unless-stopped

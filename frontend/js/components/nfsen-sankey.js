@@ -244,18 +244,35 @@ export class NfsenSankey extends HTMLElement {
                         label: {
                             color: theme.textColor,
                         },
-                        data: nodes.map((n) => ({
-                            name: n.name,
-                            label: {
+                        data: nodes.map((n) => {
+                            const isSrc = n.name.startsWith('src:');
+                            const isPort = n.name.startsWith('port:');
+                            const label = {
                                 formatter: n.label,
                                 // Source-column nodes sit at the left edge — their default
                                 // 'right' label position would point inward, overlapping the
                                 // ribbons and the destination column. Point outward instead.
+                                // Destination nodes keep the default outward 'right'.
+                                position: isSrc ? 'left' : isPort ? 'inside' : 'right',
+                            };
+                            if (isPort) {
                                 // Middle 'port:' nodes (ports layout) have ribbons on both
-                                // sides, so sit their label above the node bar to clear them.
-                                position: n.name.startsWith('src:') ? 'left' : n.name.startsWith('port:') ? 'top' : 'right',
-                            },
-                        })),
+                                // sides, so an outside label points cleanly at neither. Center
+                                // it vertically on the node bar so the port reads as part of
+                                // its flow instead of floating above it (issue #152 follow-up:
+                                // a top label detaches from the bulk of a thick flow), and back
+                                // it with a small chip so a short port number stays legible
+                                // where it crosses the ribbons on either side.
+                                label.align = 'center';
+                                label.verticalAlign = 'middle';
+                                label.backgroundColor = theme.tooltipBg;
+                                label.borderColor = theme.tooltipBorder;
+                                label.borderWidth = 1;
+                                label.borderRadius = 4;
+                                label.padding = [2, 5];
+                            }
+                            return { name: n.name, label };
+                        }),
                         links: links.map((l) => ({
                             source: l.source,
                             target: l.target,

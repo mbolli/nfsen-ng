@@ -3,20 +3,11 @@
 All notable changes to nfsen-ng are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.0.0-beta.2] — 2026-07-08
 
 ### Added
 
 - Sankey diagram: optional **Ports** toggle that inserts the destination L4 port as a middle column, turning the src→dst view into src IP → dst port → dst IP ([#152](https://github.com/mbolli/nfsen-ng/issues/152)). When on, the nfdump aggregation key gains `dstport` (`-A srcip,dstport,dstip`) and the payload becomes three columns; the shared middle `port:` nodes pool all traffic per port, with src→port and port→dst ribbons summed so a busy port renders as one node rather than a stack of duplicates.
-
-### Fixed
-
-- The Flows tab ignored the source selector — picking a single source still queried every configured source ([#155](https://github.com/mbolli/nfsen-ng/issues/155)). The Flows source `<select>` binds to the `graph_sources` signal, but `FlowActions` passed `Config::$settings->sources` (all sources) to nfdump's `-M` unconditionally instead of the selection. It now resolves the selected sources the same way the Statistics tab already did — honouring the "any"/empty = all-sources fallback — via a shared `Helpers::resolveSources()` (also adopted by the Statistics and count-files actions to remove the duplicated logic).
-- The traffic graph's most recent data point always rendered as 0, one slot behind the real latest value ([#154](https://github.com/mbolli/nfsen-ng/issues/154)). RRDtool always returns one trailing empty (NaN) row past the last written slot; `Rrd::get_graph_data()` set that NaN to `null` and then, for the bits/traffic graph, unconditionally ran the `bytes → bits` conversion `$measure *= 8` over it — and PHP evaluates `null * 8` as `0`, so the empty gap became a real zero and the line dropped to the baseline at the right edge. Only the bits traffic graph was affected (flows/packets never multiply, so their gaps stayed `null`). The `*= 8` conversion now runs only on valid measures.
-
----
-
-## [1.0.0-beta.2] — 2026-07-08
 
 ### Changed
 
@@ -27,6 +18,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The Flows tab ignored the source selector — picking a single source still queried every configured source ([#155](https://github.com/mbolli/nfsen-ng/issues/155)). The Flows source `<select>` binds to the `graph_sources` signal, but `FlowActions` passed `Config::$settings->sources` (all sources) to nfdump's `-M` unconditionally instead of the selection. It now resolves the selected sources the same way the Statistics tab already did — honouring the "any"/empty = all-sources fallback — via a shared `Helpers::resolveSources()` (also adopted by the Statistics and count-files actions to remove the duplicated logic).
+- The traffic graph's most recent data point always rendered as 0, one slot behind the real latest value ([#154](https://github.com/mbolli/nfsen-ng/issues/154)). RRDtool always returns one trailing empty (NaN) row past the last written slot; `Rrd::get_graph_data()` set that NaN to `null` and then, for the bits/traffic graph, unconditionally ran the `bytes → bits` conversion `$measure *= 8` over it — and PHP evaluates `null * 8` as `0`, so the empty gap became a real zero and the line dropped to the baseline at the right edge. Only the bits traffic graph was affected (flows/packets never multiply, so their gaps stayed `null`). The `*= 8` conversion now runs only on valid measures.
 - Alert rules with an nfdump traffic filter always evaluated to zero, so they could never fire — `AlertManager::fetchFilteredSlot()` set nfdump's `-R` (time range) option before `-M` (sources), but `-R` resolves file paths immediately using the sources `-M` records, so it always found zero nfcapd files ([#153](https://github.com/mbolli/nfsen-ng/issues/153))
 - The Flows/Statistics/Sankey NFDUMP filter (and other free-text fields) could be silently cleared by an unrelated SSE re-render while the user was still typing ([#151](https://github.com/mbolli/nfsen-ng/issues/151)) — the vendored Datastar bundle predated the `v1.0.2` release's fix for exactly this case (a morph compared a `<textarea>`'s live value against the incoming server render instead of against its own `defaultValue`, so any not-yet-submitted edit lost to the next full-page patch). Upgraded the pin from an untagged commit to `v1.0.2` and added an import map (`frontend/js/components/datastar-persist.js` resolves `datastar` via a bare specifier) so a second, independent copy of the engine can't get loaded by a differently-cache-busted relative import.
 - A forced page reload (e.g. when the SSE context's cleanup grace period elapses while a tab is backgrounded) always reset the active tab to Graphs and dark mode to the system default ([#151](https://github.com/mbolli/nfsen-ng/issues/151)). Added a `data-persist` Datastar attribute plugin that round-trips the current tab, settings sub-section, dark-mode choice, and graph display preferences (log scale, stacked/line, step/curve plot, follow-zoom) through `localStorage`, so a forced reload restores them instead of resetting to defaults.
@@ -245,7 +238,6 @@ Full architectural rewrite milestone. Server-rendered hypermedia replaces the jQ
 
 Initial release. See the [wiki comparison page](https://github.com/mbolli/nfsen-ng/wiki/Comparison) for a feature comparison with the original NfSen.
 
-[Unreleased]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.2...HEAD
 [1.0.0-beta.2]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.1...v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-RC.1...v1.0.0-beta.1
 [1.0.0-RC.1]: https://github.com/mbolli/nfsen-ng/compare/v1.0-alpha...v1.0.0-RC.1

@@ -387,10 +387,12 @@ WARNING;
             foreach ($source['data'] as $date => $measure) {
                 // ignore non-valid measures
                 if (is_nan($measure)) {
+                    // Keep null — must not fall through to the bits conversion below,
+                    // where PHP evaluates `null * 8` to 0 and turns an empty slot
+                    // (e.g. the trailing NaN row RRD always returns past rrd_last)
+                    // into a real 0, making the traffic graph drop to zero. (#154)
                     $measure = null;
-                }
-
-                if ($type === 'bytes' && $useBits) {
+                } elseif ($type === 'bytes' && $useBits) {
                     $measure *= 8;
                 }
 

@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The traffic graph's most recent data point always rendered as 0, one slot behind the real latest value ([#154](https://github.com/mbolli/nfsen-ng/issues/154)). RRDtool always returns one trailing empty (NaN) row past the last written slot; `Rrd::get_graph_data()` set that NaN to `null` and then, for the bits/traffic graph, unconditionally ran the `bytes → bits` conversion `$measure *= 8` over it — and PHP evaluates `null * 8` as `0`, so the empty gap became a real zero and the line dropped to the baseline at the right edge. Only the bits traffic graph was affected (flows/packets never multiply, so their gaps stayed `null`). The `*= 8` conversion now runs only on valid measures.
+
 ---
 
 ## [1.0.0-beta.2] — 2026-07-08

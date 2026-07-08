@@ -207,3 +207,54 @@ describe('Rrd write, last_update and date_boundaries', function () {
         expect($last)->toBeGreaterThan(0);
     });
 });
+
+describe('Rrd get_graph_data trailing-slot handling (#154)', function () {
+    beforeEach(function (): void {
+        $this->dir = makeRrdFeatureSettings(3);
+        $this->rrd = new Rrd();
+        $this->rrd->create('gw');
+
+        // Four consecutive 5-min slots ~1h ago. Consecutive (within the 600s
+        // heartbeat) so each carries a real ABSOLUTE rate rather than an
+        // out-of-heartbeat gap.
+        $ts = strtotime('-1 hour');
+        $this->base = $ts - ($ts % 300);
+        for ($i = 0; $i < 4; ++$i) {
+            $this->rrd->write(rrdWriteData('gw', $this->base + $i * 300));
+        }
+    });
+
+    afterEach(function (): void {
+        cleanRrdDir($this->dir);
+    });
+
+    // Regression for #154: RRD always returns a trailing NaN row past rrd_last.
+    // In bits mode that NaN was set to null and then multiplied (`null * 8 === 0`
+    // in PHP), turning the empty slot into a real 0 and making the traffic graph
+    // drop to zero at the right edge. The empty slot must stay null (a gap).
+    test('empty trailing slot stays null (not 0) in bits mode', function (): void {
+        $result = $this->rrd->get_graph_data(
+            $this->base - 600,
+            $this->base + 4 * 300 + 600, // extend past the last write
+            ['gw'],
+            ['any'],
+            [],
+            'bits',
+            'sources',
+        );
+
+        expect($result)->toBeArray();
+        $series = array_map(static fn (array $row) => $row[0], $result['data']);
+
+        // Real slots are present and positive (bytes → bits, so > 0)...
+        $realValues = array_filter($series, static fn ($v) => $v !== null);
+        expect($realValues)->not->toBeEmpty();
+        expect(max($realValues))->toBeGreaterThan(0);
+
+        // ...and the trailing empty slot is a null gap, never a real 0.
+        expect(end($series))->toBeNull();
+        foreach ($series as $v) {
+            expect($v === 0 || $v === 0.0)->toBeFalse();
+        }
+    });
+});

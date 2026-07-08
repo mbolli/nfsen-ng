@@ -13,6 +13,10 @@ node_modules/
 *.cache
 *.pdf
 
+# Local PHPUnit/Pest override; phpunit.xml.dist is the committed default.
+# (Also keeps a stray phpunit.xml out of Unraid CA's *.xml template scan.)
+/phpunit.xml
+
 wiki
 
 # mdBook build output

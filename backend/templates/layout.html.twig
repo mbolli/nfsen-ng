@@ -1,19 +1,12 @@
 <!DOCTYPE html>
 <html lang="en"
-    data-signals__ifmissing="{_darkMode: false, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences'}"
+    {# Seed _darkMode from the deployment default; must precede data-persist, which restores a saved toggle over it (see #156). #}
+    data-signals__ifmissing="{_darkMode: {% if defaults.theme|default('auto') == 'dark' %}true{% elseif defaults.theme|default('auto') == 'light' %}false{% else %}window.matchMedia('(prefers-color-scheme: dark)').matches{% endif %}, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences'}"
     data-persist="{_darkMode: $_darkMode, _currentView: $_currentView, _settingsSection: $_settingsSection, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _autoSyncGraph: $_autoSyncGraph}"
-    {# Seed the dark-mode signal only when this browser has no saved toggle yet
-       (first visit or after a cache wipe). The deployment default (NFSEN_DEFAULT_THEME
-       / frontend.defaults.theme) decides the seed: 'auto' follows the OS setting,
-       'dark'/'light' force it. An explicit user toggle persists to localStorage and
-       always wins over this. See issue #156. #}
-    data-init="localStorage.getItem('nfsen-persist:_darkMode') === null && ($_darkMode = {% if defaults.theme|default('auto') == 'dark' %}true{% elseif defaults.theme|default('auto') == 'light' %}false{% else %}window.matchMedia('(prefers-color-scheme: dark)').matches{% endif %})"
+    {# Paint the deployment default on the first frame (before datastar boots) so a dark/light install doesn't flash; 'auto' resolves client-side (see #156). #}
+    {% if defaults.theme|default('auto') == 'dark' %}data-bs-theme="dark"{% elseif defaults.theme|default('auto') == 'light' %}data-bs-theme="light"{% endif %}
     data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'"
-    {# Keep the resolved theme attribute across full-page SSE morphs. The server markup
-       carries only the data-attr directive (not a resolved value, since _darkMode is a
-       client-local signal), so without this idiomorph strips data-bs-theme on every morph
-       and re-adds it a tick later — a null window in which a data-driven chart re-render
-       reads "no theme" as light. See issue #151. #}
+    {# Keep the client's live theme across SSE morphs, which otherwise strip/overwrite data-bs-theme and let a chart re-render read the wrong theme (see #151). #}
     data-preserve-attr="data-bs-theme">
 <head>
     <meta charset="utf-8">

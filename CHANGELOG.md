@@ -3,6 +3,32 @@
 All notable changes to nfsen-ng are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0-beta.3] — unreleased
+
+### Added
+
+- Environment-variable registry with Health-page validation. Every environment variable is now defined once in a single source of truth (`EnvRegistry` / `EnvVar`) — one typed parse, validator, and default apiece — that all consumers (`Settings`, the `app.php` bootstrap, `Config`, the import daemon) resolve through, replacing scattered `getenv() ?: default` reads and the per-code-path default drift they had accumulated. A new **Configuration** group on Settings → Health surfaces misconfiguration that previously failed silently: values set but invalid (so a default quietly applied), deprecated variable names still in use, unknown `NFSEN_`-prefixed variables (typos that do nothing), malformed NetBox URL / alert-email addresses, an active (deprecated) `settings.php`, and a saved preference overriding `NFSEN_LOG_LEVEL`.
+- Consolidated, upgrade-safe app data via `NFSEN_STATE_DIR`. nfsen-ng's own mutable data — the RRD database plus `preferences.json` and the alert rules/state/log — now lives under one directory (`/var/lib/nfsen-ng`, split into `rrd/` and `state/`), mounted as a single `nfsen-data` volume and declared `VOLUME` in the image so even a bare `docker run` persists it. This closes a silent data-loss-on-upgrade hole: the standard compose persisted neither the RRD database nor the saved preferences/alerts, so recreating the container (every image update) wiped them. The nfcapd capture tree stays on its own separate volume — the collector owns it and it grows with traffic — so a Docker deployment now uses two clearly-separated volumes.
+- `NFSEN_DEFAULT_THEME` (`auto`|`dark`|`light`) sets a deployment-level default for the dark-mode toggle, seeding a fresh browser that has no saved choice yet (e.g. after a cache wipe) instead of always falling back to the OS `prefers-color-scheme`. An explicit user toggle still persists client-side and wins over it. Also settable as `frontend.defaults.theme`.
+
+### Changed
+
+- `settings.php` is deprecated in favour of environment variables. When present it now acts as an overlay on the env baseline — a key it defines wins, a key it omits falls back to the matching `NFSEN_*` variable, then the built-in default — instead of the previous all-or-nothing behaviour where a settings file silently caused `NFSEN_SOURCES`/`PORTS`/`FILTERS`/`PROCESSOR` to be ignored. An active file is flagged on the Health page, and the deployment docs were reworked around the env-first model.
+- `VM_HOST` / `VM_PORT` renamed to `NFSEN_VM_HOST` / `NFSEN_VM_PORT` for prefix consistency with every other variable. The old names keep working as deprecated aliases (with a Health-page nudge to rename); compose files, the VictoriaMetrics seed script, and docs updated.
+- Docker volumes consolidated: the separate `rrd-data` volume folded into the single `nfsen-data` volume alongside app state (see Added). Deployments upgrading from an earlier beta's `rrd-data` volume need a one-time copy of their RRD files into `nfsen-data/rrd` (or a Force Rescan) — documented in the upgrade guide.
+- `preferences.json` is no longer tracked in git — it is runtime user state, like the already-ignored `settings.php` / `alerts-*.json`, and the committed dev copy (DEBUG log level, test alert rules) had been leaking into from-source installs. It is recreated on first save.
+- `NFSEN_DATASOURCE` / `NFSEN_PROCESSOR` accepted-value lists now derive from the internal datasource/processor class maps rather than a duplicated hard-coded list, so the two can't drift.
+- Documentation moved from the GitHub wiki into the in-repo mdBook (`book/`), so the operational guides version and ship with the code.
+- Dev/packaging housekeeping: added `deploy/unraid/ca_profile.xml` for the Unraid Community Applications submission, renamed `phpunit.xml` to `phpunit.xml.dist`, and tidied stale env-var comments in the compose files.
+
+### Fixed
+
+- nfdump binary default drift: the settings-file path defaulted `nfdump.binary` to `/usr/bin/nfdump` while the env path and the Docker images used `/usr/local/nfdump/bin/nfdump`. Both now use the latter, so a `settings.php` that omits the key resolves the same binary as an env-only deployment.
+- Reloaded graphs could render light on a dark page ([#151](https://github.com/mbolli/nfsen-ng/issues/151)). On a full reload the initial SSE sync morphs `<html>`; the server markup carries only the `data-attr:data-bs-theme` directive (never a resolved value, since `_darkMode` is client-local), so idiomorph stripped the resolved `data-bs-theme` on every morph and Datastar re-added it a tick later — and an async chart rebuild (`notMerge`) landing in that null window read "no theme" as light and won the race against the dark correction. The attribute is now preserved across morphs.
+- Flow/statistics/Sankey results were blanked when a backgrounded tab's context was revived ([#151](https://github.com/mbolli/nfsen-ng/issues/151)). php-via 0.12.0 context revival re-runs the page handler on SSE reconnect, re-initializing the plain-PHP result containers to empty without re-running the action that filled them — so a returning tab kept its filters and active tab but showed an empty results panel. Each context's rendered results are now snapshotted in app-global state keyed by context id and restored on revival; a genuine reload gets a fresh id and starts clean.
+
+---
+
 ## [1.0.0-beta.2] — 2026-07-08
 
 ### Added

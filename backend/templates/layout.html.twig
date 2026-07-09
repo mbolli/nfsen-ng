@@ -8,7 +8,13 @@
        'dark'/'light' force it. An explicit user toggle persists to localStorage and
        always wins over this. See issue #156. #}
     data-init="localStorage.getItem('nfsen-persist:_darkMode') === null && ($_darkMode = {% if defaults.theme|default('auto') == 'dark' %}true{% elseif defaults.theme|default('auto') == 'light' %}false{% else %}window.matchMedia('(prefers-color-scheme: dark)').matches{% endif %})"
-    data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'">
+    data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'"
+    {# Keep the resolved theme attribute across full-page SSE morphs. The server markup
+       carries only the data-attr directive (not a resolved value, since _darkMode is a
+       client-local signal), so without this idiomorph strips data-bs-theme on every morph
+       and re-adds it a tick later — a null window in which a data-driven chart re-render
+       reads "no theme" as light. See issue #151. #}
+    data-preserve-attr="data-bs-theme">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">

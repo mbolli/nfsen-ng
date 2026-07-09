@@ -587,6 +587,10 @@
                                 <td><code>{{ deployImportYears }}</code></td>
                             </tr>
                             <tr>
+                                <td class="text-muted">Default theme</td>
+                                <td><code>{{ deployDefaultTheme }}</code>{% if deployDefaultTheme == 'auto' %} <span class="text-muted">(follows browser)</span>{% endif %}</td>
+                            </tr>
+                            <tr>
                                 <td class="text-muted">nfdump binary</td>
                                 <td><code>{{ deployNfdumpBinary }}</code></td>
                             </tr>

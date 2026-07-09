@@ -528,11 +528,12 @@ $app->page('/', function (Context $c) use ($app): void {
             'sources' => Config::$settings->sources,
             'ports' => Config::$settings->ports,
             'filters' => Config::$settings->filters,
-            'defaults' => ['view' => Config::$settings->defaultView],
+            'defaults' => ['view' => Config::$settings->defaultView, 'theme' => Config::$settings->defaultTheme],
 
             // ── Deployment config (read-only display in Settings tab) ─────
             'deployDatasource' => Config::$settings->datasourceName,
             'deployImportYears' => Config::$settings->importYears,
+            'deployDefaultTheme' => Config::$settings->defaultTheme,
             'deployNfdumpBinary' => Config::$settings->nfdumpBinary,
             'deployNfdumpProfiles' => Config::$settings->nfdumpProfilesData,
             'deployPrefsFile' => Config::$prefsFile,

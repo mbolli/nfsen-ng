@@ -2,7 +2,12 @@
 <html lang="en"
     data-signals__ifmissing="{_darkMode: false, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences'}"
     data-persist="{_darkMode: $_darkMode, _currentView: $_currentView, _settingsSection: $_settingsSection, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _autoSyncGraph: $_autoSyncGraph}"
-    data-init="localStorage.getItem('nfsen-persist:_darkMode') === null && ($_darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches)"
+    {# Seed the dark-mode signal only when this browser has no saved toggle yet
+       (first visit or after a cache wipe). The deployment default (NFSEN_DEFAULT_THEME
+       / frontend.defaults.theme) decides the seed: 'auto' follows the OS setting,
+       'dark'/'light' force it. An explicit user toggle persists to localStorage and
+       always wins over this. See issue #156. #}
+    data-init="localStorage.getItem('nfsen-persist:_darkMode') === null && ($_darkMode = {% if defaults.theme|default('auto') == 'dark' %}true{% elseif defaults.theme|default('auto') == 'light' %}false{% else %}window.matchMedia('(prefers-color-scheme: dark)').matches{% endif %})"
     data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'">
 <head>
     <meta charset="utf-8">

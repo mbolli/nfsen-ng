@@ -84,6 +84,7 @@ $nfsen_config = [
     ],
     'frontend' => [
         'defaults' => [
+            'theme' => getenv('NFSEN_DEFAULT_THEME') ?: 'auto', // auto (follow OS), dark, light — default for browsers with no saved toggle
             'view' => 'graphs', // graphs, flows, statistics
             'graphs' => [
                 'display' => 'sources', // sources, protocols, ports

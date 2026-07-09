@@ -91,6 +91,62 @@ describe('Settings::fromArray()', function (): void {
     });
 });
 
+describe('default theme (NFSEN_DEFAULT_THEME, issue #156)', function (): void {
+    test('defaults to auto when nothing is configured', function (): void {
+        putenv('NFSEN_DEFAULT_THEME');
+
+        expect(Settings::fromArray([])->defaultTheme)->toBe('auto')
+            ->and(Settings::fromEnv()->defaultTheme)->toBe('auto')
+        ;
+    });
+
+    test('reads and lower-cases NFSEN_DEFAULT_THEME in fromEnv', function (): void {
+        putenv('NFSEN_DEFAULT_THEME=Dark');
+        $s = Settings::fromEnv();
+        putenv('NFSEN_DEFAULT_THEME');
+
+        expect($s->defaultTheme)->toBe('dark');
+    });
+
+    test('reads frontend.defaults.theme in fromArray', function (): void {
+        putenv('NFSEN_DEFAULT_THEME');
+        $s = Settings::fromArray(['frontend' => ['defaults' => ['theme' => 'light']]]);
+
+        expect($s->defaultTheme)->toBe('light');
+    });
+
+    test('settings.php theme key wins over the env var in fromArray', function (): void {
+        putenv('NFSEN_DEFAULT_THEME=dark');
+        $s = Settings::fromArray(['frontend' => ['defaults' => ['theme' => 'light']]]);
+        putenv('NFSEN_DEFAULT_THEME');
+
+        expect($s->defaultTheme)->toBe('light');
+    });
+
+    test('falls back to env var when settings.php omits the theme key', function (): void {
+        putenv('NFSEN_DEFAULT_THEME=light');
+        $s = Settings::fromArray(['frontend' => ['defaults' => ['view' => 'flows']]]);
+        putenv('NFSEN_DEFAULT_THEME');
+
+        expect($s->defaultTheme)->toBe('light');
+    });
+
+    test('unknown/empty values normalize to auto', function (): void {
+        putenv('NFSEN_DEFAULT_THEME');
+
+        expect(Settings::fromArray(['frontend' => ['defaults' => ['theme' => 'neon']]])->defaultTheme)->toBe('auto')
+            ->and(Settings::normalizeTheme('  LIGHT '))->toBe('light')
+            ->and(Settings::normalizeTheme(''))->toBe('auto')
+        ;
+    });
+
+    test('withDefaultTheme clones and normalizes', function (): void {
+        expect(Settings::fromArray([])->withDefaultTheme('DARK')->defaultTheme)->toBe('dark')
+            ->and(Settings::fromArray([])->withDefaultTheme('bogus')->defaultTheme)->toBe('auto')
+        ;
+    });
+});
+
 describe('Settings::fromEnv()', function (): void {
     test('returns instance with defaults when no env vars set', function (): void {
         // The ambient environment (e.g. this app's own docker-compose.dev.yml)

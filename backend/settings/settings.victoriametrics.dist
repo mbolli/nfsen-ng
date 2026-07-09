@@ -59,6 +59,7 @@ $nfsen_config = [
          * Frontend defaults
          */
         'defaults' => [
+            'theme' => getenv('NFSEN_DEFAULT_THEME') ?: 'auto', // auto (follow OS), dark, light
             'view' => 'graphs',
             'sources' => ['gateway'],
             'protocols' => ['any'],

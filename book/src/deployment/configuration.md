@@ -35,6 +35,7 @@ variable in the shipped template.
 | `NFSEN_DATASOURCE` | `RRD` | Datasource: `RRD` or `VictoriaMetrics`. |
 | `NFSEN_PROCESSOR` | `NfDump` | Flow processor. Only `NfDump` is implemented. |
 | `NFSEN_LOG_LEVEL` | `INFO` | Log verbosity. Accepts `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERR`/`ERROR`, `CRIT`, `ALERT`, `EMERG` (and `LOG_`-prefixed forms). Controls both the app and the Swoole server. |
+| `NFSEN_DEFAULT_THEME` | `auto` | Default UI colour theme for a browser with no saved preference (e.g. after a cache wipe). `auto` follows the OS `prefers-color-scheme`; `dark`/`light` force it. A user's manual dark-mode toggle is stored client-side and always overrides this. Also settable as `frontend.defaults.theme` in `settings.php`. |
 | `NFSEN_DEV_MODE` | `false` | Enables php-via dev mode (static assets served `no-cache`). Leave off in production. |
 
 ### nfdump / nfcapd paths

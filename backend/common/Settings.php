@@ -51,6 +51,12 @@ final class Settings {
         'nfdump' => 'mbolli\\nfsen_ng\\processor\\Nfdump',
     ];
 
+    // ─── Valid UI theme values (deployment default for the dark-mode toggle) ──
+    // 'auto' follows the browser's prefers-color-scheme; 'dark'/'light' force a
+    // default that seeds a fresh browser (no saved toggle yet, e.g. after a cache
+    // wipe). A user's explicit toggle is stored client-side and always wins.
+    private const THEMES = ['auto', 'dark', 'light'];
+
     /**
      * @param string[]             $sources               Configured NetFlow source names
      * @param int[]                $ports                 Configured port numbers
@@ -71,6 +77,7 @@ final class Settings {
         public private(set) array $defaultGraphProtocols,
         public private(set) int $defaultFlowLimit,
         public private(set) string $defaultStatsOrderBy,
+        public private(set) string $defaultTheme,
         public private(set) string $nfdumpBinary,
         public private(set) string $nfdumpProfilesData,
         public private(set) string $nfdumpProfile,
@@ -120,6 +127,7 @@ final class Settings {
             defaultGraphProtocols: (array) ($raw['frontend']['defaults']['graphs']['protocols'] ?? ['any']),
             defaultFlowLimit: (int) ($raw['frontend']['defaults']['flows']['limit'] ?? 50),
             defaultStatsOrderBy: (string) ($raw['frontend']['defaults']['statistics']['order_by'] ?? 'bytes'),
+            defaultTheme: self::normalizeTheme((string) ($raw['frontend']['defaults']['theme'] ?? (getenv('NFSEN_DEFAULT_THEME') ?: 'auto'))),
             nfdumpBinary: (string) ($raw['nfdump']['binary'] ?? '/usr/bin/nfdump'),
             nfdumpProfilesData: (string) ($raw['nfdump']['profiles-data'] ?? '/var/nfdump/profiles-data'),
             nfdumpProfile: (string) ($raw['nfdump']['profile'] ?? 'live'),
@@ -204,6 +212,7 @@ final class Settings {
             defaultGraphProtocols: ['any'],
             defaultFlowLimit: 50,
             defaultStatsOrderBy: 'bytes',
+            defaultTheme: self::normalizeTheme((string) (getenv('NFSEN_DEFAULT_THEME') ?: 'auto')),
             nfdumpBinary: (string) (getenv('NFSEN_NFDUMP_BINARY') ?: '/usr/local/nfdump/bin/nfdump'),
             nfdumpProfilesData: (string) (getenv('NFSEN_NFDUMP_PROFILES') ?: '/var/nfdump/profiles-data'),
             nfdumpProfile: (string) (getenv('NFSEN_NFDUMP_PROFILE') ?: 'live'),
@@ -356,6 +365,13 @@ final class Settings {
         return $clone;
     }
 
+    public function withDefaultTheme(string $theme): self {
+        $clone = clone $this;
+        $clone->defaultTheme = self::normalizeTheme($theme);
+
+        return $clone;
+    }
+
     public function withNfdumpBinary(string $binary): self {
         $clone = clone $this;
         $clone->nfdumpBinary = $binary;
@@ -450,6 +466,13 @@ final class Settings {
     }
 
     // ── Static helpers ────────────────────────────────────────────────────────
+
+    /** Normalize a UI theme string to one of 'auto'|'dark'|'light'. Unknown/empty values fall back to 'auto'. */
+    public static function normalizeTheme(string $theme): string {
+        $t = strtolower(trim($theme));
+
+        return \in_array($t, self::THEMES, true) ? $t : 'auto';
+    }
 
     /** Convert a log-level name string to a PHP LOG_* constant. Returns LOG_INFO for unknown values. */
     public static function logLevelFromString(string $name): int {

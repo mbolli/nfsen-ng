@@ -360,6 +360,57 @@ $app->page('/', function (Context $c) use ($app): void {
         &$cachedHealthChecks,
         &$lastAlertShown
     ): string {
+        // ── Result-panel revival snapshot (issue #151) ────────────────────────
+        // Flow/stats/sankey results live in plain-PHP containers, not signals, so a
+        // context revival — which re-runs this page handler and re-inits those
+        // containers to '' — blanks the results panel while the tab otherwise
+        // survives (empty #flowTable, lost nfdump notification). Keep a per-context
+        // snapshot in app-global state: a revived context reuses the same id, so it
+        // restores exactly what was showing; a genuine reload gets a new id and
+        // starts clean. Dismiss/re-query naturally refresh it via the changed-check.
+        $ctxId = $c->getId();
+
+        /** @var array<string, array<string, mixed>> $snapshots */
+        $snapshots = $app->globalState('revive_snapshots', []);
+        $snap = $snapshots[$ctxId] ?? null;
+        if ($snap !== null) {
+            if ($flowTableHtml === '' && ($snap['flowHtml'] ?? '') !== '') {
+                $flowTableHtml = $snap['flowHtml'];
+                $flowNotifications = $snap['flowNotifications'] ?? [];
+                $c->getSignal('flows_count')?->setValue($snap['flowCount'] ?? 0, broadcast: false);
+            }
+            if ($statsTableHtml === '' && ($snap['statsHtml'] ?? '') !== '') {
+                $statsTableHtml = $snap['statsHtml'];
+                $statsNotifications = $snap['statsNotifications'] ?? [];
+            }
+            if ($sankeyData === '' && ($snap['sankeyData'] ?? '') !== '') {
+                $sankeyData = $snap['sankeyData'];
+                $sankeyNotifications = $snap['sankeyNotifications'] ?? [];
+            }
+        }
+        // Persist current results for a later revival. Guarded by a changed-check so
+        // rrd:live broadcasts (which don't touch these panels) don't rewrite the map.
+        if ($flowTableHtml !== '' || $statsTableHtml !== '' || $sankeyData !== '') {
+            $current = [
+                'flowHtml' => $flowTableHtml,
+                'flowNotifications' => $flowNotifications,
+                'flowCount' => $c->getSignal('flows_count')?->int() ?? 0,
+                'statsHtml' => $statsTableHtml,
+                'statsNotifications' => $statsNotifications,
+                'sankeyData' => $sankeyData,
+                'sankeyNotifications' => $sankeyNotifications,
+            ];
+            if ($snap !== $current) {
+                $snapshots[$ctxId] = $current;
+                // Bound memory: cap distinct-context snapshots (mirrors php-via's own
+                // revivable-context cap). Oldest inserts are evicted first.
+                if (count($snapshots) > 200) {
+                    $snapshots = array_slice($snapshots, -200, null, true);
+                }
+                $app->setGlobalState('revive_snapshots', $snapshots);
+            }
+        }
+
         $datestart = $c->getSignal('datestart');
         $dateend = $c->getSignal('dateend');
         $graphSources = $c->getSignal('graph_sources');

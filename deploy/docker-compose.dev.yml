@@ -32,8 +32,7 @@ services:
       # - NFSEN_RRD_PATH=/var/nfsen-ng/rrd  # Default: backend/datasources/data (in mounted source)
       # - rrd-data:/var/nfsen-ng/rrd        # Uncomment volume above too
 
-      # ── Import (see ENVIRONMENT_VARIABLES.md for details) ──────────────────
-      # - NFSEN_IMPORT_VERBOSE=true       # Show verbose import output
+      # ── Import ── docs: https://mbolli.github.io/nfsen-ng/deployment/configuration.html
       # - NFSEN_SKIP_INITIAL_IMPORT=true  # Skip initial import on startup
       - NFSEN_IMPORT_YEARS=1            # Import last N years (default: 3)
 

@@ -39,8 +39,8 @@ Via environment variables (recommended):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NFSEN_DATASOURCE` | `RRD` | Set to `VictoriaMetrics` to activate. |
-| `VM_HOST` | `victoriametrics` | VictoriaMetrics hostname. |
-| `VM_PORT` | `8428` | VictoriaMetrics HTTP port. |
+| `NFSEN_VM_HOST` | `victoriametrics` | VictoriaMetrics hostname. (Legacy alias: `VM_HOST`.) |
+| `NFSEN_VM_PORT` | `8428` | VictoriaMetrics HTTP port. (Legacy alias: `VM_PORT`.) |
 | `NFSEN_IMPORT_YEARS` | `3` | Lookback window for import and boundary queries. |
 
 Or with a settings file (`backend/settings/settings.victoriametrics.dist` is a
@@ -131,8 +131,8 @@ php scripts/seed_vm_data.php [--host=localhost] [--port=8428] [--source=all] [--
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--host` | `VM_HOST` env, else `localhost` | VictoriaMetrics hostname |
-| `--port` | `VM_PORT` env, else `8428` | VictoriaMetrics port |
+| `--host` | `NFSEN_VM_HOST` env (or legacy `VM_HOST`), else `localhost` | VictoriaMetrics hostname |
+| `--port` | `NFSEN_VM_PORT` env (or legacy `VM_PORT`), else `8428` | VictoriaMetrics port |
 | `--source` | `all` | `source=` label value |
 | `--days` | `90` | Days of history to generate |
 | `--ports` | _(none)_ | Comma-separated ports to also emit, e.g. `80,443,22` |

@@ -35,8 +35,8 @@ services:
       - NFSEN_IMPORT_YEARS=3
       # VictoriaMetrics configuration
       - NFSEN_DATASOURCE=VictoriaMetrics
-      - VM_HOST=victoriametrics
-      - VM_PORT=8428
+      - NFSEN_VM_HOST=victoriametrics
+      - NFSEN_VM_PORT=8428
     entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/deploy/docker-entrypoint-dev.sh"]
     depends_on:
       - victoriametrics

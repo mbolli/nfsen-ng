@@ -41,14 +41,16 @@ final class Settings {
     ];
 
     // ─── Datasource class name map ────────────────────────────────────────────
+    // Keyed by canonical short name (matched case-insensitively). The keys are
+    // the single source for the NFSEN_DATASOURCE enum — see datasourceNames().
     private const DATASOURCE_MAP = [
-        'rrd' => 'mbolli\\nfsen_ng\\datasources\\Rrd',
-        'victoriametrics' => 'mbolli\\nfsen_ng\\datasources\\VictoriaMetrics',
+        'RRD' => 'mbolli\\nfsen_ng\\datasources\\Rrd',
+        'VictoriaMetrics' => 'mbolli\\nfsen_ng\\datasources\\VictoriaMetrics',
     ];
 
     // ─── Processor class name map ─────────────────────────────────────────────
     private const PROCESSOR_MAP = [
-        'nfdump' => 'mbolli\\nfsen_ng\\processor\\Nfdump',
+        'NfDump' => 'mbolli\\nfsen_ng\\processor\\Nfdump',
     ];
 
     // ─── Valid UI theme values (deployment default for the dark-mode toggle) ──
@@ -100,45 +102,48 @@ final class Settings {
 
     // ── Factories ─────────────────────────────────────────────────────────────
 
-    /** Build from the raw `$nfsen_config` array loaded from settings.php. */
+    /**
+     * Build from the raw `$nfsen_config` array loaded from settings.php.
+     *
+     * settings.php is a deprecated overlay on top of the environment: where the
+     * array defines a key it wins, and where it omits one the value falls back
+     * to {@see EnvRegistry} (env var, else registry default). This gives the two
+     * config paths one set of defaults and one validator each. Log level is the
+     * lone exception — an explicit NFSEN_LOG_LEVEL overrides the file, since
+     * bumping verbosity via env should work even with a settings.php present.
+     */
     public static function fromArray(array $raw): self {
-        $logPriority = (int) ($raw['log']['priority'] ?? LOG_INFO);
-        $datasourceName = (string) ($raw['general']['db'] ?? 'RRD');
-        $importYears = (int) ($raw['db'][$datasourceName]['import_years'] ?? 3);
+        $datasourceName = (string) ($raw['general']['db'] ?? EnvRegistry::value('NFSEN_DATASOURCE'));
+        $importYears = max(1, (int) ($raw['db'][$datasourceName]['import_years'] ?? EnvRegistry::value('NFSEN_IMPORT_YEARS')));
 
-        // Env-var override for log level — applied at construction time
-        $envLevel = getenv('NFSEN_LOG_LEVEL');
-        if ($envLevel !== false && $envLevel !== '') {
-            $mapped = self::LOG_LEVEL_MAP[strtoupper($envLevel)] ?? null;
-            if ($mapped !== null) {
-                $logPriority = $mapped;
-            }
-        }
+        $logPriority = EnvRegistry::isSet('NFSEN_LOG_LEVEL')
+            ? self::logLevelFromString((string) EnvRegistry::value('NFSEN_LOG_LEVEL'))
+            : (int) ($raw['log']['priority'] ?? LOG_INFO);
 
         return new self(
-            sources: (array) ($raw['general']['sources'] ?? []),
-            ports: array_map('intval', (array) ($raw['general']['ports'] ?? [])),
-            filters: (array) ($raw['general']['filters'] ?? []),
+            sources: (array) ($raw['general']['sources'] ?? EnvRegistry::value('NFSEN_SOURCES')),
+            ports: array_map('intval', (array) ($raw['general']['ports'] ?? EnvRegistry::value('NFSEN_PORTS'))),
+            filters: (array) ($raw['general']['filters'] ?? EnvRegistry::value('NFSEN_FILTERS')),
             datasourceName: $datasourceName,
-            processorName: (string) ($raw['general']['processor'] ?? 'NfDump'),
+            processorName: (string) ($raw['general']['processor'] ?? EnvRegistry::value('NFSEN_PROCESSOR')),
             defaultView: (string) ($raw['frontend']['defaults']['view'] ?? 'graphs'),
             defaultGraphDisplay: (string) ($raw['frontend']['defaults']['graphs']['display'] ?? 'sources'),
             defaultGraphDatatype: (string) ($raw['frontend']['defaults']['graphs']['datatype'] ?? 'traffic'),
             defaultGraphProtocols: (array) ($raw['frontend']['defaults']['graphs']['protocols'] ?? ['any']),
             defaultFlowLimit: (int) ($raw['frontend']['defaults']['flows']['limit'] ?? 50),
             defaultStatsOrderBy: (string) ($raw['frontend']['defaults']['statistics']['order_by'] ?? 'bytes'),
-            defaultTheme: self::normalizeTheme((string) ($raw['frontend']['defaults']['theme'] ?? (getenv('NFSEN_DEFAULT_THEME') ?: 'auto'))),
-            nfdumpBinary: (string) ($raw['nfdump']['binary'] ?? '/usr/bin/nfdump'),
-            nfdumpProfilesData: (string) ($raw['nfdump']['profiles-data'] ?? '/var/nfdump/profiles-data'),
-            nfdumpProfile: (string) ($raw['nfdump']['profile'] ?? 'live'),
-            nfdumpMaxProcesses: max(1, (int) ($raw['nfdump']['max-processes'] ?? 1)),
-            importYears: max(1, $importYears),
+            defaultTheme: self::normalizeTheme((string) ($raw['frontend']['defaults']['theme'] ?? EnvRegistry::value('NFSEN_DEFAULT_THEME'))),
+            nfdumpBinary: (string) ($raw['nfdump']['binary'] ?? EnvRegistry::value('NFSEN_NFDUMP_BINARY')),
+            nfdumpProfilesData: (string) ($raw['nfdump']['profiles-data'] ?? EnvRegistry::value('NFSEN_NFDUMP_PROFILES')),
+            nfdumpProfile: (string) ($raw['nfdump']['profile'] ?? EnvRegistry::value('NFSEN_NFDUMP_PROFILE')),
+            nfdumpMaxProcesses: max(1, (int) ($raw['nfdump']['max-processes'] ?? EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'))),
+            importYears: $importYears,
             logPriority: $logPriority,
-            maxStatsWindow: max(0, (int) ($raw['general']['max_stats_window'] ?? (int) (getenv('NFSEN_MAX_STATS_WINDOW') ?: 0))),
-            netboxUrl: (string) ($raw['general']['netbox_url'] ?? (string) (getenv('NFSEN_NETBOX_URL') ?: '')),
-            netboxToken: (string) ($raw['general']['netbox_token'] ?? (string) (getenv('NFSEN_NETBOX_TOKEN') ?: '')),
+            maxStatsWindow: max(0, (int) ($raw['general']['max_stats_window'] ?? EnvRegistry::value('NFSEN_MAX_STATS_WINDOW'))),
+            netboxUrl: (string) ($raw['general']['netbox_url'] ?? EnvRegistry::value('NFSEN_NETBOX_URL')),
+            netboxToken: (string) ($raw['general']['netbox_token'] ?? EnvRegistry::value('NFSEN_NETBOX_TOKEN')),
             alerts: [],
-            alertEmailFrom: (string) ($raw['general']['alert_email_from'] ?? (string) (getenv('NFSEN_ALERT_EMAIL_FROM') ?: '')),
+            alertEmailFrom: (string) ($raw['general']['alert_email_from'] ?? EnvRegistry::value('NFSEN_ALERT_EMAIL_FROM')),
             displayTimezone: 'browser',
             defaultEmailSubjectTemplate: '',
             defaultEmailBodyTemplate: '',
@@ -148,82 +153,52 @@ final class Settings {
         );
     }
 
-    /** Build from environment variables only — the standard path for Docker deployments. */
+    /**
+     * Build from environment variables only — the standard path for Docker deployments.
+     * Every value is resolved, typed, and validated by {@see EnvRegistry}, the single
+     * source of truth for env-var names, defaults, and validation.
+     */
     public static function fromEnv(): self {
-        $logPriority = LOG_INFO;
-        $envLevel = getenv('NFSEN_LOG_LEVEL');
-        if ($envLevel !== false && $envLevel !== '') {
-            $mapped = self::LOG_LEVEL_MAP[strtoupper($envLevel)] ?? null;
-            if ($mapped !== null) {
-                $logPriority = $mapped;
-            }
-        }
-
-        // NFSEN_SOURCES — comma-separated source names, e.g. "gw1,gw2,mailserver"
-        $sources = [];
-        $sourcesEnv = getenv('NFSEN_SOURCES');
-        if ($sourcesEnv !== false && $sourcesEnv !== '') {
-            $sources = array_values(array_filter(array_map('trim', explode(',', $sourcesEnv))));
-        }
-
-        // NFSEN_PORTS — comma-separated port numbers, e.g. "80,443,22"
-        $ports = [];
-        $portsEnv = getenv('NFSEN_PORTS');
-        if ($portsEnv !== false && $portsEnv !== '') {
-            $ports = array_values(array_filter(array_map('intval', array_map('trim', explode(',', $portsEnv)))));
-        }
-
-        // NFSEN_FILTERS — JSON array of nfdump filter strings
-        // e.g. '["proto tcp","dst port 80"]'
-        $filters = [];
-        $filtersEnv = getenv('NFSEN_FILTERS');
-        if ($filtersEnv !== false && $filtersEnv !== '') {
-            $decoded = json_decode($filtersEnv, true);
-            if (\is_array($decoded)) {
-                $filters = $decoded;
-            }
-        }
-
         // Datasource configs — import_years is a shared top-level setting; only store
         // datasource-specific connection details here.
         $rrdConfig = [];
-        $rrdPath = getenv('NFSEN_RRD_PATH');
-        if ($rrdPath !== false && $rrdPath !== '') {
+        $rrdPath = (string) EnvRegistry::value('NFSEN_RRD_PATH');
+        if ($rrdPath !== '') {
             $rrdConfig['data_path'] = $rrdPath;
         }
 
         $datasourceConfigs = [
             'RRD' => $rrdConfig,
             'VictoriaMetrics' => [
-                'host' => (string) (getenv('VM_HOST') ?: 'victoriametrics'),
-                'port' => (int) (getenv('VM_PORT') ?: 8428),
+                'host' => (string) EnvRegistry::value('NFSEN_VM_HOST'),
+                'port' => (int) EnvRegistry::value('NFSEN_VM_PORT'),
             ],
         ];
 
         return new self(
-            sources: $sources,
-            ports: $ports,
-            filters: $filters,
-            datasourceName: (string) (getenv('NFSEN_DATASOURCE') ?: 'RRD'),
-            processorName: (string) (getenv('NFSEN_PROCESSOR') ?: 'NfDump'),
+            sources: (array) EnvRegistry::value('NFSEN_SOURCES'),
+            ports: (array) EnvRegistry::value('NFSEN_PORTS'),
+            filters: (array) EnvRegistry::value('NFSEN_FILTERS'),
+            datasourceName: (string) EnvRegistry::value('NFSEN_DATASOURCE'),
+            processorName: (string) EnvRegistry::value('NFSEN_PROCESSOR'),
             defaultView: 'graphs',
             defaultGraphDisplay: 'sources',
             defaultGraphDatatype: 'traffic',
             defaultGraphProtocols: ['any'],
             defaultFlowLimit: 50,
             defaultStatsOrderBy: 'bytes',
-            defaultTheme: self::normalizeTheme((string) (getenv('NFSEN_DEFAULT_THEME') ?: 'auto')),
-            nfdumpBinary: (string) (getenv('NFSEN_NFDUMP_BINARY') ?: '/usr/local/nfdump/bin/nfdump'),
-            nfdumpProfilesData: (string) (getenv('NFSEN_NFDUMP_PROFILES') ?: '/var/nfdump/profiles-data'),
-            nfdumpProfile: (string) (getenv('NFSEN_NFDUMP_PROFILE') ?: 'live'),
-            nfdumpMaxProcesses: max(1, (int) (getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 1)),
-            importYears: max(1, (int) (getenv('NFSEN_IMPORT_YEARS') ?: 3)),
-            logPriority: $logPriority,
-            maxStatsWindow: max(0, (int) (getenv('NFSEN_MAX_STATS_WINDOW') ?: 0)),
-            netboxUrl: (string) (getenv('NFSEN_NETBOX_URL') ?: ''),
-            netboxToken: (string) (getenv('NFSEN_NETBOX_TOKEN') ?: ''),
+            defaultTheme: (string) EnvRegistry::value('NFSEN_DEFAULT_THEME'),
+            nfdumpBinary: (string) EnvRegistry::value('NFSEN_NFDUMP_BINARY'),
+            nfdumpProfilesData: (string) EnvRegistry::value('NFSEN_NFDUMP_PROFILES'),
+            nfdumpProfile: (string) EnvRegistry::value('NFSEN_NFDUMP_PROFILE'),
+            nfdumpMaxProcesses: (int) EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'),
+            importYears: (int) EnvRegistry::value('NFSEN_IMPORT_YEARS'),
+            logPriority: self::logLevelFromString((string) EnvRegistry::value('NFSEN_LOG_LEVEL')),
+            maxStatsWindow: (int) EnvRegistry::value('NFSEN_MAX_STATS_WINDOW'),
+            netboxUrl: (string) EnvRegistry::value('NFSEN_NETBOX_URL'),
+            netboxToken: (string) EnvRegistry::value('NFSEN_NETBOX_TOKEN'),
             alerts: [],
-            alertEmailFrom: (string) (getenv('NFSEN_ALERT_EMAIL_FROM') ?: ''),
+            alertEmailFrom: (string) EnvRegistry::value('NFSEN_ALERT_EMAIL_FROM'),
             displayTimezone: 'browser',
             defaultEmailSubjectTemplate: '',
             defaultEmailBodyTemplate: '',
@@ -241,13 +216,7 @@ final class Settings {
      * @throws \InvalidArgumentException for unknown datasource names
      */
     public function datasourceClass(): string {
-        $key = strtolower($this->datasourceName);
-        $class = self::DATASOURCE_MAP[$key] ?? null;
-        if ($class === null) {
-            throw new \InvalidArgumentException("Unknown datasource '{$key}'. Known: " . implode(', ', array_keys(self::DATASOURCE_MAP)));
-        }
-
-        return $class;
+        return self::resolveClass(self::DATASOURCE_MAP, $this->datasourceName, 'datasource');
     }
 
     /**
@@ -256,13 +225,43 @@ final class Settings {
      * @throws \InvalidArgumentException for unknown processor names
      */
     public function processorClass(): string {
-        $key = strtolower($this->processorName);
-        $class = self::PROCESSOR_MAP[$key] ?? null;
-        if ($class === null) {
-            throw new \InvalidArgumentException("Unknown processor '{$key}'. Known: " . implode(', ', array_keys(self::PROCESSOR_MAP)));
+        return self::resolveClass(self::PROCESSOR_MAP, $this->processorName, 'processor');
+    }
+
+    /**
+     * Case-insensitively resolve a canonical short name (e.g. "RRD") to its FQCN.
+     *
+     * @param array<string, string> $map  canonical short name → fully-qualified class name
+     * @param string                $kind human label for the error message
+     *
+     * @throws \InvalidArgumentException for unknown names
+     */
+    private static function resolveClass(array $map, string $name, string $kind): string {
+        foreach ($map as $canonical => $class) {
+            if (strcasecmp($canonical, $name) === 0) {
+                return $class;
+            }
         }
 
-        return $class;
+        throw new \InvalidArgumentException("Unknown {$kind} '{$name}'. Known: " . implode(', ', array_keys($map)));
+    }
+
+    /**
+     * Canonical datasource names — the single source for the NFSEN_DATASOURCE enum.
+     *
+     * @return list<string>
+     */
+    public static function datasourceNames(): array {
+        return array_keys(self::DATASOURCE_MAP);
+    }
+
+    /**
+     * Canonical processor names — the single source for the NFSEN_PROCESSOR enum.
+     *
+     * @return list<string>
+     */
+    public static function processorNames(): array {
+        return array_keys(self::PROCESSOR_MAP);
     }
 
     /**
@@ -477,6 +476,16 @@ final class Settings {
     /** Convert a log-level name string to a PHP LOG_* constant. Returns LOG_INFO for unknown values. */
     public static function logLevelFromString(string $name): int {
         return self::LOG_LEVEL_MAP[strtoupper($name)] ?? LOG_INFO;
+    }
+
+    /**
+     * Accepted log-level name strings, lower-cased and de-duplicated.
+     * The single source for the NFSEN_LOG_LEVEL enum in {@see EnvRegistry}.
+     *
+     * @return list<string>
+     */
+    public static function logLevelNames(): array {
+        return array_values(array_unique(array_map('strtolower', array_keys(self::LOG_LEVEL_MAP))));
     }
 
     /** Convert a PHP LOG_* constant back to a lower-case string (e.g. "debug"). */

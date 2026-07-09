@@ -2,7 +2,22 @@
 
 declare(strict_types=1);
 
+use mbolli\nfsen_ng\common\EnvRegistry;
 use mbolli\nfsen_ng\common\Settings;
+
+// Start every test from a clean environment. The registry-backed factories read
+// env vars as a fallback baseline, and the dev container sets several NFSEN_*
+// vars (NFSEN_SOURCES, NFSEN_LOG_LEVEL, …) that would otherwise leak into the
+// "defaults" assertions. Tests that exercise a specific var putenv() it in-body.
+// TZ / NFCAPD_TZ are OS-level and left untouched.
+beforeEach(function (): void {
+    foreach ([...EnvRegistry::names(), ...array_keys(EnvRegistry::aliasMap())] as $name) {
+        if ($name === 'TZ' || $name === 'NFCAPD_TZ') {
+            continue;
+        }
+        putenv($name);
+    }
+});
 
 describe('Settings::fromArray()', function (): void {
     test('parses all typed fields correctly', function (): void {
@@ -73,7 +88,7 @@ describe('Settings::fromArray()', function (): void {
             ->and($s->defaultGraphProtocols)->toBe(['any'])
             ->and($s->defaultFlowLimit)->toBe(50)
             ->and($s->defaultStatsOrderBy)->toBe('bytes')
-            ->and($s->nfdumpBinary)->toBe('/usr/bin/nfdump')
+            ->and($s->nfdumpBinary)->toBe('/usr/local/nfdump/bin/nfdump')
             ->and($s->nfdumpProfilesData)->toBe('/var/nfdump/profiles-data')
             ->and($s->nfdumpProfile)->toBe('live')
             ->and($s->nfdumpMaxProcesses)->toBe(1)

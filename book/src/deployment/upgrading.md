@@ -36,11 +36,12 @@ fit together.
 - **The `cli.php` interface was removed.** Import is driven from the web UI
   (**Settings → Import → Trigger Import** / **Force Rescan**) by the daemon
   embedded in `app.php`.
-- Settings still live in a PHP file that assigns the global `$nfsen_config`
-  array, but the schema was expanded and reorganised (new `general.db`,
-  `db.<datasource>.*`, `frontend.defaults.*`, and more). Start from the current
-  `backend/settings/settings.php.dist` rather than reusing a v0 file verbatim —
-  or skip the file entirely and configure via environment variables. See
+- Configuration moved to environment variables (`NFSEN_*`); the `settings.php`
+  file still works but is now a **deprecated** overlay on top of them. If you
+  keep one, start from the current `backend/settings/settings.php.dist` rather
+  than reusing a v0 file verbatim (the schema was expanded and reorganised: new
+  `general.db`, `db.<datasource>.*`, `frontend.defaults.*`, and more) — or skip
+  the file entirely and configure via environment variables. See
   [Configuration](configuration.md).
 
 ### Docker
@@ -50,6 +51,12 @@ fit together.
   profile) — there is no custom Caddy image.
 - Deployment layout moved under `deploy/` (`docker-compose.yml`,
   `docker-compose.dev.yml`, …). See [Installation](installation.md).
+- **Persistent data is consolidated** under a single `nfsen-data` volume at
+  `/var/lib/nfsen-ng` (`rrd/` + `state/`). If you ran an earlier v1 beta with the
+  separate `rrd-data` volume (`/var/nfsen-ng/rrd`), copy your RRD files into the
+  new volume once — e.g. `docker run --rm -v rrd-data:/old -v nfsen-data:/new
+  alpine cp -a /old/. /new/rrd/` — or just rebuild them with **Force Rescan**.
+  See [State & persistence](configuration.md#state--persistence).
 
 ## Migration steps
 

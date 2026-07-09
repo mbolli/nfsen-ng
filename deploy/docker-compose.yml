@@ -26,6 +26,7 @@ services:
     #   - "9000:9000"
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng
+      - nfsen-data:/var/lib/nfsen-ng  # RRD database + state (preferences, alert rules/state/log) — survives image upgrades
     environment:
       - TZ=UTC
       # Uncomment and set to the timezone nfcapd ran in if it differs from TZ above.
@@ -82,5 +83,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  nfsen-data:  # nfsen-ng's own data — rrd/ (RRD database) + state/ (preferences, alert rules/state/log)
   caddy_data:
   caddy_config:

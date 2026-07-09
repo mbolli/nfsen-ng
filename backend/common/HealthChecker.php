@@ -73,7 +73,7 @@ class HealthChecker {
         $storageGroup = $datasource === 'victoriametrics' ? 'VictoriaMetrics' : 'RRD Storage';
 
         // Group display order (index = sort priority)
-        $groupOrder = array_flip(['PHP Extensions', 'Timezone', 'nfdump', 'Sources', 'Import Daemon', 'nfcapd Paths', $storageGroup]);
+        $groupOrder = array_flip(['PHP Extensions', 'Configuration', 'Timezone', 'nfdump', 'Sources', 'Import Daemon', 'nfcapd Paths', $storageGroup]);
 
         // ── 1. PHP Extensions ────────────────────────────────────────────────
         $phpVer = PHP_VERSION;
@@ -451,6 +451,75 @@ class HealthChecker {
         // own connectivity checks, file paths, and per-source freshness logic.
         if (isset(Config::$db)) {
             array_push($checks, ...Config::$db->healthChecks($storageGroup, $sources));
+        }
+
+        // ── 8. Configuration (environment variables) ─────────────────────────
+        // Config source: the env-var baseline vs the deprecated settings.php file.
+        if (Config::$settingsFileLoaded !== null) {
+            $add(
+                'config_source',
+                'Config source',
+                'warning',
+                'settings.php (deprecated)',
+                'Configuration',
+                false,
+                'File-based config is deprecated — migrate to environment variables (NFSEN_*). See the Configuration docs.'
+            );
+        } else {
+            $add('config_source', 'Config source', 'ok', 'Environment variables', 'Configuration');
+        }
+
+        // Registry-detected problems: values that were set but invalid (so the
+        // default silently applied), deprecated aliases still in use, and unknown
+        // NFSEN_-prefixed variables (typos that have no effect).
+        $envIssues = EnvRegistry::issues();
+        foreach ($envIssues as $i => $issue) {
+            $add('env_issue_' . $i, $issue['name'], $issue['level'], $issue['message'], 'Configuration');
+        }
+        if ($envIssues === []) {
+            $add('env_vars_ok', 'Environment variables', 'ok', 'All recognised and valid', 'Configuration');
+        }
+
+        // Soft format checks the registry defers to the health page. Path
+        // existence is already covered by the dedicated nfdump/nfcapd checks, so
+        // only url/email — which need no filesystem access — are validated here.
+        foreach (EnvRegistry::table() as $var) {
+            if ($var->format === null || !EnvRegistry::isSet($var->name)) {
+                continue;
+            }
+            $val = (string) EnvRegistry::value($var->name);
+            $bad = match ($var->format) {
+                'url' => filter_var($val, FILTER_VALIDATE_URL) === false,
+                'email' => filter_var($val, FILTER_VALIDATE_EMAIL) === false,
+                default => false,
+            };
+            if ($bad) {
+                $add(
+                    'env_format_' . strtolower($var->name),
+                    $var->name,
+                    'warning',
+                    $var->display($val) . " is not a valid {$var->format}",
+                    'Configuration'
+                );
+            }
+        }
+
+        // Log level is the one field that both an env var (NFSEN_LOG_LEVEL) and a
+        // saved preference (preferences.json → logPriority) control. The preference
+        // is overlaid last and wins, so flag when it silently overrides the env var.
+        if (EnvRegistry::isSet('NFSEN_LOG_LEVEL') && Config::$preferencesFileLoaded) {
+            $envLevel = Settings::logLevelFromString((string) EnvRegistry::value('NFSEN_LOG_LEVEL'));
+            if ($settings->logPriority !== $envLevel) {
+                $add(
+                    'env_pref_loglevel',
+                    'NFSEN_LOG_LEVEL',
+                    'warning',
+                    'Overridden by a saved log-level preference (' . Settings::logLevelToString($settings->logPriority) . ')',
+                    'Configuration',
+                    false,
+                    'A saved Preferences log level wins over NFSEN_LOG_LEVEL. Clear it in Settings → Preferences, or match the env var there.'
+                );
+            }
         }
 
         // Sort: group order first, then errors-before-warnings-before-ok within each group

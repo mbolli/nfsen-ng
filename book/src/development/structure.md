@@ -9,7 +9,7 @@ backend/
   datasources/             Datasource interface + Rrd, VictoriaMetrics implementations
   processor/               Nfdump — the nfdump subprocess wrapper
   templates/               Twig: layout.html.twig (shell) + partials/ (one per tab/section)
-  settings/                settings.php(.dist) (deployment config) + preferences.json (user-saved)
+  settings/                env vars = deployment config; settings.php(.dist) = deprecated file overlay; preferences.json = user-saved overrides (win on overlap)
 frontend/
   js/components/            Web Components: nfsen-chart, nfsen-table, nfsen-daterange, nfsen-sankey, ...
   js/datastar.js, nouislider.min.js, echarts.min.js

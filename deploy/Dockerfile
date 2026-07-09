@@ -9,6 +9,13 @@ LABEL org.opencontainers.image.title="nfsen-ng" \
       org.opencontainers.image.source="https://github.com/mbolli/nfsen-ng"
 
 ENV TZ="UTC"
+# Persistent app data lives under one volume, separate from the code, so it
+# survives image upgrades and is a single thing to back up:
+#   /var/lib/nfsen-ng/rrd    — RRD database (unused for the VictoriaMetrics datasource)
+#   /var/lib/nfsen-ng/state  — preferences.json + alert rules/state/log
+# Declared as a VOLUME below and mounted as a named volume by the compose files.
+ENV NFSEN_RRD_PATH="/var/lib/nfsen-ng/rrd"
+ENV NFSEN_STATE_DIR="/var/lib/nfsen-ng/state"
 WORKDIR /var/www/html/nfsen-ng
 
 # Install dependencies required for nfdump, nfsen-ng, and Swoole
@@ -59,8 +66,11 @@ RUN curl -sS https://getcomposer.org/download/latest-stable/composer.phar -o /us
     && chmod +x /usr/local/bin/composer \
     && composer install --no-dev --optimize-autoloader
 
-# Setup volumes for persistent data and configuration
-VOLUME ["/data/nfsen-ng"]
+# Setup volumes for persistent data and configuration.
+# /data/nfsen-ng    — nfcapd capture tree (written by the collector, read by nfdump)
+# /var/lib/nfsen-ng — nfsen-ng's own data: rrd/ (RRD database) + state/ (preferences + alerts)
+RUN mkdir -p /var/lib/nfsen-ng/rrd /var/lib/nfsen-ng/state
+VOLUME ["/data/nfsen-ng", "/var/lib/nfsen-ng"]
 
 # Copy entrypoint script
 COPY deploy/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

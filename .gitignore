@@ -1,6 +1,7 @@
 .idea/
 .vscode/
 backend/settings/settings.php
+backend/settings/preferences.json
 backend/settings/alerts-state.json
 backend/settings/alerts-log.json
 backend/datasources/data/

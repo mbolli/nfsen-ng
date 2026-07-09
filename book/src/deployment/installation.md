@@ -37,12 +37,28 @@ and `NFSEN_NFDUMP_PROFILES` point at your capture directory. For standard setups
 the environment variables are all you need — no `settings.php`. The full list of
 variables lives in [Configuration](configuration.md).
 
+> **A Docker deployment needs two persistent volumes** (the shipped compose files
+> wire up both — don't drop either):
+>
+> 1. **Capture data** — the `nfcapd` flow-file tree, mounted at `/data/nfsen-ng`
+>    (`NFSEN_NFDUMP_PROFILES`). This is the directory your collector writes to and
+>    nfsen-ng reads; you point it at your existing capture output.
+> 2. **nfsen-ng's own data** — the RRD database plus saved preferences and alerts,
+>    on the `nfsen-data` named volume at `/var/lib/nfsen-ng`.
+>
+> They're separate on purpose (the collector owns the capture tree; it grows with
+> traffic and has its own retention). Skipping volume 2 means a container
+> recreation — **every image upgrade** — wipes your graphs, preferences, and
+> alerts. See [State & persistence](configuration.md#state--persistence).
+
 > **When you *do* want a `settings.php`** (custom filter presets, many sources,
 > a bare-metal path layout): copy `backend/settings/settings.php.dist` to
-> `backend/settings/settings.php`, edit it, and mount it read-only. See
-> [Configuration → Settings file](configuration.md#settings-file). Note it must
-> assign the global `$nfsen_config` array — a file that `return`s an array is
-> silently ignored.
+> `backend/settings/settings.php`, edit it, and mount it read-only. It is a
+> **deprecated** overlay on the environment — any key it omits still falls back
+> to the matching `NFSEN_*` variable. See
+> [Configuration → Settings file](configuration.md#settings-file-deprecated).
+> Note it must assign the global `$nfsen_config` array — a file that `return`s an
+> array is silently ignored.
 
 ### Deployment modes
 
@@ -100,13 +116,13 @@ Requirements for any fronting proxy:
 - **Pass 5xx through as a connection abort** (or equivalent) so the Datastar SSE
   client retries on server restart rather than rendering an error page.
 
-#### Mode 3 — persistent RRD volume + file-based settings
+#### Mode 3 — hardened production (read-only capture, bundled Caddy)
 
 `deploy/docker-compose.prod.yml` is a variant that always starts Caddy (no
-profile), mounts the capture directory **read-only**, keeps RRD files on a named
-`rrd-data` volume (via `NFSEN_RRD_PATH=/var/nfsen-ng/rrd`), and bind-mounts a
-`backend/settings/settings.php`. Use it when you prefer a settings file over
-environment variables and want RRD storage decoupled from the capture mount.
+profile), mounts the capture directory **read-only**, and keeps RRD files and app
+state on the persistent `nfsen-data` volume (`/var/lib/nfsen-ng`). It also
+bind-mounts an optional (deprecated) `backend/settings/settings.php`; new setups
+can skip that and configure via `NFSEN_*` variables alone.
 
 ### Images and tags
 
@@ -211,7 +227,8 @@ cd nfsen-ng
 # Composer (https://getcomposer.org/download/):
 php composer.phar install --no-dev --optimize-autoloader
 
-# Optional settings file (bare-metal usually wants one):
+# Optional (deprecated) settings file — or set the same NFSEN_* env vars instead,
+# e.g. via a systemd EnvironmentFile:
 cp backend/settings/settings.php.dist backend/settings/settings.php
 $EDITOR backend/settings/settings.php   # set sources, ports, nfdump.binary, profiles-data
 

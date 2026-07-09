@@ -19,12 +19,13 @@ declare(strict_types=1);
  *   php scripts/seed_vm_data.php [--host=localhost] [--port=8428] \
  *                                [--source=all] [--days=90] [--ports=80,443,22]
  *
- * Environment variables VM_HOST and VM_PORT are also accepted as defaults.
+ * Environment variables NFSEN_VM_HOST and NFSEN_VM_PORT are also accepted as
+ * defaults (the legacy VM_HOST / VM_PORT names still work).
  */
 $opts = getopt('', ['host::', 'port::', 'source::', 'days::', 'ports::']);
 
-$vmHost = (string) ($opts['host'] ?? getenv('VM_HOST') ?: 'localhost');
-$vmPort = (int) ($opts['port'] ?? getenv('VM_PORT') ?: 8428);
+$vmHost = (string) ($opts['host'] ?? getenv('NFSEN_VM_HOST') ?: getenv('VM_HOST') ?: 'localhost');
+$vmPort = (int) ($opts['port'] ?? getenv('NFSEN_VM_PORT') ?: getenv('VM_PORT') ?: 8428);
 $source = (string) ($opts['source'] ?? 'all');
 $days = max(1, (int) ($opts['days'] ?? 90));
 

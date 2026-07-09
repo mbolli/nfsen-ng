@@ -1,16 +1,24 @@
 # Configuration
 
-nfsen-ng can be configured two ways:
+nfsen-ng is configured through **environment variables** (`NFSEN_*`) — the
+recommended path for both Docker and bare-metal. Every variable has one default
+and one validator, defined once in `backend/common/EnvRegistry.php`.
 
-- **Environment variables** — the recommended path for Docker. No file needed.
-- **A `settings.php` file** — for custom filter presets, unusual layouts, or
-  bare-metal installs.
+A legacy **`settings.php`** file is still supported for custom filter presets or
+unusual bare-metal layouts, but is **deprecated**. When present it acts as an
+overlay on top of the environment: any key it defines wins, and any key it omits
+falls back to the matching environment variable (then the built-in default). An
+active `settings.php` is flagged on the **Settings → Health** page.
 
-When a settings file is present it wins: the source/port/filter/processor
-**environment variables are ignored** (a warning is logged if you set both).
-Everything else — nfdump paths, datasource, import depth, NetBox, etc. — is read
-from the settings array, which itself defaults to the matching environment
-variable in the shipped template.
+Invalid values, deprecated variable names, and unknown `NFSEN_*` variables
+(typos) never fail the boot — a bad value falls back to its default and is
+called out on the Health page, so misconfiguration is visible instead of silent.
+
+> A third layer sits on top: **`preferences.json`**, the user settings saved from
+> the web UI. It overlays the deployment config and **wins** for the fields the
+> Preferences tab owns (UI defaults, filter presets, display timezone, and log
+> level). See [Preferences](../features/preferences.md#preferences) — notably, a
+> saved `logPriority` overrides `NFSEN_LOG_LEVEL`.
 
 ## Environment variables
 
@@ -22,19 +30,21 @@ variable in the shipped template.
 | `NFSEN_PORTS` | _(none)_ | Comma-separated port numbers to track, e.g. `80,443,22`. |
 | `NFSEN_FILTERS` | _(none)_ | JSON array of nfdump filter presets, e.g. `["proto tcp","dst port 80"]`. |
 
-> With a `settings.php` present, `NFSEN_SOURCES`, `NFSEN_PORTS`, `NFSEN_FILTERS`
-> **and** `NFSEN_PROCESSOR` are ignored in favour of the file, and a warning is
-> logged if both are set.
+> A `settings.php` that defines `general.sources`, `ports`, `filters`, or
+> `processor` overrides the matching variable; where the file omits a key, the
+> environment variable is used.
 
 ### Core
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NFSEN_SETTINGS_FILE` | `backend/settings/settings.php` | Path to a custom settings file (used only if it exists). |
-| `NFSEN_PREFERENCES_FILE` | `backend/settings/preferences.json` | Path to the persisted user-preferences overlay. |
+| `NFSEN_STATE_DIR` | `backend/settings` | Directory for mutable runtime state — `preferences.json` and the alert rules/state/log. The Docker image sets this to `/var/lib/nfsen-ng/state` (on the persistent volume); see [State & persistence](#state--persistence). |
+| `NFSEN_SETTINGS_FILE` | `backend/settings/settings.php` | Path to a custom (deprecated) settings file (used only if it exists). |
+| `NFSEN_PREFERENCES_FILE` | `<state dir>/preferences.json` | Override just the preferences file path (normally derived from `NFSEN_STATE_DIR`). |
 | `NFSEN_DATASOURCE` | `RRD` | Datasource: `RRD` or `VictoriaMetrics`. |
 | `NFSEN_PROCESSOR` | `NfDump` | Flow processor. Only `NfDump` is implemented. |
 | `NFSEN_LOG_LEVEL` | `INFO` | Log verbosity. Accepts `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERR`/`ERROR`, `CRIT`, `ALERT`, `EMERG` (and `LOG_`-prefixed forms). Controls both the app and the Swoole server. |
+| `NFSEN_MAX_STATS_WINDOW` | `0` | Max statistics query window in seconds (`0` = unlimited). Also `general.max_stats_window` in `settings.php`. |
 | `NFSEN_DEFAULT_THEME` | `auto` | Default UI colour theme for a browser with no saved preference (e.g. after a cache wipe). `auto` follows the OS `prefers-color-scheme`; `dark`/`light` force it. A user's manual dark-mode toggle is stored client-side and always overrides this. Also settable as `frontend.defaults.theme` in `settings.php`. |
 | `NFSEN_DEV_MODE` | `false` | Enables php-via dev mode (static assets served `no-cache`). Leave off in production. |
 
@@ -42,7 +52,7 @@ variable in the shipped template.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NFSEN_NFDUMP_BINARY` | `/usr/local/nfdump/bin/nfdump` (env) · `/usr/bin/nfdump` (settings-file default) | Path to the nfdump binary. The Docker image compiles nfdump to `/usr/local/nfdump/bin`. |
+| `NFSEN_NFDUMP_BINARY` | `/usr/local/nfdump/bin/nfdump` | Path to the nfdump binary. The Docker image compiles nfdump to `/usr/local/nfdump/bin`. |
 | `NFSEN_NFDUMP_PROFILES` | `/var/nfdump/profiles-data` | Root path to the `nfcapd` data tree. In Docker this must match the container-side bind-mount (the shipped compose maps it to `/data/nfsen-ng`). |
 | `NFSEN_NFDUMP_PROFILE` | `live` | Default profile subfolder. See [Profiles](profiles.md). |
 | `NFSEN_NFDUMP_MAX_PROCESSES` | `1` | Max concurrent nfdump processes (floored at 1). |
@@ -60,23 +70,20 @@ variable in the shipped template.
 > **Changing `NFSEN_IMPORT_YEARS` after the first import** only affects the RRD
 > daily-archive depth, which is fixed at creation time. To resize it, run
 > **Force Rescan** from the Settings → Import panel to recreate the RRD files.
->
-> There is **no** `NFSEN_FORCE_IMPORT` variable — rebuilding is a UI action
-> (Force Rescan). The `NFSEN_IMPORT_VERBOSE` line that appears commented-out in
-> the shipped compose files is not currently read by the app.
+> Rebuilding is a UI action — there is no import-trigger environment variable.
 
 ### RRD storage
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NFSEN_RRD_PATH` | `backend/datasources/data` | Where RRD files are stored. Override to keep them on a separate volume. |
+| `NFSEN_RRD_PATH` | `backend/datasources/data` | Where RRD files are stored. The Docker image sets this to `/var/lib/nfsen-ng/rrd` (on the persistent volume, alongside state) — see [State & persistence](#state--persistence). Override to relocate. |
 
 ### VictoriaMetrics
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VM_HOST` | `victoriametrics` | VictoriaMetrics hostname. |
-| `VM_PORT` | `8428` | VictoriaMetrics HTTP port. |
+| `NFSEN_VM_HOST` | `victoriametrics` | VictoriaMetrics hostname. (Legacy alias: `VM_HOST`, still honoured.) |
+| `NFSEN_VM_PORT` | `8428` | VictoriaMetrics HTTP port. (Legacy alias: `VM_PORT`, still honoured.) |
 
 See [VictoriaMetrics](victoriametrics.md) for the full setup.
 
@@ -113,7 +120,40 @@ Both are also settable as `general.netbox_url` / `general.netbox_token` in
 > The comments in the shipped compose files quote different Swoole defaults
 > (`4` / `10000`); the values above are what the code actually defaults to.
 
-## Settings file
+## State & persistence
+
+All of nfsen-ng's **own** persistent data lives under one directory,
+`/var/lib/nfsen-ng`, in two subdirectories:
+
+| Path | Contents |
+|------|----------|
+| `rrd/` (`NFSEN_RRD_PATH`) | RRD database files (unused for the VictoriaMetrics datasource) |
+| `state/` (`NFSEN_STATE_DIR`) | `preferences.json` (UI prefs **and alert rule definitions**), `alerts-state.json`, `alerts-log.json` |
+
+This is deliberately separate from the nfcapd **capture** tree (`/data/nfsen-ng`),
+which the collector owns and which is usually managed on its own retention schedule.
+
+**In Docker this must live on a volume**, or a container recreation (every image
+upgrade) wipes your RRD graphs, preferences, and alerts:
+
+- The image defaults `NFSEN_RRD_PATH` and `NFSEN_STATE_DIR` into `/var/lib/nfsen-ng`
+  and declares it a `VOLUME`, so even a bare `docker run` persists in an anonymous
+  volume.
+- The shipped compose files map a **named** volume there (`nfsen-data`), which also
+  survives `docker compose down` and is easy to back up. Unraid mounts
+  `/mnt/user/appdata/nfsen-ng-data`.
+- Dev (bind-mounted source) and bare-metal keep the built-in defaults
+  (`backend/datasources/data` and `backend/settings`), next to the code.
+
+To back up or migrate an instance, copy `/var/lib/nfsen-ng` — that single directory
+holds both your graphs and your configuration.
+
+## Settings file (deprecated)
+
+> **Deprecated.** File-based config predates the environment-variable model and
+> is kept only for backward compatibility. New installs should use `NFSEN_*`
+> variables; an active `settings.php` is flagged on the Health page and may be
+> removed in a future major release.
 
 For custom filter presets or a bare-metal path layout, copy the template and
 edit it:
@@ -124,9 +164,9 @@ cp backend/settings/settings.php.dist backend/settings/settings.php
 
 The file must **assign the global `$nfsen_config` array** — nfsen-ng `include`s
 it and reads that global. A file that `return`s an array (or defines any other
-variable) is silently ignored and you get empty settings. The template's own
-values default to `getenv()`, so a settings file and environment variables can
-coexist.
+variable) is silently ignored and you get empty settings. The file is an overlay
+on the environment: any key you set wins, and any key you omit falls back to the
+matching `NFSEN_*` variable, then the built-in default.
 
 ```php
 <?php
@@ -168,7 +208,7 @@ defaults):
 | `general.max_stats_window` | Statistics query cap in seconds (`0` = unlimited) | `0` |
 | `general.netbox_url` / `general.netbox_token` | NetBox lookup | empty |
 | `general.alert_email_from` | Alert email From-address | _(not in template)_ |
-| `nfdump.binary` | nfdump path | `/usr/bin/nfdump` |
+| `nfdump.binary` | nfdump path | `/usr/local/nfdump/bin/nfdump` |
 | `nfdump.profiles-data` | Capture data root | `/var/nfdump/profiles-data` |
 | `nfdump.profile` | Default profile | `live` |
 | `nfdump.max-processes` | Max concurrent nfdump procs | `1` |

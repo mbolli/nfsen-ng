@@ -37,6 +37,7 @@ use mbolli\nfsen_ng\common\AlertManager;
 use mbolli\nfsen_ng\common\AppStartup;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\EnvRegistry;
 use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\ImportDaemon;
 use mbolli\nfsen_ng\common\Settings;
@@ -47,11 +48,11 @@ use Mbolli\PhpVia\Via;
 
 // ─── Via configuration ───────────────────────────────────────────────────────
 
-$isDev = (bool) (getenv('NFSEN_DEV_MODE') ?: false);
-$workerNum = (int) (getenv('SWOOLE_WORKER_NUM') ?: 1);  // php-via is single-worker
-$maxRequest = (int) (getenv('SWOOLE_MAX_REQUEST') ?: 0);    // 0 = unlimited (default for long-lived SSE servers)
-$maxCoroutine = (int) (getenv('SWOOLE_MAX_COROUTINE') ?: 10000);
-$logLevel = strtolower((string) (getenv('NFSEN_LOG_LEVEL') ?: 'info'));
+$isDev = (bool) EnvRegistry::value('NFSEN_DEV_MODE');
+$workerNum = (int) EnvRegistry::value('SWOOLE_WORKER_NUM');  // php-via is single-worker
+$maxRequest = (int) EnvRegistry::value('SWOOLE_MAX_REQUEST');    // 0 = unlimited (default for long-lived SSE servers)
+$maxCoroutine = (int) EnvRegistry::value('SWOOLE_MAX_COROUTINE');
+$logLevel = (string) EnvRegistry::value('NFSEN_LOG_LEVEL');
 $logLevel = preg_replace('/^log_/i', '', $logLevel) ?: 'info';
 
 $viaConfig = (new ViaConfig())

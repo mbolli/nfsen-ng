@@ -9,8 +9,8 @@ services:
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng
       - ..:/var/www/html/nfsen-ng  # Mount source for development
-      # Uncomment to use separate RRD volume (otherwise uses backend/datasources/data in mounted source)
-      # - rrd-data:/var/nfsen-ng/rrd
+      # Dev keeps RRD (backend/datasources/data) and state (backend/settings) in the
+      # mounted source. For a persistent named volume, see docker-compose.yml (nfsen-data).
     environment:
       - TZ=UTC
       # Uncomment and set to the timezone nfcapd ran in if it differs from TZ above.
@@ -29,8 +29,7 @@ services:
       # - NFSEN_NFDUMP_MAX_PROCESSES=1
 
       # ── RRD storage ────────────────────────────────────────────────────────
-      # - NFSEN_RRD_PATH=/var/nfsen-ng/rrd  # Default: backend/datasources/data (in mounted source)
-      # - rrd-data:/var/nfsen-ng/rrd        # Uncomment volume above too
+      # - NFSEN_RRD_PATH=/custom/rrd  # Default in dev: backend/datasources/data (mounted source)
 
       # ── Import ── docs: https://mbolli.github.io/nfsen-ng/deployment/configuration.html
       # - NFSEN_SKIP_INITIAL_IMPORT=true  # Skip initial import on startup
@@ -101,4 +100,4 @@ services:
     restart: unless-stopped
 
 # volumes:
-#   rrd-data:  # Uncomment if using separate RRD volume
+#   nfsen-data:  # Uncomment (and mount at /var/lib/nfsen-ng) for a persistent RRD+state volume

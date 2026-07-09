@@ -21,6 +21,18 @@ action, which merges the new values with whatever's already in
 `preferences.json` — including the alert rules, so saving preferences never
 touches alert state.
 
+> **How this layers with env vars / `settings.php`.** Configuration is applied in
+> two stages: the deployment baseline (environment variables, then the deprecated
+> `settings.php` overlay) is built first, and `preferences.json` is overlaid on
+> top. For the fields the Preferences tab owns — default view, graph/flow/stats
+> defaults, filter presets, display timezone, and **log level** — the saved
+> preference therefore **wins over the deployment value**. In particular a saved
+> `logPriority` overrides `NFSEN_LOG_LEVEL`; if you set the log level by env var,
+> either leave the Preferences log level unset or match it there. Everything
+> outside that list (sources, ports, datasource, nfdump paths, import depth,
+> NetBox, theme) comes only from the deployment layer and is shown read-only on
+> the **System** sub-tab.
+
 ### Timezones
 
 The container itself runs `TZ=UTC`; nfcapd filenames are parsed in

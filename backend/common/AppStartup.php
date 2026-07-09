@@ -33,13 +33,13 @@ class AppStartup {
         // Instantiate AlertManager — persists across all requests for the lifetime of the worker.
         $alertManager = new AlertManager(
             Config::$db,
-            __DIR__ . '/../settings/alerts-state.json',
-            __DIR__ . '/../settings/alerts-log.json',
+            Config::$stateDir . \DIRECTORY_SEPARATOR . 'alerts-state.json',
+            Config::$stateDir . \DIRECTORY_SEPARATOR . 'alerts-log.json',
             Config::$settings->alertEmailFrom
         );
         $app->setGlobalState('alertManager', $alertManager);
 
-        if (getenv('NFSEN_SKIP_DAEMON') === '1' || getenv('NFSEN_SKIP_DAEMON') === 'true') {
+        if ((bool) EnvRegistry::value('NFSEN_SKIP_DAEMON')) {
             $debug->log('ImportDaemon skipped (NFSEN_SKIP_DAEMON)', LOG_INFO);
             $app->setGlobalState('daemon_disabled', true);
 
@@ -86,8 +86,7 @@ class AppStartup {
             };
 
             // NFSEN_SKIP_INITIAL_IMPORT: skip gap fill, just set up inotify watches.
-            $skipEnv = getenv('NFSEN_SKIP_INITIAL_IMPORT');
-            if ($skipEnv === '1' || $skipEnv === 'true') {
+            if ((bool) EnvRegistry::value('NFSEN_SKIP_INITIAL_IMPORT')) {
                 $debug->log('ImportDaemon: startup import skipped (NFSEN_SKIP_INITIAL_IMPORT)', LOG_INFO);
                 foreach ($daemons as $daemon) {
                     $daemon->setupWatchesOnly();

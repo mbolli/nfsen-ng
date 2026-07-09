@@ -30,6 +30,7 @@ services:
       - "9000:9000"          # Web UI (front with SWAG / Nginx Proxy Manager for TLS)
     volumes:
       - /mnt/user/appdata/nfsen-ng:/data/nfsen-ng
+      - /mnt/user/appdata/nfsen-ng-data:/var/lib/nfsen-ng  # RRD database + state (preferences, alert rules/state/log) — survives image upgrades
     environment:
       - TZ=UTC
       - NFSEN_SOURCES=flows           # must equal the collector's source dir below

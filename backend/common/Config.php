@@ -13,6 +13,12 @@ abstract class Config {
     public static Settings $settings;
     public static string $path;
     public static string $prefsFile;
+    /** Directory holding mutable runtime state (preferences.json, alert rules/state/log). */
+    public static string $stateDir;
+    /** Absolute path of the settings.php loaded at init, or null when built purely from env vars. */
+    public static ?string $settingsFileLoaded = null;
+    /** True when a preferences.json was found and overlaid on top of the deployment config. */
+    public static bool $preferencesFileLoaded = false;
     public static Datasource $db;
     public static Processor $processorClass;
     private static bool $initialized = false;
@@ -71,8 +77,8 @@ abstract class Config {
         if ($tz !== null) {
             return $tz;
         }
-        $env = getenv('NFCAPD_TZ');
-        if ($env !== false && $env !== '') {
+        $env = (string) EnvRegistry::value('NFCAPD_TZ');
+        if ($env !== '') {
             try {
                 $tz = new \DateTimeZone($env);
             } catch (\Exception) {
@@ -92,44 +98,46 @@ abstract class Config {
         }
 
         // Allow custom settings file via environment variable
-        $explicitFile = getenv('NFSEN_SETTINGS_FILE');
+        $explicitFile = (string) EnvRegistry::value('NFSEN_SETTINGS_FILE');
         $defaultFile = \dirname(__DIR__) . \DIRECTORY_SEPARATOR . 'settings' . \DIRECTORY_SEPARATOR . 'settings.php';
-        $settingsFile = $explicitFile ?: $defaultFile;
+        $settingsFile = $explicitFile !== '' ? $explicitFile : $defaultFile;
 
         if (!file_exists($settingsFile)) {
-            if ($explicitFile !== false && $explicitFile !== '') {
+            if ($explicitFile !== '') {
                 throw new \Exception('Settings file not found: ' . $settingsFile . '. Check NFSEN_SETTINGS_FILE.');
             }
-            // No settings file — use environment variables (standard Docker deployment)
+            // No settings file — build from environment variables (standard Docker deployment).
             self::$settings = Settings::fromEnv();
         } else {
+            // Deprecated file-based config (bare-metal). settings.php overlays the
+            // env baseline — see Settings::fromArray(). The health page flags this
+            // via Config::$settingsFileLoaded and steers users toward env vars.
             include $settingsFile;
             self::$settings = Settings::fromArray($nfsen_config);
-
-            // Warn when env vars that are only honoured via Settings::fromEnv() are set
-            // while a settings file is also present — they will be silently ignored.
-            $envOnlyVars = ['NFSEN_SOURCES', 'NFSEN_PORTS', 'NFSEN_FILTERS', 'NFSEN_PROCESSOR'];
-            foreach ($envOnlyVars as $var) {
-                $val = getenv($var);
-                if ($val !== false && $val !== '') {
-                    trigger_error(
-                        "{$var} is set but a settings file is also loaded ({$settingsFile}) — "
-                        . "the env var will be ignored. Remove settings.php or wire {$var} in it.",
-                        E_USER_WARNING,
-                    );
-                }
-            }
+            self::$settingsFileLoaded = $settingsFile;
         }
 
         self::$path = \dirname(__DIR__);
         self::$initialized = true;
 
+        // Resolve the state directory — where mutable runtime state (preferences,
+        // alert rules/state/log) is written. In Docker this should be a mounted
+        // volume so it survives image upgrades; the default keeps state next to
+        // the code, which is what dev (bind-mounted source) and bare-metal want.
+        $stateDir = ((string) EnvRegistry::value('NFSEN_STATE_DIR'))
+            ?: self::$path . \DIRECTORY_SEPARATOR . 'settings';
+        if (!is_dir($stateDir)) {
+            @mkdir($stateDir, 0o775, true);
+        }
+        self::$stateDir = $stateDir;
+
         // Load user preferences (preferences.json) and overlay on base settings.
         // Silently ignored if the file doesn't exist yet.
-        self::$prefsFile = getenv('NFSEN_PREFERENCES_FILE')
-            ?: self::$path . \DIRECTORY_SEPARATOR . 'settings' . \DIRECTORY_SEPARATOR . 'preferences.json';
+        self::$prefsFile = ((string) EnvRegistry::value('NFSEN_PREFERENCES_FILE'))
+            ?: $stateDir . \DIRECTORY_SEPARATOR . 'preferences.json';
         $prefs = UserPreferences::load(self::$prefsFile);
         if ($prefs !== null) {
+            self::$preferencesFileLoaded = true;
             // Capture settings.php filter presets before preferences overlay them.
             // Merge: settings.php filters first (deployment defaults), then user-saved
             // filters on top, deduplicated. This ensures the settings tab textarea and

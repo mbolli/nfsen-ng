@@ -3,7 +3,7 @@
 All notable changes to nfsen-ng are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.0.0-beta.3] — unreleased
+## [1.0.0-beta.3] — 2026-07-30
 
 ### Added
 
@@ -269,6 +269,7 @@ Full architectural rewrite milestone. Server-rendered hypermedia replaces the jQ
 
 Initial release. See the [wiki comparison page](https://github.com/mbolli/nfsen-ng/wiki/Comparison) for a feature comparison with the original NfSen.
 
+[1.0.0-beta.3]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.2...v1.0.0-beta.3
 [1.0.0-beta.2]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.1...v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-RC.1...v1.0.0-beta.1
 [1.0.0-RC.1]: https://github.com/mbolli/nfsen-ng/compare/v1.0-alpha...v1.0.0-RC.1

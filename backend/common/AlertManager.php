@@ -14,12 +14,11 @@ use OpenSwoole\Coroutine\Http\Client;
  * One instance is shared for the lifetime of the server process.
  */
 final class AlertManager {
-    private const MAX_LOG_ENTRIES = 50;
-
     public const DEFAULT_EMAIL_SUBJECT = '[nfsen-ng] Alert: {rule}';
     public const DEFAULT_EMAIL_BODY = "Alert rule \"{rule}\" fired.\n\nMetric:  {metric}\nValue:   {value}\nProfile: {profile}\nSources: {sources}\nTime:    {time} UTC\n";
     public const DEFAULT_WEBHOOK_TITLE = 'nfsen-ng alert: {rule}';
     public const DEFAULT_WEBHOOK_MESSAGE = '{metric} = {value} (profile: {profile}, sources: {sources})';
+    private const MAX_LOG_ENTRIES = 50;
 
     /** @var array<string, AlertState> Keyed by rule ID */
     private array $states = [];
@@ -233,6 +232,32 @@ final class AlertManager {
         $this->atomicWrite($this->statePath, (string) json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 
+    /**
+     * Sum flows/packets/bytes from nfdump's unaggregated `-o json` decoded records.
+     * Each record already represents exactly one flow (no per-record flow-count field),
+     * and uses `in_packets`/`in_bytes` — the whitespace-aggregation format's `ipkt`/`ibyt`
+     * short names don't exist in this schema.
+     *
+     * @param array<array<string, mixed>> $decoded
+     *
+     * @return array{flows: float, packets: float, bytes: float}
+     */
+    public static function sumDecodedFlowRecords(array $decoded): array {
+        $flows = 0.0;
+        $packets = 0.0;
+        $bytes = 0.0;
+        foreach ($decoded as $record) {
+            if (!\is_array($record)) {
+                continue;
+            }
+            ++$flows;
+            $packets += (float) ($record['in_packets'] ?? 0);
+            $bytes += (float) ($record['in_bytes'] ?? 0);
+        }
+
+        return ['flows' => $flows, 'packets' => $packets, 'bytes' => $bytes];
+    }
+
     // ── Notifications ──────────────────────────────────────────────────────────
 
     /**
@@ -274,32 +299,6 @@ final class AlertManager {
         } catch (\Throwable) {
             return $empty;
         }
-    }
-
-    /**
-     * Sum flows/packets/bytes from nfdump's unaggregated `-o json` decoded records.
-     * Each record already represents exactly one flow (no per-record flow-count field),
-     * and uses `in_packets`/`in_bytes` — the whitespace-aggregation format's `ipkt`/`ibyt`
-     * short names don't exist in this schema.
-     *
-     * @param array<array<string, mixed>> $decoded
-     *
-     * @return array{flows: float, packets: float, bytes: float}
-     */
-    public static function sumDecodedFlowRecords(array $decoded): array {
-        $flows = 0.0;
-        $packets = 0.0;
-        $bytes = 0.0;
-        foreach ($decoded as $record) {
-            if (!\is_array($record)) {
-                continue;
-            }
-            ++$flows;
-            $packets += (float) ($record['in_packets'] ?? 0);
-            $bytes += (float) ($record['in_bytes'] ?? 0);
-        }
-
-        return ['flows' => $flows, 'packets' => $packets, 'bytes' => $bytes];
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

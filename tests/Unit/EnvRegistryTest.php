@@ -81,7 +81,8 @@ describe('EnvRegistry::value()', function (): void {
 
     test('throws for an unregistered variable', function (): void {
         expect(fn () => EnvRegistry::value('NFSEN_NOPE'))
-            ->toThrow(InvalidArgumentException::class);
+            ->toThrow(InvalidArgumentException::class)
+        ;
     });
 });
 

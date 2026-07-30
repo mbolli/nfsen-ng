@@ -13,10 +13,13 @@ abstract class Config {
     public static Settings $settings;
     public static string $path;
     public static string $prefsFile;
+
     /** Directory holding mutable runtime state (preferences.json, alert rules/state/log). */
     public static string $stateDir;
+
     /** Absolute path of the settings.php loaded at init, or null when built purely from env vars. */
     public static ?string $settingsFileLoaded = null;
+
     /** True when a preferences.json was found and overlaid on top of the deployment config. */
     public static bool $preferencesFileLoaded = false;
     public static Datasource $db;

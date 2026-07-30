@@ -229,24 +229,6 @@ final class Settings {
     }
 
     /**
-     * Case-insensitively resolve a canonical short name (e.g. "RRD") to its FQCN.
-     *
-     * @param array<string, string> $map  canonical short name → fully-qualified class name
-     * @param string                $kind human label for the error message
-     *
-     * @throws \InvalidArgumentException for unknown names
-     */
-    private static function resolveClass(array $map, string $name, string $kind): string {
-        foreach ($map as $canonical => $class) {
-            if (strcasecmp($canonical, $name) === 0) {
-                return $class;
-            }
-        }
-
-        throw new \InvalidArgumentException("Unknown {$kind} '{$name}'. Known: " . implode(', ', array_keys($map)));
-    }
-
-    /**
      * Canonical datasource names — the single source for the NFSEN_DATASOURCE enum.
      *
      * @return list<string>
@@ -502,5 +484,23 @@ final class Settings {
         ]);
 
         return $flip[$priority] ?? 'info';
+    }
+
+    /**
+     * Case-insensitively resolve a canonical short name (e.g. "RRD") to its FQCN.
+     *
+     * @param array<string, string> $map  canonical short name → fully-qualified class name
+     * @param string                $kind human label for the error message
+     *
+     * @throws \InvalidArgumentException for unknown names
+     */
+    private static function resolveClass(array $map, string $name, string $kind): string {
+        foreach ($map as $canonical => $class) {
+            if (strcasecmp($canonical, $name) === 0) {
+                return $class;
+            }
+        }
+
+        throw new \InvalidArgumentException("Unknown {$kind} '{$name}'. Known: " . implode(', ', array_keys($map)));
     }
 }

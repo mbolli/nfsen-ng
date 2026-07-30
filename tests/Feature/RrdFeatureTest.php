@@ -208,7 +208,7 @@ describe('Rrd write, last_update and date_boundaries', function () {
     });
 });
 
-describe('Rrd get_graph_data trailing-slot handling (#154)', function () {
+describe('Rrd get_graph_data trailing-slot handling (#154)', function (): void {
     beforeEach(function (): void {
         $this->dir = makeRrdFeatureSettings(3);
         $this->rrd = new Rrd();

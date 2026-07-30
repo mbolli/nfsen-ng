@@ -68,6 +68,7 @@ arch('no die or exit in datasources')
 
 arch('no die or exit in processors')
     ->expect('mbolli\nfsen_ng\processor')
-    ->not->toUse(['die', 'exit']);
+    ->not->toUse(['die', 'exit'])
+;
 
 // Dependency rules

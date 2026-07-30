@@ -180,6 +180,93 @@ describe('Nfdump', function (): void {
         });
     });
 
+    describe('normalizeAddressFamilyKeys', function (): void {
+        // Record shapes captured from a real `nfdump -r <file> -o json` run (1.7.3) — an IPv4
+        // TCP record and an IPv6 ICMP record, which nfdump emits with different key names.
+        $v4 = [
+            'type' => 'FLOW',
+            'proto' => 17,
+            'src_port' => 123,
+            'dst_port' => 46707,
+            'src4_addr' => '185.125.190.56',
+            'dst4_addr' => '192.168.2.3',
+            'ip4_router' => '127.0.0.1',
+        ];
+        $v6 = [
+            'type' => 'FLOW',
+            'proto' => 58,
+            'icmp_type' => 0,
+            'src6_addr' => 'fe80::642:1aff:fecf:210',
+            'dst6_addr' => 'fe80::50e8:8425:7304:e23d',
+            'ip4_router' => '127.0.0.1',
+        ];
+
+        test('renames IPv4 address keys to family-agnostic ones', function () use ($v4): void {
+            $result = Nfdump::normalizeAddressFamilyKeys([$v4]);
+
+            expect($result[0])->toHaveKeys(['src_addr', 'dst_addr', 'ip_router']);
+            expect($result[0])->not->toHaveKey('src4_addr');
+            expect($result[0]['src_addr'])->toBe('185.125.190.56');
+        });
+
+        test('renames IPv6 address keys to the same family-agnostic ones', function () use ($v6): void {
+            $result = Nfdump::normalizeAddressFamilyKeys([$v6]);
+
+            expect($result[0])->not->toHaveKey('src6_addr');
+            expect($result[0]['src_addr'])->toBe('fe80::642:1aff:fecf:210');
+            expect($result[0]['dst_addr'])->toBe('fe80::50e8:8425:7304:e23d');
+        });
+
+        test('gives mixed v4/v6 result sets one common address schema', function () use ($v4, $v6): void {
+            $result = Nfdump::normalizeAddressFamilyKeys([$v4, $v6]);
+
+            expect(array_keys($result[0]))->toContain('src_addr', 'dst_addr');
+            expect(array_keys($result[1]))->toContain('src_addr', 'dst_addr');
+        });
+
+        test('preserves key order and untouched fields', function () use ($v4): void {
+            $result = Nfdump::normalizeAddressFamilyKeys([$v4]);
+
+            expect(array_keys($result[0]))->toBe([
+                'type', 'proto', 'src_port', 'dst_port', 'src_addr', 'dst_addr', 'ip_router',
+            ]);
+        });
+
+        test('renames tunnel, translated and next-hop address keys', function (): void {
+            $result = Nfdump::normalizeAddressFamilyKeys([[
+                'src4_tun_ip' => '10.0.0.1',
+                'dst6_tun_ip' => '2001:db8::1',
+                'src4_xlt_ip' => '10.0.0.2',
+                'dst6_xlt_ip' => '2001:db8::2',
+                'ip6_next_hop' => '2001:db8::3',
+                'bgp4_next_hop' => '10.0.0.3',
+            ]]);
+
+            expect(array_keys($result[0]))->toBe([
+                'src_tun_ip', 'dst_tun_ip', 'src_xlt_ip', 'dst_xlt_ip', 'ip_next_hop', 'bgp_next_hop',
+            ]);
+        });
+
+        test('leaves non-address keys alone', function (): void {
+            $record = ['in_packets' => 1, 'in_bytes' => 64, 'src_geo' => '', 'mpls1' => '0-0-0'];
+
+            expect(Nfdump::normalizeAddressFamilyKeys([$record])[0])->toBe($record);
+        });
+
+        test('keeps the filled value when both family variants are present', function (): void {
+            $result = Nfdump::normalizeAddressFamilyKeys([[
+                'src4_addr' => '',
+                'src6_addr' => '2001:db8::1',
+            ]]);
+
+            expect($result[0]['src_addr'])->toBe('2001:db8::1');
+        });
+
+        test('returns an empty array unchanged', function (): void {
+            expect(Nfdump::normalizeAddressFamilyKeys([]))->toBe([]);
+        });
+    });
+
     describe('setFilter', function (): void {
         test('accepts filter string', function (): void {
             $nfdump = new Nfdump();

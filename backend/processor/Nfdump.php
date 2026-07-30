@@ -269,7 +269,7 @@ class Nfdump implements Processor {
                 $result = [
                     'command' => $command,
                     'rawOutput' => $rawOutput,
-                    'decoded' => $decodedData,
+                    'decoded' => self::normalizeAddressFamilyKeys($decodedData),
                 ];
 
                 // Add stderr if present and not benign
@@ -298,7 +298,7 @@ class Nfdump implements Processor {
             $result = [
                 'command' => $command,
                 'rawOutput' => $rawOutput,
-                'decoded' => $decodedData,
+                'decoded' => self::normalizeAddressFamilyKeys($decodedData),
             ];
 
             // Add stderr if present and not benign
@@ -627,6 +627,49 @@ class Nfdump implements Processor {
         }
 
         return implode(' and ', $parts);
+    }
+
+    /**
+     * Collapse nfdump's address-family-specific JSON keys onto family-agnostic ones.
+     *
+     * nfdump's `-o json` names every address field after the record's address family —
+     * an IPv4 record carries `src4_addr`/`dst4_addr`, an IPv6 record `src6_addr`/`dst6_addr`
+     * (likewise `ip4_next_hop`, `bgp6_next_hop`, `src4_tun_ip`, `dst6_xlt_ip`, `ip4_router`, …).
+     * A result set holding both families therefore has two different record schemas, so any
+     * consumer keying on column names sees the addresses of only one family (#157).
+     * Renaming `<prefix><4|6>_<rest>` to `<prefix>_<rest>` gives every record one schema;
+     * key order is preserved, and an already-present non-empty value is never overwritten.
+     *
+     * @param array<array<string, mixed>> $records
+     *
+     * @return array<array<string, mixed>>
+     */
+    public static function normalizeAddressFamilyKeys(array $records): array {
+        $normalized = [];
+
+        foreach ($records as $record) {
+            if (!\is_array($record)) {
+                $normalized[] = $record;
+
+                continue;
+            }
+
+            $row = [];
+            foreach ($record as $key => $value) {
+                $newKey = \is_string($key)
+                    ? preg_replace('/^(src|dst|ip|bgp)[46]_/', '$1_', $key)
+                    : $key;
+                // Both family variants in one record would be a nfdump oddity; keep the filled one.
+                if (isset($row[$newKey]) && $row[$newKey] !== '') {
+                    continue;
+                }
+                $row[$newKey] = $value;
+            }
+
+            $normalized[] = $row;
+        }
+
+        return $normalized;
     }
 
     /**

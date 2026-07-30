@@ -220,6 +220,30 @@ describe('TableFormatter', function (): void {
             expect((int) $result)->toBeGreaterThan(0);
         });
 
+        test('converts IPv6 to a numeric sortable format', function (): void {
+            $result = TableFormatter::getSortValue('2001:db8::1', 'src_addr');
+
+            expect($result)->toBeString();
+            expect($result)->toMatch('/^6\d{40}$/');
+        });
+
+        test('orders IPv6 addresses correctly among themselves', function (): void {
+            $keys = array_map(
+                fn (string $ip) => TableFormatter::getSortValue($ip, 'src_addr'),
+                ['fe80::1', '::1', '2001:db8::1']
+            );
+
+            expect((float) $keys[1])->toBeLessThan((float) $keys[2]);
+            expect((float) $keys[2])->toBeLessThan((float) $keys[0]);
+        });
+
+        test('sorts every IPv6 address above every IPv4 address in a mixed column', function (): void {
+            $v4 = TableFormatter::getSortValue('255.255.255.255', 'src_addr');
+            $v6 = TableFormatter::getSortValue('::', 'src_addr');
+
+            expect((float) $v6)->toBeGreaterThan((float) $v4);
+        });
+
         test('returns numeric values as-is', function (): void {
             $result = TableFormatter::getSortValue(12345, 'flows');
             expect($result)->toBe(12345);

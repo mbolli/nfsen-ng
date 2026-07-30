@@ -83,6 +83,18 @@ class TableFormatter {
                 }
             }
 
+            // IPv6 shares its column with IPv4 once nfdump's src4_addr/src6_addr keys are
+            // merged, so it needs a key the client's numeric sort can order too: the four
+            // 32-bit words as fixed-width decimals, behind a '6' that keeps every IPv6
+            // address above every IPv4 one (whose key is at most 10 digits).
+            if (filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+                $words = unpack('N4', (string) inet_pton((string) $value));
+
+                return $words === false
+                    ? $value
+                    : \sprintf('6%010u%010u%010u%010u', $words[1], $words[2], $words[3], $words[4]);
+            }
+
             // Fallback: return as-is
             return $value;
         }

@@ -101,6 +101,56 @@ describe('Table', function (): void {
             ;
         });
 
+        test('builds columns from all rows, not just the first (#157)', function (): void {
+            // nfdump's JSON output only carries the fields a record actually has, so a
+            // TCP row and an ICMP row have different schemas.
+            $data = [
+                ['proto' => 6, 'src_port' => 443, 'src_addr' => '10.0.0.1'],
+                ['proto' => 58, 'icmp_type' => 128, 'src_addr' => 'fe80::1'],
+            ];
+
+            $result = Table::generate($data, 'flowTable');
+
+            expect($result)
+                ->toContain('data-original-title="src_port"')
+                ->toContain('data-original-title="icmp_type"')
+                ->toContain('10.0.0.1')
+                ->toContain('fe80::1')
+            ;
+        });
+
+        test('inserts a new column next to its neighbour in the row it came from', function (): void {
+            $data = [
+                ['a' => 1, 'b' => 2, 'c' => 3],
+                ['a' => 4, 'x' => 5, 'c' => 6],
+            ];
+
+            preg_match_all(
+                '/data-original-title="([^"]+)"/',
+                Table::generate($data, 'orderTable'),
+                $matches
+            );
+
+            expect($matches[1])->toBe(['a', 'x', 'b', 'c']);
+        });
+
+        test('renders addresses of both families in one column (#157)', function (): void {
+            $data = [
+                ['src_addr' => '10.0.0.1', 'dst_addr' => '10.0.0.2'],
+                ['src_addr' => '2001:db8::1', 'dst_addr' => '2001:db8::2'],
+            ];
+
+            $result = Table::generate($data, 'flowTable');
+
+            preg_match_all('/data-original-title="([^"]+)"/', $result, $matches);
+
+            expect($matches[1])->toBe(['src_addr', 'dst_addr']);
+            expect($result)
+                ->toContain('10.0.0.1')
+                ->toContain('2001:db8::1')
+            ;
+        });
+
         test('escapes HTML in cell values', function (): void {
             $data = [
                 ['content' => '<script>alert("xss")</script>'],
@@ -128,6 +178,15 @@ describe('Table', function (): void {
             $result = Table::generate($data, 'test');
 
             expect($result)->toContain('Destination IP');
+        });
+
+        test('maps the family-agnostic src_addr/dst_addr to Source/Destination IP', function (): void {
+            $result = Table::generate([['src_addr' => '10.0.0.1', 'dst_addr' => 'fe80::1']], 'test');
+
+            expect($result)
+                ->toContain('Source IP')
+                ->toContain('Destination IP')
+            ;
         });
 
         test('maps proto to Protocol', function (): void {

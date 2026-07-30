@@ -68,6 +68,17 @@ class Table {
         'ndstip' => 'NAT Dst IP',
         'nsrcport' => 'NAT Src Port',
         'ndstport' => 'NAT Dst Port',
+        // nfdump JSON address fields, after Nfdump::normalizeAddressFamilyKeys() dropped
+        // the address-family digit (src4_addr/src6_addr -> src_addr, ...)
+        'src_addr' => 'Source IP',
+        'dst_addr' => 'Destination IP',
+        'src_tun_ip' => 'Source Tunnel IP',
+        'dst_tun_ip' => 'Destination Tunnel IP',
+        'src_xlt_ip' => 'XLATE Src IP',
+        'dst_xlt_ip' => 'XLATE Dst IP',
+        'ip_next_hop' => 'Next Hop',
+        'bgp_next_hop' => 'BGP Next Hop',
+        'ip_router' => 'Router IP',
         // NSEL translated address fields (flow listing)
         'xlate_src_addr' => 'XLATE Src IP',
         'xlate_dst_addr' => 'XLATE Dst IP',
@@ -113,9 +124,7 @@ class Table {
             return \sprintf('<div id="%s" class="alert alert-info">%s</div>', $tableId, $options['emptyMessage']);
         }
 
-        // Get column headers from first row
-        $firstRow = $data[0];
-        if (\is_string($firstRow)) {
+        if (\is_string($data[0])) {
             // If data rows are strings, return as preformatted text
             return \sprintf(
                 '<div id="%s"><pre>%s</pre></div>',
@@ -123,7 +132,7 @@ class Table {
                 htmlspecialchars(implode("\n", $data))
             );
         }
-        $headers = array_filter(array_keys($firstRow), fn ($key) => !\in_array($key, $options['hiddenFields'], true));
+        $headers = array_filter(self::collectHeaders($data), fn ($key) => !\in_array($key, $options['hiddenFields'], true));
 
         // Build view switcher HTML
         $viewSwitcherHtml = '';
@@ -266,6 +275,43 @@ class Table {
      */
     public static function getStatsTitle(string $statsFor): string {
         return self::FIELD_TITLES[$statsFor] ?? ucfirst($statsFor);
+    }
+
+    /**
+     * Collect the column list as the union of all rows' keys.
+     *
+     * Rows are not guaranteed to share a schema — nfdump's JSON output emits per-record
+     * fields (ports for TCP/UDP vs. icmp_type/icmp_code for ICMP, and so on), so deriving
+     * the columns from the first row alone silently drops every field the first record
+     * happens not to carry (#157). A new key is inserted right behind the previous key of
+     * its own row, which keeps related columns adjacent instead of appended at the end.
+     *
+     * @param array<array<string, mixed>> $data
+     *
+     * @return list<string>
+     */
+    private static function collectHeaders(array $data): array {
+        /** @var list<string> $headers */
+        $headers = [];
+
+        foreach ($data as $row) {
+            if (!\is_array($row)) {
+                continue;
+            }
+
+            $insertAt = 0;
+            foreach (array_keys($row) as $key) {
+                $position = array_search($key, $headers, true);
+                if ($position === false) {
+                    array_splice($headers, $insertAt, 0, [$key]);
+                    ++$insertAt;
+                } else {
+                    $insertAt = $position + 1;
+                }
+            }
+        }
+
+        return $headers;
     }
 
     /**

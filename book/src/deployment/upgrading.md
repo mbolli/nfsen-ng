@@ -57,6 +57,11 @@ fit together.
   new volume once — e.g. `docker run --rm -v rrd-data:/old -v nfsen-data:/new
   alpine cp -a /old/. /new/rrd/` — or just rebuild them with **Force Rescan**.
   See [State & persistence](configuration.md#state--persistence).
+- **Unraid template users**: the UI template gained a matching **App data** path
+  (`/var/lib/nfsen-ng`, defaulting to `/mnt/user/appdata/nfsen-ng-data`) in
+  v1.0.0-beta.3. An install created before that has no such mapping, so add it
+  when you update the container, otherwise the RRD database, preferences, and
+  alert rules are recreated empty on every image update.
 
 ## Migration steps
 

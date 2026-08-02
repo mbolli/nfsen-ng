@@ -3,6 +3,14 @@
 All notable changes to nfsen-ng are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- Hovering the right-hand end of a graph threw `TypeError: Cannot read properties of null (reading 'toFixed')` and left the tooltip broken ([#158](https://github.com/mbolli/nfsen-ng/issues/158)). The datasources deliberately return `null` for buckets with no value: RRD's trailing NaN rows past `rrd_last` are kept as `null` so the traffic graph doesn't drop to zero ([#154](https://github.com/mbolli/nfsen-ng/issues/154)), and those are exactly the right-most points under the cursor. ECharts hands the hovered value straight to `tooltip.valueFormatter`, where `formatKMG2`/`formatKMB` did `Math.abs(null) >= 1024` (false, so no unit scaling), then `Number.isInteger(null)` (false), then `null.toFixed(2)`. Both formatters now render an empty bucket with the same dash placeholder the external legend already used, as does the unprefixed fallback, which had been printing a literal `"null"` for the datatypes that use neither prefix. All three call sites (y-axis labels, tooltip, external legend) share one formatter selector so they can't diverge again.
+
+---
+
 ## [1.0.0-beta.3] — 2026-07-30
 
 ### Added

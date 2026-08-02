@@ -11,8 +11,22 @@
  */
 import { tzOptions } from './tz-utils.js';
 
+/**
+ * Placeholder for a gap in the data. The datasources deliberately return null for
+ * buckets with no value (RRD's trailing NaN row past rrd_last, see Rrd.php / #154),
+ * so every formatter below has to survive null — the tooltip's valueFormatter is
+ * handed those nulls directly when hovering the right-most point (#158).
+ */
+const NO_VALUE = '—';
+
+/** True for the null/undefined/NaN values the datasources use to mark empty buckets. */
+function isGap(value) {
+    return value == null || (typeof value === 'number' && Number.isNaN(value));
+}
+
 /** Binary-prefixed (K=1024) formatter, matching Dygraph's labelsKMG2 for bits/bytes. */
 function formatKMG2(value) {
+    if (isGap(value)) return NO_VALUE;
     const units = ['', 'K', 'M', 'G', 'T'];
     let v = value;
     let i = 0;
@@ -25,6 +39,7 @@ function formatKMG2(value) {
 
 /** Decimal-prefixed (K=1000) formatter, matching Dygraph's labelsKMB for flows/packets. */
 function formatKMB(value) {
+    if (isGap(value)) return NO_VALUE;
     const units = ['', 'K', 'M', 'B'];
     let v = value;
     let i = 0;
@@ -33,6 +48,11 @@ function formatKMB(value) {
         i++;
     }
     return `${Number.isInteger(v) ? v : v.toFixed(2)}${units[i]}`;
+}
+
+/** Unprefixed formatter — used when neither labelsKMG2 nor labelsKMB is active. */
+function formatPlain(value) {
+    return isGap(value) ? NO_VALUE : String(value);
 }
 
 export class NfsenChart extends HTMLElement {
@@ -347,6 +367,15 @@ export class NfsenChart extends HTMLElement {
     }
 
     /**
+     * The value formatter matching the current labelsKMG2/labelsKMB state, shared by the
+     * y-axis labels, the tooltip and the external legend so all three render gaps alike.
+     * @returns {(value: number|null) => string}
+     */
+    valueFormatter() {
+        return this._labelsKMG2 ? formatKMG2 : this._labelsKMB ? formatKMB : formatPlain;
+    }
+
+    /**
      * Build the full ECharts option object for the current data + style state.
      * Used both for initial creation and for updates (always passed with notMerge:true),
      * which sidesteps the index/id merge subtleties of partial option patches.
@@ -354,7 +383,7 @@ export class NfsenChart extends HTMLElement {
     buildOption(chartData, labels, title) {
         const theme = this.getThemeColors();
         const seriesNames = labels.slice(1);
-        const formatY = this._labelsKMG2 ? formatKMG2 : this._labelsKMB ? formatKMB : (v) => String(v);
+        const formatY = this.valueFormatter();
 
         return {
             backgroundColor: theme.backgroundColor,
@@ -473,12 +502,10 @@ export class NfsenChart extends HTMLElement {
 
         const [ts, ...values] = source[dataIndex];
         const tsMs = ts instanceof Date ? ts.getTime() : ts;
-        const formatY = this._labelsKMG2 ? formatKMG2 : this._labelsKMB ? formatKMB : (v) => String(v);
+        const formatY = this.valueFormatter();
         const seriesNames = (this.currentLabels || []).slice(1);
 
-        const rows = seriesNames
-            .map((name, i) => `<div>${escapeHtml(name)}: <b>${values[i] != null ? formatY(values[i]) : '—'}</b></div>`)
-            .join('');
+        const rows = seriesNames.map((name, i) => `<div>${escapeHtml(name)}: <b>${formatY(values[i])}</b></div>`).join('');
         legendEl.innerHTML = `<div class="fw-semibold">${escapeHtml(this.dateFmt(tsMs))}</div>${rows}`;
     }
 
@@ -554,7 +581,7 @@ export class NfsenChart extends HTMLElement {
         if ('ylabel' in options) this._ylabel = options.ylabel;
         if ('labelsKMG2' in options) this._labelsKMG2 = options.labelsKMG2;
 
-        const formatY = this._labelsKMG2 ? formatKMG2 : this._labelsKMB ? formatKMB : (v) => String(v);
+        const formatY = this.valueFormatter();
         const seriesNames = this.currentLabels.slice(1);
 
         this.chart.setOption(

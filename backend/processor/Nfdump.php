@@ -37,6 +37,52 @@ class Nfdump implements Processor {
     }
 
     /**
+     * First line of `nfdump -V`, e.g. "/usr/bin/nfdump: Version: 1.7.8-release options: ...",
+     * or '' if the binary could not be executed. Cached per binary path for the lifetime of
+     * the worker process — swapping the binary requires a restart to take effect anyway.
+     */
+    public static function versionString(?string $binary = null): string {
+        $binary ??= Config::$settings->nfdumpBinary;
+
+        static $cache = [];
+        if (isset($cache[$binary])) {
+            return $cache[$binary];
+        }
+
+        $out = [];
+        $ret = 0;
+        exec(escapeshellarg($binary) . ' -V 2>&1', $out, $ret);
+
+        return $cache[$binary] = ($ret !== 127 && \count($out) > 0) ? trim($out[0]) : '';
+    }
+
+    /** Numeric version of the nfdump binary (e.g. '1.7.8'), or '' if it could not be determined. */
+    public static function version(?string $binary = null): string {
+        return self::parseVersion(self::versionString($binary));
+    }
+
+    /** Extracts the bare version number from an `nfdump -V` line, dropping any '-release' suffix. */
+    public static function parseVersion(string $versionString): string {
+        return preg_match('/Version:\s*(\d+(?:\.\d+)*)/', $versionString, $m) === 1 ? $m[1] : '';
+    }
+
+    /**
+     * Whether this nfdump version needs plain `-o csv` for aggregated output because it
+     * rejects a custom `fmt:` format alongside `-A` aggregation ("Can not use print format
+     * ... to aggregate flows", exit 1).
+     *
+     * True for 1.7.5 only. User-selected formats with custom aggregation arrived in 1.7.6
+     * (nfdump #597), and 1.7.2-1.7.4 accept `fmt:` but answer `-o csv` with the wide legacy
+     * per-record schema that has no `flows` column — so for them `fmt:` is the only option
+     * that yields flow counts. An empty/unparseable version keeps the `fmt:` default. See #159.
+     */
+    public static function needsAggregatedCsv(string $version): bool {
+        return $version !== ''
+            && version_compare($version, '1.7.5', '>=')
+            && version_compare($version, '1.7.6', '<');
+    }
+
+    /**
      * Sets an option's value.
      *
      * @param mixed $value

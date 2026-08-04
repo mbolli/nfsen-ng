@@ -105,6 +105,40 @@ describe('Nfdump', function (): void {
         });
     });
 
+    describe('parseVersion', function (): void {
+        // Verbatim `nfdump -V` first lines. Note the capitalisation of "Options"/"options"
+        // and the wording of the date field differ between releases.
+        test('extracts the numeric version, dropping the -release suffix', function (): void {
+            expect(Nfdump::parseVersion('nfdump: Version: 1.7.3-release Options: NSEL-NEL Date: Mon Apr 1 09:36:05 2024'))->toBe('1.7.3');
+            expect(Nfdump::parseVersion('nfdump: Version: 1.7.5-release Options: NSEL-NEL ZSTD BZIP2 Date: Wed Oct 23 19:53:03 CEST 2024'))->toBe('1.7.5');
+            expect(Nfdump::parseVersion('/usr/local/nfdump/bin/nfdump: Version: 1.7.8-release options: lz4 ZSTD BZIP2 date: Fri Apr 18 15:22:34 CEST 2025'))->toBe('1.7.8');
+        });
+
+        test('returns an empty string when no version can be read', function (): void {
+            expect(Nfdump::parseVersion(''))->toBe('');
+            expect(Nfdump::parseVersion('nfdump: command not found'))->toBe('');
+        });
+    });
+
+    describe('needsAggregatedCsv', function (): void {
+        // 1.7.5 is the only release that refuses a custom fmt: format with -A aggregation:
+        // 1.7.2-1.7.4 accept it, and 1.7.6 added user formats for custom aggregation. See #159.
+        test('is true for 1.7.5 only', function (): void {
+            expect(Nfdump::needsAggregatedCsv('1.7.5'))->toBeTrue();
+            expect(Nfdump::needsAggregatedCsv('1.7.5.1'))->toBeTrue(); // hypothetical patch release
+        });
+
+        test('is false for releases that accept a custom fmt: with aggregation', function (): void {
+            foreach (['1.7.2', '1.7.3', '1.7.4', '1.7.6', '1.7.7', '1.7.8', '1.8.0'] as $version) {
+                expect(Nfdump::needsAggregatedCsv($version))->toBeFalse();
+            }
+        });
+
+        test('falls back to the fmt: default when the version is unknown', function (): void {
+            expect(Nfdump::needsAggregatedCsv(''))->toBeFalse();
+        });
+    });
+
     describe('parseWhitespaceDelimitedAggregation', function (): void {
         // Sample lines captured from a real `nfdump -a -A srcip,dstip -O bytes -n 5 -N
         // -o 'fmt:%sa %da %ibyt %ipkt %fl'` run, including the header row and footer/summary

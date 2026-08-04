@@ -15,6 +15,20 @@ use Mbolli\PhpVia\Context;
  */
 final class SankeyActions {
     /**
+     * nfdump's `fmt:` token names mapped to the column names its aggregated `-o csv`
+     * output uses for the same fields. Both name the same values; which set arrives
+     * depends on the nfdump version (see the `-o` selection in register()).
+     */
+    private const CSV_COLUMNS = [
+        'sa' => 'srcAddr',
+        'da' => 'dstAddr',
+        'dp' => 'dstPort',
+        'ibyt' => 'bytes',
+        'ipkt' => 'packets',
+        'fl' => 'flows',
+    ];
+
+    /**
      * Register the sankey-actions action.
      *
      * @param list<array{id: string, type: string, message: string}> $sankeyNotifications
@@ -82,7 +96,17 @@ final class SankeyActions {
                 $processor->setOption('-O', $metric);
                 $processor->setOption('-n', $sankeyTopN->int());
                 $processor->setOption('-N', null);
-                $processor->setOption('-o', $showPorts ? 'fmt:%sa %da %dp %ibyt %ipkt %fl' : 'fmt:%sa %da %ibyt %ipkt %fl');
+                // nfdump 1.7.5 rejects a custom `fmt:` format alongside `-A` aggregation, so
+                // there it gets the plain aggregated csv instead — same fields under different
+                // names, which buildSankeyPayload() reads as aliases. Every other supported
+                // version keeps `fmt:`; see Nfdump::needsAggregatedCsv() and #159.
+                $nfdumpVersion = Nfdump::version();
+                if (Nfdump::needsAggregatedCsv($nfdumpVersion)) {
+                    $processor->setOption('-o', 'csv');
+                    Debug::getInstance()->log('nfdump ' . $nfdumpVersion . ' cannot combine a custom fmt: format with aggregation — using -o csv for the Sankey', LOG_DEBUG);
+                } else {
+                    $processor->setOption('-o', $showPorts ? 'fmt:%sa %da %dp %ibyt %ipkt %fl' : 'fmt:%sa %da %ibyt %ipkt %fl');
+                }
 
                 // Byte thresholds are prepended to the filter expression, same as Flows/Statistics.
                 $thresholdFilter = Nfdump::buildThresholdFilter(
@@ -134,9 +158,10 @@ final class SankeyActions {
     }
 
     /**
-     * Transform decoded aggregated rows (sa/da/ibyt/ipkt/fl) into a {nodes, links} payload
-     * for a strict two-column bipartite Sankey — all sources on the left, all destinations
-     * on the right, matching "source -> destination traffic" rather than a general flow graph.
+     * Transform decoded aggregated rows (sa/da/ibyt/ipkt/fl, or their `-o csv` column-name
+     * equivalents — see self::CSV_COLUMNS) into a {nodes, links} payload for a strict
+     * two-column bipartite Sankey — all sources on the left, all destinations on the right,
+     * matching "source -> destination traffic" rather than a general flow graph.
      *
      * Self-loops (sa === da) are dropped; these do occasionally show up in real captures
      * (loopback/NAT artifacts) and have no meaning in a source-column/destination-column layout.
@@ -167,8 +192,8 @@ final class SankeyActions {
         $links = [];
 
         foreach ($rows as $row) {
-            $sa = trim((string) ($row['sa'] ?? ''));
-            $da = trim((string) ($row['da'] ?? ''));
+            $sa = self::field($row, 'sa');
+            $da = self::field($row, 'da');
             if ($sa === '' || $da === '' || $sa === $da) {
                 continue;
             }
@@ -181,12 +206,27 @@ final class SankeyActions {
             $links[] = [
                 'source' => $sourceId,
                 'target' => $targetId,
-                'value' => (int) ($row[$valueField] ?? 0),
-                'flows' => (int) ($row['fl'] ?? 0),
+                'value' => (int) self::field($row, $valueField),
+                'flows' => (int) self::field($row, 'fl'),
             ];
         }
 
         return ['nodes' => array_values($nodes), 'links' => $links];
+    }
+
+    /**
+     * Reads one aggregated-row field by its nfdump `fmt:` token name, falling back to the
+     * equivalent `-o csv` column name.
+     *
+     * Rows arrive in either shape depending on the nfdump version the deployment runs (see
+     * the `-o` selection in register()), and only the names differ — the values are identical.
+     *
+     * @param array<string, mixed> $row
+     */
+    private static function field(array $row, string $token): string {
+        $csvName = self::CSV_COLUMNS[$token] ?? '';
+
+        return trim((string) ($row[$token] ?? $row[$csvName] ?? ''));
     }
 
     /**
@@ -216,15 +256,15 @@ final class SankeyActions {
         $links = [];
 
         foreach ($rows as $row) {
-            $sa = trim((string) ($row['sa'] ?? ''));
-            $da = trim((string) ($row['da'] ?? ''));
-            $dp = trim((string) ($row['dp'] ?? ''));
+            $sa = self::field($row, 'sa');
+            $da = self::field($row, 'da');
+            $dp = self::field($row, 'dp');
             if ($sa === '' || $da === '' || $dp === '' || $sa === $da) {
                 continue;
             }
 
-            $value = (int) ($row[$valueField] ?? 0);
-            $flows = (int) ($row['fl'] ?? 0);
+            $value = (int) self::field($row, $valueField);
+            $flows = (int) self::field($row, 'fl');
 
             $sourceId = 'src:' . $sa;
             $portId = 'port:' . $dp;

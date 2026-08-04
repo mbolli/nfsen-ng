@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\common;
 
+use mbolli\nfsen_ng\processor\Nfdump;
+
 /**
  * HealthChecker — runs a suite of configuration and environment checks.
  *
@@ -223,14 +225,9 @@ class HealthChecker {
         } elseif (!is_executable($binary)) {
             $add('nfdump_binary', 'nfdump binary', 'error', "Not executable: {$binary}", 'nfdump', true);
         } else {
-            // Cache nfdump version for the lifetime of the server process
-            static $nfdumpVer = null;
-            if ($nfdumpVer === null) {
-                $out = [];
-                $ret = 0;
-                exec(escapeshellarg($binary) . ' -V 2>&1', $out, $ret);
-                $nfdumpVer = ($ret !== 127 && \count($out) > 0) ? trim($out[0]) : '';
-            }
+            // Cached per binary in Nfdump, which needs the same probe for its own
+            // version-dependent option handling (see Nfdump::needsAggregatedCsv()).
+            $nfdumpVer = Nfdump::versionString($binary);
             // Parse raw output: "/path/nfdump: Version: 1.7.6-release Options: ZSTD BZIP2 Date: ..."
             $vDetail = $nfdumpVer;
             if (preg_match('/Version:\s*(\S+)/', $nfdumpVer, $vm)) {
@@ -252,8 +249,8 @@ class HealthChecker {
             // vs the 1.6.x scheme (t_first, t_last, …). 1.7.2 was the first
             // production-recommended 1.7.x release.
             $minNfdump = '1.7.2';
-            if ($nfdumpVer !== '' && isset($vm[1])) {
-                $numericVer = (string) preg_replace('/-.*$/', '', $vm[1]); // strip -release suffix
+            $numericVer = Nfdump::parseVersion($nfdumpVer);
+            if ($numericVer !== '') {
                 $meetsMin = version_compare($numericVer, $minNfdump, '>=');
                 $add(
                     'nfdump_version',

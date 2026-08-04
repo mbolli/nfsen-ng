@@ -159,3 +159,65 @@ describe('SankeyActions::buildSankeyPayload (ports mode)', function (): void {
         expect(SankeyActions::buildSankeyPayload($rows, 'bytes', true))->toBe(['nodes' => [], 'links' => []]);
     });
 });
+
+/*
+ * On nfdump 1.7.5 the Sankey falls back to `-o csv`, whose aggregated output names the same
+ * fields differently (srcAddr/dstAddr/dstPort/bytes/packets/flows). Verbatim headers:
+ *   firstSeen,duration,srcAddr,dstPort,dstAddr,packets,bytes,bps,bpp,flows
+ *   firstSeen,duration,srcAddr,dstAddr,packets,bytes,bps,bpp,flows
+ * See #159.
+ */
+describe('SankeyActions::buildSankeyPayload (aggregated -o csv column names)', function (): void {
+    test('reads csv column names as aliases of the fmt: tokens', function (): void {
+        $rows = [
+            ['firstSeen' => '2025-12-04 15:39:13.500', 'duration' => '36.860', 'srcAddr' => '143.204.55.29', 'dstAddr' => '172.24.154.108', 'packets' => '747', 'bytes' => '17836325', 'bps' => '3871150', 'bpp' => '23877', 'flows' => '20'],
+        ];
+
+        $result = SankeyActions::buildSankeyPayload($rows, 'bytes');
+
+        expect($result['links'])->toBe([
+            ['source' => 'src:143.204.55.29', 'target' => 'dst:172.24.154.108', 'value' => 17836325, 'flows' => 20],
+        ]);
+    });
+
+    test('uses the packets column when metric is packets', function (): void {
+        $rows = [
+            ['srcAddr' => '1.2.3.4', 'dstAddr' => '5.6.7.8', 'packets' => '747', 'bytes' => '17836325', 'flows' => '20'],
+        ];
+
+        expect(SankeyActions::buildSankeyPayload($rows, 'packets')['links'][0]['value'])->toBe(747);
+    });
+
+    test('reads the dstPort column in ports mode', function (): void {
+        $rows = [
+            ['srcAddr' => '143.204.55.29', 'dstPort' => '39930', 'dstAddr' => '172.24.154.108', 'packets' => '480', 'bytes' => '15634462', 'flows' => '1'],
+        ];
+
+        $result = SankeyActions::buildSankeyPayload($rows, 'bytes', true);
+
+        expect(array_column($result['nodes'], 'name'))->toBe(['src:143.204.55.29', 'port:39930', 'dst:172.24.154.108']);
+        expect($result['links'])->toBe([
+            ['source' => 'src:143.204.55.29', 'target' => 'port:39930', 'value' => 15634462, 'flows' => 1],
+            ['source' => 'port:39930', 'target' => 'dst:172.24.154.108', 'value' => 15634462, 'flows' => 1],
+        ]);
+    });
+
+    test('applies the same self-loop and missing-field rules to csv rows', function (): void {
+        $rows = [
+            ['srcAddr' => '10.0.0.1', 'dstAddr' => '10.0.0.1', 'bytes' => '500', 'packets' => '5', 'flows' => '1'],
+            ['srcAddr' => '', 'dstAddr' => '10.0.0.2', 'bytes' => '500', 'packets' => '5', 'flows' => '1'],
+        ];
+
+        expect(SankeyActions::buildSankeyPayload($rows, 'bytes'))->toBe(['nodes' => [], 'links' => []]);
+    });
+
+    test('defaults value and flows to 0 when neither name is present', function (): void {
+        $rows = [
+            ['srcAddr' => '1.2.3.4', 'dstAddr' => '5.6.7.8'],
+        ];
+
+        expect(SankeyActions::buildSankeyPayload($rows, 'bytes')['links'][0])->toBe([
+            'source' => 'src:1.2.3.4', 'target' => 'dst:5.6.7.8', 'value' => 0, 'flows' => 0,
+        ]);
+    });
+});

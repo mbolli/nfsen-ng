@@ -140,7 +140,14 @@ $app->page('/', function (Context $c) use ($app): void {
         'graph_display',
         clientWritable: true
     );
-    $graphSources = $c->signal(Config::$settings->sources, 'graph_sources', clientWritable: true);
+    // Seed the selection the way the Sources <select> presents itself in each
+    // display mode: multi-select of every source for "sources", a single source
+    // for "protocols", the "Any" aggregate for "ports" (see graph-filters.html.twig).
+    $graphSources = $c->signal(match (Config::$settings->defaultGraphDisplay) {
+        'ports' => ['any'],
+        'protocols' => array_slice(Config::$settings->sources, 0, 1),
+        default => Config::$settings->sources,
+    }, 'graph_sources', clientWritable: true);
     $graphPorts = $c->signal(Config::$settings->ports, 'graph_ports', clientWritable: true);
     $graphProtocols = $c->signal(
         Config::$settings->defaultGraphProtocols,

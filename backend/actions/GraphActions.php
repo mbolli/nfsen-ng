@@ -57,16 +57,18 @@ final class GraphActions {
 
         $dt = $graphDatatype->string();
         $unit = ($dt !== 'traffic') ? $dt : $graphTrafficUnit->string();
+        $display = $graphDisplay->string();
+        $sources = self::normalizeSources($graphSources->array(), $display);
 
         try {
             $data = Config::$db->get_graph_data(
                 $ds,
                 $de,
-                $graphSources->array(),
+                $sources,
                 $graphProtocols->array(),
                 $graphPorts->array(),
                 $unit,
-                $graphDisplay->string(),
+                $display,
                 $graphResolution->int(),
                 $selectedProfile->string()
             );
@@ -80,7 +82,8 @@ final class GraphActions {
         $graphActualRes->setValue($pointCount, broadcast: false);
 
         // Use the actual RRD last-write time rather than wall-clock "now"
-        $activeSources = $graphSources->array() ?: Config::$settings->sources;
+        $activeSources = array_values(array_filter($sources, static fn (string $s) => $s !== 'any'))
+            ?: Config::$settings->sources;
         $lastWrite = empty($activeSources) ? 0 : max(array_map(
             fn ($s) => Config::$db->last_update($s, 0, $selectedProfile->string()),
             $activeSources
@@ -89,6 +92,32 @@ final class GraphActions {
         $error->setValue('', broadcast: false);
 
         return $data;
+    }
+
+    /**
+     * Sanitize the graph_sources signal before it reaches a datasource.
+     *
+     * The signal is client-writable, so a stale or malformed value must never
+     * reach the RRD path builder: an empty entry turns into a bare
+     * "<profile>/.rrd" filename and rrd_xport fails the whole graph (#160).
+     * The "any" sentinel is only meaningful for the ports view, where it selects
+     * the cross-source aggregate RRD; elsewhere it means "every source".
+     *
+     * @param array<int|string, mixed> $selected raw graph_sources signal value
+     *
+     * @return list<string>
+     */
+    public static function normalizeSources(array $selected, string $display): array {
+        $sources = array_values(array_filter(
+            array_map(static fn ($s) => trim((string) $s), $selected),
+            static fn (string $s) => $s !== ''
+        ));
+
+        if ($sources === [] || (\in_array('any', $sources, true) && $display !== 'ports')) {
+            return Config::$settings->sources;
+        }
+
+        return $sources;
     }
 
     /**

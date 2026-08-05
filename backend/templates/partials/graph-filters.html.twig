@@ -28,7 +28,7 @@
             <nfsen-tooltip data-ignore-morph text="Choose what to visualize: individual sources, protocol breakdown, or port statistics." placement="top"></nfsen-tooltip>
         </p>
         <select id="filterDisplaySelect" class="form-control form-select" {{ bind(graph_display) }}
-                data-on:change="el.value === 'protocols' ? ${{ graph_protocols.id() }} = ['tcp', 'udp', 'icmp', 'other'] : (${{ graph_protocols.id() }} = ['any']); el.value === 'sources' && (${{ graph_sources.id() }} = $_sourcesDefault)">
+                data-on:change="el.value === 'protocols' ? ${{ graph_protocols.id() }} = ['tcp', 'udp', 'icmp', 'other'] : (${{ graph_protocols.id() }} = ['any']); ${{ graph_sources.id() }} = el.value === 'sources' ? $_sourcesDefault : (el.value === 'ports' ? ['any'] : $_sourcesDefault.slice(0, 1))">
             <option value="sources">Sources</option>
             <option value="protocols">Protocols</option>
             <option value="ports">Ports</option>
@@ -36,23 +36,42 @@
         </div>
     </div>
 
-    {# Sources #}
+    {#
+        Sources: deliberately NOT {{ bind() }}.
+
+        Datastar picks a <select>'s bind adapter once, when it applies data-bind,
+        by looking at el.multiple. Here `multiple` is only added afterwards by
+        data-attr, so bind always picks the single-value adapter: it writes the
+        array signal back to the DOM as String(["a","b"]) === "a,b", which matches
+        no option and clears the selection, then reads the (empty) el.value back
+        as +"" / NaN → null on the server. The graph then never followed the
+        selection and the RRD datasource was handed an empty source name (#160).
+
+        Explicit change/effect handlers keep the signal an array in every display
+        mode, which is also what the flows/stats/sankey selects bound to the same
+        graph_sources signal (statically `multiple`) expect.
+
+        `multiple` is toggled inside the same effect rather than by data-attr for
+        the same ordering reason: assigning o.selected on a select that is not yet
+        `multiple` collapses the selection to the last option.
+
+        multiple= / selected= in the markup mirror the server-side signal values so
+        first paint is already correct, before Datastar boots.
+    #}
+    {% set selectedSources = graph_sources.array() %}
     <div class="col-md-2" id="filterSources">
         <div class="filter-group">
         <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="Select NetFlow sources to include in the graph." placement="top"></nfsen-tooltip>
         </p>
         <select id="filterSourcesSelect"
-                class="form-control form-select"
-                {{ bind(graph_sources) }}
-                data-attr:multiple="${{ graph_display.id() }} === 'sources'">
-            <option value="any"
-                    data-attr:disabled="${{ graph_display.id() }} === 'sources' || ${{ graph_display.id() }} === 'protocols'"
-                    data-attr:selected="${{ graph_display.id() }} === 'ports'">Any</option>
+                class="form-control form-select"{{ graph_display.string() == 'sources' ? ' multiple' : '' }}
+                data-on:change="${{ graph_sources.id() }} = [...el.selectedOptions].map(o => o.value)"
+                data-effect="el.multiple = ${{ graph_display.id() }} === 'sources'; [...el.options].forEach(o => o.selected = ${{ graph_sources.id() }}.includes(o.value))">
+            <option value="any"{{ 'any' in selectedSources ? ' selected' : '' }}
+                    data-attr:disabled="${{ graph_display.id() }} === 'sources' || ${{ graph_display.id() }} === 'protocols'">Any</option>
             {% for source in sources %}
-            <option value="{{ source }}"
-                    selected
-                    data-attr:selected="${{ graph_display.id() }} === 'sources'">{{ source }}</option>
+            <option value="{{ source }}"{{ source in selectedSources ? ' selected' : '' }}>{{ source }}</option>
             {% endfor %}
         </select>
         </div>

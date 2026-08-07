@@ -66,7 +66,7 @@ final class GraphActions {
                 $de,
                 $sources,
                 $graphProtocols->array(),
-                $graphPorts->array(),
+                self::normalizePorts($graphPorts->array()),
                 $unit,
                 $display,
                 $graphResolution->int(),
@@ -118,6 +118,30 @@ final class GraphActions {
         }
 
         return $sources;
+    }
+
+    /**
+     * Sanitize the graph_ports signal before it reaches a datasource.
+     *
+     * Ports are ints everywhere on the server (Settings::$ports, the Datasource
+     * get_data_path(string $source, int $port) contract), but the signal is
+     * client-writable and the browser has every reason to hand back strings — a
+     * <select>'s option values are strings by definition, and Datastar's bind
+     * adapter only recovers the numeric type for options it has already written
+     * the signal into. A string port used to reach Rrd::get_data_path() and kill
+     * the whole ports view with a TypeError (#160).
+     *
+     * @param array<int|string, mixed> $selected raw graph_ports signal value
+     *
+     * @return list<int>
+     */
+    public static function normalizePorts(array $selected): array {
+        $ports = array_values(array_map(
+            static fn ($p) => (int) $p,
+            array_filter($selected, static fn ($p) => is_numeric($p) && (int) $p > 0)
+        ));
+
+        return $ports === [] ? Config::$settings->ports : $ports;
     }
 
     /**

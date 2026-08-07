@@ -13,9 +13,22 @@
     The outer div registers the computed config signal and the live-refresh interval.
     data-on:change__window fires on any filter change inside this panel or the date range
     controls; mayUpdateGraph() guards against spurious triggers from other panels.
+
+    graph_ports / graph_sources are seeded here, and nowhere else, because the server's
+    $c->signal() default only lives server-side — php-via renders signal *ids* into the
+    markup but never pushes their values to the browser. Whichever data-bind Datastar
+    applies first would otherwise invent the signal from that element's DOM state
+    (bind() calls mergePaths(..., {ifMissing: true}) when the path is unset), and for a
+    multi-select that means the option values as *strings*: graph_ports became
+    ["80","22","53"] and blew up the ports view server-side (#160), while graph_sources
+    was invented by the Flows source picker further down the page — all sources, ignoring
+    the display-aware seed in app.php. Seeding on this div (an ancestor of the Ports
+    select, and ahead of the Flows/Statistics/Sankey pickers in document order) means
+    Datastar reaches every bind with the signal already set to the server's value and
+    the right type.
 #}
 <div class="row g-3"
-     data-signals__ifmissing='{"_graph_logscale": false, "_graph_stacked": false, "_graph_stepplot": true, "_sourcesDefault": {{ sources|json_encode }}}'
+     data-signals__ifmissing='{"_graph_logscale": false, "_graph_stacked": false, "_graph_stepplot": true, "_sourcesDefault": {{ sources|json_encode }}, "{{ graph_ports.id() }}": {{ ports|json_encode }}, "{{ graph_sources.id() }}": {{ graph_sources.array()|json_encode }}}'
      data-computed:graph._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ${{ graph_protocols.id() }}, ports: ${{ graph_ports.id() }}, display: ${{ graph_display.id() }}, type: ${{ graph_datatype.id() }}, trafficUnit: ${{ graph_trafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}"
      data-indicator:graph._connecting
      data-on-interval__duration.15s.leading="!$_disconnected && ${{ graph_isLive.id() }} && @post('{{ refreshGraphs.url() }}')"

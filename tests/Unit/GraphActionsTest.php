@@ -6,7 +6,7 @@ use mbolli\nfsen_ng\actions\GraphActions;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 
-// GraphActions::normalizeSources() reads Config::$settings->sources for the fallback.
+// normalizeSources()/normalizePorts() read Config::$settings for their fallbacks.
 beforeAll(function (): void {
     Config::$settings = Settings::fromArray([
         'general' => [
@@ -60,5 +60,32 @@ describe('GraphActions::normalizeSources', function (): void {
 
     test('coerces non-string entries', function (): void {
         expect(GraphActions::normalizeSources([1, 'core'], 'sources'))->toBe(['1', 'core']);
+    });
+});
+
+describe('GraphActions::normalizePorts', function (): void {
+    test('honours an explicit selection', function (): void {
+        expect(GraphActions::normalizePorts([443]))->toBe([443]);
+        expect(GraphActions::normalizePorts([80, 443]))->toBe([80, 443]);
+    });
+
+    // Regression test for issue #160: a <select>'s option values are strings, so the
+    // client-writable graph_ports signal can hand back ["80","443"]. Those used to go
+    // straight into Rrd::get_data_path(string $source, int $port) and take down the
+    // whole ports view with a TypeError.
+    test('coerces numeric strings to int', function (): void {
+        expect(GraphActions::normalizePorts(['80', '443']))->toBe([80, 443]);
+        expect(GraphActions::normalizePorts(['25']))->toBe([25]);
+    });
+
+    test('drops entries that are not a usable port', function (): void {
+        expect(GraphActions::normalizePorts(['', '443']))->toBe([443]);
+        expect(GraphActions::normalizePorts([null, 'any', 443]))->toBe([443]);
+        expect(GraphActions::normalizePorts([0, -1, 443]))->toBe([443]);
+    });
+
+    test('falls back to all configured ports for an empty selection', function (): void {
+        expect(GraphActions::normalizePorts([]))->toBe([80, 443]);
+        expect(GraphActions::normalizePorts(['']))->toBe([80, 443]);
     });
 });

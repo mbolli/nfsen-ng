@@ -1,7 +1,13 @@
 <!DOCTYPE html>
 <html lang="en"
     {# Seed _darkMode from the deployment default; must precede data-persist, which restores a saved toggle over it (see #156). #}
-    data-signals__ifmissing="{_darkMode: {% if defaults.theme|default('auto') == 'dark' %}true{% elseif defaults.theme|default('auto') == 'light' %}false{% else %}window.matchMedia('(prefers-color-scheme: dark)').matches{% endif %}, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences'}"
+    {# Every signal named in data-persist below must be seeded *here*, not further down the
+       page: data-persist reads them once on apply, and a path that doesn't exist yet reads
+       back as '' — which it then writes to localStorage and restores unconditionally on
+       every later load, beating the seed that was supposed to own the default. That is how
+       _graph_stepplot (default true) ended up permanently '' and the graph silently stopped
+       rendering as a step plot. #}
+    data-signals__ifmissing="{_darkMode: {% if defaults.theme|default('auto') == 'dark' %}true{% elseif defaults.theme|default('auto') == 'light' %}false{% else %}window.matchMedia('(prefers-color-scheme: dark)').matches{% endif %}, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences', _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _autoSyncGraph: false}"
     data-persist="{_darkMode: $_darkMode, _currentView: $_currentView, _settingsSection: $_settingsSection, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _autoSyncGraph: $_autoSyncGraph}"
     {# Paint the deployment default on the first frame (before datastar boots) so a dark/light install doesn't flash; 'auto' resolves client-side (see #156). #}
     {% if defaults.theme|default('auto') == 'dark' %}data-bs-theme="dark"{% elseif defaults.theme|default('auto') == 'light' %}data-bs-theme="light"{% endif %}

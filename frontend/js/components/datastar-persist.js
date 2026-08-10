@@ -33,7 +33,13 @@ attribute({
         const initial = rx();
         for (const name of Object.keys(initial)) {
             const stored = localStorage.getItem(persistKey(name));
-            if (stored !== null) {
+            // '' is not a value any persisted signal legitimately holds — it's what
+            // reading an undefined path yields. Skipping it on both sides keeps a signal
+            // whose seed hadn't run yet from being written out as '' and then restored as
+            // '' forever after, which is how _graph_stepplot (default true) ended up
+            // permanently falsy and the graph silently stopped rendering as a step plot.
+            // Skipping it on *restore* as well repairs storage already poisoned this way.
+            if (stored !== null && stored !== '""') {
                 mergePaths([[name, JSON.parse(stored)]]);
             }
         }
@@ -41,6 +47,9 @@ attribute({
         return effect(() => {
             const values = rx();
             for (const name of Object.keys(values)) {
+                if (values[name] === '' || values[name] === undefined) {
+                    continue;
+                }
                 localStorage.setItem(persistKey(name), JSON.stringify(values[name]));
             }
         });

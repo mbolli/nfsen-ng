@@ -59,6 +59,20 @@ final class GraphActions {
         $unit = ($dt !== 'traffic') ? $dt : $graphTrafficUnit->string();
         $display = $graphDisplay->string();
         $sources = self::normalizeSources($graphSources->array(), $display);
+        $ports = self::normalizePorts($graphPorts->array());
+
+        // Push the sanitized selections back at the browser. Both signals are
+        // client-writable and the client's own copy can end up a different shape than
+        // the server contract (a scalar, an object, strings where ints are expected) —
+        // graph._config feeds those straight into the chart, where a port that isn't
+        // part of a plain array takes the ports view down for good (#160). Normalizing
+        // in place means one authoritative shape instead of a per-consumer guess.
+        if ($graphPorts->getValue() !== $ports) {
+            $graphPorts->setValue($ports, broadcast: false);
+        }
+        if ($graphSources->getValue() !== $sources) {
+            $graphSources->setValue($sources, broadcast: false);
+        }
 
         try {
             $data = Config::$db->get_graph_data(
@@ -66,7 +80,7 @@ final class GraphActions {
                 $de,
                 $sources,
                 $graphProtocols->array(),
-                self::normalizePorts($graphPorts->array()),
+                $ports,
                 $unit,
                 $display,
                 $graphResolution->int(),

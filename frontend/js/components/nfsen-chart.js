@@ -19,16 +19,22 @@ import { tzOptions } from './tz-utils.js';
  */
 const NO_VALUE = '—';
 
-/** True for the null/undefined/NaN values the datasources use to mark empty buckets. */
+/**
+ * True for anything that can't be drawn or formatted as a number: the null the
+ * datasources use to mark empty buckets, but also NaN/Infinity and any value that
+ * isn't numeric at all. The formatters below run inside ECharts' tooltip and axis-label
+ * rendering, so a `v.toFixed is not a function` there throws on *hover*, out of reach
+ * of the update path's own error handling (#160).
+ */
 function isGap(value) {
-    return value == null || (typeof value === 'number' && Number.isNaN(value));
+    return value == null || value === '' || !Number.isFinite(Number(value));
 }
 
 /** Binary-prefixed (K=1024) formatter, matching Dygraph's labelsKMG2 for bits/bytes. */
 function formatKMG2(value) {
     if (isGap(value)) return NO_VALUE;
     const units = ['', 'K', 'M', 'G', 'T'];
-    let v = value;
+    let v = Number(value);
     let i = 0;
     while (Math.abs(v) >= 1024 && i < units.length - 1) {
         v /= 1024;
@@ -41,7 +47,7 @@ function formatKMG2(value) {
 function formatKMB(value) {
     if (isGap(value)) return NO_VALUE;
     const units = ['', 'K', 'M', 'B'];
-    let v = value;
+    let v = Number(value);
     let i = 0;
     while (Math.abs(v) >= 1000 && i < units.length - 1) {
         v /= 1000;
@@ -52,7 +58,7 @@ function formatKMB(value) {
 
 /** Unprefixed formatter — used when neither labelsKMG2 nor labelsKMB is active. */
 function formatPlain(value) {
-    return isGap(value) ? NO_VALUE : String(value);
+    return isGap(value) ? NO_VALUE : String(Number(value));
 }
 
 export class NfsenChart extends HTMLElement {
@@ -124,6 +130,11 @@ export class NfsenChart extends HTMLElement {
         };
 
         const cssClass = typeClasses[type] || typeClasses.info;
+        // Replacing the container's innerHTML orphans any live ECharts instance: it keeps
+        // rendering into a canvas that is no longer in the document, while updateChart()
+        // still sees a truthy this.chart and takes the setOption() path instead of
+        // rebuilding. The graph then stays blank until a full page reload (#160).
+        this.destroy();
         this.container.innerHTML = `<div class="${cssClass}">${message}</div>`;
     }
 
@@ -317,10 +328,18 @@ export class NfsenChart extends HTMLElement {
                 // runs, a more recent updateChart() call (e.g. the user switching datatypes
                 // again before this transition finished) may have already disposed this.chart.
                 if (!this.chart) return;
-                this.chart.setOption(option, true);
-                if (JSON.stringify(labels) !== JSON.stringify(this.currentLabels)) {
-                    this.currentLabels = labels;
-                    this.populateSeriesControls(labels.slice(1));
+                try {
+                    this.chart.setOption(option, true);
+                    if (JSON.stringify(labels) !== JSON.stringify(this.currentLabels)) {
+                        this.currentLabels = labels;
+                        this.populateSeriesControls(labels.slice(1));
+                    }
+                } catch (e) {
+                    // Deferred by startViewTransition(), so this is past initializeChart()'s
+                    // try/catch — without disposing here the instance survives in a broken
+                    // state and every later update keeps failing the same way (#160).
+                    console.error('Error updating chart:', e);
+                    this.showMessage(`Error updating chart: ${e.message}`, 'error');
                 }
             };
 
@@ -438,11 +457,16 @@ export class NfsenChart extends HTMLElement {
     }
 
     getTitle(display, sources, protocols, ports, type) {
+        // Always hand back an array. JSON.parse() succeeds on scalars too, so a signal
+        // carrying the *string* "25" used to yield the number 25 here and take the whole
+        // ports view down with "displayItems.join is not a function" — only ever in the
+        // ports view, because only port values parse as JSON scalars (#160).
         const parse = (v) => {
             if (Array.isArray(v)) return v;
             if (typeof v === 'string') {
                 try {
-                    return JSON.parse(v);
+                    const parsed = JSON.parse(v);
+                    return Array.isArray(parsed) ? parsed : [parsed];
                 } catch {
                     return [v];
                 }
@@ -641,13 +665,15 @@ export class NfsenChart extends HTMLElement {
     }
 
     /**
-     * Destroy the chart
+     * Destroy the chart. Leaves the component reusable: the next updateChart() sees
+     * this.chart === null and builds a fresh instance from scratch.
      */
     destroy() {
         if (this.chart) {
             this.chart.dispose();
             this.chart = null;
         }
+        this.currentLabels = null;
     }
 
     /**

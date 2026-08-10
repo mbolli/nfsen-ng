@@ -385,12 +385,15 @@ WARNING;
         foreach ($data['data'] as $source) {
             $output['legend'][] = $source['legend'];
             foreach ($source['data'] as $date => $measure) {
-                // ignore non-valid measures
-                if (is_nan($measure)) {
-                    // Keep null — must not fall through to the bits conversion below,
-                    // where PHP evaluates `null * 8` to 0 and turns an empty slot
-                    // (e.g. the trailing NaN row RRD always returns past rrd_last)
-                    // into a real 0, making the traffic graph drop to zero. (#154)
+                // Keep anything unusable as null — it must not fall through to the bits
+                // conversion below, where PHP evaluates `null * 8` to 0 and turns an empty
+                // slot (e.g. the trailing NaN row RRD always returns past rrd_last) into a
+                // real 0, making the traffic graph drop to zero (#154). Alongside NaN that
+                // covers INF, which json_encode() refuses outright and which would abort
+                // the whole render rather than blank a single point (#160).
+                if (!\is_float($measure) && !\is_int($measure)) {
+                    $measure = null;
+                } elseif (is_nan((float) $measure) || is_infinite((float) $measure)) {
                     $measure = null;
                 } elseif ($type === 'bytes' && $useBits) {
                     $measure *= 8;

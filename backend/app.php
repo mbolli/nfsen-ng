@@ -476,7 +476,17 @@ $app->page('/', function (Context $c) use ($app): void {
                 $datestart->setValue($now - $window, broadcast: false);
             }
 
-            $cachedGraphData = json_encode(GraphActions::fetchGraphData($c), JSON_THROW_ON_ERROR);
+            // Anything thrown here is swallowed by php-via's action handler, which leaves
+            // the graph silently frozen on its previous data — the user changes a filter and
+            // nothing happens, with no error anywhere in the UI (#160). Only get_graph_data()
+            // was guarded before; catch the rest of the fetch (and the encode, which rejects
+            // non-finite floats) so a failure shows up as a banner and the next change retries.
+            try {
+                $cachedGraphData = json_encode(GraphActions::fetchGraphData($c), JSON_THROW_ON_ERROR);
+            } catch (Throwable $e) {
+                $c->getSignal('_error')?->setValue('Graph error: ' . $e->getMessage(), broadcast: false);
+                $cachedGraphData = '[]';
+            }
             $lastGraphFetch = $now;
 
             $cachedImportSources = [];

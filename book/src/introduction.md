@@ -39,5 +39,5 @@ so nfsen-ng currently requires Linux.
 
 ## Status
 
-This book documents the `v1.0.0-beta.3` line — see the [Roadmap](roadmap.md)
+This book documents the `v1.0.0-beta.4` line — see the [Roadmap](roadmap.md)
 for what's tracked and what's next.

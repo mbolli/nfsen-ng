@@ -7,12 +7,10 @@ import { withPage, BASE } from './lib/cdp.mjs';
 export default async function settingsTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
-        await page.clickByAttr(`_currentView = 'settings'`);
-        await page.waitForPanel('$_currentView', 'settings');
+        await page.clickToPanel(`_currentView = 'settings'`, '$_currentView', 'settings');
 
         for (const section of ['preferences', 'health', 'alerts', 'import', 'system']) {
-            await page.clickByAttr(`_settingsSection = '${section}'`);
-            await page.waitForPanel('$_settingsSection', section, { timeout: 3000 });
+            await page.clickToPanel(`_settingsSection = '${section}'`, '$_settingsSection', section, { timeout: 3000 });
         }
 
         const errors = page.realErrors();

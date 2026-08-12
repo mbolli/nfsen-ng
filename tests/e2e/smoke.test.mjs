@@ -8,6 +8,7 @@ export default async function smokeTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
         await page.waitFor(`document.querySelector('ul#viewList')`, { label: 'nav to render' });
+        await page.waitForBoot();
 
         const title = await page.evaluate('document.title');
         assert.match(title, /nfsen-ng/, `expected page title to mention nfsen-ng, got: ${title}`);
@@ -25,8 +26,7 @@ export default async function smokeTest() {
             { click: `_currentView = 'graphs'`, view: 'graphs' },
         ];
         for (const tab of tabs) {
-            await page.clickByAttr(tab.click);
-            await page.waitForPanel('$_currentView', tab.view, { timeout: 3000 });
+            await page.clickToPanel(tab.click, '$_currentView', tab.view, { timeout: 3000 });
         }
 
         const errors = page.realErrors();

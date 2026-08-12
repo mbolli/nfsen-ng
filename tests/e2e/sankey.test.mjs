@@ -8,8 +8,7 @@ import { withPage, BASE } from './lib/cdp.mjs';
 export default async function sankeyTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
-        await page.clickByAttr(`_currentView = 'sankey'`);
-        await page.waitForPanel('$_currentView', 'sankey');
+        await page.clickToPanel(`_currentView = 'sankey'`, '$_currentView', 'sankey');
 
         await page.clickByText('Year', 'button');
         await page.processData();

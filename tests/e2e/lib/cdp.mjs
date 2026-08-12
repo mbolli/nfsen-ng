@@ -170,6 +170,34 @@ class Page {
     }
 
     /**
+     * Wait until Datastar has applied its first binding. navigate() resolves on
+     * the load event, which is well before the module scripts have booted, so
+     * anything that reads a Datastar-driven class/visibility (or clicks a
+     * data-on:click element) has to wait for this first.
+     */
+    async waitForBoot(opts = {}) {
+        await this.waitFor(`!!document.querySelector('a.nav-link.active')`, { label: 'Datastar to boot', ...opts });
+    }
+
+    /**
+     * clickByAttr + waitForPanel, retrying the click. A nav click that lands in
+     * the window between the load event and Datastar wiring `data-on:click` is
+     * swallowed by a dead `<a href="#">`, and nothing retries it -- the single
+     * most common source of flake in this suite.
+     */
+    async clickToPanel(sub, signal, value, { attempts = 10, timeout = 2000 } = {}) {
+        for (let attempt = 1; ; attempt++) {
+            await this.clickByAttr(sub);
+            try {
+                await this.waitForPanel(signal, value, { timeout });
+                return;
+            } catch (e) {
+                if (attempt >= attempts) throw e;
+            }
+        }
+    }
+
+    /**
      * Click the first element whose `data-on:click*` attribute contains `sub`
      * -- this is how nav tabs / sub-nav links are wired (see nav.html.twig,
      * settings.html.twig), so it exercises the exact path a real user click

@@ -7,8 +7,7 @@ import { withPage, BASE } from './lib/cdp.mjs';
 export default async function statisticsTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
-        await page.clickByAttr(`_currentView = 'statistics'`);
-        await page.waitForPanel('$_currentView', 'statistics');
+        await page.clickToPanel(`_currentView = 'statistics'`, '$_currentView', 'statistics');
 
         await page.clickByText('Year', 'button');
         await page.processData();

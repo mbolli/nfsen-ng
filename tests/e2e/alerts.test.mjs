@@ -42,10 +42,8 @@ export default async function alertsTest() {
         page.autoAcceptDialogs(); // the delete button gates on a native confirm()
 
         await page.navigate(BASE + '/');
-        await page.clickByAttr(`_currentView = 'settings'`);
-        await page.waitForPanel('$_currentView', 'settings');
-        await page.clickByAttr(`_settingsSection = 'alerts'`);
-        await page.waitForPanel('$_settingsSection', 'alerts');
+        await page.clickToPanel(`_currentView = 'settings'`, '$_currentView', 'settings');
+        await page.clickToPanel(`_settingsSection = 'alerts'`, '$_settingsSection', 'alerts');
 
         const baseline = await getRuleCount(page);
         assert.notEqual(baseline, null, 'expected to find the "N rules" badge');

@@ -9,8 +9,7 @@ import { withPage, BASE } from './lib/cdp.mjs';
 export default async function flowsTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
-        await page.clickByAttr(`_currentView = 'flows'`);
-        await page.waitForPanel('$_currentView', 'flows');
+        await page.clickToPanel(`_currentView = 'flows'`, '$_currentView', 'flows');
 
         await page.clickByText('Year', 'button');
         // Cap the result count -- a wide range can mean hundreds of rows.

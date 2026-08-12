@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   release:
@@ -54,3 +55,17 @@ jobs:
         run: |
           git push origin master
           git push origin "v${{ inputs.version }}"
+
+      # A tag pushed with GITHUB_TOKEN does not fire the `push` trigger in
+      # docker-publish.yml -- GitHub suppresses those events to avoid recursive
+      # runs, so v1.0.0-beta.4 was tagged without ever building an image.
+      # workflow_dispatch is exempt from that rule, so dispatch it explicitly,
+      # at the tag, which is what makes docker/metadata-action see a tag ref and
+      # emit the :<version> and :latest tags.
+      - name: Build and publish release images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run docker-publish.yml \
+            --ref "v${{ inputs.version }}" \
+            -f dry_run=false

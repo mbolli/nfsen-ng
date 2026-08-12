@@ -26,8 +26,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # format() so the gate holds whether dry_run arrives as a real boolean or as
+      # the string "false" -- `gh workflow run -f` sends strings, and a bare
+      # `!inputs.dry_run` would read a non-empty "false" as truthy and silently skip
+      # the push, which is the exact failure this dispatch path exists to avoid.
       - name: Log in to GHCR
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+        if: ${{ github.event_name != 'workflow_dispatch' || format('{0}', inputs.dry_run) == 'false' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -52,7 +56,10 @@ jobs:
             # (drop `&& !contains(github.ref_name, '-')` to re-gate it to stable only).
             # The reduced {{major}} / {{major}}.{{minor}} tags stay suppressed on
             # prereleases by metadata-action's default, so a beta can't claim :1 / :1.0.
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+            # Gated on the ref, not the event: release.yml reaches this workflow by
+            # dispatching it *at the tag*, because a tag pushed with GITHUB_TOKEN
+            # cannot trigger the `push` trigger above.
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
             type=raw,value=edge,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
 
       - name: Build and push
@@ -60,7 +67,7 @@ jobs:
         with:
           context: .
           file: deploy/Dockerfile
-          push: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+          push: ${{ github.event_name != 'workflow_dispatch' || format('{0}', inputs.dry_run) == 'false' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}

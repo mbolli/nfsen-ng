@@ -3,7 +3,7 @@
 All notable changes to nfsen-ng are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.0.0-beta.4] — 2026-08-11
+## [1.0.0-beta.4] — 2026-08-12
 
 ### Fixed
 

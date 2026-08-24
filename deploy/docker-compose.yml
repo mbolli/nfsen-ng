@@ -62,7 +62,6 @@ services:
       # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 1, set to CPU cores)
       # - SWOOLE_MAX_REQUEST=50000        # Max requests per worker before restart (default: 0 = unlimited)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
-    entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/deploy/docker-entrypoint.sh"]
     restart: unless-stopped
   
   caddy:

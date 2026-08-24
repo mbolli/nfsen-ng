@@ -3,6 +3,14 @@
 All notable changes to nfsen-ng are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- The published compose file couldn't start the container at all: `docker compose up` exited 127 with `/bin/bash: /var/www/html/nfsen-ng/deploy/docker-entrypoint.sh: No such file or directory`, restarting in a loop ([#162](https://github.com/mbolli/nfsen-ng/issues/162)). The `nfsen` service overrode the image's `ENTRYPOINT` with a source-tree path, but the production image copies only `backend/`, `frontend/`, and `composer.json` — `deploy/` isn't in it, and the entrypoint is installed at `/usr/local/bin/docker-entrypoint.sh`. The override is gone from all three compose files; each now uses the image's own entrypoint, which is the same script.
+
+---
+
 ## [1.0.0-beta.4] — 2026-08-12
 
 ### Fixed

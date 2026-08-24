@@ -41,7 +41,6 @@ services:
       # ── OpenSwoole ─────────────────────────────────────────────────────────
       # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 1)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
-    entrypoint: ["/bin/bash", "/var/www/html/nfsen-ng/deploy/docker-entrypoint-dev.sh"]
     restart: unless-stopped
 
   caddy:

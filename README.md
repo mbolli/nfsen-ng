@@ -6,6 +6,7 @@
 [![GitHub last commit](https://img.shields.io/github/last-commit/mbolli/nfsen-ng?style=flat-square)](https://github.com/mbolli/nfsen-ng/commits/master)
 [![GitHub stars](https://img.shields.io/github/stars/mbolli/nfsen-ng?style=flat-square)](https://github.com/mbolli/nfsen-ng/stargazers)
 [![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?style=flat-square&logo=php&logoColor=white)](https://www.php.net/)
+[![PHPStan level 8](https://img.shields.io/badge/PHPStan-level%208-brightgreen?style=flat-square)](https://phpstan.org/)
 [![OpenSwoole](https://img.shields.io/badge/OpenSwoole-coroutines-F15B2A?style=flat-square)](https://openswoole.com/)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/mbolli/nfsen-ng/pkgs/container/nfsen-ng)
 [![Donate a beer](https://img.shields.io/badge/paypal-donate-yellow.svg?style=flat-square)](https://paypal.me/bolli)

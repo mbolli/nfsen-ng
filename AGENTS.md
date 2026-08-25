@@ -18,7 +18,7 @@ docker compose -f deploy/docker-compose.dev.yml logs -f nfsen
 ```bash
 composer install        # Install PHP deps
 composer test           # Run Pest tests
-composer test-phpstan   # Static analysis (level 5)
+composer test-phpstan   # Static analysis (level 8, set in phpstan.neon)
 composer fix            # Auto-format PHP
 composer before-commit  # fix + phpstan
 

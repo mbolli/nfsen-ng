@@ -98,14 +98,17 @@ already established for screenshotting the book.
 ## Static analysis
 
 ```bash
-composer test-phpstan     # phpstan analyse backend -l 5
+composer test-phpstan     # phpstan analyse backend
 ```
+
+The level is **8**, set in `phpstan.neon` rather than on the command line, so
+an IDE or a bare `vendor/bin/phpstan` analyses exactly what CI does.
 
 In a memory-constrained container, PHPStan's default 128M can OOM before it
 finishes; run with an explicit override if that happens:
 
 ```bash
-php -d memory_limit=1G vendor/bin/phpstan analyse backend -l 5 -a backend/settings/settings.php --memory-limit=1G
+php -d memory_limit=1G vendor/bin/phpstan analyse backend -a backend/settings/settings.php --memory-limit=1G
 ```
 
 `composer before-commit` runs `fix` (php-cs-fixer) then `test-phpstan` — the

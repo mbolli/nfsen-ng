@@ -35,7 +35,7 @@ exist under the mounted `profiles-data` volume.
 ```bash
 composer install        # PHP deps
 composer test            # Pest test suite
-composer test-phpstan    # static analysis, level 5
+composer test-phpstan    # static analysis, level 8
 composer fix              # auto-format PHP (php-cs-fixer)
 composer before-commit   # fix + phpstan — run this before every PHP commit
 

@@ -91,7 +91,13 @@ $viaConfig = (new ViaConfig())
         'worker_num' => $workerNum,
         'max_request' => $maxRequest,
         'max_coroutine' => $maxCoroutine,
-        'hook_flags' => SWOOLE_HOOK_ALL,
+        // openswoole 26.2's native-curl hook segfaults the worker on PHP 8.5: any
+        // curl_exec() inside a coroutine kills it, resolvable host or not. On 8.5 that
+        // took down every page render (VictoriaMetrics::httpGet()) and every alert
+        // webhook. Drop that one hook there and keep the rest, so stream-wrapper IO
+        // (IpLookup, the nfdump pipes) stays non-blocking; curl calls just block the
+        // worker until openswoole fixes it. 8.4 is unaffected and keeps the full set.
+        'hook_flags' => \PHP_VERSION_ID >= 80500 ? SWOOLE_HOOK_ALL & ~SWOOLE_HOOK_NATIVE_CURL : SWOOLE_HOOK_ALL,
         'max_conn' => 10000,
         'send_yield' => true,
         'log_file' => '/tmp/swoole.log',

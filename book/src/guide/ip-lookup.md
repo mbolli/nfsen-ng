@@ -21,9 +21,23 @@ on that address without leaving the page or opening a new tab.
 
 ## A word of caution
 
-The geolocation lookup calls an external service
-([ipapi.co](https://ipapi.co/)) over the internet — it only fires for
-public addresses, and only when you actually click one, not automatically
-for every row in a table. If your nfsen-ng instance has no outbound internet
-access, that part of the popup will simply come back empty; reverse DNS and
-Netbox lookups (if configured) are unaffected.
+The geolocation lookup calls an external service over the internet —
+[ipapi.co](https://ipapi.co/) unless your administrator has pointed it
+somewhere else. It only fires for public addresses, and only when you
+actually click one, not automatically for every row in a table. If your
+nfsen-ng instance has no outbound internet access, that part of the popup
+comes back empty; reverse DNS and Netbox lookups (if configured) are
+unaffected.
+
+## If the geolocation part shows a warning instead
+
+These services cap how many lookups they answer for free, and the default
+one is fairly strict about it. Once you're over the cap the popup says so —
+`RateLimited`, or whatever the service calls it — in place of the usual
+table. Reverse DNS still works, so you're not flying blind.
+
+It clears on its own once the service's counter resets — which may be the
+next minute or the next day, depending on which cap you ran into. If you're
+hitting it regularly, ask your administrator to switch services or add an
+API key ([Configuration](../deployment/configuration.md#geolocation-lookup)
+covers both, and lists several free alternatives).

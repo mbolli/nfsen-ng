@@ -19,6 +19,7 @@ audit). Both are populated by `HealthChecker::run()`
 | Import Daemon | Running / initializing / watching N directories, last auto-import age |
 | nfcapd Paths | `profiles-data` reachable; per-profile, per-source directory presence, flat-vs-nested layout, and capture freshness (warns past ~12 minutes — 2.4× nfcapd's default 5-minute rotation) |
 | RRD Storage / VictoriaMetrics | Delegated to the active `Datasource::healthChecks()` |
+| Configuration | `EnvRegistry::issues()` — env vars set but invalid (so a default quietly applied), deprecated aliases still in use, unknown `NFSEN_`-prefixed names (typos that do nothing) — plus malformed `url`/`email` values, an active (deprecated) `settings.php`, a saved log-level preference overriding `NFSEN_LOG_LEVEL`, and a `NFSEN_IPINFO_URL`/`NFSEN_IPINFO_TOKEN` pair that can't work together |
 
 Every entry is `ok` / `warning` / `error`, sorted errors-first within its
 group, with an optional hint line explaining what to actually do about it.

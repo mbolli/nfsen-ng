@@ -91,15 +91,22 @@ $viaConfig = (new ViaConfig())
         'worker_num' => $workerNum,
         'max_request' => $maxRequest,
         'max_coroutine' => $maxCoroutine,
-        // openswoole 26.2's native-curl hook segfaults the worker on PHP 8.5 as soon as
-        // a curl request needs a name lookup: curl to a hostname kills it whether or
-        // not the name resolves, while curl to a literal IP is fine, and the same
-        // hostname through the stream hooks resolves normally. On 8.5 that took down
-        // every page render (VictoriaMetrics::httpGet() → the `victoriametrics` host)
-        // and every alert webhook. Drop that one hook there and keep the rest, so
-        // stream-wrapper IO (IpLookup, the nfdump pipes) stays non-blocking; curl calls
-        // just block the worker until openswoole fixes it. 8.4 keeps the full set.
-        'hook_flags' => \PHP_VERSION_ID >= 80500 ? SWOOLE_HOOK_ALL & ~SWOOLE_HOOK_NATIVE_CURL : SWOOLE_HOOK_ALL,
+        // openswoole 26.2's native-curl hook segfaults the worker as soon as a curl
+        // request needs a name lookup, once libcurl is 8.20.0 or newer. Bisected by
+        // building each release and preloading it: 8.4.0/8.7.1/8.11.1/8.14.1/8.16.0/
+        // 8.19.0 all fine, 8.20.0 and everything after crash. libcurl 8.20.0 changed
+        // how its threaded resolver drives curl_multi_socket_action (curl#21558), and
+        // openswoole's reactor bridge doesn't cope: a hostname kills the worker whether
+        // or not it resolves, a literal IP is fine, and pre-seeding CURLOPT_RESOLVE
+        // avoids it. Nothing to do with the PHP version — 8.4 is affected the same way
+        // once its libcurl is new enough.
+        //
+        // Drop that one hook and keep the rest, so stream-wrapper IO (IpLookup, the
+        // nfdump pipes) stays non-blocking; curl calls — VictoriaMetrics queries and
+        // alert webhooks — just block the worker until openswoole fixes it.
+        'hook_flags' => (curl_version()['version_number'] ?? 0) >= 0x08_14_00
+            ? SWOOLE_HOOK_ALL & ~SWOOLE_HOOK_NATIVE_CURL
+            : SWOOLE_HOOK_ALL,
         'max_conn' => 10000,
         'send_yield' => true,
         'log_file' => '/tmp/swoole.log',

@@ -9,6 +9,10 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\HealthChecker;
 
+/**
+ * @phpstan-import-type DatasourceRecord from Datasource
+ * @phpstan-import-type GraphData from Datasource
+ */
 class VictoriaMetrics implements Datasource {
     private readonly Debug $d;
     private readonly string $writeUrl;
@@ -32,6 +36,8 @@ class VictoriaMetrics implements Datasource {
 
     /**
      * Gets the timestamps of the first and last entry of this specific source.
+     *
+     * @return array{int, int}
      */
     public function date_boundaries(string $source, string $profile = ''): array {
         // Query for first and last timestamp of the aggregate (no-port) series.
@@ -68,6 +74,8 @@ class VictoriaMetrics implements Datasource {
 
     /**
      * Write to VictoriaMetrics with supplied data.
+     *
+     * @param DatasourceRecord $data
      *
      * @throws \Exception
      */
@@ -111,9 +119,14 @@ class VictoriaMetrics implements Datasource {
     }
 
     /**
-     * @param string   $type    flows/packets/bytes/bits
-     * @param string   $display protocols/sources/ports
-     * @param null|int $maxrows optional maximum rows to return (null = 500 default)
+     * @param list<string> $sources
+     * @param list<string> $protocols
+     * @param list<int>    $ports
+     * @param string       $type      flows/packets/bytes/bits
+     * @param string       $display   protocols/sources/ports
+     * @param null|int     $maxrows   optional maximum rows to return (null = 500 default)
+     *
+     * @return GraphData|string
      */
     public function get_graph_data(
         int $start,
@@ -400,6 +413,13 @@ class VictoriaMetrics implements Datasource {
 
         curl_close($ch);
 
+        // RETURNTRANSFER is set, so a successful transfer hands back the body as a string.
+        // Anything else means curl_exec() failed without setting an error number; returning
+        // it from a string-typed method would be a TypeError, so surface it as a failure.
+        if (!\is_string($response)) {
+            throw new \Exception('HTTP request failed: no response body');
+        }
+
         if ($httpCode >= 200 && $httpCode < 300) {
             return $response;
         }
@@ -472,6 +492,8 @@ class VictoriaMetrics implements Datasource {
 
     /**
      * Query VictoriaMetrics for a range of data.
+     *
+     * @return array<int, null|float> timestamp => measure (empty if the query matched no series)
      */
     private function queryRange(string $query, int $start, int $end, int $step): array {
         $params = http_build_query([
@@ -540,6 +562,10 @@ class VictoriaMetrics implements Datasource {
 
     /**
      * Transform VictoriaMetrics response to expected output format.
+     *
+     * @param list<array{legend: string, data: array<int, null|float>}> $allData
+     *
+     * @return GraphData
      */
     private function transformToOutputFormat(array $allData, int $start, int $end, int $step, bool $useBits): array {
         $output = [

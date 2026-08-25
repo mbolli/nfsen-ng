@@ -101,10 +101,9 @@ final class FlowActions {
                 $processor->setFilter($combinedFlowFilter);
                 $result = $processor->execute();
 
-                $flowData = $result['decoded'] ?? [];
-                if (!\is_array($flowData)) {
-                    throw new \RuntimeException('Invalid data from nfdump processor');
-                }
+                // nfdump can answer with a JSON object rather than an array; Table::generate()
+                // indexes the first row positionally, so re-key to a list.
+                $flowData = array_values((array) ($result['decoded'] ?? []));
 
                 $flowCount->setValue(\count($flowData), broadcast: false);
                 $elapsed = round(microtime(true) - $time, 3);

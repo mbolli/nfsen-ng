@@ -79,7 +79,7 @@ class Debug {
      * Debug print. Prints the supplied string with the time passed from initialization.
      * Only emits output in CLI mode; in HTTP/SSE contexts HTML output would corrupt the stream.
      */
-    public function dpr(...$mixed): void {
+    public function dpr(mixed ...$mixed): void {
         if ($this->debug === false || $this->cli === false) {
             return;
         }

@@ -111,9 +111,9 @@ class TableFormatter {
     /**
      * Format a cell value for display.
      *
-     * @param mixed  $value     The cell value
-     * @param string $fieldName The field name
-     * @param array  $options   Display options
+     * @param mixed                $value     The cell value
+     * @param string               $fieldName The field name
+     * @param array<string, mixed> $options   Display options
      *
      * @return string Formatted HTML
      */
@@ -298,8 +298,7 @@ class TableFormatter {
             return '0 B';
         }
 
-        $power = floor(log($bytes, 1024));
-        $power = min($power, \count($units) - 1);
+        $power = max(0, min((int) floor(log($bytes, 1024)), \count($units) - 1));
 
         $formattedValue = $bytes / 1024 ** $power;
 
@@ -357,8 +356,7 @@ class TableFormatter {
             return '0 bps';
         }
 
-        $power = floor(log($rate, 1000));
-        $power = min($power, \count($units) - 1);
+        $power = max(0, min((int) floor(log($rate, 1000)), \count($units) - 1));
 
         $formattedValue = $rate / 1000 ** $power;
 
@@ -376,7 +374,7 @@ class TableFormatter {
      */
     private static function formatTcpFlags($value): string {
         if (empty($value)) {
-            return (string) $value;
+            return \is_scalar($value) ? (string) $value : '';
         }
 
         if ($value === '........') {

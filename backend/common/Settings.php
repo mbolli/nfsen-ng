@@ -60,10 +60,10 @@ final class Settings {
     private const THEMES = ['auto', 'dark', 'light'];
 
     /**
-     * @param string[]             $sources               Configured NetFlow source names
-     * @param int[]                $ports                 Configured port numbers
-     * @param string[]             $filters               Saved nfdump filter expressions
-     * @param string[]             $defaultGraphProtocols Default graph protocols
+     * @param list<string>         $sources               Configured NetFlow source names
+     * @param list<int>            $ports                 Configured port numbers
+     * @param list<string>         $filters               Saved nfdump filter expressions
+     * @param list<string>         $defaultGraphProtocols Default graph protocols
      * @param int                  $importYears           How many years of data to import/retain (shared by all datasources)
      * @param array<string, mixed> $datasourceConfigs     Raw datasource config sub-arrays keyed by name
      */
@@ -89,7 +89,7 @@ final class Settings {
         public private(set) int $maxStatsWindow,
         public private(set) string $netboxUrl,
         public private(set) string $netboxToken,
-        /** @var AlertRule[] Alert rules stored in preferences.json */
+        /** @var list<AlertRule> Alert rules stored in preferences.json */
         public private(set) array $alerts,
         public private(set) string $alertEmailFrom,
         public private(set) string $displayTimezone,
@@ -100,8 +100,6 @@ final class Settings {
         private array $datasourceConfigs,
     ) {}
 
-    // ── Factories ─────────────────────────────────────────────────────────────
-
     /**
      * Build from the raw `$nfsen_config` array loaded from settings.php.
      *
@@ -111,6 +109,8 @@ final class Settings {
      * config paths one set of defaults and one validator each. Log level is the
      * lone exception — an explicit NFSEN_LOG_LEVEL overrides the file, since
      * bumping verbosity via env should work even with a settings.php present.
+     *
+     * @param array<string, mixed> $raw decoded $nfsen_config from settings.php
      */
     public static function fromArray(array $raw): self {
         $datasourceName = (string) ($raw['general']['db'] ?? EnvRegistry::value('NFSEN_DATASOURCE'));
@@ -121,15 +121,15 @@ final class Settings {
             : (int) ($raw['log']['priority'] ?? LOG_INFO);
 
         return new self(
-            sources: (array) ($raw['general']['sources'] ?? EnvRegistry::value('NFSEN_SOURCES')),
-            ports: array_map('intval', (array) ($raw['general']['ports'] ?? EnvRegistry::value('NFSEN_PORTS'))),
-            filters: (array) ($raw['general']['filters'] ?? EnvRegistry::value('NFSEN_FILTERS')),
+            sources: self::stringList($raw['general']['sources'] ?? EnvRegistry::value('NFSEN_SOURCES')),
+            ports: self::intList($raw['general']['ports'] ?? EnvRegistry::value('NFSEN_PORTS')),
+            filters: self::stringList($raw['general']['filters'] ?? EnvRegistry::value('NFSEN_FILTERS')),
             datasourceName: $datasourceName,
             processorName: (string) ($raw['general']['processor'] ?? EnvRegistry::value('NFSEN_PROCESSOR')),
             defaultView: (string) ($raw['frontend']['defaults']['view'] ?? 'graphs'),
             defaultGraphDisplay: (string) ($raw['frontend']['defaults']['graphs']['display'] ?? 'sources'),
             defaultGraphDatatype: (string) ($raw['frontend']['defaults']['graphs']['datatype'] ?? 'traffic'),
-            defaultGraphProtocols: (array) ($raw['frontend']['defaults']['graphs']['protocols'] ?? ['any']),
+            defaultGraphProtocols: self::stringList($raw['frontend']['defaults']['graphs']['protocols'] ?? ['any']),
             defaultFlowLimit: (int) ($raw['frontend']['defaults']['flows']['limit'] ?? 50),
             defaultStatsOrderBy: (string) ($raw['frontend']['defaults']['statistics']['order_by'] ?? 'bytes'),
             defaultTheme: self::normalizeTheme((string) ($raw['frontend']['defaults']['theme'] ?? EnvRegistry::value('NFSEN_DEFAULT_THEME'))),
@@ -176,9 +176,9 @@ final class Settings {
         ];
 
         return new self(
-            sources: (array) EnvRegistry::value('NFSEN_SOURCES'),
-            ports: (array) EnvRegistry::value('NFSEN_PORTS'),
-            filters: (array) EnvRegistry::value('NFSEN_FILTERS'),
+            sources: self::stringList(EnvRegistry::value('NFSEN_SOURCES')),
+            ports: self::intList(EnvRegistry::value('NFSEN_PORTS')),
+            filters: self::stringList(EnvRegistry::value('NFSEN_FILTERS')),
             datasourceName: (string) EnvRegistry::value('NFSEN_DATASOURCE'),
             processorName: (string) EnvRegistry::value('NFSEN_PROCESSOR'),
             defaultView: 'graphs',
@@ -265,7 +265,7 @@ final class Settings {
 
     // ── Fluent with…() mutators ───────────────────────────────────────────────
 
-    /** @param string[] $sources */
+    /** @param list<string> $sources */
     public function withSources(array $sources): self {
         $clone = clone $this;
         $clone->sources = $sources;
@@ -273,7 +273,7 @@ final class Settings {
         return $clone;
     }
 
-    /** @param int[] $ports */
+    /** @param list<int> $ports */
     public function withPorts(array $ports): self {
         $clone = clone $this;
         $clone->ports = $ports;
@@ -281,7 +281,7 @@ final class Settings {
         return $clone;
     }
 
-    /** @param string[] $filters */
+    /** @param list<string> $filters */
     public function withFilters(array $filters): self {
         $clone = clone $this;
         $clone->filters = $filters;
@@ -324,7 +324,7 @@ final class Settings {
         return $clone;
     }
 
-    /** @param string[] $protocols */
+    /** @param list<string> $protocols */
     public function withDefaultGraphProtocols(array $protocols): self {
         $clone = clone $this;
         $clone->defaultGraphProtocols = $protocols;
@@ -403,7 +403,7 @@ final class Settings {
         return $clone;
     }
 
-    /** @param AlertRule[] $alerts */
+    /** @param list<AlertRule> $alerts */
     public function withAlerts(array $alerts): self {
         $clone = clone $this;
         $clone->alerts = $alerts;
@@ -484,6 +484,47 @@ final class Settings {
         ]);
 
         return $flip[$priority] ?? 'info';
+    }
+
+    // ── Factories ─────────────────────────────────────────────────────────────
+
+    /**
+     * Coerce a raw config value into a list of strings.
+     *
+     * settings.php is hand-written and preferences.json is user-editable, so a
+     * keyed array, a bare scalar or a nested array can all turn up where a list
+     * is expected. Consumers index these positionally ($sources[0] in the
+     * datasources), so re-key them and drop anything that isn't scalar.
+     *
+     * @return list<string>
+     */
+    private static function stringList(mixed $value): array {
+        $list = [];
+        foreach ((array) $value as $item) {
+            if (\is_scalar($item)) {
+                $list[] = (string) $item;
+            }
+        }
+
+        return $list;
+    }
+
+    /**
+     * Same as {@see stringList()} for port numbers. Non-numeric entries are
+     * dropped rather than cast: intval() would turn them into port 0, which is
+     * not a rejected value but the datasources' name for the aggregate series.
+     *
+     * @return list<int>
+     */
+    private static function intList(mixed $value): array {
+        $list = [];
+        foreach ((array) $value as $item) {
+            if (is_numeric($item)) {
+                $list[] = (int) $item;
+            }
+        }
+
+        return $list;
     }
 
     /**

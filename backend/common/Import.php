@@ -386,7 +386,7 @@ class Import {
         $this->quiet = $quiet;
     }
 
-    public function setProcessPortsBySource($processPortsBySource): void {
+    public function setProcessPortsBySource(bool $processPortsBySource): void {
         $this->processPortsBySource = $processPortsBySource;
     }
 

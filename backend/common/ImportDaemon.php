@@ -261,7 +261,7 @@ class ImportDaemon {
     }
 
     private function addWatch(string $path, string $source): void {
-        if (isset($this->watches[$path])) {
+        if ($this->inotify === false || isset($this->watches[$path])) {
             return;
         }
 

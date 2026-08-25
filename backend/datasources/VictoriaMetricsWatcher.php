@@ -12,11 +12,16 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\datasources;
 
 use mbolli\nfsen_ng\common\Debug;
+use Swoole\Coroutine\Channel;
 use Swoole\Timer;
 
 class VictoriaMetricsWatcher {
     private readonly Debug $d;
+
+    /** @var array<string, Channel> subscriber id => channel */
     private array $subscribers = [];
+
+    /** @var array<string, int> cache key => latest timestamp seen */
     private array $lastTimestamps = [];
     private int $pollInterval = 5000; // 5 seconds in milliseconds
 
@@ -110,6 +115,8 @@ class VictoriaMetricsWatcher {
 
     /**
      * Notify all subscribers of an update.
+     *
+     * @param array{type: string, timestamp: int} $event
      */
     private function notifySubscribers(array $event): void {
         foreach ($this->subscribers as $id => $channel) {
@@ -148,6 +155,13 @@ class VictoriaMetricsWatcher {
         }
 
         curl_close($ch);
+
+        // RETURNTRANSFER is set, so a successful transfer hands back the body as a string.
+        // Anything else means curl_exec() failed without setting an error number; returning
+        // it from a string-typed method would be a TypeError, so surface it as a failure.
+        if (!\is_string($response)) {
+            throw new \Exception('HTTP request failed: no response body');
+        }
 
         if ($httpCode >= 200 && $httpCode < 300) {
             return $response;

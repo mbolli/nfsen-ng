@@ -14,7 +14,11 @@ namespace mbolli\nfsen_ng\common;
  * On load: silently return null if the file doesn't exist yet — Config falls back to Settings defaults.
  */
 final class UserPreferences {
-    /** @param string[] $defaultGraphProtocols  @param string[] $filters  @param AlertRule[] $alerts */
+    /**
+     * @param list<string>    $defaultGraphProtocols
+     * @param list<string>    $filters
+     * @param list<AlertRule> $alerts
+     */
     public function __construct(
         public readonly string $defaultView,
         public readonly string $defaultGraphDisplay,
@@ -63,7 +67,7 @@ final class UserPreferences {
             defaultView: (string) ($data['defaultView'] ?? 'graphs'),
             defaultGraphDisplay: (string) ($data['defaultGraphDisplay'] ?? 'sources'),
             defaultGraphDatatype: (string) ($data['defaultGraphDatatype'] ?? 'traffic'),
-            defaultGraphProtocols: (array) ($data['defaultGraphProtocols'] ?? ['any']),
+            defaultGraphProtocols: array_values(array_map('strval', array_filter((array) ($data['defaultGraphProtocols'] ?? ['any']), 'is_scalar'))),
             defaultFlowLimit: (int) ($data['defaultFlowLimit'] ?? 50),
             defaultStatsOrderBy: (string) ($data['defaultStatsOrderBy'] ?? 'bytes'),
             filters: array_values(array_filter(array_map('strval', (array) ($data['filters'] ?? [])))),

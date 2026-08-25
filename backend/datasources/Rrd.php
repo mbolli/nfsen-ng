@@ -9,10 +9,18 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\HealthChecker;
 
+/**
+ * @phpstan-import-type DatasourceRecord from Datasource
+ * @phpstan-import-type GraphData from Datasource
+ */
 class Rrd implements Datasource {
     private readonly Debug $d;
     private readonly int $importYears;
+
+    /** @var list<string> RRA definitions passed to rrd_create() */
     private readonly array $layout;
+
+    /** @var list<string> */
     private array $fields = [
         'flows',
         'flows_tcp',
@@ -54,6 +62,8 @@ class Rrd implements Datasource {
 
     /**
      * Gets the timestamps of the first and last entry of this specific source.
+     *
+     * @return array{int, int}
      */
     public function date_boundaries(string $source, string $profile = ''): array {
         $rrdFile = $this->get_data_path($source, 0, $profile);
@@ -244,6 +254,8 @@ WARNING;
     /**
      * Write to an RRD file with supplied data.
      *
+     * @param DatasourceRecord $data
+     *
      * @throws \Exception
      */
     public function write(array $data): bool {
@@ -287,9 +299,14 @@ WARNING;
     }
 
     /**
-     * @param string   $type    flows/packets/traffic
-     * @param string   $display protocols/sources/ports
-     * @param null|int $maxrows optional maximum rows to return (null = 500 default, let RRDtool calculate step)
+     * @param list<string> $sources
+     * @param list<string> $protocols
+     * @param list<int>    $ports
+     * @param string       $type      flows/packets/traffic
+     * @param string       $display   protocols/sources/ports
+     * @param null|int     $maxrows   optional maximum rows to return (null = 500 default, let RRDtool calculate step)
+     *
+     * @return GraphData|string
      */
     public function get_graph_data(
         int $start,

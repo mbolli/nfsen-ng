@@ -17,16 +17,24 @@ final class Helpers {
      * An empty selection or the special "any" sentinel means "all configured
      * sources"; otherwise the user's explicit selection is honoured verbatim.
      *
-     * @param list<string> $selected the graph_sources signal value
+     * The signal is client-writable, so entries arrive as arbitrary scalars under
+     * arbitrary keys — normalize before handing them to nfdump's -M option.
+     *
+     * @param array<int|string, mixed> $selected the graph_sources signal value
      *
      * @return list<string>
      */
     public static function resolveSources(array $selected): array {
-        if ($selected === [] || \in_array('any', $selected, true)) {
+        $sources = array_values(array_filter(
+            array_map(static fn (mixed $s): string => \is_scalar($s) ? trim((string) $s) : '', $selected),
+            static fn (string $s): bool => $s !== ''
+        ));
+
+        if ($sources === [] || \in_array('any', $sources, true)) {
             return Config::$settings->sources;
         }
 
-        return $selected;
+        return $sources;
     }
 
     /**

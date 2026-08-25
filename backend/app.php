@@ -448,10 +448,7 @@ $app->page('/', function (Context $c) use ($app): void {
         // so the Flows/Statistics tabs show it without needing user interaction.
         // Subsequent changes are handled by countFilesAction triggered from the browser.
         if (!$hasFatalError && !$isUpdate) {
-            $srcs = $graphSources->array();
-            if (in_array('any', $srcs, true) || empty($srcs)) {
-                $srcs = Config::$settings->sources;
-            }
+            $srcs = Helpers::resolveSources($graphSources->array());
             $nfcapdFileCount->setValue(
                 Helpers::countNfcapdFiles($datestart->int(), $dateend->int(), $srcs, $selectedProfile->string()),
                 broadcast: false

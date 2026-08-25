@@ -93,14 +93,16 @@ class Table {
     /**
      * Generate a standard HTML table from data array.
      *
-     * @param array  $data    Array of associative arrays representing table rows
-     * @param string $tableId HTML ID for the table container
-     * @param array  $options Optional configuration:
-     *                        - 'hiddenFields' => array of fields to exclude
-     *                        - 'cssClass' => CSS classes for table element
-     *                        - 'responsive' => bool, wrap in responsive div
-     *                        - 'linkIpAddresses' => bool, convert IP addresses to links
-     *                        - 'emptyMessage' => string, message when no data
+     * @param array                $data    Array of associative arrays representing table rows
+     * @param string               $tableId HTML ID for the table container
+     * @param list<mixed>          $data    one decoded nfdump record per entry (field => value), or raw
+     *                                      output lines rendered as preformatted text
+     * @param array<string, mixed> $options Optional configuration:
+     *                                      - 'hiddenFields' => array of fields to exclude
+     *                                      - 'cssClass' => CSS classes for table element
+     *                                      - 'responsive' => bool, wrap in responsive div
+     *                                      - 'linkIpAddresses' => bool, convert IP addresses to links
+     *                                      - 'emptyMessage' => string, message when no data
      *
      * @return string HTML table
      */
@@ -125,11 +127,13 @@ class Table {
         }
 
         if (\is_string($data[0])) {
-            // If data rows are strings, return as preformatted text
+            // If data rows are strings, return as preformatted text. Only the first row
+            // is inspected, so drop anything that isn't a line rather than letting it
+            // reach implode() as an array.
             return \sprintf(
                 '<div id="%s"><pre>%s</pre></div>',
                 $tableId,
-                htmlspecialchars(implode("\n", $data))
+                htmlspecialchars(implode("\n", array_filter($data, \is_string(...))))
             );
         }
         $headers = array_filter(self::collectHeaders($data), fn ($key) => !\in_array($key, $options['hiddenFields'], true));
@@ -286,7 +290,7 @@ class Table {
      * happens not to carry (#157). A new key is inserted right behind the previous key of
      * its own row, which keeps related columns adjacent instead of appended at the end.
      *
-     * @param array<array<string, mixed>> $data
+     * @param list<mixed> $data non-array rows are skipped
      *
      * @return list<string>
      */

@@ -8,23 +8,31 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\Misc;
 
+/**
+ * @phpstan-type NfdumpConfig array{
+ *     env: array{bin: string, profiles-data: string, profile: string, sources: list<string>, sources-path?: string},
+ *     option: array<string, mixed>,
+ *     format: null|string,
+ *     filter: string,
+ * }
+ *
+ * @phpstan-import-type ProcessorResult from Processor
+ */
 class Nfdump implements Processor {
     public static ?self $_instance = null;
 
     /** PID of the currently running nfdump process, or null if idle. Safe as static in single-worker OpenSwoole. */
     public static ?int $runningPid = null;
-    private array $cfg = [
-        'env' => [],
-        'option' => [],
-        'format' => null,
-        'filter' => [],
-    ];
+
+    /** @var NfdumpConfig */
+    private array $cfg;
+
+    /** @var NfdumpConfig pristine config restored by reset() */
     private array $clean;
     private readonly Debug $d;
 
     public function __construct() {
         $this->d = Debug::getInstance();
-        $this->clean = $this->cfg;
         $this->reset();
     }
 
@@ -172,13 +180,13 @@ class Nfdump implements Processor {
         $processes = [];
         $return = '';
         $timer = microtime(true);
-        $filter = (empty($this->cfg['filter'])) ? '' : ' ' . escapeshellarg((string) $this->cfg['filter']);
+        $filter = ($this->cfg['filter'] === '') ? '' : ' ' . escapeshellarg($this->cfg['filter']);
         $command = $this->cfg['env']['bin'] . ' ' . $this->flatten($this->cfg['option']) . $filter;
         $this->d->log('Trying to execute ' . $command, LOG_DEBUG);
 
         // check for already running nfdump processes
         // use pgrep if available, fallback to ps, or skip check if neither available
-        $bin_name = basename((string) $this->cfg['env']['bin']);
+        $bin_name = basename($this->cfg['env']['bin']);
         $process_count = Misc::countProcessesByName($bin_name);
 
         if ($process_count > Config::$settings->nfdumpMaxProcesses) {
@@ -488,11 +496,16 @@ class Nfdump implements Processor {
      * Reset config.
      */
     public function reset(): void {
-        $this->clean['env'] = [
-            'bin' => Config::$settings->nfdumpBinary,
-            'profiles-data' => Config::$settings->nfdumpProfilesData,
-            'profile' => Config::$settings->nfdumpProfile,
-            'sources' => [],
+        $this->clean = [
+            'env' => [
+                'bin' => Config::$settings->nfdumpBinary,
+                'profiles-data' => Config::$settings->nfdumpProfilesData,
+                'profile' => Config::$settings->nfdumpProfile,
+                'sources' => [],
+            ],
+            'option' => [],
+            'format' => null,
+            'filter' => '',
         ];
         $this->cfg = $this->clean;
     }
@@ -703,7 +716,7 @@ class Nfdump implements Processor {
             $row = [];
             foreach ($record as $key => $value) {
                 $newKey = \is_string($key)
-                    ? preg_replace('/^(src|dst|ip|bgp)[46]_/', '$1_', $key)
+                    ? (preg_replace('/^(src|dst|ip|bgp)[46]_/', '$1_', $key) ?? $key)
                     : $key;
                 // Both family variants in one record would be a nfdump oddity; keep the filled one.
                 if (isset($row[$newKey]) && $row[$newKey] !== '') {
@@ -751,7 +764,13 @@ class Nfdump implements Processor {
         return $decoded;
     }
 
-    public function get_output_format($format): array {
+    /**
+     * Column names for one of nfdump's named output formats, or the fields
+     * parsed out of a custom `fmt:%a %b` format string.
+     *
+     * @return list<string>
+     */
+    public function get_output_format(mixed $format): array {
         // todo calculations like bps/pps? flows? concatenate sa/sp to sap?
         return match ($format) {
             'line' => ['ts', 'td', 'pr', 'sa', 'sp', 'da', 'dp', 'ipkt', 'ibyt', 'fl'],
@@ -764,6 +783,8 @@ class Nfdump implements Processor {
 
     /**
      * Concatenates key and value of supplied array.
+     *
+     * @param array<string, mixed> $array
      */
     private function flatten(array $array): string {
         $output = '';

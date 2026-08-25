@@ -156,11 +156,15 @@ abstract class Config {
 
         // find data source
         $dbClass = self::$settings->datasourceClass();
-        if (class_exists($dbClass)) {
-            self::$db = new $dbClass();
-        } else {
+        if (!class_exists($dbClass)) {
             throw new \Exception('Failed loading class ' . self::$settings->datasourceName . '. The class doesn\'t exist.');
         }
+
+        $db = new $dbClass();
+        if (!$db instanceof Datasource) {
+            throw new \Exception('Datasource class ' . $dbClass . ' doesn\'t implement ' . Datasource::class . '.');
+        }
+        self::$db = $db;
 
         // find processor
         $processorClass = self::$settings->processorClass();
@@ -168,16 +172,17 @@ abstract class Config {
             throw new \Exception('Failed loading class ' . $processorClass . '. The class doesn\'t exist.');
         }
 
-        if (!\in_array(Processor::class, class_implements($processorClass), true)) {
-            throw new \Exception('Processor class ' . $processorClass . ' doesn\'t implement ' . Processor::class . '.');
-        }
-
         if ($initProcessor === true) {
             try {
-                self::$processorClass = new $processorClass();
+                $processor = new $processorClass();
             } catch (\Exception $e) {
                 throw new \Exception('Failed initializing processor class ' . $processorClass . ': ' . $e->getMessage());
             }
+
+            if (!$processor instanceof Processor) {
+                throw new \Exception('Processor class ' . $processorClass . ' doesn\'t implement ' . Processor::class . '.');
+            }
+            self::$processorClass = $processor;
         }
     }
 

@@ -84,10 +84,9 @@ final class StatsActions {
                 $processor->setFilter($combinedFilter);
                 $result = $processor->execute();
 
-                $statsData = $result['decoded'] ?? [];
-                if (!\is_array($statsData)) {
-                    throw new \RuntimeException('Invalid data from nfdump processor');
-                }
+                // nfdump can answer with a JSON object rather than an array; Table::generate()
+                // indexes the first row positionally, so re-key to a list.
+                $statsData = array_values((array) ($result['decoded'] ?? []));
 
                 $elapsed = round(microtime(true) - $time, 3);
                 $cmd = htmlspecialchars((string) ($result['command'] ?? ''), ENT_QUOTES | ENT_HTML5);

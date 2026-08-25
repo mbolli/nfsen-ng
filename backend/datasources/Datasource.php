@@ -4,6 +4,23 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\datasources;
 
+/**
+ * @phpstan-type DatasourceRecord array{
+ *     source: string,
+ *     port: int,
+ *     profile: string,
+ *     date_iso: string,
+ *     date_timestamp: int,
+ *     fields: array<string, float|int>,
+ * }
+ * @phpstan-type GraphData array{
+ *     start: int,
+ *     end: int,
+ *     step: int,
+ *     legend: list<string>,
+ *     data: array<int, list<null|float|int>>,
+ * }
+ */
 interface Datasource {
     /**
      * Writes a new record to the datasource.
@@ -30,6 +47,8 @@ interface Datasource {
      *      'bytes_other')
      *  );.
      *
+     * @param DatasourceRecord $data
+     *
      * @return bool TRUE on success or FALSE on failure
      *
      * @throws \Exception on error
@@ -44,14 +63,15 @@ interface Datasource {
      *   * sources - $protocols must not contain more than one protocol (legend e.g. gateway_traffic_icmp, othersource_traffic_icmp)
      *   * ports.
      *
-     * @param int    $start     timestamp
-     * @param int    $end       timestamp
-     * @param array  $sources   subset of sources specified in settings
-     * @param array  $protocols UDP/TCP/ICMP/other
-     * @param string $type      flows/packets/traffic
-     * @param string $display   protocols/sources/ports
+     * @param int          $start     timestamp
+     * @param int          $end       timestamp
+     * @param list<string> $sources   subset of sources specified in settings
+     * @param list<string> $protocols UDP/TCP/ICMP/other
+     * @param list<int>    $ports     subset of ports specified in settings
+     * @param string       $type      flows/packets/traffic
+     * @param string       $display   protocols/sources/ports
      *
-     * @return array in the following format:
+     * @return GraphData|string in the following format:
      *
      * $return = array(
      *  'start' => 1490484600,      // timestamp of first value
@@ -80,13 +100,15 @@ interface Datasource {
     /**
      * Removes all existing data for every source in $sources.
      * If $sources is empty, remove all existing data.
+     *
+     * @param list<string> $sources
      */
     public function reset(array $sources, string $profile = ''): bool;
 
     /**
      * Gets the timestamps of the first and last entry in the datasource (for this specific source).
      *
-     * @return array (timestampfirst, timestamplast)
+     * @return array{int, int} (timestampfirst, timestamplast)
      */
     public function date_boundaries(string $source, string $profile = ''): array;
 

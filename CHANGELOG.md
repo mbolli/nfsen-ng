@@ -11,6 +11,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Latent crashes found by raising PHPStan from level 5 to 8. A VictoriaMetrics HTTP call that came back without a body returned `false` from a `string`-typed method, turning a blip in reachability into a `TypeError`; a datasource answering with an error string instead of a series hit `count()` on that string and took the graph action down instead of showing the message; `formatBytes()`/`formatBitrate()` indexed past the start of their unit table for sub-unit values; and a `preg_replace()` failure while normalizing nfdump's IPv4/IPv6 field names would have collapsed a whole record onto one key. Client-writable signals (`graph_sources`, `graph_protocols`, `graph_ports`) and `settings.php`'s `sources`/`ports`/`filters` are now normalized to lists of the expected scalar type at the boundary, instead of being indexed positionally on trust.
+
 - The published compose file couldn't start the container at all: `docker compose up` exited 127 with `/bin/bash: /var/www/html/nfsen-ng/deploy/docker-entrypoint.sh: No such file or directory`, restarting in a loop ([#162](https://github.com/mbolli/nfsen-ng/issues/162)). The `nfsen` service overrode the image's `ENTRYPOINT` with a source-tree path, but the production image copies only `backend/`, `frontend/`, and `composer.json` — `deploy/` isn't in it, and the entrypoint is installed at `/usr/local/bin/docker-entrypoint.sh`. The override is gone from all three compose files; each now uses the image's own entrypoint, which is the same script.
 
 ---

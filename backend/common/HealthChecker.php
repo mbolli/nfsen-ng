@@ -415,7 +415,15 @@ class HealthChecker {
                         );
                     } else {
                         $files = glob($todayDir . \DIRECTORY_SEPARATOR . 'nfcapd.*') ?: [];
-                        if ($files === []) {
+                        // filemtime() returns false for a file that vanished between the
+                        // glob and the stat (nfcapd rotating underneath us) — treat that
+                        // the same as finding no files at all rather than feeding false
+                        // into max().
+                        $mtimes = array_filter(
+                            array_map('filemtime', $files),
+                            static fn (false|int $mtime): bool => $mtime !== false,
+                        );
+                        if ($mtimes === []) {
                             $add(
                                 "capture_fresh_{$sourceIdPfx}",
                                 $freshnessLabel,
@@ -424,7 +432,6 @@ class HealthChecker {
                                 'nfcapd Paths'
                             );
                         } else {
-                            $mtimes = array_map('filemtime', $files);
                             $newestMtime = max($mtimes);
                             $age = time() - $newestMtime;
                             // nfcapd default rotation is 5 min; warn after 12 min (2.4×) to allow for slow systems

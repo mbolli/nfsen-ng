@@ -6,16 +6,20 @@ namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\UserPreferences;
+use mbolli\nfsen_ng\datasources\Datasource;
 use Mbolli\PhpVia\Context;
 
 /**
  * Graph-related helper methods and action registrations.
  */
+/**
+ * @phpstan-import-type GraphData from Datasource
+ */
 final class GraphActions {
     /**
      * Fetch graph data from the datasource, updating live/resolution/last-update signals.
      *
-     * @return array<string, mixed>
+     * @return array{}|GraphData empty when the fetch failed (the _error signal carries why)
      */
     public static function fetchGraphData(Context $c): array {
         $datestart = $c->getSignal('datestart');
@@ -79,7 +83,7 @@ final class GraphActions {
                 $ds,
                 $de,
                 $sources,
-                $graphProtocols->array(),
+                self::normalizeProtocols($graphProtocols->array()),
                 $ports,
                 $unit,
                 $display,
@@ -92,7 +96,15 @@ final class GraphActions {
             return [];
         }
 
-        $pointCount = \count($data[array_key_first($data) ?? ''] ?? $data);
+        // A datasource may answer with an error string instead of a series (RRD does).
+        // Report it like any other failure — counting it would be a TypeError.
+        if (\is_string($data)) {
+            $error->setValue('Graph error: ' . $data, broadcast: false);
+
+            return [];
+        }
+
+        $pointCount = \count($data['data']);
         $graphActualRes->setValue($pointCount, broadcast: false);
 
         // Use the actual RRD last-write time rather than wall-clock "now"
@@ -132,6 +144,27 @@ final class GraphActions {
         }
 
         return $sources;
+    }
+
+    /**
+     * Sanitize the graph_protocols signal before it reaches a datasource.
+     *
+     * Same client-writable-signal problem as normalizeSources(): entries can be any
+     * scalar under any key. An empty selection means "no protocol filter", which the
+     * datasources spell 'any' — they index $protocols[0] directly, so leaving it empty
+     * is an undefined offset rather than a wider query.
+     *
+     * @param array<int|string, mixed> $selected raw graph_protocols signal value
+     *
+     * @return list<string>
+     */
+    public static function normalizeProtocols(array $selected): array {
+        $protocols = array_values(array_filter(
+            array_map(static fn (mixed $p): string => \is_scalar($p) ? trim((string) $p) : '', $selected),
+            static fn (string $p): bool => $p !== ''
+        ));
+
+        return $protocols === [] ? ['any'] : $protocols;
     }
 
     /**

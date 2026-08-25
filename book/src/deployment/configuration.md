@@ -114,18 +114,50 @@ limit.
 |----------|---------|-------------|
 | `NFSEN_IPINFO_URL` | `https://ipapi.co/{ip}/json/` | Geolocation endpoint. `{ip}` is replaced with the URL-encoded address; a template without it gets the address appended. |
 
-Examples:
+The quickest fix if you're only occasionally rate-limited is to stay on ipapi.co
+and add your own key:
 
 ```bash
-NFSEN_IPINFO_URL=https://ipapi.co/{ip}/json/?key=YOUR_KEY   # same provider, authenticated
-NFSEN_IPINFO_URL=https://ipinfo.io/{ip}/json?token=YOUR_TOKEN
-NFSEN_IPINFO_URL=http://ip-api.com/json/{ip}
+NFSEN_IPINFO_URL=https://ipapi.co/{ip}/json/?key=YOUR_KEY
 ```
 
-The provider decides which fields the modal shows — nfsen-ng renders whatever
-JSON comes back. Only the country flag needs a known key: it uses
-`country_code`, falling back to a two-letter `country` or `countryCode`, and is
-simply omitted if none is present.
+#### Services that work out of the box
+
+Each of these was checked against nfsen-ng and renders a populated table with a
+country flag. All but ipinfo.io work without an account.
+
+| Service | `NFSEN_IPINFO_URL` | Free tier (as advertised) |
+|---------|--------------------|---------------------------|
+| [ipapi.co](https://ipapi.co/) _(default)_ | `https://ipapi.co/{ip}/json/` | 1 000/day, 30 000/month, no key |
+| [ip-api.com](https://ip-api.com/) | `http://ip-api.com/json/{ip}` | 45/minute, no key — HTTPS is paid-only, hence the `http://` |
+| [ipwho.is](https://ipwho.is/) | `https://ipwho.is/{ip}` | 1 000/day, no key |
+| [freeipapi.com](https://freeipapi.com/) | `https://freeipapi.com/api/json/{ip}` | 60/minute, no key |
+| [ipinfo.io](https://ipinfo.io/) | `https://ipinfo.io/{ip}/json?token=YOUR_TOKEN` | free token; their free *Lite* plan is unlimited but country-level only |
+
+Quotas change without notice — treat the last column as a hint about which
+service to reach for, not a guarantee. Anything else that answers with a JSON
+object works too, including a self-hosted MaxMind GeoLite2 service on your own
+network, which sidesteps rate limits and third-party lookups entirely:
+
+```bash
+NFSEN_IPINFO_URL=http://geoip.internal.example/{ip}
+```
+
+#### What the modal does with the response
+
+The provider decides which fields are shown — nfsen-ng renders whatever JSON
+comes back, one row per key, so a service returning more detail simply shows
+more rows. Only two things are interpreted:
+
+- **The country flag** uses `country_code`, falling back to a two-letter
+  `country` or `countryCode`. It is omitted if none of them is present.
+- **Errors** are shown as a message instead of an empty table. Recognised
+  conventions are a truthy `error` (flat or nested `{"error": {"title",
+  "message"}}`), `success: false`, `status: "fail"`, and any 4xx/5xx status.
+  This is what surfaces `RateLimited` when a quota runs out, rather than
+  leaving you guessing.
+
+Nested values (ipwho.is's `connection`, for instance) are rendered as JSON.
 
 ### Alert email
 

@@ -133,9 +133,10 @@ final class IpLookup {
      *   two-letter code as `country` (ipinfo.io) or `countryCode` (ip-api.com)
      *   instead — note `country` is the full name at the latter, hence the
      *   two-letter shape check.
-     * - The error branch expects `error` truthy plus a human `reason`; ipinfo.io
-     *   nests `{"error": {"title": …, "message": …}}`, and some providers signal
-     *   failure with the HTTP status alone.
+     * - The error branch expects `error` truthy plus a human `reason`. ipinfo.io
+     *   nests `{"error": {"title": …, "message": …}}`; ipwho.is (`success: false`)
+     *   and ip-api.com (`status: "fail"`) report failure in a 200 response body;
+     *   others signal it with the HTTP status alone.
      *
      * @param array<string, mixed> $data
      * @param list<string>         $responseHeaders
@@ -162,6 +163,13 @@ final class IpLookup {
             );
             $data['reason'] ??= $parts === [] ? 'IP lookup failed' : implode(' — ', $parts);
             $data['error'] = true;
+        }
+
+        if (empty($data['error'])
+            && (($data['success'] ?? null) === false || ($data['status'] ?? null) === 'fail')) {
+            $message = $data['message'] ?? null;
+            $data['error'] = true;
+            $data['reason'] ??= \is_string($message) && $message !== '' ? $message : 'IP lookup failed';
         }
 
         $status = self::httpStatus($responseHeaders);

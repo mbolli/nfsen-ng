@@ -56,7 +56,7 @@
                     </h3>
                     {% set ignored = ['country_code', 'country_code_iso3', 'country_tld', 'country_area',
                                       'country_population', 'continent_code', 'in_eu', 'network', 'version',
-                                      'error', 'reason', 'readme'] %}
+                                      'error', 'reason', 'readme', 'success', 'status', 'message'] %}
                     <table class="table table-striped table-hover table-sm">
                         {% for key, value in geoData %}
                             {% if key not in ignored %}

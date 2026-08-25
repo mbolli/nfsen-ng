@@ -94,6 +94,28 @@ describe('IpLookup geo response normalization', function (): void {
         ;
     });
 
+    test('flags a 200-status failure body (ipwho.is success:false)', function (): void {
+        $out = normalizeGeo(['ip' => '999.999.999.999', 'success' => false, 'message' => 'Invalid IP address']);
+
+        expect($out['error'])->toBeTrue()
+            ->and($out['reason'])->toBe('Invalid IP address')
+        ;
+    });
+
+    test('flags a 200-status failure body (ip-api.com status:fail)', function (): void {
+        $out = normalizeGeo(['status' => 'fail', 'message' => 'invalid query']);
+
+        expect($out['error'])->toBeTrue()
+            ->and($out['reason'])->toBe('invalid query')
+        ;
+    });
+
+    test('leaves a successful ipwho.is/ip-api payload alone', function (): void {
+        $out = normalizeGeo(['success' => true, 'status' => 'success', 'country_code' => 'AU']);
+
+        expect($out)->not->toHaveKey('error');
+    });
+
     test('reports an HTTP error status when the body carries no error of its own', function (): void {
         $out = normalizeGeo(['ip' => '1.1.1.1'], ['HTTP/1.1 429 Too Many Requests']);
 

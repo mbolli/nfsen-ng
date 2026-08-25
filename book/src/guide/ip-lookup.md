@@ -15,9 +15,17 @@ on that address without leaving the page or opening a new tab.
   unfamiliar destination.
 - For a **private** address (RFC 1918, e.g. `192.168.x.x`, `10.x.x.x`) —
   geolocation obviously doesn't apply, so instead you get whatever your
-  organization's [Netbox](https://netboxlabs.com/) IPAM has on record for
-  it, if your administrator has connected one (see
-  [Preferences](preferences.md) for how that's configured).
+  organization's [NetBox](https://netboxlabs.com/) IPAM has on record for
+  it, if your administrator has connected one: description, tenant, VRF,
+  role, status (see
+  [Configuration](../deployment/configuration.md#netbox-ip-lookup) for how
+  that's set up).
+
+The two answer different questions — *who owns this address out on the
+internet?* versus *which of our machines is this?* — and you get exactly
+one, decided by the address itself. That split is also a privacy boundary:
+an internal address is never sent to the external geolocation service, so
+your addressing scheme stays on your network.
 
 ## A word of caution
 

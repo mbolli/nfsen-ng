@@ -105,7 +105,10 @@ Both are also settable as `general.netbox_url` / `general.netbox_token` in
 
 ### Geolocation lookup
 
-Public IPs are enriched instead by a geolocation API. The default is
+Public IPs are enriched instead by a geolocation API — the counterpart to the
+NetBox lookup above, and the only one of the two that talks to a third party.
+Private and reserved ranges never reach it, so internal addressing stays on
+your network. The default is
 [ipapi.co](https://ipapi.co/), which rate-limits anonymous callers — point this
 at another provider, or at the same one with an API token, when you hit that
 limit.

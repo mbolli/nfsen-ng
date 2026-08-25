@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use mbolli\nfsen_ng\common\EnvRegistry;
+use mbolli\nfsen_ng\common\IpLookup;
 
 // Every test starts from a clean environment; the dev container sets several
 // NFSEN_* vars that would otherwise bleed into these assertions.
@@ -22,6 +23,7 @@ describe('EnvRegistry::value()', function (): void {
             ->and(EnvRegistry::value('NFSEN_SKIP_DAEMON'))->toBeFalse()
             ->and(EnvRegistry::value('NFSEN_SOURCES'))->toBe([])
             ->and(EnvRegistry::value('NFSEN_VM_HOST'))->toBe('victoriametrics')
+            ->and(EnvRegistry::value('NFSEN_IPINFO_URL'))->toBe(IpLookup::DEFAULT_GEO_URL)
         ;
     });
 

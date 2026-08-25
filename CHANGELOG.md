@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `NFSEN_IPINFO_URL` makes the geolocation endpoint behind the IP-info modal configurable ([#163](https://github.com/mbolli/nfsen-ng/issues/163), reported with a proof-of-concept patch by [@gmt4](https://github.com/gmt4)). The endpoint was hardcoded to ipapi.co, which rate-limits anonymous callers — `{"error": true, "reason": "RateLimited"}` — leaving the modal's geo section silently empty. The default is unchanged (`https://ipapi.co/{ip}/json/`); set the variable to switch provider or add an API token, with `{ip}` substituted for the address so a path suffix or query string can be expressed. The lookup moved next to the NetBox one in `IpLookup::geo()`, reads error bodies instead of discarding them (so the rate-limit reason now reaches the modal), and normalizes provider differences — a two-letter `country` fills in for the flag's `country_code`, and a nested `{"error": {…}}` is flattened — so a non-ipapi.co provider renders correctly.
+
 ### Fixed
 
 - The published compose file couldn't start the container at all: `docker compose up` exited 127 with `/bin/bash: /var/www/html/nfsen-ng/deploy/docker-entrypoint.sh: No such file or directory`, restarting in a loop ([#162](https://github.com/mbolli/nfsen-ng/issues/162)). The `nfsen` service overrode the image's `ENTRYPOINT` with a source-tree path, but the production image copies only `backend/`, `frontend/`, and `composer.json` — `deploy/` isn't in it, and the entrypoint is installed at `/usr/local/bin/docker-entrypoint.sh`. The override is gone from all three compose files; each now uses the image's own entrypoint, which is the same script.

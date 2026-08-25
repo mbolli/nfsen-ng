@@ -103,6 +103,30 @@ the geo lookup.
 Both are also settable as `general.netbox_url` / `general.netbox_token` in
 `settings.php`. The integration is disabled while either value is empty.
 
+### Geolocation lookup
+
+Public IPs are enriched instead by a geolocation API. The default is
+[ipapi.co](https://ipapi.co/), which rate-limits anonymous callers — point this
+at another provider, or at the same one with an API token, when you hit that
+limit.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NFSEN_IPINFO_URL` | `https://ipapi.co/{ip}/json/` | Geolocation endpoint. `{ip}` is replaced with the URL-encoded address; a template without it gets the address appended. |
+
+Examples:
+
+```bash
+NFSEN_IPINFO_URL=https://ipapi.co/{ip}/json/?key=YOUR_KEY   # same provider, authenticated
+NFSEN_IPINFO_URL=https://ipinfo.io/{ip}/json?token=YOUR_TOKEN
+NFSEN_IPINFO_URL=http://ip-api.com/json/{ip}
+```
+
+The provider decides which fields the modal shows — nfsen-ng renders whatever
+JSON comes back. Only the country flag needs a known key: it uses
+`country_code`, falling back to a two-letter `country` or `countryCode`, and is
+simply omitted if none is present.
+
 ### Alert email
 
 | Variable | Default | Description |

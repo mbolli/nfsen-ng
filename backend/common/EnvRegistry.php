@@ -60,6 +60,7 @@ final class EnvRegistry {
             new EnvVar('NFSEN_NETBOX_URL', 'integrations', 'string', '', 'NetBox base URL for IP enrichment.', format: 'url'),
             new EnvVar('NFSEN_NETBOX_TOKEN', 'integrations', 'string', '', 'NetBox API token.', secret: true),
             new EnvVar('NFSEN_ALERT_EMAIL_FROM', 'integrations', 'string', '', 'From address for alert emails.', format: 'email'),
+            new EnvVar('NFSEN_IPINFO_URL', 'integrations', 'string', IpLookup::DEFAULT_GEO_URL, 'Geolocation API endpoint for public IPs. {ip} is replaced with the address.', format: 'url'),
 
             // ── Import daemon ─────────────────────────────────────────────────
             new EnvVar('NFSEN_SKIP_DAEMON', 'daemon', 'bool', false, 'Disable the embedded import daemon.'),

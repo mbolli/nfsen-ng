@@ -151,7 +151,9 @@ docker compose -f deploy/docker-compose.yml ps              # container status
 
 The Docker image is the reference install; the steps below reproduce it by hand.
 nfsen-ng needs **PHP 8.4** with the `openswoole`, `inotify`, `brotli`, and `rrd`
-extensions, plus an `nfdump` binary.
+extensions, plus an `nfdump` binary. On a rolling or recent distribution, also
+read [libcurl 8.20 and OpenSwoole](#libcurl-820-and-openswoole) below — the
+Docker image pins its libcurl, a bare-metal host does not.
 
 ### nfcapd setup
 
@@ -304,6 +306,41 @@ automatically: open the app, go to the **Settings → Import** panel, and click
 and builds the database. Once data exists, each server start does an incremental
 gap-fill for the files written while it was offline. See
 [Health & Admin](../features/health-admin.md) for the full panel.
+
+## libcurl 8.20 and OpenSwoole
+
+OpenSwoole's native-curl hook segfaults the worker as soon as a curl request
+needs a name lookup, with any libcurl from **8.20.0** onwards. libcurl 8.20.0
+changed how its threaded resolver drives `curl_multi_socket_action`
+([curl#21558](https://github.com/curl/curl/issues/21558)) and OpenSwoole's
+reactor bridge doesn't cope, so the worker dies on a hostname whether or not
+it resolves — a literal IP is fine. Bisected against OpenSwoole 26.2.0:
+8.19.0 and earlier are unaffected, 8.20.0 and later are not.
+
+**nfsen-ng handles this itself.** It reads the running libcurl at startup and
+switches that one hook off from 8.20.0 up, keeping every other hook, so
+nothing crashes and stream-based IO stays non-blocking. The cost is that curl
+calls then block the worker for the duration of the request instead of
+yielding to other coroutines. Two things in nfsen-ng use curl:
+
+| | Affected when the hook is off |
+|---|---|
+| VictoriaMetrics queries and writes | every graph render and every import write on a VM install |
+| Alert webhook delivery | each webhook, on any datasource |
+
+An RRD install with no webhooks never calls curl at all and is unaffected
+either way.
+
+To see which libcurl you are on:
+
+```bash
+php -r 'echo curl_version()["version"], PHP_EOL;'          # bare-metal
+docker exec nfsen-ng php -r 'echo curl_version()["version"], PHP_EOL;'
+```
+
+If you are on 8.20.0 or newer and want the non-blocking behaviour back, the
+only real options today are to run an older libcurl or to wait for an
+OpenSwoole fix — the hook cannot be made safe from PHP.
 
 ## Troubleshooting
 

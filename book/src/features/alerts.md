@@ -15,7 +15,7 @@ import (`Settings → Alerts`). Managed by `AlertManager`
 | Threshold type | **Absolute** value, or **percent of a rolling average** window (10m–24h) |
 | Cooldown | 5-minute slots to suppress re-firing after a fire |
 | Traffic filter | Optional raw nfdump filter expression |
-| Notifications | Email and/or webhook (HTTP POST, JSON payload) |
+| Notifications | Email and/or webhook (HTTP POST, JSON payload — see [libcurl 8.20 and OpenSwoole](../deployment/installation.md#libcurl-820-and-openswoole)) |
 
 Percent-of-average rules return an unreachable threshold
 (`PHP_FLOAT_MAX`) while the rolling average is still zero — a genuine

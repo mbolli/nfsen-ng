@@ -17,6 +17,12 @@ the setup guide.
 | HTTP query API | no | yes |
 | Setup | simple | moderate |
 
+Because every query and write is an HTTP call, a VictoriaMetrics install is the
+one most affected by the OpenSwoole/libcurl issue described in
+[libcurl 8.20 and OpenSwoole](installation.md#libcurl-820-and-openswoole) — on
+libcurl 8.20.0 or newer those calls block the worker rather than yielding. RRD
+makes no HTTP calls at all.
+
 ## Setup
 
 ### 1. Start VictoriaMetrics

@@ -112,14 +112,24 @@ limit.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NFSEN_IPINFO_URL` | `https://ipapi.co/{ip}/json/` | Geolocation endpoint. `{ip}` is replaced with the URL-encoded address; a template without it gets the address appended. |
+| `NFSEN_IPINFO_URL` | `https://ipapi.co/{ip}/json/` | Geolocation endpoint. `{ip}` is replaced with the URL-encoded address (a template without it gets the address appended), `{token}` with `NFSEN_IPINFO_TOKEN`. |
+| `NFSEN_IPINFO_TOKEN` | _(empty)_ | API key for that service. Only sent where the URL puts `{token}`. |
 
 The quickest fix if you're only occasionally rate-limited is to stay on ipapi.co
-and add your own key:
+and register for a key:
 
 ```bash
-NFSEN_IPINFO_URL=https://ipapi.co/{ip}/json/?key=YOUR_KEY
+NFSEN_IPINFO_URL=https://ipapi.co/{ip}/json/?key={token}
+NFSEN_IPINFO_TOKEN=your-key-here
 ```
+
+Every service spells its key parameter differently — `?key=`, `?token=`,
+`?apiKey=` — so the URL owns the spelling and the key stays in its own variable,
+where it is masked on the Health page instead of sitting in a URL that gets
+echoed back at you. Putting the key straight into `NFSEN_IPINFO_URL` also works;
+it just forfeits that masking. The Health page flags the two ways the pair can
+be set up wrong: a `{token}` placeholder with no key to fill it, and a key with
+no placeholder to land in.
 
 #### Services that work out of the box
 
@@ -132,7 +142,7 @@ country flag. All but ipinfo.io work without an account.
 | [ip-api.com](https://ip-api.com/) | `http://ip-api.com/json/{ip}` | 45/minute, no key — HTTPS is paid-only, hence the `http://` |
 | [ipwho.is](https://ipwho.is/) | `https://ipwho.is/{ip}` | 1 000/day, no key |
 | [freeipapi.com](https://freeipapi.com/) | `https://freeipapi.com/api/json/{ip}` | 60/minute, no key |
-| [ipinfo.io](https://ipinfo.io/) | `https://ipinfo.io/{ip}/json?token=YOUR_TOKEN` | free token; their free *Lite* plan is unlimited but country-level only |
+| [ipinfo.io](https://ipinfo.io/) | `https://ipinfo.io/{ip}/json?token={token}` | free token; their free *Lite* plan is unlimited but country-level only |
 
 Quotas change without notice — treat the last column as a hint about which
 service to reach for, not a guarantee. Anything else that answers with a JSON

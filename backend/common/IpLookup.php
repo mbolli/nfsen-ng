@@ -32,19 +32,25 @@ final class IpLookup {
      *
      * `{ip}` is substituted with the URL-encoded address; a template without the
      * placeholder gets the address appended, so a bare base URL such as
-     * `https://ipinfo.io/` also works. Kept separate from {@see geo()} so the
-     * substitution is testable without a network call.
+     * `https://ipinfo.io/` also works. `{token}` is substituted with
+     * NFSEN_IPINFO_TOKEN, which keeps the credential out of the URL — every
+     * provider spells its key parameter differently (`?key=`, `?token=`,
+     * `?apiKey=`), so the template owns the spelling and the secret stays in its
+     * own masked variable. Kept separate from {@see geo()} so the substitution
+     * is testable without a network call.
      */
     public static function geoUrl(string $ip): string {
         $template = (string) EnvRegistry::value('NFSEN_IPINFO_URL');
         if ($template === '') {
             $template = self::DEFAULT_GEO_URL;
         }
-        $encoded = rawurlencode($ip);
 
-        return str_contains($template, '{ip}')
+        $encoded = rawurlencode($ip);
+        $url = str_contains($template, '{ip}')
             ? str_replace('{ip}', $encoded, $template)
             : $template . $encoded;
+
+        return str_replace('{token}', rawurlencode((string) EnvRegistry::value('NFSEN_IPINFO_TOKEN')), $url);
     }
 
     /**

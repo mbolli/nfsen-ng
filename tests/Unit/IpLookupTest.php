@@ -6,6 +6,7 @@ use mbolli\nfsen_ng\common\IpLookup;
 
 beforeEach(function (): void {
     putenv('NFSEN_IPINFO_URL');
+    putenv('NFSEN_IPINFO_TOKEN');
 });
 
 /**
@@ -44,6 +45,26 @@ describe('IpLookup::geoUrl()', function (): void {
 
     test('url-encodes the address', function (): void {
         expect(IpLookup::geoUrl('2001:db8::1'))->toBe('https://ipapi.co/2001%3Adb8%3A%3A1/json/');
+    });
+
+    test('substitutes {token} with the configured key', function (): void {
+        putenv('NFSEN_IPINFO_URL=https://ipapi.co/{ip}/json/?key={token}');
+        putenv('NFSEN_IPINFO_TOKEN=s3cr3t');
+
+        expect(IpLookup::geoUrl('1.1.1.1'))->toBe('https://ipapi.co/1.1.1.1/json/?key=s3cr3t');
+    });
+
+    test('url-encodes the token', function (): void {
+        putenv('NFSEN_IPINFO_URL=https://example.test/{ip}?key={token}');
+        putenv('NFSEN_IPINFO_TOKEN=a b&c');
+
+        expect(IpLookup::geoUrl('1.1.1.1'))->toBe('https://example.test/1.1.1.1?key=a%20b%26c');
+    });
+
+    test('leaves the URL alone when no token is configured', function (): void {
+        putenv('NFSEN_IPINFO_TOKEN=s3cr3t');
+
+        expect(IpLookup::geoUrl('1.1.1.1'))->toBe('https://ipapi.co/1.1.1.1/json/');
     });
 
     test('falls back to the default when the variable is set empty', function (): void {

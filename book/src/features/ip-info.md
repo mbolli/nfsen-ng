@@ -12,8 +12,9 @@ Clicking an IP address in the Flows or Statistics tables (rendered as
   [ipapi.co](https://ipapi.co/) by default (city, region, country,
   coordinates, timezone, ASN, org, currency — whatever it returns), with a
   5-second timeout so a slow/unreachable external API can't hang the modal.
-  The endpoint is configurable via `NFSEN_IPINFO_URL`, since ipapi.co
-  rate-limits anonymous callers — see
+  The endpoint is configurable via `NFSEN_IPINFO_URL` (plus
+  `NFSEN_IPINFO_TOKEN` for an API key), since ipapi.co rate-limits
+  anonymous callers — see
   [Configuration](../deployment/configuration.md#geolocation-lookup).
   A rate-limit or other error reply is shown as a message in the modal
   rather than an empty table.

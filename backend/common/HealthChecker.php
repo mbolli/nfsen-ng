@@ -501,6 +501,30 @@ class HealthChecker {
             }
         }
 
+        // The geolocation URL and its API key are only useful together: a {token}
+        // placeholder with nothing to put in it sends an empty key, and a key with
+        // no placeholder to land in is never sent at all. Both fail as a plain
+        // "lookup didn't work", so name them here instead.
+        $geoUrl = (string) EnvRegistry::value('NFSEN_IPINFO_URL');
+        $geoToken = (string) EnvRegistry::value('NFSEN_IPINFO_TOKEN');
+        if (str_contains($geoUrl, '{token}') && $geoToken === '') {
+            $add(
+                'env_ipinfo_token_missing',
+                'NFSEN_IPINFO_TOKEN',
+                'warning',
+                'NFSEN_IPINFO_URL contains {token} but NFSEN_IPINFO_TOKEN is empty — the lookup sends an empty key',
+                'Configuration'
+            );
+        } elseif ($geoToken !== '' && !str_contains($geoUrl, '{token}')) {
+            $add(
+                'env_ipinfo_token_unused',
+                'NFSEN_IPINFO_TOKEN',
+                'warning',
+                'NFSEN_IPINFO_TOKEN is set but NFSEN_IPINFO_URL has no {token} placeholder — the key is never sent',
+                'Configuration'
+            );
+        }
+
         // Log level is the one field that both an env var (NFSEN_LOG_LEVEL) and a
         // saved preference (preferences.json → logPriority) control. The preference
         // is overlaid last and wins, so flag when it silently overrides the env var.

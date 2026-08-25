@@ -29,19 +29,8 @@ final class UtilityActions {
 
             $isPrivate = IpLookup::isPrivate($ip);
 
-            $netboxData = null;
-            if ($isPrivate) {
-                $netboxData = IpLookup::netbox($ip);
-            }
-
-            $geoData = [];
-            if (!$isPrivate) {
-                $ctx = stream_context_create(['http' => ['timeout' => 5, 'user_agent' => 'nfsen-ng']]);
-                $json = @file_get_contents('https://ipapi.co/' . rawurlencode($ip) . '/json/', false, $ctx);
-                if ($json !== false) {
-                    $geoData = json_decode($json, true) ?? [];
-                }
-            }
+            $netboxData = $isPrivate ? IpLookup::netbox($ip) : null;
+            $geoData = $isPrivate ? [] : IpLookup::geo($ip);
 
             $hostname = @gethostbyaddr($ip);
             if ($hostname === $ip || $hostname === false) {

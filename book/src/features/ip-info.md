@@ -9,9 +9,15 @@ Clicking an IP address in the Flows or Statistics tables (rendered as
   and then to a "could not be resolved" label rather than showing the raw IP
   back.
 - **Geolocation**, for public IPs only — a live lookup against
-  [ipapi.co](https://ipapi.co/) (city, region, country, coordinates,
-  timezone, ASN, org, currency — whatever it returns), with a 5-second
-  timeout so a slow/unreachable external API can't hang the modal.
+  [ipapi.co](https://ipapi.co/) by default (city, region, country,
+  coordinates, timezone, ASN, org, currency — whatever it returns), with a
+  5-second timeout so a slow/unreachable external API can't hang the modal.
+  The endpoint is configurable via `NFSEN_IPINFO_URL` (plus
+  `NFSEN_IPINFO_TOKEN` for an API key), since ipapi.co rate-limits
+  anonymous callers — see
+  [Configuration](../deployment/configuration.md#geolocation-lookup).
+  A rate-limit or other error reply is shown as a message in the modal
+  rather than an empty table.
 - **Netbox data**, for private IPs only, if `NFSEN_NETBOX_URL`/
   `NFSEN_NETBOX_TOKEN` are configured — whatever IPAM record Netbox has for
   that address (`IpLookup::netbox()`).

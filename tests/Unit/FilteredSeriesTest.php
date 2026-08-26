@@ -120,13 +120,16 @@ describe('FilteredSeries::build', function (): void {
         removeTree($root);
     });
 
-    test('uses a bare filename when a bin holds exactly one file', function () use ($base): void {
+    // nfdump reads a single-path -R as a prefix match, so a one-file bin uses -r instead.
+    test('uses -r, not -R, when a bin holds exactly one file', function () use ($base): void {
         $root = withFakeNfdump(['gateway'], [$base]);
         FakeProcessor::$defaultResponse = [];
 
         FilteredSeries::build($base, $base + 299, ['gateway'], '');
 
-        expect(FakeProcessor::callOptions()['-R'])->toBe('2024/01/01/nfcapd.202401010000');
+        expect(FakeProcessor::callOptions()['-r'])->toBe('2024/01/01/nfcapd.202401010000')
+            ->and(FakeProcessor::callOptions())->not->toHaveKey('-R')
+        ;
 
         removeTree($root);
     });

@@ -91,7 +91,7 @@ final class StatsActions {
 
                 // nfdump runs in a coroutine so the action can return immediately and the
                 // button can show real progress instead of an indeterminate spinner.
-                QueryRunner::run($c, $totalBytes, 'Starting nfdump…', static function () use (
+                QueryRunner::run($c, 'stats', $totalBytes, 'Starting nfdump…', static function () use (
                     $processor,
                     $ipInfoAction,
                     $time,

@@ -198,6 +198,10 @@ $app->page('/', function (Context $c) use ($app): void {
     $queryStatus = $c->signal('', 'query_status');
     $queryEta = $c->signal('', 'query_eta');
     $queryExact = $c->signal(true, 'query_exact');
+    // Which panel the running query belongs to ('graph'|'flows'|'stats'). The Investigate
+    // view shows the graph and flows panels at once, so without this each would render the
+    // other's progress on its own button.
+    $queryKind = $c->signal('', 'query_kind');
 
     // Flow signals
     $flowFilter = $c->signal('', 'flows_filter', clientWritable: true);

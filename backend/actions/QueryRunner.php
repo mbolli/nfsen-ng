@@ -32,18 +32,20 @@ final class QueryRunner {
      *                             which degrades to an indeterminate indicator
      * @param \Closure $work       performs the query and writes its own result/notifications
      */
-    public static function run(Context $c, int $totalBytes, string $startStatus, \Closure $work): void {
+    public static function run(Context $c, string $kind, int $totalBytes, string $startStatus, \Closure $work): void {
         $running = $c->getSignal('query_running');
         $permille = $c->getSignal('query_permille');
         $status = $c->getSignal('query_status');
         $eta = $c->getSignal('query_eta');
         $exact = $c->getSignal('query_exact');
+        $kindSignal = $c->getSignal('query_kind');
         \assert(
             $running !== null
             && $permille !== null
             && $status !== null
             && $eta !== null
             && $exact !== null
+            && $kindSignal !== null
         );
 
         // One query per tab at a time: Nfdump::$runningPid is a single static, so a second
@@ -55,6 +57,7 @@ final class QueryRunner {
         $contextId = $c->getId();
         QueryCancel::clear($contextId);
 
+        $kindSignal->setValue($kind, broadcast: false);
         $running->setValue(true, broadcast: false);
         $permille->setValue(0, broadcast: false);
         $eta->setValue('', broadcast: false);

@@ -24,7 +24,16 @@ final class FilteredGraphCache {
     /** Entries are evicted oldest-first past this many. */
     public const MAX_ENTRIES = 10;
 
-    /** Seconds an entry stays usable. Short, because a live window keeps moving. */
+    /**
+     * Seconds an entry stays usable *since it was last read*, not since it was built.
+     *
+     * Expiring on build time would empty a graph the user is still looking at: the page
+     * re-renders on every rrd:live broadcast (roughly every import), so a tab left open
+     * would drop back to "press Apply" ten minutes after the build with nothing having
+     * changed. Touch-on-read makes this "discard if nobody has looked at it" instead,
+     * which is safe here because the window is part of the key — in filtered mode it no
+     * longer auto-advances, so a given key's data cannot go stale, only unwanted.
+     */
     public const TTL = 600;
 
     /** @var array<string, array{at: int, data: GraphData}> */
@@ -68,6 +77,11 @@ final class FilteredGraphCache {
             return null;
         }
 
+        // Touch: refresh recency so an actively displayed series survives, and re-insert
+        // at the end so eviction order tracks use rather than write time.
+        unset(self::$entries[$key]);
+        self::$entries[$key] = ['at' => $now, 'data' => $entry['data']];
+
         return $entry['data'];
     }
 
@@ -75,7 +89,7 @@ final class FilteredGraphCache {
      * @param GraphData $data
      */
     public static function put(string $key, array $data, ?int $now = null): void {
-        // Re-insert at the end so eviction order tracks recency of write.
+        // Re-insert at the end so eviction order tracks recency.
         unset(self::$entries[$key]);
         self::$entries[$key] = ['at' => $now ?? time(), 'data' => $data];
 

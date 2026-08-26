@@ -64,12 +64,42 @@ describe('FilteredGraphCache storage', function (): void {
         ;
     });
 
-    test('expires an entry past the TTL', function (): void {
+    // Expiry is measured from the last read, not the build: a tab left open re-renders on
+    // every import, and the graph must not empty itself under a user who is still looking.
+    test('reading an entry keeps it alive past the build-time TTL', function (): void {
         FilteredGraphCache::put('k', series(), now: 1000);
 
-        expect(FilteredGraphCache::get('k', 1000 + FilteredGraphCache::TTL))->not->toBeNull()
-            ->and(FilteredGraphCache::get('k', 1000 + FilteredGraphCache::TTL + 1))->toBeNull()
+        // Read just inside the window, repeatedly, well past 1000 + TTL.
+        for ($t = 1000; $t < 1000 + FilteredGraphCache::TTL * 4; $t += FilteredGraphCache::TTL - 10) {
+            expect(FilteredGraphCache::get('k', $t))->not->toBeNull();
+        }
+    });
+
+    test('a read refreshes the eviction position too', function (): void {
+        FilteredGraphCache::put('old', series(), now: 1000);
+        for ($i = 0; $i < FilteredGraphCache::MAX_ENTRIES - 1; ++$i) {
+            FilteredGraphCache::put('f' . $i, series(), now: 1000);
+        }
+        FilteredGraphCache::get('old', 1000);          // touch the eviction candidate
+        FilteredGraphCache::put('overflow', series(), now: 1000);
+
+        expect(FilteredGraphCache::get('old', 1000))->not->toBeNull()
+            ->and(FilteredGraphCache::get('f0', 1000))->toBeNull()
         ;
+    });
+
+    // Separate tests, because a read touches the entry — asserting both ends of the
+    // boundary in one test would have the first read keep the entry alive for the second.
+    test('is still readable at exactly the TTL boundary', function (): void {
+        FilteredGraphCache::put('k', series(), now: 1000);
+
+        expect(FilteredGraphCache::get('k', 1000 + FilteredGraphCache::TTL))->not->toBeNull();
+    });
+
+    test('expires an entry nobody has read within the TTL', function (): void {
+        FilteredGraphCache::put('k', series(), now: 1000);
+
+        expect(FilteredGraphCache::get('k', 1000 + FilteredGraphCache::TTL + 1))->toBeNull();
     });
 
     test('drops the expired entry rather than leaking it', function (): void {

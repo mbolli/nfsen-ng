@@ -199,7 +199,18 @@ final class FilteredSeries {
         $nfdump = new Config::$processorClass();
         $nfdump->setProfile($profile);
         $nfdump->setOption('-M', implode(':', $group));
-        $nfdump->setOption('-R', $first === $last ? $first : $first . ':' . $last);
+
+        // -r for one file, -R only for a real range. nfdump reads a single-path -R as a
+        // *prefix* ("read all files beginning with file"), which happens to select exactly
+        // one file only because every nfcapd name is the same length — a site whose captures
+        // carry a suffix would silently pull extra files into the bin. -r is the unambiguous
+        // form for one file, and is what the import path already uses.
+        if ($first === $last) {
+            $nfdump->setOption('-r', $first);
+        } else {
+            $nfdump->setOption('-R', $first . ':' . $last);
+        }
+
         $nfdump->setOption('-s', 'proto');
         $nfdump->setOption('-n', 0);
         $nfdump->setOption('-o', 'csv');

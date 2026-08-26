@@ -373,6 +373,7 @@ final class GraphActions {
             $queryStatus = $c->getSignal('query_status');
             $queryEta = $c->getSignal('query_eta');
             $queryExact = $c->getSignal('query_exact');
+            $queryKind = $c->getSignal('query_kind');
             $graphMode = $c->getSignal('graph_mode');
             $error = $c->getSignal('_error');
             \assert(
@@ -381,6 +382,7 @@ final class GraphActions {
                 && $queryStatus !== null
                 && $queryEta !== null
                 && $queryExact !== null
+                && $queryKind !== null
                 && $graphMode !== null
                 && $error !== null
             );
@@ -412,6 +414,7 @@ final class GraphActions {
             $contextId = $c->getId();
             QueryCancel::clear($contextId);
 
+            $queryKind->setValue('graph', broadcast: false);
             $queryRunning->setValue(true, broadcast: false);
             $queryPermille->setValue(0, broadcast: false);
             $queryEta->setValue('', broadcast: false);

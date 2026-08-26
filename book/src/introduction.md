@@ -18,7 +18,7 @@ already writes.
 ## The shape of the app
 
 nfsen-ng is a single-page application: one route (`/`) serves the whole UI,
-and every "page" the nav bar shows — Graphs, Flows, Statistics, Sankey,
+and every "page" the nav bar shows — Graphs, Investigate, Flows, Statistics, Sankey,
 Settings — is a client-local view switch, not a server round-trip. The
 server side is PHP 8.4 running on [OpenSwoole](https://openswoole.com/)
 coroutines via a small in-house framework ([php-via](https://github.com/mbolli/php-via)),

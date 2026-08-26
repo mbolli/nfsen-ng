@@ -9,8 +9,10 @@ chart for whatever's currently being captured.
 
 Across the top: a home/reload icon, a dark-mode toggle (moon/sun), a
 reconnect spinner (only appears if your connection to the server drops —
-see below), and the five tabs: **Graphs**, **Flows**, **Statistics**,
-**Sankey**, and **Settings**. Whichever preset (source) you're viewing shows
+see below), and the tabs: **Graphs**, **Investigate**, **Flows**,
+**Statistics**, **Sankey**, and **Settings**. **Investigate** is the graph and
+the flow table on one screen, for when you want to see *when* something happened
+and *what* it was at the same time. Whichever preset (source) you're viewing shows
 in the top-left corner.
 
 Switching tabs is instant — there's no page reload, and whatever filters you
@@ -18,7 +20,7 @@ had set on a tab are still there when you come back to it.
 
 ## The shared control bar
 
-Every data tab (Graphs, Flows, Statistics, Sankey) shares the same date
+Every data tab (Graphs, Investigate, Flows, Statistics, Sankey) shares the same date
 range control at the top, plus a filter panel specific to that tab below it:
 
 ![Date range and filter panel](../images/guide-controls-bar.png)

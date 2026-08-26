@@ -5,9 +5,15 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\FilteredGraphCache;
+use mbolli\nfsen_ng\common\QueryCancel;
+use mbolli\nfsen_ng\common\QueryProgress;
 use mbolli\nfsen_ng\common\UserPreferences;
 use mbolli\nfsen_ng\datasources\Datasource;
+use mbolli\nfsen_ng\processor\FilteredSeries;
 use Mbolli\PhpVia\Context;
+use OpenSwoole\Coroutine;
 
 /**
  * Graph-related helper methods and action registrations.
@@ -36,6 +42,9 @@ final class GraphActions {
         $graphLastUpdate = $c->getSignal('graph_lastUpdate');
         $error = $c->getSignal('_error');
         $selectedProfile = $c->getSignal('selected_profile');
+        $graphMode = $c->getSignal('graph_mode');
+        $graphFilter = $c->getSignal('graph_filter');
+        $graphHasFiltered = $c->getSignal('graph_hasFilteredData');
         \assert(
             $datestart !== null
             && $dateend !== null
@@ -51,6 +60,9 @@ final class GraphActions {
             && $graphLastUpdate !== null
             && $error !== null
             && $selectedProfile !== null
+            && $graphMode !== null
+            && $graphFilter !== null
+            && $graphHasFiltered !== null
         );
 
         $ds = $datestart->int();
@@ -77,6 +89,32 @@ final class GraphActions {
         if ($graphSources->getValue() !== $sources) {
             $graphSources->setValue($sources, broadcast: false);
         }
+
+        // ── Filtered mode (#166) ────────────────────────────────────────────
+        // Never build here: this method runs on every re-render, so a build would fork
+        // hundreds of nfdump processes on each SSE push. The series is produced only by
+        // the run-filtered-graph action and looked up from the cache afterwards; a miss
+        // renders an empty graph whose UI prompts for Apply.
+        if ($graphMode->string() === 'filtered') {
+            $graphIsLive->setValue(false, broadcast: false);
+
+            $cached = FilteredGraphCache::get(self::filteredKey($c));
+            $graphHasFiltered->setValue($cached !== null, broadcast: false);
+
+            if ($cached === null) {
+                $graphActualRes->setValue(0, broadcast: false);
+
+                return [];
+            }
+
+            $graphActualRes->setValue(\count($cached['data']), broadcast: false);
+            $graphLastUpdate->setValue($cached['end'], broadcast: false);
+            $error->setValue('', broadcast: false);
+
+            return $cached;
+        }
+
+        $graphHasFiltered->setValue(false, broadcast: false);
 
         try {
             $data = Config::$db->get_graph_data(
@@ -118,6 +156,72 @@ final class GraphActions {
         $error->setValue('', broadcast: false);
 
         return $data;
+    }
+
+    /**
+     * Resolve every input that defines a filtered-graph query.
+     *
+     * Shared by the cache lookup on the render path and by the builder in the action, so
+     * the two can never disagree about which key a given UI state maps to — a mismatch
+     * would rebuild on every render and still never hit.
+     *
+     * @return array{start: int, end: int, sources: list<string>, filter: string, unit: string, display: string, points: int, profile: string}
+     */
+    public static function filteredParams(Context $c): array {
+        $datestart = $c->getSignal('datestart');
+        $dateend = $c->getSignal('dateend');
+        $graphDisplay = $c->getSignal('graph_display');
+        $graphSources = $c->getSignal('graph_sources');
+        $graphDatatype = $c->getSignal('graph_datatype');
+        $graphTrafficUnit = $c->getSignal('graph_trafficUnit');
+        $graphResolution = $c->getSignal('graph_resolution');
+        $graphFilter = $c->getSignal('graph_filter');
+        $selectedProfile = $c->getSignal('selected_profile');
+        \assert(
+            $datestart !== null
+            && $dateend !== null
+            && $graphDisplay !== null
+            && $graphSources !== null
+            && $graphDatatype !== null
+            && $graphTrafficUnit !== null
+            && $graphResolution !== null
+            && $graphFilter !== null
+            && $selectedProfile !== null
+        );
+
+        $dt = $graphDatatype->string();
+        $display = $graphDisplay->string();
+
+        return [
+            'start' => $datestart->int(),
+            'end' => $dateend->int(),
+            // Helpers::resolveSources(), not normalizeSources(): nfdump is handed real
+            // source names for -M, and the 'any' sentinel is not one.
+            'sources' => Helpers::resolveSources($graphSources->array()),
+            'filter' => trim($graphFilter->string()),
+            'unit' => ($dt !== 'traffic') ? $dt : $graphTrafficUnit->string(),
+            // A filtered series has no per-port breakdown to draw — the filter *is* the
+            // port selection — so the ports view falls back to the protocol split.
+            'display' => $display === 'sources' ? 'sources' : 'protocols',
+            'points' => $graphResolution->int(),
+            'profile' => $selectedProfile->string(),
+        ];
+    }
+
+    /** Cache key for the filtered query the UI currently describes. */
+    public static function filteredKey(Context $c): string {
+        $p = self::filteredParams($c);
+
+        return FilteredGraphCache::key(
+            $p['start'],
+            $p['end'],
+            $p['sources'],
+            $p['filter'],
+            $p['unit'],
+            $p['display'],
+            $p['points'],
+            $p['profile'],
+        );
     }
 
     /**
@@ -256,15 +360,149 @@ final class GraphActions {
             $c->sync();
         }, 'change-profile');
 
+        // Build a filter-aware series by re-reading the nfcapd files (#166).
+        //
+        // Modelled on trigger-import: the action returns immediately and the work runs in
+        // a coroutine, which keeps the POST from hanging for the whole build and lets the
+        // Kill button through. Progress reaches the browser as signal-only patches
+        // (syncSignals), roughly an order of magnitude cheaper than re-rendering the page
+        // for each of the several hundred bins.
+        $c->action(static function (Context $c): void {
+            $queryRunning = $c->getSignal('query_running');
+            $queryPermille = $c->getSignal('query_permille');
+            $queryStatus = $c->getSignal('query_status');
+            $queryEta = $c->getSignal('query_eta');
+            $queryExact = $c->getSignal('query_exact');
+            $graphMode = $c->getSignal('graph_mode');
+            $error = $c->getSignal('_error');
+            \assert(
+                $queryRunning !== null
+                && $queryPermille !== null
+                && $queryStatus !== null
+                && $queryEta !== null
+                && $queryExact !== null
+                && $graphMode !== null
+                && $error !== null
+            );
+
+            // Apply is only meaningful in filtered mode; anywhere else behave like a refresh.
+            if ($graphMode->string() !== 'filtered') {
+                self::fetchGraphData($c);
+                $c->sync();
+
+                return;
+            }
+
+            // One build per tab at a time — a second Apply would race the first's cache write.
+            if ($queryRunning->bool()) {
+                return;
+            }
+
+            $params = self::filteredParams($c);
+            $key = self::filteredKey($c);
+
+            // Already built: nothing to do but re-render off the cache.
+            if (FilteredGraphCache::has($key)) {
+                self::fetchGraphData($c);
+                $c->sync();
+
+                return;
+            }
+
+            $contextId = $c->getId();
+            QueryCancel::clear($contextId);
+
+            $queryRunning->setValue(true, broadcast: false);
+            $queryPermille->setValue(0, broadcast: false);
+            $queryEta->setValue('', broadcast: false);
+            // Exact, unlike the byte-sampled estimate the single-shot Flows/Statistics
+            // queries report: here the bin count is known up front.
+            $queryExact->setValue(true, broadcast: false);
+            $queryStatus->setValue('Reading capture files…', broadcast: false);
+            $error->setValue('', broadcast: false);
+            $c->sync();
+
+            Coroutine::create(static function () use (
+                $c,
+                $params,
+                $key,
+                $contextId,
+                $queryRunning,
+                $queryPermille,
+                $queryStatus,
+                $queryEta,
+                $error
+            ): void {
+                $binCount = 0;
+
+                $progress = new QueryProgress(static function (int $permille, string $eta, int $done, int $total) use (
+                    $c,
+                    $queryPermille,
+                    $queryStatus,
+                    $queryEta
+                ): void {
+                    $queryPermille->setValue($permille, broadcast: false);
+                    $queryEta->setValue($eta, broadcast: false);
+                    $queryStatus->setValue(
+                        $total > 0 ? "Scanning {$done} / {$total} intervals" : 'Reading capture files…',
+                        broadcast: false
+                    );
+                    // Signals only — a full sync() here would re-render the whole page
+                    // once per bin. Confirmed to stream progressively over SSE.
+                    $c->syncSignals();
+                });
+
+                try {
+                    $data = FilteredSeries::build(
+                        $params['start'],
+                        $params['end'],
+                        $params['sources'],
+                        $params['filter'],
+                        $params['unit'],
+                        $params['display'],
+                        $params['points'],
+                        $params['profile'],
+                        onProgress: static function (int $d, int $t) use (&$binCount, $progress): void {
+                            $binCount = $t;
+                            $progress->update($d, $t);
+                        },
+                        shouldCancel: static fn (): bool => QueryCancel::isRequested($contextId),
+                    );
+
+                    FilteredGraphCache::put($key, $data);
+                    $finalStatus = QueryCancel::isRequested($contextId)
+                        ? 'Cancelled — showing partial results.'
+                        : 'Done in ' . round($progress->elapsed(), 1) . 's.';
+                } catch (\Throwable $e) {
+                    // Catching Throwable is not defensive padding: an uncaught error inside a
+                    // coroutine takes the whole OpenSwoole worker down, not just this request.
+                    Debug::getInstance()->log('Filtered graph failed: ' . $e->getMessage(), LOG_ERR);
+                    $error->setValue('Filtered graph: ' . $e->getMessage(), broadcast: false);
+                    $finalStatus = 'Failed.';
+                } finally {
+                    // finish() before the closing message, not after: it emits a last tick that
+                    // rewrites query_status from the counts, which would otherwise overwrite
+                    // whatever outcome we just set with a bare "Scanning N / N intervals".
+                    $progress->finish($binCount);
+                    $queryStatus->setValue($finalStatus ?? '', broadcast: false);
+                    $queryRunning->setValue(false, broadcast: false);
+                    QueryCancel::clear($contextId);
+                    $c->sync();
+                }
+            });
+        }, 'run-filtered-graph');
+
         $c->action(static function (Context $c): void {
             $datestart = $c->getSignal('datestart');
             $dateend = $c->getSignal('dateend');
             \assert($datestart !== null && $dateend !== null);
 
-            // Advance live window if within 10 min of now
+            // Advance live window if within 10 min of now — but not in filtered mode,
+            // where the window is part of the series' cache key (see app.php).
+            $graphMode = $c->getSignal('graph_mode');
             $now = time();
             $de = $dateend->int();
-            if ($now - $de < 600) {
+            if ($graphMode?->string() === 'rrd' && $now - $de < 600) {
                 $window = $de - $datestart->int();
                 $dateend->setValue($now, broadcast: false);
                 $datestart->setValue($now - $window, broadcast: false);

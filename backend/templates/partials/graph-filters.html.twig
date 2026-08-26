@@ -14,6 +14,11 @@
     data-on:change__window fires on any filter change inside this panel or the date range
     controls; mayUpdateGraph() guards against spurious triggers from other panels.
 
+    Both auto-refresh paths are additionally gated on graph_mode === 'rrd'. In filtered
+    mode the series comes from re-reading the nfcapd files (#166), which costs hundreds of
+    nfdump invocations — far too expensive to fire on a 250 ms filter-change throttle or a
+    15 s live tick. That mode only ever rebuilds from its explicit Apply button.
+
     graph_ports / graph_sources are seeded here, and nowhere else, because the server's
     $c->signal() default only lives server-side — php-via renders signal *ids* into the
     markup but never pushes their values to the browser. Whichever data-bind Datastar
@@ -31,8 +36,8 @@
      data-signals__ifmissing='{"_sourcesDefault": {{ sources|json_encode }}, "{{ graph_ports.id() }}": {{ ports|json_encode }}, "{{ graph_sources.id() }}": {{ graph_sources.array()|json_encode }}}'
      data-computed:graph._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ${{ graph_protocols.id() }}, ports: ${{ graph_ports.id() }}, display: ${{ graph_display.id() }}, type: ${{ graph_datatype.id() }}, trafficUnit: ${{ graph_trafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}"
      data-indicator:graph._connecting
-     data-on-interval__duration.15s.leading="!$_disconnected && ${{ graph_isLive.id() }} && @post('{{ refreshGraphs.url() }}')"
-     data-on:change__window__throttle.250ms="window.mayUpdateGraph(evt, el) && @post('{{ refreshGraphs.url() }}')">
+     data-on-interval__duration.15s.leading="!$_disconnected && ${{ graph_mode.id() }} === 'rrd' && ${{ graph_isLive.id() }} && @post('{{ refreshGraphs.url() }}')"
+     data-on:change__window__throttle.250ms="${{ graph_mode.id() }} === 'rrd' && window.mayUpdateGraph(evt, el) && @post('{{ refreshGraphs.url() }}')">
 
     {# Display type #}
     <div class="col-md-2">
@@ -145,6 +150,67 @@
             <label class="btn btn-outline-primary btn-sm" for="dataType{{ value|capitalize }}">{{ label }}</label>
             {% endfor %}
         </div>
+        </div>
+    </div>
+
+    {# ── Filter mode (#166) ────────────────────────────────────────────────
+       'rrd' plots the pre-aggregated datasource series (live, instant).
+       'filtered' re-reads the capture files through an nfdump filter (explicit, slow).
+    #}
+    <div class="col-md-2" id="filterGraphMode">
+        <div class="filter-group">
+        <p class="filter-label">Source data
+            <nfsen-tooltip data-ignore-morph text="Stored: the pre-aggregated database series — instant and live. Filtered: re-reads the raw capture files so an nfdump filter can be applied, which takes time and does not auto-refresh." placement="top"></nfsen-tooltip>
+        </p>
+        <div class="btn-group" role="group">
+            <input type="radio" class="btn-check" name="graphMode" value="rrd"
+                   id="graphModeRrd"
+                   data-attr:checked="${{ graph_mode.id() }} === 'rrd'"
+                   data-on:change__stop="${{ graph_mode.id() }} = 'rrd'; @post('{{ refreshGraphs.url() }}')">
+            <label class="btn btn-outline-primary btn-sm" for="graphModeRrd">Stored</label>
+            <input type="radio" class="btn-check" name="graphMode" value="filtered"
+                   id="graphModeFiltered"
+                   data-attr:checked="${{ graph_mode.id() }} === 'filtered'"
+                   data-on:change__stop="${{ graph_mode.id() }} = 'filtered'; @post('{{ refreshGraphs.url() }}')">
+            <label class="btn btn-outline-primary btn-sm" for="graphModeFiltered">Filtered</label>
+        </div>
+        </div>
+    </div>
+
+    {# nfdump filter + Apply — filtered mode only #}
+    <div class="col-12" id="filterGraphNfdump" style="display:none"
+         data-show="${{ graph_mode.id() }} === 'filtered'">
+        <div class="filter-group">
+        <p class="filter-label">NFDUMP filter
+            <nfsen-tooltip data-ignore-morph text="Same syntax as the Flows tab, e.g. 'src ip 10.0.0.1 and dst port 443'. An empty filter graphs all traffic — useful for comparing against the stored series." placement="right"></nfsen-tooltip>
+        </p>
+        <textarea class="form-control" id="graphNfdumpTextarea"
+                  {{ bind(graph_filter) }} rows="2" autocomplete="on"></textarea>
+        <nfsen-filter-manager
+            data-ignore-morph
+            data-target-textarea="graphNfdumpTextarea"
+            data-default-filters="{{ filters|json_encode }}">
+        </nfsen-filter-manager>
+
+        <div class="mt-3">
+            {% include 'partials/progress-button.html.twig' with {
+                id: 'graphFilterRun',
+                label: 'Apply filter',
+                action: runFilteredGraph.url(),
+                killAction: killNfdump.url(),
+                running: query_running.id(),
+                permille: query_permille.id(),
+                status: query_status.id(),
+                eta: query_eta.id(),
+                exact: query_exact.id(),
+            } only %}
+        </div>
+
+        <p class="small text-muted mt-2 mb-0">
+            Reads every capture file in the selected range — cost grows with the window, not
+            with the number of points. The ports view is not available here; the filter
+            replaces it.
+        </p>
         </div>
     </div>
 

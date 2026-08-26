@@ -18,8 +18,15 @@
     {# Live / historical badge row #}
     <div class="d-flex justify-content-end mb-3 mt-2">
         <div>
+            {# Filtered mode has no live/historical distinction — it is a one-off build. #}
+            <span class="badge bg-warning text-dark"
+                  style="display:none"
+                  data-show="${{ graph_mode.id() }} === 'filtered'"
+                  title="Series built by re-reading the capture files through an nfdump filter">
+                FILTERED
+            </span>
             <span class="badge bg-success live-badge"
-                  data-show="${{ graph_isLive.id() }}"
+                  data-show="${{ graph_mode.id() }} === 'rrd' && ${{ graph_isLive.id() }}"
                   title="Graph is showing real-time data">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-circle-fill me-1" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8"/></svg>
                 LIVE
@@ -28,7 +35,7 @@
                 </span>
             </span>
             <span class="badge bg-secondary"
-                  data-show="!${{ graph_isLive.id() }}"
+                  data-show="${{ graph_mode.id() }} === 'rrd' && !${{ graph_isLive.id() }}"
                   title="Graph is showing historical data">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-clock-history me-1" viewBox="0 0 16 16">
                     <path d="M8.515 1.019A7 7 0 0 0 8 1V0a8 8 0 0 1 .589.022zm2.004.45a7 7 0 0 0-.985-.299l.219-.976q.576.129 1.126.342zm1.37.71a7 7 0 0 0-.439-.27l.493-.87a8 8 0 0 1 .979.654l-.615.789a7 7 0 0 0-.418-.302zm1.834 1.79a7 7 0 0 0-.653-.796l.724-.69q.406.443.747.933zm.744 1.352a7 7 0 0 0-.214-.468l.893-.45a8 8 0 0 1 .45 1.088l-.95.313a7 7 0 0 0-.179-.483m.53 2.507a7 7 0 0 0-.1-1.025l.985-.17q.1.58.116 1.17zm-.131 1.538q.05-.254.081-.51l.993.123a8 8 0 0 1-.23 1.155l-.964-.267q.069-.247.12-.501m-.952 2.379q.276-.436.486-.908l.914.405q-.24.54-.555 1.038zm-.964 1.205q.183-.183.35-.378l.758.653a8 8 0 0 1-.401.432z"/>
@@ -54,6 +61,19 @@
        data-ref:          sets browser-local $_graphWidget so the sync button works
        data-ignore-morph: prevents Datastar from diffing the canvas internals
     #}
+    {#
+        Filtered mode renders nothing until Apply has been pressed: fetchGraphData() only
+        ever reads the cache, so an unbuilt query is an empty series rather than a stale
+        or accidental one. Say so instead of showing a blank chart.
+    #}
+    <div class="alert alert-info d-flex align-items-center gap-2" style="display:none"
+         data-show="${{ graph_mode.id() }} === 'filtered' && !${{ graph_hasFilteredData.id() }} && !${{ query_running.id() }}">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-funnel" viewBox="0 0 16 16">
+            <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2z"/>
+        </svg>
+        <span>Set an nfdump filter above and press <strong>Apply filter</strong> to build the graph from the capture files.</span>
+    </div>
+
     <div id="graph">
         <nfsen-chart
             data-ref="graph._widget"

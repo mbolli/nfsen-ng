@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\IpLookup;
+use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\processor\Nfdump;
 use Mbolli\PhpVia\Context;
 
@@ -68,6 +69,11 @@ final class UtilityActions {
         // Safe because SWOOLE_HOOK_ALL makes stream_get_contents coroutine-yielding, so this
         // action runs concurrently with a blocked flow/stats action.
         $c->action(static function (Context $c) use (&$flowNotifications, &$statsNotifications): void {
+            // Raise the cancel flag first. A chunked run (the filtered graph) forks one
+            // nfdump per time bin, so SIGTERM alone only ends the bin in flight and the
+            // loop marches straight on to the next one — it has to be told to stop.
+            QueryCancel::request($c->getId());
+
             $pid = Nfdump::$runningPid;
             if ($pid !== null && $pid > 0) {
                 posix_kill($pid, SIGTERM);

@@ -13,14 +13,16 @@ use mbolli\nfsen_ng\common\QueryProgress;
  */
 function progressHarness(float $minInterval = 0.25, int $minDelta = 5): object {
     return new class($minInterval, $minDelta) {
-        /** @var list<array{int, string}> */
+        /** @var list<array{int, string, int, int}> */
         public array $ticks = [];
         public QueryProgress $progress;
         private float $time = 1000.0;
 
         public function __construct(float $minInterval, int $minDelta) {
             $this->progress = new QueryProgress(
-                emit: function (int $permille, string $eta): void { $this->ticks[] = [$permille, $eta]; },
+                emit: function (int $permille, string $eta, int $done, int $total): void {
+                    $this->ticks[] = [$permille, $eta, $done, $total];
+                },
                 minInterval: $minInterval,
                 minDelta: $minDelta,
                 clock: fn (): float => $this->time,
@@ -83,7 +85,7 @@ describe('QueryProgress throttling', function (): void {
         $h->progress->update(50, 100);
         $h->progress->finish();
 
-        expect($h->ticks[count($h->ticks) - 1])->toBe([1000, '']);
+        expect($h->ticks[count($h->ticks) - 1])->toBe([1000, '', 0, 0]);
     });
 
     test('finish is idempotent and freezes later updates', function (): void {
@@ -141,4 +143,24 @@ describe('QueryProgress::formatEta', function (): void {
     test('formats minutes and seconds', fn () => expect(QueryProgress::formatEta(125))->toBe('~2m 5s'));
     test('formats hours and minutes', fn () => expect(QueryProgress::formatEta(3780))->toBe('~1h 3m'));
     test('formats zero', fn () => expect(QueryProgress::formatEta(0))->toBe('~0s'));
+});
+
+describe('QueryProgress emit payload', function (): void {
+    // The emitter receives the raw counts so a status line ("N / M intervals") does not
+    // have to smuggle them in through a by-reference capture.
+    test('carries the done and total counts', function (): void {
+        $h = progressHarness();
+        $h->progress->update(3, 12);
+
+        expect($h->ticks[0][2])->toBe(3)
+            ->and($h->ticks[0][3])->toBe(12)
+        ;
+    });
+
+    test('finish echoes the total back on both counts', function (): void {
+        $h = progressHarness();
+        $h->progress->finish(42);
+
+        expect($h->ticks[0])->toBe([1000, '', 42, 42]);
+    });
 });

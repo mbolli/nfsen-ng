@@ -176,10 +176,28 @@ $app->page('/', function (Context $c) use ($app): void {
     );
     $graphTrafficUnit = $c->signal('bits', 'graph_trafficUnit', clientWritable: true);
     $graphResolution = $c->signal(500, 'graph_resolution', clientWritable: true);
+    // Filtered-graph mode (#166). 'rrd' plots the pre-aggregated datasource series;
+    // 'filtered' re-reads the nfcapd files through an nfdump filter, which only the
+    // run-filtered-graph action may do — never the render path.
+    $graphMode = $c->signal('rrd', 'graph_mode', clientWritable: true);
+    $graphFilter = $c->signal('', 'graph_filter', clientWritable: true);
     // Server-side graph metadata (read-only for browser)
     $graphIsLive = $c->signal(false, 'graph_isLive');
     $graphActualRes = $c->signal(0, 'graph_actualResolution');
     $graphLastUpdate = $c->signal(0, 'graph_lastUpdate');
+    // True when a series for the currently described filtered query is in the cache.
+    // Drives the "press Apply" empty state rather than showing a blank chart.
+    $graphHasFilteredData = $c->signal(false, 'graph_hasFilteredData');
+
+    // Query progress, server-owned. Updated from the worker coroutine via syncSignals()
+    // so a long build reports per-mille progress without re-rendering the page each tick.
+    // query_exact distinguishes the filtered graph's known bin count from the byte-sampled
+    // estimate a single-shot nfdump can offer.
+    $queryRunning = $c->signal(false, 'query_running');
+    $queryPermille = $c->signal(0, 'query_permille');
+    $queryStatus = $c->signal('', 'query_status');
+    $queryEta = $c->signal('', 'query_eta');
+    $queryExact = $c->signal(true, 'query_exact');
 
     // Flow signals
     $flowFilter = $c->signal('', 'flows_filter', clientWritable: true);
@@ -439,6 +457,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $importRunning = $c->getSignal('import_running');
         $selectedProfile = $c->getSignal('selected_profile');
         $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
+        $graphMode = $c->getSignal('graph_mode');
         assert(
             $datestart !== null
             && $dateend !== null
@@ -446,6 +465,7 @@ $app->page('/', function (Context $c) use ($app): void {
             && $importRunning !== null
             && $selectedProfile !== null
             && $nfcapdFileCount !== null
+            && $graphMode !== null
         );
 
         // Sync importRunning signal to daemon lock state so all tabs reflect the
@@ -481,8 +501,13 @@ $app->page('/', function (Context $c) use ($app): void {
             // (dateend within 10 min of now). This runs on every rrd:live broadcast
             // so the selection tracks new data even when the graph refresh interval
             // has stopped (graphIsLive=false after the 5-min SSE liveness window).
+            //
+            // Never in filtered mode: the window is part of the filtered series' cache key,
+            // so sliding it by a second — which this does on every render while the window
+            // ends near now — leaves the freshly built series unreachable and the graph
+            // permanently empty. A filtered build is a snapshot of one explicit window.
             $de = $dateend->int();
-            if ($now - $de < 600) {
+            if ($graphMode->string() === 'rrd' && $now - $de < 600) {
                 $window = $de - $datestart->int();
                 $dateend->setValue($now, broadcast: false);
                 $datestart->setValue($now - $window, broadcast: false);

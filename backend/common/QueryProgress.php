@@ -24,10 +24,10 @@ final class QueryProgress {
     private bool $finished = false;
 
     /**
-     * @param \Closure(int, string): void $emit        receives (permille, eta) when a tick survives throttling
-     * @param float                       $minInterval seconds between emissions
-     * @param int                         $minDelta    per-mille change that forces an emission
-     * @param null|\Closure(): float      $clock       defaults to microtime(true)
+     * @param \Closure(int, string, int, int): void $emit        receives (permille, eta, done, total) when a tick survives throttling
+     * @param float                                 $minInterval seconds between emissions
+     * @param int                                   $minDelta    per-mille change that forces an emission
+     * @param null|\Closure(): float                $clock       defaults to microtime(true)
      */
     public function __construct(
         private readonly \Closure $emit,
@@ -61,18 +61,23 @@ final class QueryProgress {
 
         $this->lastPermille = $permille;
         $this->lastEmit = $now;
-        ($this->emit)($permille, $this->eta($done, $total, $now));
+        ($this->emit)($permille, $this->eta($done, $total, $now), $done, $total);
     }
 
-    /** Force a final 1000‰ tick. Idempotent — later update() calls are ignored. */
-    public function finish(): void {
+    /**
+     * Force a final 1000‰ tick. Idempotent — later update() calls are ignored.
+     *
+     * $total is echoed back to the emitter so a status line built from the counts can
+     * render "N / N" rather than falling back to zeroes on the closing tick.
+     */
+    public function finish(int $total = 0): void {
         if ($this->finished) {
             return;
         }
 
         $this->finished = true;
         $this->lastPermille = 1000;
-        ($this->emit)(1000, '');
+        ($this->emit)(1000, '', $total, $total);
     }
 
     /** Seconds elapsed since construction. */

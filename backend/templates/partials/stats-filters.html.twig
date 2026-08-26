@@ -150,21 +150,25 @@
     {# Submit #}
     <div class="col-12 border-top mt-3 pt-3">
         <div class="d-flex align-items-center gap-3 flex-wrap">
+        {#
+            The query runs in a coroutine now, so query_running (server-owned) is what says
+            whether it is still going — not Datastar's request indicator, which clears the
+            moment the action returns. Progress is a byte-read estimate, hence exact=false.
+        #}
         <nfsen-tooltip data-ignore-morph text="Generate statistics using nfdump -s with current filters" placement="top" no-icon>
-            <button type="button"
-                    class="btn btn-primary"
-                    data-indicator:stats._indicator
-                    data-on:click="$_stats_queried = true; @post('{{ statsActions.url() }}')">
-                <span data-show="!$stats._indicator">Process data</span>
-                <span class="spinner-grow spinner-grow-sm" data-show="$stats._indicator" role="status" aria-hidden="true"></span>
-                <span data-show="$stats._indicator">Processing…</span>
-            </button>
+            {% include 'partials/progress-button.html.twig' with {
+                id: 'statsRun',
+                label: 'Process data',
+                action: statsActions.url(),
+                killAction: killNfdump.url(),
+                running: query_running.id(),
+                permille: query_permille.id(),
+                status: query_status.id(),
+                eta: query_eta.id(),
+                exact: query_exact.id(),
+                onClick: '$_stats_queried = true; ',
+            } only %}
         </nfsen-tooltip>
-        <button type="button"
-                class="btn btn-outline-danger btn-sm ms-1"
-                style="display:none"
-                data-show="$stats._indicator"
-                data-on:click="@post('{{ killNfdump.url() }}')">Kill</button>
         {# nfcapd file count info — reactive to date range and source changes #}
         <span class="text-muted small align-items-center gap-1" style="display: flex" data-show="$nfcapd._counting">
             <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>

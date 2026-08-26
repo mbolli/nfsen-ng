@@ -153,22 +153,25 @@
 
     {# Submit #}
     <div class="col-12 border-top mt-3 pt-3">
+        {#
+            The query runs in a coroutine now, so query_running (server-owned) is what says
+            whether it is still going — not Datastar's request indicator, which clears the
+            moment the action returns. Progress is a byte-read estimate, hence exact=false.
+        #}
         <nfsen-tooltip data-ignore-morph text="Execute nfdump query with current filters" placement="top" no-icon>
-            <button type="button"
-                    class="btn btn-primary"
-                    data-indicator:flows._indicator
-                    data-class:loading="$flows._indicator"
-                    data-on:click="$_flows_queried = true; @post('{{ flowActions.url() }}')">
-                <span data-show="!$flows._indicator">Process data</span>
-                <span class="spinner-grow spinner-grow-sm" data-show="$flows._indicator" role="status" aria-hidden="true"></span>
-                <span data-show="$flows._indicator">Processing…</span>
-            </button>
+            {% include 'partials/progress-button.html.twig' with {
+                id: 'flowsRun',
+                label: 'Process data',
+                action: flowActions.url(),
+                killAction: killNfdump.url(),
+                running: query_running.id(),
+                permille: query_permille.id(),
+                status: query_status.id(),
+                eta: query_eta.id(),
+                exact: query_exact.id(),
+                onClick: '$_flows_queried = true; ',
+            } only %}
         </nfsen-tooltip>
-        <button type="button"
-                class="btn btn-outline-danger btn-sm ms-1"
-                style="display:none"
-                data-show="$flows._indicator"
-                data-on:click="@post('{{ killNfdump.url() }}')">Kill</button>
     </div>
 
 </div>

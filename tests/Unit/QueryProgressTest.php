@@ -164,3 +164,20 @@ describe('QueryProgress emit payload', function (): void {
         expect($h->ticks[0])->toBe([1000, '', 42, 42]);
     });
 });
+
+describe('QueryProgress::isFinished', function (): void {
+    // A sampler coroutine polls this to know when to stop, instead of sharing a bool.
+    test('is false before finish', function (): void {
+        $h = progressHarness();
+        $h->progress->update(1, 10);
+
+        expect($h->progress->isFinished())->toBeFalse();
+    });
+
+    test('is true after finish', function (): void {
+        $h = progressHarness();
+        $h->progress->finish();
+
+        expect($h->progress->isFinished())->toBeTrue();
+    });
+});

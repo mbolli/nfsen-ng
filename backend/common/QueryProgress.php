@@ -80,6 +80,17 @@ final class QueryProgress {
         ($this->emit)(1000, '', $total, $total);
     }
 
+    /**
+     * Whether finish() has run.
+     *
+     * Lets a sampler coroutine tell that the work it was reporting on is over, without a
+     * by-reference bool shared across coroutines — which is both harder to reason about
+     * and unprovable to static analysis.
+     */
+    public function isFinished(): bool {
+        return $this->finished;
+    }
+
     /** Seconds elapsed since construction. */
     public function elapsed(): float {
         return $this->now() - $this->startedAt;

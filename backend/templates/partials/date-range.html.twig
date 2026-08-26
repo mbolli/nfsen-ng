@@ -86,7 +86,7 @@
     </div>
 
     {# Sync graph zoom range to the date slider (graphs view only) #}
-    <div class="btn-group" id="date_syncing" role="group" data-show="$_currentView == 'graphs'">
+    <div class="btn-group" id="date_syncing" role="group" data-show="$_currentView == 'graphs' || $_currentView == 'investigate'">
         <button type="button"
                 class="btn btn-outline-primary sync-date"
                 disabled

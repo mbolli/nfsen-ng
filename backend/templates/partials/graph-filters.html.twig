@@ -192,6 +192,22 @@
             data-default-filters="{{ filters|json_encode }}">
         </nfsen-filter-manager>
 
+        {#
+            In the Investigate view both filter boxes are on screen at once, and the point
+            of the workflow is running the *same* expression through both. These just copy
+            the text — deliberately not auto-running either query, since both cost real work.
+        #}
+        <div class="mt-2" style="display:none" data-show="$_currentView == 'investigate'">
+            <button type="button" class="btn btn-link btn-sm p-0"
+                    data-on:click="${{ flows_filter.id() }} = ${{ graph_filter.id() }}">
+                Copy to Flows filter →
+            </button>
+            <button type="button" class="btn btn-link btn-sm p-0 ms-3"
+                    data-on:click="${{ graph_filter.id() }} = ${{ flows_filter.id() }}">
+                ← Copy from Flows filter
+            </button>
+        </div>
+
         <div class="mt-3">
             {% include 'partials/progress-button.html.twig' with {
                 id: 'graphFilterRun',

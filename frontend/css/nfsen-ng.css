@@ -536,3 +536,20 @@ dialog#ip-modal-inner::backdrop {
         --bs-table-striped-bg: color-mix(in srgb, var(--bs-danger) 17%, var(--bs-body-bg));
     }
 }
+
+/* ── Country flag emoji (IP info modal) ──────────────────────────────────── */
+
+/* Rendered server-side as a regional-indicator pair instead of loading a flag
+   image from a CDN. Name the colour emoji fonts explicitly: without them the
+   glyphs fall back to the body font, which on some Linux setups draws the two
+   letters in a monochrome box even where a colour font is installed. Windows
+   has no flag glyphs at all outside Firefox and shows the letters — still
+   readable, and the country name is a row below. */
+.flag-emoji {
+    font-family: "Twemoji Mozilla", "Apple Color Emoji", "Segoe UI Emoji",
+        "Noto Color Emoji", "Android Emoji", sans-serif;
+    font-size: 2rem;
+    line-height: 1;
+    vertical-align: -0.15em;
+    margin-left: 0.35rem;
+}

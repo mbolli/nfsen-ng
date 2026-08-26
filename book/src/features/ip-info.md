@@ -17,7 +17,9 @@ Clicking an IP address in the Flows or Statistics tables (rendered as
   anonymous callers — see
   [Configuration](../deployment/configuration.md#geolocation-lookup).
   A rate-limit or other error reply is shown as a message in the modal
-  rather than an empty table.
+  rather than an empty table. The country flag is rendered server-side as a
+  regional-indicator emoji (`IpLookup::countryFlag()`), so the modal makes no
+  third-party request of its own and works without outbound internet access.
 - **Netbox data**, for private IPs only, if `NFSEN_NETBOX_URL`/
   `NFSEN_NETBOX_TOKEN` are configured — whatever IPAM record Netbox has for
   that address (`IpLookup::netbox()`).

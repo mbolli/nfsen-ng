@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- The IP-info modal's country flag is now an emoji rendered server-side instead of an image pulled from `flagcdn.com` ([#165](https://github.com/mbolli/nfsen-ng/issues/165), suggested with a proof-of-concept by [@gmt4](https://github.com/gmt4)). That image was the last third-party request the frontend made, so the modal no longer reaches outside your network for anything but the geolocation call itself, and it works on an install with no outbound internet access. The flag is derived from the same normalized `country_code` as before, so it works across every supported provider, and its tooltip now shows the country name wherever the provider supplies one under any of its spellings. Windows has no flag glyphs outside Firefox and shows the two country letters instead.
+
 - `NFSEN_IPINFO_URL` / `NFSEN_IPINFO_TOKEN` make the geolocation service behind the IP-info modal configurable ([#163](https://github.com/mbolli/nfsen-ng/issues/163), reported with a proof-of-concept patch by [@gmt4](https://github.com/gmt4)). The endpoint was hardcoded to ipapi.co, which rate-limits anonymous callers and left the modal's geo section silently empty once the quota ran out. The default is unchanged; `{ip}` and `{token}` are substituted into the URL, so any provider's parameter spelling works and the key stays in its own masked variable. A failed lookup now shows the service's own reason instead of an empty table, and response differences between providers are normalized so the country flag still renders. The deployment docs list five verified alternatives with their free-tier limits.
 
 ### Fixed

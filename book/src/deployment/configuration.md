@@ -163,7 +163,11 @@ comes back, one row per key, so a service returning more detail simply shows
 more rows. Only two things are interpreted:
 
 - **The country flag** uses `country_code`, falling back to a two-letter
-  `country` or `countryCode`. It is omitted if none of them is present.
+  `country` or `countryCode`. It is omitted if none of them is present. The flag
+  is an emoji rendered server-side, not an image fetched from a CDN, so nothing
+  in the modal reaches outside your network except the geolocation call itself.
+  Its tooltip uses the country name, taken from whichever of `country_name`,
+  `country` or `countryName` the provider filled in.
 - **Errors** are shown as a message instead of an empty table. Recognised
   conventions are a truthy `error` (flat or nested `{"error": {"title",
   "message"}}`), `success: false`, `status: "fail"`, and any 4xx/5xx status.

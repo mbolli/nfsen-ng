@@ -44,19 +44,23 @@
                 {% if geoData.error is defined and geoData.error %}
                     <div class="alert alert-warning">{{ geoData.reason ?? 'IP lookup failed' }}</div>
                 {% else %}
-                    {% set countryCode = geoData.country_code ?? '' %}
+                    {% set countryName = geoData.country_name ?? geoData.country_code ?? '' %}
                     <h3>
                         {{ ip }}
-                        {% if countryCode %}
-                            <img src="https://flagcdn.com/w40/{{ countryCode|lower }}.png"
-                                 alt="{{ geoData.country_name ?? '' }}"
-                                 title="{{ geoData.country_name ?? '' }}"
-                                 style="width: 3rem" />
+                        {% if geoData.country_flag is defined and geoData.country_flag %}
+                            {# Emoji rather than a flagcdn image: no third-party request, so the
+                               modal also works on an install with no outbound internet access.
+                               Windows ships no flag glyphs outside Firefox, where this degrades
+                               to the boxed country letters. #}
+                            <span class="flag-emoji" role="img"
+                                  title="{{ countryName }}"
+                                  aria-label="{{ countryName }}">{{ geoData.country_flag }}</span>
                         {% endif %}
                     </h3>
                     {% set ignored = ['country_code', 'country_code_iso3', 'country_tld', 'country_area',
                                       'country_population', 'continent_code', 'in_eu', 'network', 'version',
-                                      'error', 'reason', 'readme', 'success', 'status', 'message'] %}
+                                      'error', 'reason', 'readme', 'success', 'status', 'message',
+                                      'country_flag'] %}
                     <table class="table table-striped table-hover table-sm">
                         {% for key, value in geoData %}
                             {% if key not in ignored %}

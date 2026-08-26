@@ -9,7 +9,7 @@ on that address without leaving the page or opening a new tab.
 ## What you get
 
 - **Hostname** — reverse DNS, if the address resolves to one.
-- For a **public** address: geolocation — city, region, country, timezone —
+- For a **public** address: geolocation — city, region, country flag, timezone —
   plus network ownership info (ASN, organization). Useful for a quick "is
   this a cloud provider, a CDN, or somewhere unexpected?" sanity check on an
   unfamiliar destination.

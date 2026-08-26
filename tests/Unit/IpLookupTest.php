@@ -74,17 +74,62 @@ describe('IpLookup::geoUrl()', function (): void {
     });
 });
 
+describe('IpLookup::countryFlag()', function (): void {
+    test('maps a two-letter code to its regional-indicator pair', function (): void {
+        expect(IpLookup::countryFlag('AU'))->toBe('🇦🇺')
+            ->and(IpLookup::countryFlag('CH'))->toBe('🇨🇭')
+            ->and(IpLookup::countryFlag('US'))->toBe('🇺🇸')
+        ;
+    });
+
+    test('accepts lowercase and surrounding whitespace', function (): void {
+        expect(IpLookup::countryFlag('us'))->toBe(IpLookup::countryFlag('US'))
+            ->and(IpLookup::countryFlag(' ch '))->toBe(IpLookup::countryFlag('CH'))
+        ;
+    });
+
+    test('returns an empty string for anything that is not a two-letter code', function (): void {
+        expect(IpLookup::countryFlag('Australia'))->toBe('')
+            ->and(IpLookup::countryFlag(''))->toBe('')
+            ->and(IpLookup::countryFlag('X'))->toBe('')
+            ->and(IpLookup::countryFlag('U1'))->toBe('')
+        ;
+    });
+});
+
 describe('IpLookup geo response normalization', function (): void {
-    test('leaves an ipapi.co payload untouched', function (): void {
+    test('passes an ipapi.co payload through unchanged apart from the added flag', function (): void {
         $payload = ['ip' => '1.1.1.1', 'country' => 'AU', 'country_code' => 'AU', 'city' => 'Sydney'];
 
-        expect(normalizeGeo($payload))->toBe($payload);
+        expect(normalizeGeo($payload))->toBe($payload + ['country_flag' => '🇦🇺']);
     });
 
     test('derives country_code from a two-letter country (ipinfo.io shape)', function (): void {
         $out = normalizeGeo(['ip' => '8.8.8.8', 'country' => 'US', 'loc' => '37.4,-122.0']);
 
         expect($out['country_code'])->toBe('US');
+    });
+
+    test('adds the flag emoji for every provider shape that yields a code', function (): void {
+        expect(normalizeGeo(['country_code' => 'AU'])['country_flag'])->toBe('🇦🇺')
+            ->and(normalizeGeo(['country' => 'US'])['country_flag'])->toBe('🇺🇸')
+            ->and(normalizeGeo(['country' => 'Australia', 'countryCode' => 'AU'])['country_flag'])->toBe('🇦🇺')
+        ;
+    });
+
+    test('derives the country name from whichever key the provider used', function (): void {
+        expect(normalizeGeo(['country' => 'Australia', 'countryCode' => 'AU'])['country_name'])->toBe('Australia')
+            ->and(normalizeGeo(['countryName' => 'Switzerland'])['country_name'])->toBe('Switzerland')
+            ->and(normalizeGeo(['country_name' => 'Australia', 'country' => 'AU'])['country_name'])->toBe('Australia')
+        ;
+    });
+
+    test('does not mistake a two-letter code for a country name', function (): void {
+        expect(normalizeGeo(['country' => 'US']))->not->toHaveKey('country_name');
+    });
+
+    test('omits the flag when no country code could be derived', function (): void {
+        expect(normalizeGeo(['country' => 'United States']))->not->toHaveKey('country_flag');
     });
 
     test('derives country_code from countryCode when country is a full name (ip-api.com shape)', function (): void {

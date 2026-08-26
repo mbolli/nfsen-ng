@@ -8,6 +8,7 @@
   "require": {
     "php": "^8.4",
     "ext-inotify": "*",
+    "ext-mbstring": "*",
     "ext-openswoole": "*",
     "ext-rrd": "*",
     "mbolli/php-via": "~0.12.0"

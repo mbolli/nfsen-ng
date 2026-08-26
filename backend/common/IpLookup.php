@@ -28,6 +28,23 @@ final class IpLookup {
     }
 
     /**
+     * The regional-indicator emoji flag for a two-letter ISO 3166-1 country code.
+     *
+     * A flag emoji is the country's two letters shifted into the regional-indicator
+     * block (U+1F1E6..U+1F1FF), which is 'A' plus 127397. Returns '' for anything
+     * that isn't a plain two-letter code, so callers render no flag rather than a
+     * placeholder implying an unknown country.
+     */
+    public static function countryFlag(string $countryCode): string {
+        $code = strtoupper(trim($countryCode));
+        if (preg_match('/^[A-Z]{2}$/', $code) !== 1) {
+            return '';
+        }
+
+        return mb_chr(\ord($code[0]) + 127397) . mb_chr(\ord($code[1]) + 127397);
+    }
+
+    /**
      * Build the geolocation request URL for an IP from the configured template.
      *
      * `{ip}` is substituted with the URL-encoded address; a template without the
@@ -135,7 +152,12 @@ final class IpLookup {
      * Smooth over the differences between geolocation providers so the modal
      * template doesn't have to know which one answered.
      *
-     * - `country_code` is what the flag image needs; providers return the
+     * - `country_flag` is the rendered emoji, so the modal needs no third-party
+     *   flag image and works on an install with no outbound internet access.
+     * - `country_name` is the flag's tooltip and accessible name. Only ipapi.co
+     *   returns it under that key; elsewhere the full name arrives as `country`
+     *   (ip-api.com, ipwho.is) or `countryName` (freeipapi.com).
+     * - `country_code` is what the flag needs; providers return the
      *   two-letter code as `country` (ipinfo.io) or `countryCode` (ip-api.com)
      *   instead — note `country` is the full name at the latter, hence the
      *   two-letter shape check.
@@ -155,6 +177,21 @@ final class IpLookup {
                 $candidate = $data[$key] ?? null;
                 if (\is_string($candidate) && preg_match('/^[A-Za-z]{2}$/', $candidate) === 1) {
                     $data['country_code'] = $candidate;
+
+                    break;
+                }
+            }
+        }
+
+        if (isset($data['country_code']) && \is_string($data['country_code'])) {
+            $data['country_flag'] = self::countryFlag($data['country_code']);
+        }
+
+        if (!isset($data['country_name'])) {
+            foreach (['country', 'countryName'] as $key) {
+                $candidate = $data[$key] ?? null;
+                if (\is_string($candidate) && preg_match('/^[A-Za-z]{2}$/', $candidate) !== 1 && trim($candidate) !== '') {
+                    $data['country_name'] = $candidate;
 
                     break;
                 }

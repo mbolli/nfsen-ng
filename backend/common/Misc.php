@@ -57,12 +57,6 @@ class Misc {
     }
 
     /**
-     * Whether a process-inspection tool (pgrep or ps) is available.
-     * countProcessesByName() silently returns 0 without either — surfaced as a
-     * health check so a missing procps package doesn't masquerade as
-     * "no other nfdump processes running".
-     */
-    /**
      * Bytes a running process has read so far, from /proc/<pid>/io, or null when that
      * cannot be answered (no procfs, process gone, or the kernel denies access).
      *
@@ -99,6 +93,12 @@ class Misc {
         return (int) $m[1];
     }
 
+    /**
+     * Whether a process-inspection tool (pgrep or ps) is available.
+     * countProcessesByName() silently returns 0 without either — surfaced as a
+     * health check so a missing procps package doesn't masquerade as
+     * "no other nfdump processes running".
+     */
     public static function hasProcessInspectionTool(): bool {
         exec('command -v pgrep 2>/dev/null', $pgrepOutput);
         if (!empty($pgrepOutput)) {

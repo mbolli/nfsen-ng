@@ -28,11 +28,16 @@ final class QueryRunner {
     public const POLL_INTERVAL_US = 250_000;
 
     /**
-     * @param int      $totalBytes size of the nfcapd files the query will read; 0 = unknown,
-     *                             which degrades to an indeterminate indicator
-     * @param \Closure $work       performs the query and writes its own result/notifications
+     * @param string          $kind       which panel owns this query ('flows'|'stats'), so only
+     *                                    that panel's button renders the progress
+     * @param \Closure(): int $totalBytes size of the nfcapd files the query will read; 0 =
+     *                                    unknown, which degrades to an indeterminate indicator.
+     *                                    A closure, not a value: sizing walks the window and
+     *                                    stat()s every file, which belongs in the coroutine
+     *                                    rather than in front of the action's response.
+     * @param \Closure        $work       performs the query and writes its own result/notifications
      */
-    public static function run(Context $c, string $kind, int $totalBytes, string $startStatus, \Closure $work): void {
+    public static function run(Context $c, string $kind, \Closure $totalBytes, string $startStatus, \Closure $work): void {
         $running = $c->getSignal('query_running');
         $permille = $c->getSignal('query_permille');
         $status = $c->getSignal('query_status');
@@ -87,7 +92,10 @@ final class QueryRunner {
                 $c->syncSignals();
             });
 
-            $watcher = NfdumpProgressWatcher::forRunningNfdump($progress, $totalBytes);
+            // Sized here rather than before the action returned: walking the window and
+            // stat()-ing every file is thousands of syscalls at a wide range.
+            $sizeInBytes = $totalBytes();
+            $watcher = NfdumpProgressWatcher::forRunningNfdump($progress, $sizeInBytes);
 
             // Sampler runs alongside the query. It stops once the work is finished, or
             // permanently the first time the platform cannot report bytes read.
@@ -113,7 +121,7 @@ final class QueryRunner {
             } finally {
                 // finish() emits a last tick that rewrites the status from the counts, so it
                 // has to run before the outcome message rather than after it.
-                $progress->finish($totalBytes);
+                $progress->finish($sizeInBytes);
                 $status->setValue($finalStatus, broadcast: false);
                 $running->setValue(false, broadcast: false);
                 QueryCancel::clear($contextId);

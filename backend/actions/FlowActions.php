@@ -81,12 +81,14 @@ final class FlowActions {
                 $processor->setOption('-M', implode(':', $srcs));
                 $processor->setOption('-R', [$datestart->int(), $dateend->int()]);
                 // Denominator for the progress estimate: bytes nfdump is about to read.
-                $totalBytes = NfcapdFiles::totalSize(NfcapdFiles::list(
-                    $datestart->int(),
-                    $dateend->int(),
-                    $srcs,
-                    $selectedProfile->string()
-                ));
+                // Deferred — QueryRunner evaluates it inside the coroutine so the walk does
+                // not sit in front of this action's response.
+                $ds = $datestart->int();
+                $de = $dateend->int();
+                $profile = $selectedProfile->string();
+                $totalBytes = static fn (): int => NfcapdFiles::totalSize(
+                    NfcapdFiles::list($ds, $de, $srcs, $profile)
+                );
                 $processor->setOption('-c', $flowLimit->int());
                 $processor->setOption('-o', 'json');
                 if ($flowOrderByTstart->bool()) {

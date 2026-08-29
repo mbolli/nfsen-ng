@@ -541,9 +541,13 @@ final class GraphActions {
                         shouldCancel: static fn (): bool => QueryCancel::isRequested($contextId),
                     );
 
-                    FilteredGraphCache::put($key, $data);
-                    $finalStatus = QueryCancel::isRequested($contextId)
-                        ? 'Cancelled — showing partial results.'
+                    // A cancelled run is still worth showing, but it is not the answer for
+                    // this key — cache it as partial so the next Apply rebuilds instead of
+                    // being short-circuited by the cache hit.
+                    $cancelled = QueryCancel::isRequested($contextId);
+                    FilteredGraphCache::put($key, $data, partial: $cancelled);
+                    $finalStatus = $cancelled
+                        ? 'Cancelled — showing partial results. Apply again to finish.'
                         : 'Done in ' . round($progress->elapsed(), 1) . 's.';
                 } catch (\Throwable $e) {
                     // Catching Throwable is not defensive padding: an uncaught error inside a

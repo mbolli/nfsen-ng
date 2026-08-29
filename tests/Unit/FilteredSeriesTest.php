@@ -439,3 +439,71 @@ describe('FilteredSeries protocol selection', function (): void {
         removeTree($root);
     });
 });
+
+describe('FilteredSeries row guards', function (): void {
+    $base = 1704067200;
+
+    // nfdump before 1.7.8 prints a trailing Summary block in CSV stat output: it has a
+    // value in the 'pr' column but no counters, and keying on 'pr' alone let its numbers
+    // land in whichever series matched. Import::writePortData() checks all four keys.
+    test('ignores a summary row that carries no counters', function () use ($base): void {
+        $root = withFakeNfdump(['gateway'], [$base]);
+        FakeProcessor::$defaultResponse = [
+            statRow('TCP', 300, 0, 0),
+            ['pr' => 'Summary: total flows', 'val' => '99999'],   // no fl/ipkt/ibyt
+        ];
+
+        $series = FilteredSeries::build($base, $base + 299, ['gateway'], '', ['any'], unit: 'flows');
+
+        // tcp only; nothing leaked into "other"
+        expect($series['data'][$base])->toBe([1.0, 0.0, 0.0, 0.0]);
+
+        removeTree($root);
+    });
+
+    test('a summary row does not inflate the sources-display total', function () use ($base): void {
+        $root = withFakeNfdump(['gateway'], [$base]);
+        FakeProcessor::$defaultResponse = [
+            statRow('TCP', 300, 0, 0),
+            ['pr' => 'Summary', 'val' => '1', 'fl' => '99999'],   // still missing ipkt/ibyt
+        ];
+
+        $series = FilteredSeries::build(
+            $base,
+            $base + 299,
+            ['gateway'],
+            '',
+            ['any'],
+            unit: 'flows',
+            display: 'sources'
+        );
+
+        expect($series['data'][$base])->toBe([1.0]);
+
+        removeTree($root);
+    });
+});
+
+describe('FilteredSeries::binWidth termination', function (): void {
+    // graph_sources is client-writable, and binWidth() is reached from filteredCost() on
+    // the render path — a source list longer than MAX_RUNS used to spin the worker forever.
+    test('terminates when the group count alone exceeds the run ceiling', function (): void {
+        $step = FilteredSeries::binWidth(0, 86400, 500, FilteredSeries::MAX_RUNS + 1);
+
+        expect($step)->toBeGreaterThanOrEqual(FilteredSeries::MIN_BIN);
+    });
+
+    test('terminates for an absurd group count', function (): void {
+        expect(FilteredSeries::binWidth(0, 86400, 500, 100000))
+            ->toBeGreaterThanOrEqual(FilteredSeries::MIN_BIN)
+        ;
+    });
+
+    test('still respects the ceiling for reasonable group counts', function (): void {
+        $span = 7 * 86400;
+        foreach ([1, 2, 4, 8] as $groups) {
+            $runs = (int) ceil($span / FilteredSeries::binWidth(0, $span, 10000, $groups)) * $groups;
+            expect($runs)->toBeLessThanOrEqual(FilteredSeries::MAX_RUNS);
+        }
+    });
+});

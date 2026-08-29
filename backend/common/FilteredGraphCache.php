@@ -36,7 +36,7 @@ final class FilteredGraphCache {
      */
     public const TTL = 600;
 
-    /** @var array<string, array{at: int, data: GraphData}> */
+    /** @var array<string, array{at: int, data: GraphData, partial: bool}> */
     private static array $entries = [];
 
     /**
@@ -83,26 +83,40 @@ final class FilteredGraphCache {
         // Touch: refresh recency so an actively displayed series survives, and re-insert
         // at the end so eviction order tracks use rather than write time.
         unset(self::$entries[$key]);
-        self::$entries[$key] = ['at' => $now, 'data' => $entry['data']];
+        self::$entries[$key] = ['at' => $now, 'data' => $entry['data'], 'partial' => $entry['partial']];
 
         return $entry['data'];
     }
 
     /**
      * @param GraphData $data
+     * @param bool      $partial series from a cancelled build — displayable, but not a
+     *                           complete answer for this key, so has() disowns it
      */
-    public static function put(string $key, array $data, ?int $now = null): void {
+    public static function put(string $key, array $data, ?int $now = null, bool $partial = false): void {
         // Re-insert at the end so eviction order tracks recency.
         unset(self::$entries[$key]);
-        self::$entries[$key] = ['at' => $now ?? time(), 'data' => $data];
+        self::$entries[$key] = ['at' => $now ?? time(), 'data' => $data, 'partial' => $partial];
 
         while (\count(self::$entries) > self::MAX_ENTRIES) {
             array_shift(self::$entries);
         }
     }
 
+    /**
+     * Whether a *complete* series for this key is cached.
+     *
+     * Deliberately false for a partial (cancelled) entry: the Apply action skips the build
+     * when this returns true, so counting a partial would make Apply a permanent no-op —
+     * and since a read refreshes the TTL, the panel would stay wedged on that partial
+     * result for as long as the tab kept rendering. Cancel then re-Apply must rebuild.
+     */
     public static function has(string $key, ?int $now = null): bool {
-        return self::get($key, $now) !== null;
+        if (self::get($key, $now) === null) {
+            return false;
+        }
+
+        return (self::$entries[$key]['partial'] ?? false) === false;
     }
 
     public static function clear(): void {

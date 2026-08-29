@@ -14,10 +14,17 @@
     data-on:change__window fires on any filter change inside this panel or the date range
     controls; mayUpdateGraph() guards against spurious triggers from other panels.
 
-    Both auto-refresh paths are additionally gated on graph_mode === 'rrd'. In filtered
-    mode the series comes from re-reading the nfcapd files (#166), which costs hundreds of
-    nfdump invocations — far too expensive to fire on a 250 ms filter-change throttle or a
-    15 s live tick. That mode only ever rebuilds from its explicit Apply button.
+    The 15 s live tick is gated on graph_mode === 'rrd': in filtered mode the series comes
+    from re-reading the nfcapd files (#166), which costs hundreds of nfdump invocations and
+    must never fire on a timer.
+
+    The change handler is NOT gated, because refresh-graphs does not build anything — in
+    filtered mode fetchGraphData() only looks the series up in the cache. It has to run:
+    graph._config is a client-side computed signal, so changing Data Type or Unit relabels
+    the chart's axis immediately, and without a round trip the axis would say "bits/s" over
+    a series that was built as flows/s. Those inputs are part of the cache key, so the
+    lookup misses and the graph honestly empties back to "press Apply". (A textarea fires
+    `change` on blur, not per keystroke, so typing a filter does not spam this.)
 
     graph_ports / graph_sources are seeded here, and nowhere else, because the server's
     $c->signal() default only lives server-side — php-via renders signal *ids* into the
@@ -37,7 +44,7 @@
      data-computed:graph._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ${{ graph_protocols.id() }}, ports: ${{ graph_ports.id() }}, display: ${{ graph_display.id() }}, type: ${{ graph_datatype.id() }}, trafficUnit: ${{ graph_trafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}"
      data-indicator:graph._connecting
      data-on-interval__duration.15s.leading="!$_disconnected && ${{ graph_mode.id() }} === 'rrd' && ${{ graph_isLive.id() }} && @post('{{ refreshGraphs.url() }}')"
-     data-on:change__window__throttle.250ms="${{ graph_mode.id() }} === 'rrd' && window.mayUpdateGraph(evt, el) && @post('{{ refreshGraphs.url() }}')">
+     data-on:change__window__throttle.250ms="window.mayUpdateGraph(evt, el) && @post('{{ refreshGraphs.url() }}')">
 
     {# Display type #}
     <div class="col-md-2">

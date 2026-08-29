@@ -70,9 +70,12 @@ final class StatsActions {
                 }
                 $processor->setOption('-R', [$ds, $de]);
                 // Denominator for the progress estimate: how many bytes nfdump is about to
-                // read. Sized after the clamp above, so it matches the range actually queried.
-                $totalBytes = NfcapdFiles::totalSize(
-                    NfcapdFiles::list($ds, $de, $srcs, $selectedProfile->string())
+                // read. Sized after the clamp above, so it matches the range actually queried,
+                // and deferred so the walk runs inside the coroutine rather than in front of
+                // this action's response.
+                $profile = $selectedProfile->string();
+                $totalBytes = static fn (): int => NfcapdFiles::totalSize(
+                    NfcapdFiles::list($ds, $de, $srcs, $profile)
                 );
                 $processor->setOption('-n', $statsCount->int());
                 $processor->setOption('-o', 'json');

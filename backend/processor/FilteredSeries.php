@@ -213,12 +213,15 @@ final class FilteredSeries {
         $step = (int) (ceil($span / $points / self::MIN_BIN) * self::MIN_BIN);
         $step = max(self::MIN_BIN, $step);
 
-        // Widen until the projected process count fits under the ceiling.
-        while ((int) ceil($span / $step) * $groupCount > self::MAX_RUNS) {
-            $step += self::MIN_BIN;
-        }
+        // Widen so the projected process count fits under the ceiling. Solved rather than
+        // stepped: the old loop incremented until the product dropped, which never happens
+        // once $groupCount alone exceeds MAX_RUNS (ceil() is at least 1, so the product
+        // cannot fall below $groupCount) — and graph_sources is client-writable, so a long
+        // enough source list hung the single worker from the render path via filteredCost().
+        $maxBins = max(1, intdiv(self::MAX_RUNS, max(1, $groupCount)));
+        $needed = (int) (ceil($span / $maxBins / self::MIN_BIN) * self::MIN_BIN);
 
-        return $step;
+        return max($step, $needed, self::MIN_BIN);
     }
 
     /**
@@ -285,7 +288,11 @@ final class FilteredSeries {
         $matchedAny = false;
 
         foreach ($rows as $row) {
-            if (!\is_array($row) || !isset($row['pr'])) {
+            // All four keys, exactly as Import::writePortData() checks them. nfdump
+            // versions before 1.7.8 still print a trailing Summary block in CSV stat
+            // output; it has a value in the 'pr' column but no counters, and keying on
+            // 'pr' alone lets its numbers land in whichever series matched.
+            if (!\is_array($row) || !isset($row['pr'], $row['fl'], $row['ipkt'], $row['ibyt'])) {
                 continue;
             }
             $rowProto = strtolower(trim((string) $row['pr']));
@@ -316,7 +323,9 @@ final class FilteredSeries {
     private static function sumAll(array $rows, string $unit): float {
         $sum = 0.0;
         foreach ($rows as $row) {
-            if (!\is_array($row) || !isset($row['pr']) || strtolower(trim((string) $row['pr'])) === 'pr') {
+            if (!\is_array($row)
+                || !isset($row['pr'], $row['fl'], $row['ipkt'], $row['ibyt'])
+                || strtolower(trim((string) $row['pr'])) === 'pr') {
                 continue;
             }
             $sum += self::counter($row, $unit);

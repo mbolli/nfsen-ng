@@ -169,3 +169,37 @@ describe('QueryCancel', function (): void {
         ;
     });
 });
+
+describe('FilteredGraphCache partial entries', function (): void {
+    // Apply short-circuits on has(); counting a cancelled run there made Apply a
+    // permanent no-op, and a read refreshing the TTL kept it wedged indefinitely.
+    test('a partial entry is readable but not reported as present', function (): void {
+        FilteredGraphCache::put('k', series(), partial: true);
+
+        expect(FilteredGraphCache::get('k'))->not->toBeNull()
+            ->and(FilteredGraphCache::has('k'))->toBeFalse()
+        ;
+    });
+
+    test('a complete entry is reported as present', function (): void {
+        FilteredGraphCache::put('k', series());
+
+        expect(FilteredGraphCache::has('k'))->toBeTrue();
+    });
+
+    test('re-running over a partial entry makes it complete', function (): void {
+        FilteredGraphCache::put('k', series(), partial: true);
+        FilteredGraphCache::put('k', series(600));
+
+        expect(FilteredGraphCache::has('k'))->toBeTrue()
+            ->and(FilteredGraphCache::get('k')['step'])->toBe(600)
+        ;
+    });
+
+    test('reading a partial entry does not promote it', function (): void {
+        FilteredGraphCache::put('k', series(), now: 1000, partial: true);
+        FilteredGraphCache::get('k', 1100);
+
+        expect(FilteredGraphCache::has('k', 1100))->toBeFalse();
+    });
+});

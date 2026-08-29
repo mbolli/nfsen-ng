@@ -44,7 +44,6 @@ final class GraphActions {
         $selectedProfile = $c->getSignal('selected_profile');
         $graphMode = $c->getSignal('graph_mode');
         $graphFilter = $c->getSignal('graph_filter');
-        $graphHasFiltered = $c->getSignal('graph_hasFilteredData');
         \assert(
             $datestart !== null
             && $dateend !== null
@@ -62,7 +61,6 @@ final class GraphActions {
             && $selectedProfile !== null
             && $graphMode !== null
             && $graphFilter !== null
-            && $graphHasFiltered !== null
         );
 
         $ds = $datestart->int();
@@ -99,9 +97,9 @@ final class GraphActions {
             $graphIsLive->setValue(false, broadcast: false);
 
             $cached = FilteredGraphCache::get(self::filteredKey($c));
-            $graphHasFiltered->setValue($cached !== null, broadcast: false);
 
             if ($cached === null) {
+                // 0 points is what the "press Apply" hint keys off — see graph-view.html.twig.
                 $graphActualRes->setValue(0, broadcast: false);
 
                 return [];
@@ -113,8 +111,6 @@ final class GraphActions {
 
             return $cached;
         }
-
-        $graphHasFiltered->setValue(false, broadcast: false);
 
         try {
             $data = Config::$db->get_graph_data(
@@ -481,7 +477,10 @@ final class GraphActions {
                     // coroutine takes the whole OpenSwoole worker down, not just this request.
                     Debug::getInstance()->log('Filtered graph failed: ' . $e->getMessage(), LOG_ERR);
                     $error->setValue('Filtered graph: ' . $e->getMessage(), broadcast: false);
-                    $finalStatus = 'Failed.';
+                    // Carry the reason, not just the fact. The status line sits right next to
+                    // the button, and a bare "Failed." next to a Flows panel that says exactly
+                    // why it found nothing is the wrong half of the story to show.
+                    $finalStatus = 'Failed: ' . $e->getMessage();
                 } finally {
                     // finish() before the closing message, not after: it emits a last tick that
                     // rewrites query_status from the counts, which would otherwise overwrite

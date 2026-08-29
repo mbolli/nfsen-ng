@@ -185,10 +185,6 @@ $app->page('/', function (Context $c) use ($app): void {
     $graphIsLive = $c->signal(false, 'graph_isLive');
     $graphActualRes = $c->signal(0, 'graph_actualResolution');
     $graphLastUpdate = $c->signal(0, 'graph_lastUpdate');
-    // True when a series for the currently described filtered query is in the cache.
-    // Drives the "press Apply" empty state rather than showing a blank chart.
-    $graphHasFilteredData = $c->signal(false, 'graph_hasFilteredData');
-
     // Query progress, server-owned. Updated from the worker coroutine via syncSignals()
     // so a long build reports per-mille progress without re-rendering the page each tick.
     // query_exact distinguishes the filtered graph's known bin count from the byte-sampled

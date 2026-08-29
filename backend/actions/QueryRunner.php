@@ -109,7 +109,7 @@ final class QueryRunner {
                 // An uncaught throw inside a coroutine takes the whole worker down, not
                 // just this request — this catch is load-bearing, not decoration.
                 Debug::getInstance()->log('Query failed: ' . $e->getMessage(), LOG_ERR);
-                $finalStatus = 'Failed.';
+                $finalStatus = 'Failed: ' . $e->getMessage();
             } finally {
                 // finish() emits a last tick that rewrites the status from the counts, so it
                 // has to run before the outcome message rather than after it.

@@ -49,7 +49,9 @@
                 data-on:change="el.value === 'protocols' ? ${{ graph_protocols.id() }} = ['tcp', 'udp', 'icmp', 'other'] : (${{ graph_protocols.id() }} = ['any']); ${{ graph_sources.id() }} = el.value === 'sources' ? $_sourcesDefault : (el.value === 'ports' ? ['any'] : $_sourcesDefault.slice(0, 1))">
             <option value="sources">Sources</option>
             <option value="protocols">Protocols</option>
-            <option value="ports">Ports</option>
+            {# A filtered series has no per-port breakdown to draw — the filter is the port
+               selection — so the option is disabled rather than silently coerced. #}
+            <option value="ports" data-attr:disabled="${{ graph_mode.id() }} === 'filtered'">Ports</option>
         </select>
         </div>
     </div>
@@ -171,7 +173,7 @@
             <input type="radio" class="btn-check" name="graphMode" value="filtered"
                    id="graphModeFiltered"
                    data-attr:checked="${{ graph_mode.id() }} === 'filtered'"
-                   data-on:change__stop="${{ graph_mode.id() }} = 'filtered'; @post('{{ refreshGraphs.url() }}')">
+                   data-on:change__stop="${{ graph_mode.id() }} = 'filtered'; ${{ graph_display.id() }} === 'ports' && (${{ graph_display.id() }} = 'protocols'); @post('{{ refreshGraphs.url() }}')">
             <label class="btn btn-outline-primary btn-sm" for="graphModeFiltered">Filtered</label>
         </div>
         </div>
@@ -193,21 +195,10 @@
         </nfsen-filter-manager>
 
         {#
-            In the Investigate view both filter boxes are on screen at once, and the point
-            of the workflow is running the *same* expression through both. These just copy
-            the text — deliberately not auto-running either query, since both cost real work.
+            In the Investigate view the flows panel hides its own filter box and mirrors this
+            one (see flow-filters.html.twig), so there is a single filter expression on screen
+            instead of two identical boxes and a copy button between them.
         #}
-        <div class="mt-2" style="display:none" data-show="$_currentView == 'investigate'">
-            <button type="button" class="btn btn-link btn-sm p-0"
-                    data-on:click="${{ flows_filter.id() }} = ${{ graph_filter.id() }}">
-                Copy to Flows filter →
-            </button>
-            <button type="button" class="btn btn-link btn-sm p-0 ms-3"
-                    data-on:click="${{ graph_filter.id() }} = ${{ flows_filter.id() }}">
-                ← Copy from Flows filter
-            </button>
-        </div>
-
         <div class="mt-3">
             {% include 'partials/progress-button.html.twig' with {
                 id: 'graphFilterRun',
@@ -224,10 +215,24 @@
             } only %}
         </div>
 
+        {#
+            "Cost grows with the window" is true but unactionable. The app already knows the
+            real numbers — the count-files action maintains them — so state them and let the
+            user decide before committing to a build.
+        #}
         <p class="small text-muted mt-2 mb-0">
-            Reads every capture file in the selected range — cost grows with the window, not
-            with the number of points. The ports view is not available here; the filter
-            replaces it.
+            {% if filteredCost %}
+                Will read <strong>{{ filteredCost.files|number_format }}</strong> capture
+                file{{ filteredCost.files == 1 ? '' : 's' }} ({{ filteredCost.bytes }})
+                in <strong>{{ filteredCost.intervals|number_format }}</strong> nfdump
+                run{{ filteredCost.intervals == 1 ? '' : 's' }}.
+                {% if filteredCost.clamped %}
+                    <span class="text-warning-emphasis">Window shortened to the most recent
+                    {{ filteredCost.windowDays }} day{{ filteredCost.windowDays == 1 ? '' : 's' }}
+                    (NFSEN_MAX_STATS_WINDOW).</span>
+                {% endif %}
+            {% endif %}
+            The ports view is not available here; the filter replaces it.
         </p>
         </div>
     </div>

@@ -157,10 +157,15 @@ final class StatsActions {
             $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
             \assert($datestart !== null && $dateend !== null && $graphSources !== null && $selectedProfile !== null && $nfcapdFileCount !== null);
 
+            $graphMode = $c->getSignal('graph_mode');
             $srcs = Helpers::resolveSources($graphSources->array());
-            $nfcapdFileCount->setValue(
-                Helpers::countNfcapdFiles($datestart->int(), $dateend->int(), $srcs, $selectedProfile->string()),
-                broadcast: false
+            Helpers::measureNfcapdFiles(
+                $c,
+                $datestart->int(),
+                $dateend->int(),
+                $srcs,
+                $selectedProfile->string(),
+                $graphMode?->string() === 'filtered'
             );
             $c->sync();
         }, 'count-files');

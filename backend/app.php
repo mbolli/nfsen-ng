@@ -235,6 +235,9 @@ $app->page('/', function (Context $c) use ($app): void {
     $statsUpperLimit = $c->signal('', 'stats_upper_limit', clientWritable: true);
     // nfcapd file count — updated by count-files action and on initial render
     $nfcapdFileCount = $c->signal(0, 'nfcapd_file_count');
+    // Bytes behind that file count, so the filtered graph can say what a build will cost
+    // before it starts rather than only warning that cost grows with the window.
+    $nfcapdTotalBytes = $c->signal(0, 'nfcapd_total_bytes');
 
     // Sankey signals
     $sankeyFilter = $c->signal('', 'sankey_filter', clientWritable: true);
@@ -484,9 +487,13 @@ $app->page('/', function (Context $c) use ($app): void {
         // Subsequent changes are handled by countFilesAction triggered from the browser.
         if (!$hasFatalError && !$isUpdate) {
             $srcs = Helpers::resolveSources($graphSources->array());
-            $nfcapdFileCount->setValue(
-                Helpers::countNfcapdFiles($datestart->int(), $dateend->int(), $srcs, $selectedProfile->string()),
-                broadcast: false
+            Helpers::measureNfcapdFiles(
+                $c,
+                $datestart->int(),
+                $dateend->int(),
+                $srcs,
+                $selectedProfile->string(),
+                $graphMode->string() === 'filtered'
             );
         }
 
@@ -646,6 +653,10 @@ $app->page('/', function (Context $c) use ($app): void {
 
             // ── Computed / pre-rendered data ──────────────────────────────
             'graphData' => $graphData,
+            // Only in filtered mode: the Apply button's projected cost (see filteredCost()).
+            'filteredCost' => (!$hasFatalError && $graphMode->string() === 'filtered')
+                ? GraphActions::filteredCost($c)
+                : null,
             'flowTableHtml' => $flowTableHtml,
             'flowNotifications' => $flowNotifications,
             'statsTableHtml' => $statsTableHtml,

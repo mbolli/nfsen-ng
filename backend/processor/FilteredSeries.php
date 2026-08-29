@@ -28,6 +28,9 @@ use mbolli\nfsen_ng\datasources\Datasource;
  * @phpstan-import-type NfcapdFile from NfcapdFiles
  */
 final class FilteredSeries {
+    /** The protocol split the RRD schema and the chart already use. */
+    public const ALL_PROTOCOLS = ['tcp', 'udp', 'icmp', 'other'];
+
     /** nfcapd rotates every 5 minutes, so no bin can be narrower than that. */
     public const MIN_BIN = 300;
 
@@ -42,6 +45,7 @@ final class FilteredSeries {
      * Build the series.
      *
      * @param list<string>                  $sources      already resolved (no 'any' sentinel)
+     * @param list<string>                  $protocols    ['any'], or a subset of tcp/udp/icmp/other
      * @param string                        $unit         flows|packets|bytes|bits
      * @param string                        $display      protocols|sources
      * @param null|callable(int, int): void $onProgress   (done, total) after each bin
@@ -56,6 +60,7 @@ final class FilteredSeries {
         int $end,
         array $sources,
         string $filter,
+        array $protocols = ['any'],
         string $unit = 'flows',
         string $display = 'protocols',
         int $targetPoints = 150,
@@ -85,14 +90,20 @@ final class FilteredSeries {
         }
         ksort($bins);
 
-        $protocols = ['tcp', 'udp', 'icmp', 'other'];
+        // Mirror how the datasources read the protocol selection: for the protocols display
+        // it chooses which series exist, for the sources display it narrows the counter that
+        // every source series is built from (Rrd::get_graph_data() indexes $protocols[0]).
+        $selected = self::normalizeProtocolSelection($protocols);
+        $seriesProtocols = ($selected === ['any']) ? self::ALL_PROTOCOLS : $selected;
+        $sourceProtocol = ($selected[0] === 'any') ? null : $selected[0];
+
         $legend = [];
         if ($display === 'sources') {
             foreach ($sources as $source) {
-                $legend[] = implode('_', [$source, self::legendUnit($unit), 'any']);
+                $legend[] = implode('_', [$source, self::legendUnit($unit), $sourceProtocol ?? 'any']);
             }
         } else {
-            foreach ($protocols as $protocol) {
+            foreach ($seriesProtocols as $protocol) {
                 $legend[] = implode('_', array_filter([$protocol, self::legendUnit($unit), $sources[0] ?? '']));
             }
         }
@@ -133,9 +144,14 @@ final class FilteredSeries {
                 $stats = self::runBin($group, $groupFiles, $filter, $profile);
 
                 if ($display === 'sources') {
-                    $row[$groupIndex] = self::rate(self::sumAll($stats, $unit), $step, $unit);
+                    // Deliberately not $total — that name is the progress denominator
+                    // in this scope, and shadowing it silently breaks progress reporting.
+                    $value = $sourceProtocol === null
+                        ? self::sumAll($stats, $unit)
+                        : self::sumProtocol($stats, $sourceProtocol, $unit);
+                    $row[$groupIndex] = self::rate($value, $step, $unit);
                 } else {
-                    foreach ($protocols as $i => $protocol) {
+                    foreach ($seriesProtocols as $i => $protocol) {
                         $row[$i] = self::rate(self::sumProtocol($stats, $protocol, $unit), $step, $unit);
                     }
                 }
@@ -152,6 +168,37 @@ final class FilteredSeries {
         }
 
         return self::assemble($binStart, $end, $step, $legend, $data);
+    }
+
+    /**
+     * Reduce a raw protocol selection to ['any'] or an ordered subset of ALL_PROTOCOLS.
+     *
+     * The signal is client-writable, so entries can be anything; 'any' anywhere means no
+     * protocol restriction, and an empty or unrecognised selection means the same.
+     *
+     * @param list<string> $protocols
+     *
+     * @return non-empty-list<string>
+     */
+    public static function normalizeProtocolSelection(array $protocols): array {
+        $clean = array_values(array_filter(
+            array_map(static fn (string $p): string => strtolower(trim($p)), $protocols),
+            static fn (string $p): bool => \in_array($p, self::ALL_PROTOCOLS, true)
+        ));
+
+        if ($clean === [] || \in_array('any', array_map('strtolower', $protocols), true)) {
+            return ['any'];
+        }
+
+        // Keep the canonical order so the legend is stable regardless of click order.
+        $ordered = [];
+        foreach (self::ALL_PROTOCOLS as $protocol) {
+            if (\in_array($protocol, $clean, true)) {
+                $ordered[] = $protocol;
+            }
+        }
+
+        return $ordered === [] ? ['any'] : $ordered;
     }
 
     /**

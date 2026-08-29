@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\NfcapdFiles;
+use Mbolli\PhpVia\Context;
 
 /**
  * Shared static helpers used by multiple action classes.
@@ -49,5 +50,41 @@ final class Helpers {
      */
     public static function countNfcapdFiles(int $ds, int $de, array $sources, string $profile = ''): int {
         return \count(NfcapdFiles::list($ds, $de, $sources, $profile));
+    }
+
+    /**
+     * Scan once and publish both the file count and the total size behind it.
+     *
+     * The Flows/Statistics tabs show the count; the filtered graph also needs the size, so
+     * it can state what a build will read before it starts. One scan feeds both — the walk
+     * is the expensive part, not the tally.
+     *
+     * When $clampToFilteredWindow is set the measurement covers the window a filtered build
+     * would actually read (NFSEN_MAX_STATS_WINDOW applies), so the figure shown next to
+     * Apply matches the work that button will do.
+     *
+     * @param list<string> $sources
+     */
+    public static function measureNfcapdFiles(
+        Context $c,
+        int $ds,
+        int $de,
+        array $sources,
+        string $profile = '',
+        bool $clampToFilteredWindow = false,
+    ): void {
+        $count = $c->getSignal('nfcapd_file_count');
+        $bytes = $c->getSignal('nfcapd_total_bytes');
+        if ($count === null || $bytes === null) {
+            return;
+        }
+
+        if ($clampToFilteredWindow) {
+            [$ds, $de] = GraphActions::clampFilteredWindow($ds, $de);
+        }
+
+        $files = NfcapdFiles::list($ds, $de, $sources, $profile);
+        $count->setValue(\count($files), broadcast: false);
+        $bytes->setValue(NfcapdFiles::totalSize($files), broadcast: false);
     }
 }

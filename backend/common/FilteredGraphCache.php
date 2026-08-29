@@ -44,6 +44,7 @@ final class FilteredGraphCache {
      * must appear here — a key that ignores one silently serves the wrong graph.
      *
      * @param list<string> $sources
+     * @param list<string> $protocols
      */
     public static function key(
         int $start,
@@ -54,9 +55,11 @@ final class FilteredGraphCache {
         string $display,
         int $targetPoints,
         string $profile,
+        array $protocols = ['any'],
     ): string {
         return hash('xxh128', implode("\x1f", [
             $start, $end, implode(',', $sources), $filter, $unit, $display, $targetPoints, $profile,
+            implode(',', $protocols),
         ]));
     }
 

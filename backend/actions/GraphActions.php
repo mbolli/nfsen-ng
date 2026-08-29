@@ -161,7 +161,7 @@ final class GraphActions {
      * the two can never disagree about which key a given UI state maps to — a mismatch
      * would rebuild on every render and still never hit.
      *
-     * @return array{start: int, end: int, sources: list<string>, filter: string, unit: string, display: string, points: int, profile: string}
+     * @return array{start: int, end: int, clamped: bool, sources: list<string>, filter: string, protocols: list<string>, unit: string, display: string, points: int, profile: string}
      */
     public static function filteredParams(Context $c): array {
         $datestart = $c->getSignal('datestart');
@@ -172,6 +172,7 @@ final class GraphActions {
         $graphTrafficUnit = $c->getSignal('graph_trafficUnit');
         $graphResolution = $c->getSignal('graph_resolution');
         $graphFilter = $c->getSignal('graph_filter');
+        $graphProtocols = $c->getSignal('graph_protocols');
         $selectedProfile = $c->getSignal('selected_profile');
         \assert(
             $datestart !== null
@@ -182,25 +183,75 @@ final class GraphActions {
             && $graphTrafficUnit !== null
             && $graphResolution !== null
             && $graphFilter !== null
+            && $graphProtocols !== null
             && $selectedProfile !== null
         );
 
         $dt = $graphDatatype->string();
         $display = $graphDisplay->string();
+        [$start, $end, $clamped] = self::clampFilteredWindow($datestart->int(), $dateend->int());
 
         return [
-            'start' => $datestart->int(),
-            'end' => $dateend->int(),
+            'start' => $start,
+            'end' => $end,
+            'clamped' => $clamped,
             // Helpers::resolveSources(), not normalizeSources(): nfdump is handed real
             // source names for -M, and the 'any' sentinel is not one.
             'sources' => Helpers::resolveSources($graphSources->array()),
             'filter' => trim($graphFilter->string()),
+            'protocols' => FilteredSeries::normalizeProtocolSelection(self::normalizeProtocols($graphProtocols->array())),
             'unit' => ($dt !== 'traffic') ? $dt : $graphTrafficUnit->string(),
             // A filtered series has no per-port breakdown to draw — the filter *is* the
             // port selection — so the ports view falls back to the protocol split.
             'display' => $display === 'sources' ? 'sources' : 'protocols',
             'points' => $graphResolution->int(),
             'profile' => $selectedProfile->string(),
+        ];
+    }
+
+    /**
+     * Apply NFSEN_MAX_STATS_WINDOW to a filtered-graph window.
+     *
+     * A filtered build re-reads every capture in the range, so an unbounded window is the
+     * same open-ended cost the Statistics and Sankey tabs already clamp — it just shows up
+     * as minutes of nfdump instead of one long query. Same setting, same behaviour: keep
+     * the end of the window and pull the start forward.
+     *
+     * @return array{int, int, bool} start, end, whether the window was shortened
+     */
+    public static function clampFilteredWindow(int $start, int $end): array {
+        $max = Config::$settings->maxStatsWindow;
+
+        if ($max > 0 && ($end - $start) > $max) {
+            return [$end - $max, $end, true];
+        }
+
+        return [$start, $end, false];
+    }
+
+    /**
+     * What the Apply button is about to cost, for display beside it.
+     *
+     * "Cost grows with the window" is true but unactionable; the app already knows the
+     * real numbers, so show them. File count and size come from the signals the
+     * count-files action maintains — this runs on every render and must not walk the
+     * capture tree itself.
+     *
+     * @return array{files: int, bytes: string, intervals: int, clamped: bool, windowDays: float}
+     */
+    public static function filteredCost(Context $c): array {
+        $p = self::filteredParams($c);
+        $files = $c->getSignal('nfcapd_file_count');
+        $bytes = $c->getSignal('nfcapd_total_bytes');
+        $groups = $p['display'] === 'sources' ? max(1, \count($p['sources'])) : 1;
+        $step = FilteredSeries::binWidth($p['start'], $p['end'], $p['points'], $groups);
+
+        return [
+            'files' => $files?->int() ?? 0,
+            'bytes' => QueryRunner::formatBytes($bytes?->int() ?? 0),
+            'intervals' => (int) ceil(max(1, $p['end'] - $p['start']) / $step) * $groups,
+            'clamped' => $p['clamped'],
+            'windowDays' => round(Config::$settings->maxStatsWindow / 86400, 1),
         ];
     }
 
@@ -217,6 +268,7 @@ final class GraphActions {
             $p['display'],
             $p['points'],
             $p['profile'],
+            $p['protocols'],
         );
     }
 
@@ -457,6 +509,7 @@ final class GraphActions {
                         $params['end'],
                         $params['sources'],
                         $params['filter'],
+                        $params['protocols'],
                         $params['unit'],
                         $params['display'],
                         $params['points'],
@@ -508,6 +561,24 @@ final class GraphActions {
                 $window = $de - $datestart->int();
                 $dateend->setValue($now, broadcast: false);
                 $datestart->setValue($now - $window, broadcast: false);
+            }
+
+            // Keep the projected cost honest. In filtered mode this action only fires on an
+            // explicit mode switch or a resolution change (the 250 ms change handler and the
+            // live tick are both gated to 'rrd'), so the extra directory walk is rare.
+            if ($graphMode?->string() === 'filtered') {
+                $graphSources = $c->getSignal('graph_sources');
+                $selectedProfile = $c->getSignal('selected_profile');
+                if ($graphSources !== null && $selectedProfile !== null) {
+                    Helpers::measureNfcapdFiles(
+                        $c,
+                        $datestart->int(),
+                        $dateend->int(),
+                        Helpers::resolveSources($graphSources->array()),
+                        $selectedProfile->string(),
+                        true
+                    );
+                }
             }
 
             self::fetchGraphData($c);

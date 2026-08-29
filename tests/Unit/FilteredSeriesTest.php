@@ -311,3 +311,131 @@ describe('FilteredSeries::build', function (): void {
         removeTree($root);
     });
 });
+
+describe('FilteredSeries::normalizeProtocolSelection', function (): void {
+    test('an empty selection means no restriction', function (): void {
+        expect(FilteredSeries::normalizeProtocolSelection([]))->toBe(['any']);
+    });
+
+    test('"any" anywhere wins over explicit protocols', function (): void {
+        expect(FilteredSeries::normalizeProtocolSelection(['tcp', 'any']))->toBe(['any']);
+    });
+
+    test('unrecognised entries are dropped', function (): void {
+        expect(FilteredSeries::normalizeProtocolSelection(['tcp', 'sctp', 'nonsense']))->toBe(['tcp']);
+    });
+
+    test('a selection of only unrecognised entries means no restriction', function (): void {
+        expect(FilteredSeries::normalizeProtocolSelection(['sctp']))->toBe(['any']);
+    });
+
+    // The legend is built from this, so click order must not reorder the series.
+    test('canonical order is restored regardless of input order', function (): void {
+        expect(FilteredSeries::normalizeProtocolSelection(['other', 'udp', 'tcp']))
+            ->toBe(['tcp', 'udp', 'other'])
+        ;
+    });
+
+    test('case is ignored', function (): void {
+        expect(FilteredSeries::normalizeProtocolSelection(['TCP', 'Udp']))->toBe(['tcp', 'udp']);
+    });
+});
+
+describe('FilteredSeries protocol selection', function (): void {
+    $base = 1704067200;
+
+    // Regression: the Protocols buttons used to be inert in filtered mode — every
+    // selection produced the same four series.
+    test('protocols display emits only the selected series', function () use ($base): void {
+        $root = withFakeNfdump(['gateway'], [$base]);
+        FakeProcessor::$defaultResponse = [
+            statRow('TCP', 300, 0, 0),
+            statRow('UDP', 600, 0, 0),
+            statRow('ICMP', 900, 0, 0),
+        ];
+
+        $series = FilteredSeries::build(
+            $base,
+            $base + 299,
+            ['gateway'],
+            '',
+            ['udp', 'icmp'],
+            unit: 'flows',
+            display: 'protocols'
+        );
+
+        expect($series['legend'])->toBe(['udp_flows_gateway', 'icmp_flows_gateway'])
+            ->and($series['data'][$base])->toBe([2.0, 3.0])
+        ;
+
+        removeTree($root);
+    });
+
+    test('protocols display falls back to all four for "any"', function () use ($base): void {
+        $root = withFakeNfdump(['gateway'], [$base]);
+        FakeProcessor::$defaultResponse = [statRow('TCP', 300, 0, 0)];
+
+        $series = FilteredSeries::build(
+            $base,
+            $base + 299,
+            ['gateway'],
+            '',
+            ['any'],
+            unit: 'flows',
+            display: 'protocols'
+        );
+
+        expect($series['legend'])->toHaveCount(4);
+
+        removeTree($root);
+    });
+
+    // Mirrors Rrd::get_graph_data(), which indexes $protocols[0] for the sources display.
+    test('sources display narrows every series to the chosen protocol', function () use ($base): void {
+        $root = withFakeNfdump(['gateway'], [$base]);
+        FakeProcessor::$defaultResponse = [
+            statRow('TCP', 300, 0, 0),
+            statRow('UDP', 600, 0, 0),
+        ];
+
+        $series = FilteredSeries::build(
+            $base,
+            $base + 299,
+            ['gateway'],
+            '',
+            ['udp'],
+            unit: 'flows',
+            display: 'sources'
+        );
+
+        expect($series['legend'])->toBe(['gateway_flows_udp'])
+            ->and($series['data'][$base])->toBe([2.0])   // udp only, not udp+tcp
+        ;
+
+        removeTree($root);
+    });
+
+    test('sources display sums every protocol for "any"', function () use ($base): void {
+        $root = withFakeNfdump(['gateway'], [$base]);
+        FakeProcessor::$defaultResponse = [
+            statRow('TCP', 300, 0, 0),
+            statRow('UDP', 600, 0, 0),
+        ];
+
+        $series = FilteredSeries::build(
+            $base,
+            $base + 299,
+            ['gateway'],
+            '',
+            ['any'],
+            unit: 'flows',
+            display: 'sources'
+        );
+
+        expect($series['legend'])->toBe(['gateway_flows_any'])
+            ->and($series['data'][$base])->toBe([3.0])   // 900 flows / 300 s
+        ;
+
+        removeTree($root);
+    });
+});

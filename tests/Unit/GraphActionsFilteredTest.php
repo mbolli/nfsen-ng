@@ -65,3 +65,34 @@ describe('GraphActions::clampFilteredWindow', function (): void {
         ;
     });
 });
+
+describe('GraphActions::formatWindow', function (): void {
+    // A one-hour cap rendered in days rounds to "0 days", which reads as broken.
+    test('uses hours below a day', function (): void {
+        expect(GraphActions::formatWindow(3600))->toBe('1 hour')
+            ->and(GraphActions::formatWindow(7200))->toBe('2 hours')
+            ->and(GraphActions::formatWindow(5400))->toBe('1.5 hours')
+        ;
+    });
+
+    test('uses minutes below an hour', function (): void {
+        expect(GraphActions::formatWindow(60))->toBe('1 minute')
+            ->and(GraphActions::formatWindow(900))->toBe('15 minutes')
+        ;
+    });
+
+    test('never reports zero for a non-zero window', function (): void {
+        expect(GraphActions::formatWindow(30))->toBe('1 minute');
+    });
+
+    test('uses days at a day and above', function (): void {
+        expect(GraphActions::formatWindow(86400))->toBe('1 day')
+            ->and(GraphActions::formatWindow(86400 * 7))->toBe('7 days')
+            ->and(GraphActions::formatWindow((int) (86400 * 2.5)))->toBe('2.5 days')
+        ;
+    });
+
+    test('trims a trailing .0 so whole values read naturally', function (): void {
+        expect(GraphActions::formatWindow(86400 * 3))->toBe('3 days');
+    });
+});

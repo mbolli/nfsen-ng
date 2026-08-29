@@ -228,8 +228,7 @@
                 run{{ filteredCost.intervals == 1 ? '' : 's' }}.
                 {% if filteredCost.clamped %}
                     <span class="text-warning-emphasis">Window shortened to the most recent
-                    {{ filteredCost.windowDays }} day{{ filteredCost.windowDays == 1 ? '' : 's' }}
-                    (NFSEN_MAX_STATS_WINDOW).</span>
+                    {{ filteredCost.window }} (NFSEN_MAX_STATS_WINDOW).</span>
                 {% endif %}
             {% endif %}
             The ports view is not available here; the filter replaces it.

@@ -237,7 +237,7 @@ final class GraphActions {
      * count-files action maintains — this runs on every render and must not walk the
      * capture tree itself.
      *
-     * @return array{files: int, bytes: string, intervals: int, clamped: bool, windowDays: float}
+     * @return array{files: int, bytes: string, intervals: int, clamped: bool, window: string}
      */
     public static function filteredCost(Context $c): array {
         $p = self::filteredParams($c);
@@ -251,8 +251,28 @@ final class GraphActions {
             'bytes' => QueryRunner::formatBytes($bytes?->int() ?? 0),
             'intervals' => (int) ceil(max(1, $p['end'] - $p['start']) / $step) * $groups,
             'clamped' => $p['clamped'],
-            'windowDays' => round(Config::$settings->maxStatsWindow / 86400, 1),
+            'window' => self::formatWindow(Config::$settings->maxStatsWindow),
         ];
+    }
+
+    /**
+     * Human-readable length of a time window, in whatever unit reads naturally.
+     *
+     * Days alone are not enough: a one-hour cap formatted as days rounds to "0 days",
+     * which tells the user nothing and looks broken.
+     */
+    public static function formatWindow(int $seconds): string {
+        if ($seconds >= 86400) {
+            $days = round($seconds / 86400, 1);
+
+            return self::plural($days, 'day');
+        }
+
+        if ($seconds >= 3600) {
+            return self::plural(round($seconds / 3600, 1), 'hour');
+        }
+
+        return self::plural(max(1, (int) round($seconds / 60)), 'minute');
     }
 
     /** Cache key for the filtered query the UI currently describes. */
@@ -584,5 +604,12 @@ final class GraphActions {
             self::fetchGraphData($c);
             $c->sync();
         }, 'refresh-graphs');
+    }
+
+    /** "1 day" / "2.5 days", trimming a trailing .0 so whole values read naturally. */
+    private static function plural(float|int $value, string $noun): string {
+        $text = (float) $value === floor((float) $value) ? (string) (int) $value : (string) $value;
+
+        return $text . ' ' . $noun . ((float) $value === 1.0 ? '' : 's');
     }
 }

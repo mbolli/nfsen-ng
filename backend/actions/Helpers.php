@@ -83,8 +83,19 @@ final class Helpers {
             [$ds, $de] = GraphActions::clampFilteredWindow($ds, $de);
         }
 
+        // Skip the walk when nothing that defines it has changed. This is called from the
+        // graph's change handler, which fires on every protocol/datatype/filter interaction
+        // in filtered mode — and the walk now stat()s every file, so repeating it per
+        // keystroke-adjacent event would block the single worker on a wide window.
+        $signature = implode("\x1f", [$ds, $de, implode(',', $sources), $profile]);
+        $measured = $c->getSignal('nfcapd_measured');
+        if ($measured !== null && $measured->string() === $signature) {
+            return;
+        }
+
         $files = NfcapdFiles::list($ds, $de, $sources, $profile);
         $count->setValue(\count($files), broadcast: false);
         $bytes->setValue(NfcapdFiles::totalSize($files), broadcast: false);
+        $measured?->setValue($signature, broadcast: false);
     }
 }

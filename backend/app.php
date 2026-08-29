@@ -238,6 +238,8 @@ $app->page('/', function (Context $c) use ($app): void {
     // Bytes behind that file count, so the filtered graph can say what a build will cost
     // before it starts rather than only warning that cost grows with the window.
     $nfcapdTotalBytes = $c->signal(0, 'nfcapd_total_bytes');
+    // Inputs the counts above were measured for, so the scan is skipped when nothing changed.
+    $nfcapdMeasured = $c->signal('', 'nfcapd_measured');
 
     // Sankey signals
     $sankeyFilter = $c->signal('', 'sankey_filter', clientWritable: true);

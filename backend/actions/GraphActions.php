@@ -587,9 +587,10 @@ final class GraphActions {
                 $datestart->setValue($now - $window, broadcast: false);
             }
 
-            // Keep the projected cost honest. In filtered mode this action only fires on an
-            // explicit mode switch or a resolution change (the 250 ms change handler and the
-            // live tick are both gated to 'rrd'), so the extra directory walk is rare.
+            // Keep the projected cost honest. The change handler is not gated to 'rrd' (it has
+            // to run so the axis cannot relabel over a series built with other settings), so
+            // this fires on every control interaction in filtered mode — measureNfcapdFiles()
+            // skips the walk unless the window, sources or profile actually changed.
             if ($graphMode?->string() === 'filtered') {
                 $graphSources = $c->getSignal('graph_sources');
                 $selectedProfile = $c->getSignal('selected_profile');

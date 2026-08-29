@@ -232,23 +232,28 @@ describe('FilteredSeries::build', function (): void {
         removeTree($root);
     });
 
-    test('leaves bins without capture files as gaps', function () use ($base): void {
+    // A bin with no captures must still occupy a row: omitting it leaves no point at that
+    // timestamp and ECharts draws straight across, so a collection outage looked like
+    // steady traffic. Stored mode shows a real gap for the same window.
+    test('emits bins without capture files as null rows, not as missing rows', function () use ($base): void {
         // Files at 00:00 and 00:10 — the 00:05 bin has none.
         $root = withFakeNfdump(['gateway'], [$base, $base + 600]);
         FakeProcessor::$defaultResponse = [statRow('TCP', 300, 0, 0)];
 
         $series = FilteredSeries::build($base, $base + 899, ['gateway'], '', unit: 'flows');
 
-        expect($series['data'])->toHaveCount(2)
-            ->and(array_keys($series['data']))->toBe([$base, $base + 600])
-            // nfdump is not run for a bin with no files at all
+        expect(array_keys($series['data']))->toBe([$base, $base + 300, $base + 600])
+            ->and($series['data'][$base + 300])->toBe([null, null, null, null])
+            ->and($series['data'][$base][0])->toBe(1.0)
+            // nfdump is still not run for a bin with no files at all
             ->and(FakeProcessor::$calls)->toHaveCount(2)
         ;
 
         removeTree($root);
     });
 
-    test('reports a nulled series when nfdump returns nothing for a bin', function () use ($base): void {
+    // nfdump ran and matched nothing: that is a real zero, not absence of data.
+    test('reports zeros when nfdump ran and matched nothing', function () use ($base): void {
         $root = withFakeNfdump(['gateway'], [$base]);
         FakeProcessor::$defaultResponse = [];
 
@@ -259,13 +264,34 @@ describe('FilteredSeries::build', function (): void {
         removeTree($root);
     });
 
-    test('keeps going when a single bin fails', function () use ($base): void {
+    // A failed invocation is a gap, not a zero — reporting 0 would render a truncated
+    // capture or an nfdumpMaxProcesses rejection as "no traffic here".
+    test('keeps going when a bin fails, and leaves it a gap rather than a zero', function () use ($base): void {
         $root = withFakeNfdump(['gateway'], [$base, $base + 300]);
         FakeProcessor::$throw = new Exception('nfdump exploded');
 
         $series = FilteredSeries::build($base, $base + 599, ['gateway'], '', unit: 'flows');
 
-        expect($series['data'])->toHaveCount(2);
+        expect($series['data'])->toHaveCount(2)
+            ->and($series['data'][$base])->toBe([null, null, null, null])
+            ->and($series['data'][$base + 300])->toBe([null, null, null, null])
+        ;
+
+        removeTree($root);
+    });
+
+    // The first bin starts at the floored window start, so the capture covering it must be
+    // included — listing from the raw start dropped it and under-reported that bin.
+    test('includes the capture covering the first partial bin', function () use ($base): void {
+        $root = withFakeNfdump(['gateway'], [$base]);
+        FakeProcessor::$defaultResponse = [statRow('TCP', 300, 0, 0)];
+
+        // Window starts 2 minutes after the capture at $base; the bin still starts at $base.
+        $series = FilteredSeries::build($base + 120, $base + 299, ['gateway'], '', unit: 'flows');
+
+        expect($series['data'][$base][0])->toBe(1.0)
+            ->and(FakeProcessor::$calls)->toHaveCount(1)
+        ;
 
         removeTree($root);
     });

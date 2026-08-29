@@ -69,14 +69,19 @@ final class FilteredSeries {
         ?callable $shouldCancel = null,
     ): array {
         $d = Debug::getInstance();
-        $files = NfcapdFiles::list($start, $end, $sources, $profile);
+
+        // Floor first, then list. Bins are laid out from the floored start, so listing from
+        // the raw one dropped the capture covering the first partial bin and under-reported
+        // it. Rrd::get_graph_data() floors the same way, so this also keeps Stored and
+        // Filtered covering the same window.
+        $binStart = $start - ($start % self::MIN_BIN);
+        $files = NfcapdFiles::list($binStart, $end, $sources, $profile);
 
         if ($files === []) {
             throw new \Exception('No nfcapd files found in the selected time range.');
         }
 
-        $step = self::binWidth($start, $end, $targetPoints, $display === 'sources' ? \count($sources) : 1);
-        $binStart = $start - ($start % self::MIN_BIN);
+        $step = self::binWidth($binStart, $end, $targetPoints, $display === 'sources' ? \count($sources) : 1);
 
         // 'sources' needs a per-source number, so each source is queried separately;
         // every other display can let nfdump merge the sources itself via -M a:b:c.
@@ -108,12 +113,22 @@ final class FilteredSeries {
             }
         }
 
+        // Walk every bin in the range, not only the ones that have captures. Omitting an
+        // empty bin leaves no row at that timestamp at all, and ECharts draws a straight
+        // line across it — so a collection outage looked like steady traffic, while the
+        // same window in Stored mode shows a real gap.
         $seriesCount = \count($legend);
-        $total = \count($bins) * \count($groups);
+        $binTimestamps = [];
+        for ($ts = $binStart; $ts <= $end; $ts += $step) {
+            $binTimestamps[] = $ts;
+        }
+
+        $total = \count($binTimestamps) * \count($groups);
         $done = 0;
         $data = [];
 
-        foreach ($bins as $binTs => $filesBySource) {
+        foreach ($binTimestamps as $binTs) {
+            $filesBySource = $bins[$binTs] ?? [];
             // Start every bin as a gap; only counters nfdump actually reports overwrite it.
             $row = array_fill(0, $seriesCount, null);
 
@@ -142,6 +157,17 @@ final class FilteredSeries {
                 }
 
                 $stats = self::runBin($group, $groupFiles, $filter, $profile);
+
+                if ($stats === null) {
+                    // nfdump failed for this bin — leave the seeded null so it draws as a
+                    // gap. Reporting 0 here would render a truncated capture or a rejected
+                    // invocation as "no traffic", which is a different and wrong claim.
+                    if ($onProgress !== null) {
+                        $onProgress($done, $total);
+                    }
+
+                    continue;
+                }
 
                 if ($display === 'sources') {
                     // Deliberately not $total — that name is the progress denominator
@@ -238,9 +264,10 @@ final class FilteredSeries {
      * @param list<string>     $group
      * @param list<NfcapdFile> $files
      *
-     * @return array<array<string, mixed>> decoded nfdump rows
+     * @return null|array<array<string, mixed>> decoded nfdump rows, or null when the
+     *                                          invocation failed — which is a gap, not a zero
      */
-    private static function runBin(array $group, array $files, string $filter, string $profile): array {
+    private static function runBin(array $group, array $files, string $filter, string $profile): ?array {
         $relPaths = array_column($files, 'relPath');
         sort($relPaths);
         $first = $relPaths[0];
@@ -269,10 +296,12 @@ final class FilteredSeries {
         try {
             $result = $nfdump->execute();
         } catch (\Exception $e) {
-            // A single unreadable bin must not sink the whole graph — leave it a gap.
+            // A single unreadable bin must not sink the whole graph. null, not [] — the
+            // caller renders null as a gap, while [] is the legitimate "filter matched
+            // nothing here" answer and must stay a zero.
             Debug::getInstance()->log('FilteredSeries: bin failed: ' . $e->getMessage(), LOG_WARNING);
 
-            return [];
+            return null;
         }
 
         return $result['decoded'] ?? [];

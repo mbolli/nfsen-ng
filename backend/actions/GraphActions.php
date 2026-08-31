@@ -581,13 +581,13 @@ final class GraphActions {
             $graphMode = $c->getSignal('graph_mode');
             $now = time();
             $de = $dateend->int();
-            if ($graphMode?->string() === 'rrd' && $now - $de < 600) {
+            if ($graphMode?->string() === 'stored' && $now - $de < 600) {
                 $window = $de - $datestart->int();
                 $dateend->setValue($now, broadcast: false);
                 $datestart->setValue($now - $window, broadcast: false);
             }
 
-            // Keep the projected cost honest. The change handler is not gated to 'rrd' (it has
+            // Keep the projected cost honest. The change handler is not gated to 'stored' (it has
             // to run so the axis cannot relabel over a series built with other settings), so
             // this fires on every control interaction in filtered mode — measureNfcapdFiles()
             // skips the walk unless the window, sources or profile actually changed.

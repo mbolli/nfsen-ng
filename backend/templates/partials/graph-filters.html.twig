@@ -14,7 +14,7 @@
     data-on:change__window fires on any filter change inside this panel or the date range
     controls; mayUpdateGraph() guards against spurious triggers from other panels.
 
-    The 15 s live tick is gated on graph_mode === 'rrd': in filtered mode the series comes
+    The 15 s live tick is gated on graph_mode === 'stored': in filtered mode the series comes
     from re-reading the nfcapd files (#166), which costs hundreds of nfdump invocations and
     must never fire on a timer.
 
@@ -43,7 +43,7 @@
      data-signals__ifmissing='{"_sourcesDefault": {{ sources|json_encode }}, "{{ graph_ports.id() }}": {{ ports|json_encode }}, "{{ graph_sources.id() }}": {{ graph_sources.array()|json_encode }}}'
      data-computed:graph._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ${{ graph_protocols.id() }}, ports: ${{ graph_ports.id() }}, display: ${{ graph_display.id() }}, type: ${{ graph_datatype.id() }}, trafficUnit: ${{ graph_trafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}"
      data-indicator:graph._connecting
-     data-on-interval__duration.15s.leading="!$_disconnected && ${{ graph_mode.id() }} === 'rrd' && ${{ graph_isLive.id() }} && @post('{{ refreshGraphs.url() }}')"
+     data-on-interval__duration.15s.leading="!$_disconnected && ${{ graph_mode.id() }} === 'stored' && ${{ graph_isLive.id() }} && @post('{{ refreshGraphs.url() }}')"
      data-on:change__window__throttle.250ms="window.mayUpdateGraph(evt, el) && @post('{{ refreshGraphs.url() }}')">
 
     {# Display type #}
@@ -163,7 +163,8 @@
     </div>
 
     {# ── Filter mode (#166) ────────────────────────────────────────────────
-       'rrd' plots the pre-aggregated datasource series (live, instant).
+       'stored' plots the pre-aggregated datasource series (live, instant) — the
+       datasource being RRD or VictoriaMetrics, hence 'stored' rather than 'rrd'.
        'filtered' re-reads the capture files through an nfdump filter (explicit, slow).
     #}
     <div class="col-md-2" id="filterGraphMode">
@@ -177,10 +178,10 @@
                seeds defaultChecked, so neither button ever showed as active — the mode was
                readable solely from whether the filter panel below had appeared. Same
                pattern as the Protocols buttons above. #}
-            <input type="radio" class="btn-check" name="graphMode" value="rrd"
+            <input type="radio" class="btn-check" name="graphMode" value="stored"
                    id="graphModeRrd" checked
-                   data-effect="el.checked = ${{ graph_mode.id() }} === 'rrd'"
-                   data-on:change__stop="${{ graph_mode.id() }} = 'rrd'; @post('{{ refreshGraphs.url() }}')">
+                   data-effect="el.checked = ${{ graph_mode.id() }} === 'stored'"
+                   data-on:change__stop="${{ graph_mode.id() }} = 'stored'; @post('{{ refreshGraphs.url() }}')">
             <label class="btn btn-outline-primary btn-sm" for="graphModeRrd">Stored</label>
             <input type="radio" class="btn-check" name="graphMode" value="filtered"
                    id="graphModeFiltered"

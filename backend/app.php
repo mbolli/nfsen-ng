@@ -176,10 +176,11 @@ $app->page('/', function (Context $c) use ($app): void {
     );
     $graphTrafficUnit = $c->signal('bits', 'graph_trafficUnit', clientWritable: true);
     $graphResolution = $c->signal(500, 'graph_resolution', clientWritable: true);
-    // Filtered-graph mode (#166). 'rrd' plots the pre-aggregated datasource series;
+    // Filtered-graph mode (#166). 'stored' plots the pre-aggregated datasource series
+    // (RRD or VictoriaMetrics — whichever NFSEN_DATASOURCE selects);
     // 'filtered' re-reads the nfcapd files through an nfdump filter, which only the
     // run-filtered-graph action may do — never the render path.
-    $graphMode = $c->signal('rrd', 'graph_mode', clientWritable: true);
+    $graphMode = $c->signal('stored', 'graph_mode', clientWritable: true);
     $graphFilter = $c->signal('', 'graph_filter', clientWritable: true);
     // Server-side graph metadata (read-only for browser)
     $graphIsLive = $c->signal(false, 'graph_isLive');
@@ -516,7 +517,7 @@ $app->page('/', function (Context $c) use ($app): void {
             // ends near now — leaves the freshly built series unreachable and the graph
             // permanently empty. A filtered build is a snapshot of one explicit window.
             $de = $dateend->int();
-            if ($graphMode->string() === 'rrd' && $now - $de < 600) {
+            if ($graphMode->string() === 'stored' && $now - $de < 600) {
                 $window = $de - $datestart->int();
                 $dateend->setValue($now, broadcast: false);
                 $datestart->setValue($now - $window, broadcast: false);

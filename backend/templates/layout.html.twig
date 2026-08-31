@@ -6,42 +6,22 @@
        every later load, beating the seed that was supposed to own the default. That is how
        _graph_stepplot (default true) ended up permanently '' and the graph silently stopped
        rendering as a step plot. #}
-    {# _darkMode is seeded from window.__nfsenTheme, resolved by the blocking script at the
-       top of <head> — the same value it has already painted, so the signal and the attribute
-       can never disagree. It is deliberately NOT in data-persist: see that script for why. #}
+    {# _darkMode is seeded from the head script's already-painted value, so signal and
+       attribute cannot disagree. Not persisted — only the explicit choice is (#167). #}
     data-signals__ifmissing="{_darkMode: window.__nfsenTheme.dark, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences', _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _autoSyncGraph: false}"
     data-persist="{_currentView: $_currentView, _settingsSection: $_settingsSection, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _autoSyncGraph: $_autoSyncGraph}"
-    {# Paint the deployment default on the first frame even with JS off entirely; the head
-       script overrides this with the user's own choice when there is one (see #156, #167). #}
+    {# Fallback for JS off entirely; the head script overrides it (#156, #167). #}
     {% if defaults.theme|default('auto') == 'dark' %}data-bs-theme="dark"{% elseif defaults.theme|default('auto') == 'light' %}data-bs-theme="light"{% endif %}
     data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'"
-    {# An OS-level light/dark switch only reaches the signal while the tab is open through
-       this event, dispatched by the head script's matchMedia listener (#167). #}
+    {# Dispatched by the head script's matchMedia listener. #}
     data-on:nfsen-colorscheme__window="$_darkMode = evt.detail.dark"
     {# Keep the client's live theme across SSE morphs, which otherwise strip/overwrite data-bs-theme and let a chart re-render read the wrong theme (see #151). #}
     data-preserve-attr="data-bs-theme">
 <head>
     <meta charset="utf-8">
-    {#
-        Theme, resolved before the first paint (#167).
-
-        This has to be a blocking inline script, and it has to be here — the very top of
-        <head>, ahead of the stylesheets. Everything else that knows the theme runs too
-        late: data-attr:data-bs-theme on <html> is applied by Datastar, which is a module
-        at the bottom of <body>, so the browser had already painted a full light-themed
-        frame by the time it ran. On a dark install that is a white flash on every load.
-
-        Precedence, which must match what the rest of the page then does:
-          1. an explicit choice the user made with the toggle  (localStorage 'nfsen-theme')
-          2. the deployment default                            (NFSEN_DEFAULT_THEME)
-          3. 'auto' → the OS preference                        (prefers-color-scheme)
-
-        Only an explicit choice is stored. _darkMode used to be in data-persist, which
-        wrote it on *every* change including the seed — so the first visit's OS preference
-        was saved and then restored unconditionally forever after, and an 'auto' install
-        stopped following the OS the moment it was opened once. Storing the choice instead
-        of the resolved value is what makes 'auto' keep meaning auto.
-    #}
+    {# Blocking, and above the stylesheets: data-attr:data-bs-theme is applied by Datastar,
+       a module at the end of <body>, so the light frame had already painted (#167).
+       Precedence: explicit toggle, else NFSEN_DEFAULT_THEME, else the OS. #}
     <script>
         (function () {
             var DEFAULT = {{ (defaults.theme|default('auto'))|json_encode|raw }};
@@ -49,12 +29,10 @@
             var choice = null;
             try {
                 choice = localStorage.getItem('nfsen-theme');
-                // Pre-#167 key: the resolved boolean, written on every load regardless of
-                // whether the user ever touched the toggle, so it cannot be told apart from
-                // an auto-resolved value. Dropping it costs a one-time reset to the
-                // deployment default rather than freezing 'auto' forever.
+                // Pre-#167 key held the resolved value, so it cannot be told apart from an
+                // auto-resolved one. Dropped rather than migrated.
                 localStorage.removeItem('nfsen-persist:_darkMode');
-            } catch (e) { /* private mode / storage disabled — fall through to the default */ }
+            } catch (e) { /* storage disabled */ }
 
             function resolve() {
                 if (choice === 'dark' || choice === 'light') return choice === 'dark';
@@ -69,7 +47,6 @@
 
             window.__nfsenTheme = {
                 dark: resolve(),
-                // Called by the toggle (nav.html.twig) so the choice outlives the tab.
                 choose: function (dark) {
                     choice = dark ? 'dark' : 'light';
                     try { localStorage.setItem('nfsen-theme', choice); } catch (e) {}
@@ -77,9 +54,8 @@
             };
             apply(window.__nfsenTheme.dark);
 
-            // With no explicit choice, follow the OS while the tab is open. The attribute is
-            // set here for the pre-boot case; the event is what moves the _darkMode signal,
-            // so the sun/moon icon and any chart re-render stay in step.
+            // With no explicit choice, follow the OS live. The event moves the signal too,
+            // so the sun/moon icon stays in step.
             mq.addEventListener('change', function (e) {
                 if (choice === 'dark' || choice === 'light') return;
                 window.__nfsenTheme.dark = e.matches;

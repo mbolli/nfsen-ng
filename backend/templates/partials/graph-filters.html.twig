@@ -172,14 +172,19 @@
             <nfsen-tooltip data-ignore-morph text="Stored: the pre-aggregated database series — instant and live. Filtered: re-reads the raw capture files so an nfdump filter can be applied, which takes time and does not auto-refresh." placement="top"></nfsen-tooltip>
         </p>
         <div class="btn-group" role="group">
+            {# el.checked, not data-attr:checked: Bootstrap lights the label through
+               `.btn-check:checked + .btn`, which reads the *property*. The attribute only
+               seeds defaultChecked, so neither button ever showed as active — the mode was
+               readable solely from whether the filter panel below had appeared. Same
+               pattern as the Protocols buttons above. #}
             <input type="radio" class="btn-check" name="graphMode" value="rrd"
-                   id="graphModeRrd"
-                   data-attr:checked="${{ graph_mode.id() }} === 'rrd'"
+                   id="graphModeRrd" checked
+                   data-effect="el.checked = ${{ graph_mode.id() }} === 'rrd'"
                    data-on:change__stop="${{ graph_mode.id() }} = 'rrd'; @post('{{ refreshGraphs.url() }}')">
             <label class="btn btn-outline-primary btn-sm" for="graphModeRrd">Stored</label>
             <input type="radio" class="btn-check" name="graphMode" value="filtered"
                    id="graphModeFiltered"
-                   data-attr:checked="${{ graph_mode.id() }} === 'filtered'"
+                   data-effect="el.checked = ${{ graph_mode.id() }} === 'filtered'"
                    data-on:change__stop="${{ graph_mode.id() }} = 'filtered'; ${{ graph_display.id() }} === 'ports' && (${{ graph_display.id() }} = 'protocols'); @post('{{ refreshGraphs.url() }}')">
             <label class="btn btn-outline-primary btn-sm" for="graphModeFiltered">Filtered</label>
         </div>

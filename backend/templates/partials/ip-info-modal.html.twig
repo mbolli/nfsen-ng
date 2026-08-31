@@ -17,11 +17,17 @@
                     <dd class="col-sm-9{% if hostname == 'could not be resolved' %} text-secondary fst-italic{% endif %}">{{ hostname }}</dd>
                 </dl>
 
+                {# Rows stay curated rather than looping the payload: netbox() returns the raw
+                   API object, whose nested values (status, role, tenant) only read well through
+                   .label/.name, and which carries id/url/timestamps nobody needs here (#168). #}
                 {% if netboxData is defined and netboxData is not empty %}
-                    <h3 class="fs-6 fw-semibold text-muted mb-1">Netbox</h3>
-                    <table class="table table-sm table-bordered mb-3">
+                    <h3>{{ ip }} (Netbox)</h3>
+                    <table class="table table-striped table-hover table-sm">
                         {% if netboxData.address is defined %}
-                            <tr><th class="col-4">Address</th><td>{{ netboxData.address }}</td></tr>
+                            <tr><th>Address</th><td>{{ netboxData.address }}</td></tr>
+                        {% endif %}
+                        {% if netboxData.dns_name is defined and netboxData.dns_name %}
+                            <tr><th>DNS name</th><td>{{ netboxData.dns_name }}</td></tr>
                         {% endif %}
                         {% if netboxData.description is defined and netboxData.description %}
                             <tr><th>Description</th><td>{{ netboxData.description }}</td></tr>
@@ -38,9 +44,15 @@
                         {% if netboxData.role is defined and netboxData.role %}
                             <tr><th>Role</th><td>{{ netboxData.role.label ?? netboxData.role }}</td></tr>
                         {% endif %}
+                        {% if netboxData.assigned_object is defined and netboxData.assigned_object %}
+                            <tr><th>Assigned to</th><td>{{ netboxData.assigned_object.display ?? netboxData.assigned_object.name ?? '' }}</td></tr>
+                        {% endif %}
                     </table>
                 {% endif %}
 
+                {# A private IP gets no geo lookup at all (UtilityActions), so without this the
+                   else-branch below rendered a bare heading over an empty table (#168). #}
+                {% if geoData is defined and geoData is not empty %}
                 {% if geoData.error is defined and geoData.error %}
                     <div class="alert alert-warning">{{ geoData.reason ?? 'IP lookup failed' }}</div>
                 {% else %}
@@ -69,6 +81,7 @@
                             {% endif %}
                         {% endfor %}
                     </table>
+                {% endif %}
                 {% endif %}
             </div>
             <div class="modal-footer">

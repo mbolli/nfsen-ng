@@ -196,3 +196,23 @@ describe('IpLookup geo response normalization', function (): void {
         expect($out)->not->toHaveKey('error');
     });
 });
+
+describe('IpLookup::geo() failure reporting', function (): void {
+    test('an unreachable service reports a reason rather than an empty result', function (): void {
+        // Port 1 on loopback refuses immediately, so this stays offline and fast.
+        putenv('NFSEN_IPINFO_URL=http://127.0.0.1:1/{ip}');
+
+        // geo() suppresses the connection warning with @, but Pest's error handler still
+        // reports it; silence it here so a deliberate failure isn't flagged as a warning.
+        set_error_handler(static fn (): bool => true);
+        $result = IpLookup::geo('1.1.1.1');
+        restore_error_handler();
+
+        // Empty would be indistinguishable from "no lookup attempted" (a private IP), which
+        // the modal renders as nothing at all — the failure has to be visible instead (#168).
+        expect($result)->not->toBeEmpty()
+            ->and($result['error'])->toBeTrue()
+            ->and($result['reason'])->toBeString()->not->toBeEmpty()
+        ;
+    });
+});

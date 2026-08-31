@@ -147,11 +147,21 @@
                             copies. Sources and the date range are already shared signals, so the
                             two panels stay consistent for free.
                         #}
-                        <div data-show="$_currentView == 'graphs' || $_currentView == 'investigate'" class="col-12">
-                            {% include 'partials/graph-filters.html.twig' %}
-                        </div>
-                        <div data-show="$_currentView == 'flows' || $_currentView == 'investigate'" class="col-12" style="display: none;">
-                            {% include 'partials/flow-filters.html.twig' %}
+                        {#
+                            On Investigate both panels are visible at once, and stacked they
+                            ran to ~1050px against a 1000px viewport — the graph, the whole
+                            point of the view, started below the fold. .filter-split lays them
+                            side by side from 1200px up (see nfsen-ng.css); everywhere else
+                            only one of the two is shown and the class is absent, so the
+                            single-panel views are untouched.
+                        #}
+                        <div data-class:filter-split="$_currentView === 'investigate'">
+                            <div data-show="$_currentView == 'graphs' || $_currentView == 'investigate'" class="col-12">
+                                {% include 'partials/graph-filters.html.twig' %}
+                            </div>
+                            <div data-show="$_currentView == 'flows' || $_currentView == 'investigate'" class="col-12" style="display: none;">
+                                {% include 'partials/flow-filters.html.twig' %}
+                            </div>
                         </div>
                         <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
                             {% include 'partials/stats-filters.html.twig' %}

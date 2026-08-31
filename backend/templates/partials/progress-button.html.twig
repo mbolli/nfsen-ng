@@ -1,0 +1,82 @@
+{#
+    Submit button with a real progress bar, shared by every panel that runs a query.
+
+    The backend knows how far along it is — exactly for the filtered graph (bins done /
+    bins total), approximately for a single-shot nfdump (bytes read / bytes to read) — so
+    the button shows per-mille progress and an ETA instead of an indeterminate spinner.
+
+    Falls back to the spinner automatically: when `permille` is 0 and no status text has
+    arrived, there is nothing meaningful to draw yet.
+
+    Params:
+      label      — idle button text
+      action     — action URL to POST on click
+      running    — server-owned bool signal, true while the query runs
+      permille   — server-owned int signal, 0..1000
+      status     — server-owned string signal, e.g. "Scanning 42 / 288 intervals"
+      eta        — server-owned string signal, e.g. "~1m 30s"
+      exact      — server-owned bool signal; false renders the figure as an estimate
+      kindSignal — server-owned string signal naming the panel that owns the running query
+      kind       — this panel's name; progress renders only when kindSignal matches it
+      killAction — action URL for the Kill button
+      id         — DOM id prefix, so several of these can coexist
+      onClick    — optional extra JS to run before the POST
+#}
+{#
+    Only this panel's own query drives its button. The Investigate view has the graph and
+    flows panels on screen together and they share the query_* signals, so without the kind
+    check a flows query would light up the graph's Apply button and vice versa.
+
+    `disabled` still keys off the bare running flag: only one query runs at a time, so a
+    click on another panel's button would be silently dropped.
+#}
+{% set here = '$' ~ running ~ " && $" ~ kindSignal ~ " === '" ~ kind ~ "'" %}
+<div class="d-flex align-items-center gap-2 flex-wrap" id="{{ id }}">
+    <button type="button"
+            class="btn btn-primary"
+            id="{{ id }}Submit"
+            data-attr:disabled="${{ running }}"
+            data-on:click="{{ onClick|default('') }}@post('{{ action }}')">
+        <span data-show="!({{ here }})">{{ label }}</span>
+        <span class="spinner-grow spinner-grow-sm" data-show="{{ here }}" role="status" aria-hidden="true"></span>
+        <span data-show="{{ here }}">Processing…</span>
+    </button>
+
+    <button type="button"
+            class="btn btn-outline-danger btn-sm"
+            style="display:none"
+            data-show="{{ here }}"
+            data-on:click="@post('{{ killAction }}')">Kill</button>
+
+    {#
+        Progress readout. The *bar* only exists while the query runs, but the status line
+        outlives it — otherwise the closing "Done in 1.2s." / "Cancelled" message is set and
+        hidden in the same breath, and the user never sees how the run ended.
+    #}
+    <div class="flex-grow-1" style="min-width: 12rem; display:none"
+         data-show="({{ here }}) || (${{ status }} !== '' && ${{ kindSignal }} === '{{ kind }}')">
+        <div class="progress" style="height: 6px; display:none"
+             data-show="{{ here }}"
+             role="progressbar"
+             data-attr:aria-valuenow="Math.round(${{ permille }} / 10)"
+             aria-valuemin="0" aria-valuemax="100">
+            {#
+                The bar is driven straight off the signal, so a syncSignals() patch moves it
+                without the page being re-rendered. data-attr rather than an inline style so
+                Datastar owns the width and DOM morphing cannot clobber it.
+            #}
+            <div class="progress-bar"
+                 data-class:progress-bar-striped="!${{ exact }}"
+                 data-class:progress-bar-animated="!${{ exact }}"
+                 data-attr:style="'width: ' + (${{ permille }} / 10) + '%'"></div>
+        </div>
+        <div class="d-flex justify-content-between small text-muted mt-1">
+            <span data-text="${{ status }}"></span>
+            <span data-show="{{ here }}">
+                <span data-text="(${{ permille }} / 10).toFixed(1) + '%'"></span>
+                <span data-show="!${{ exact }}" title="Estimated from bytes read">(est.)</span>
+                <span data-show="${{ eta }} !== ''" data-text="' • ' + ${{ eta }}"></span>
+            </span>
+        </div>
+    </div>
+</div>

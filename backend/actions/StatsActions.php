@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\common\Table;
 use mbolli\nfsen_ng\processor\Nfdump;
 use Mbolli\PhpVia\Context;
@@ -68,6 +69,14 @@ final class StatsActions {
                     $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => 'Time window clamped to ' . round($maxWindow / 86400, 1) . ' days (NFSEN_MAX_STATS_WINDOW).'];
                 }
                 $processor->setOption('-R', [$ds, $de]);
+                // Denominator for the progress estimate: how many bytes nfdump is about to
+                // read. Sized after the clamp above, so it matches the range actually queried,
+                // and deferred so the walk runs inside the coroutine rather than in front of
+                // this action's response.
+                $profile = $selectedProfile->string();
+                $totalBytes = static fn (): int => NfcapdFiles::totalSize(
+                    NfcapdFiles::list($ds, $de, $srcs, $profile)
+                );
                 $processor->setOption('-n', $statsCount->int());
                 $processor->setOption('-o', 'json');
                 $processor->setOption('-s', $forParam);
@@ -82,35 +91,53 @@ final class StatsActions {
                     $combinedFilter = $thresholdFilter . ($combinedFilter !== '' ? ' and ' . $combinedFilter : '');
                 }
                 $processor->setFilter($combinedFilter);
-                $result = $processor->execute();
 
-                // nfdump can answer with a JSON object rather than an array; Table::generate()
-                // indexes the first row positionally, so re-key to a list.
-                $statsData = array_values((array) ($result['decoded'] ?? []));
+                // nfdump runs in a coroutine so the action can return immediately and the
+                // button can show real progress instead of an indeterminate spinner.
+                QueryRunner::run($c, 'stats', $totalBytes, 'Starting nfdump…', static function () use (
+                    $processor,
+                    $ipInfoAction,
+                    $time,
+                    &$statsNotifications,
+                    &$statsTableHtml
+                ): void {
+                    try {
+                        $result = $processor->execute();
 
-                $elapsed = round(microtime(true) - $time, 3);
-                $cmd = htmlspecialchars((string) ($result['command'] ?? ''), ENT_QUOTES | ENT_HTML5);
-                $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
-                    ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
-                    : "Statistics processed in {$elapsed}s."];
+                        // nfdump can answer with a JSON object rather than an array; Table::generate()
+                        // indexes the first row positionally, so re-key to a list.
+                        $statsData = array_values((array) ($result['decoded'] ?? []));
 
-                if (!empty($result['stderr'])) {
-                    $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES | ENT_HTML5)];
-                }
+                        $elapsed = round(microtime(true) - $time, 3);
+                        $cmd = htmlspecialchars((string) ($result['command'] ?? ''), ENT_QUOTES | ENT_HTML5);
+                        $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
+                            ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
+                            : "Statistics processed in {$elapsed}s."];
 
-                $statsTableHtml = Table::generate($statsData, 'statsTable', [
-                    'hiddenFields' => [],
-                    'linkIpAddresses' => true,
-                    'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
-                    'originalData' => $result['rawOutput'] ?? null,
-                ]);
+                        if (!empty($result['stderr'])) {
+                            $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES | ENT_HTML5)];
+                        }
+
+                        $statsTableHtml = Table::generate($statsData, 'statsTable', [
+                            'hiddenFields' => [],
+                            'linkIpAddresses' => true,
+                            'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
+                            'originalData' => $result['rawOutput'] ?? null,
+                        ]);
+                    } catch (\Throwable $e) {
+                        Debug::getInstance()->log('Stats action error: ' . $e->getMessage(), LOG_ERR);
+                        $statsNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
+                        $statsTableHtml = '';
+                    }
+                });
             } catch (\Throwable $e) {
+                // Failure while *building* the command (bad window, unreadable profile) —
+                // nothing was started, so report it synchronously.
                 Debug::getInstance()->log('Stats action error: ' . $e->getMessage(), LOG_ERR);
                 $statsNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
                 $statsTableHtml = '';
+                $c->sync();
             }
-
-            $c->sync();
         }, 'stats-actions');
 
         // Dismiss a notification by ID from either tab
@@ -133,10 +160,15 @@ final class StatsActions {
             $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
             \assert($datestart !== null && $dateend !== null && $graphSources !== null && $selectedProfile !== null && $nfcapdFileCount !== null);
 
+            $graphMode = $c->getSignal('graph_mode');
             $srcs = Helpers::resolveSources($graphSources->array());
-            $nfcapdFileCount->setValue(
-                Helpers::countNfcapdFiles($datestart->int(), $dateend->int(), $srcs, $selectedProfile->string()),
-                broadcast: false
+            Helpers::measureNfcapdFiles(
+                $c,
+                $datestart->int(),
+                $dateend->int(),
+                $srcs,
+                $selectedProfile->string(),
+                $graphMode?->string() === 'filtered'
             );
             $c->sync();
         }, 'count-files');

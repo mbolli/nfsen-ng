@@ -122,7 +122,12 @@ class Nfdump implements Processor {
                 break;
 
             case '-R': // set path
-                $this->cfg['option'][$option] = $this->convert_date_to_path($value[0], $value[1]);
+                // A string is an already-resolved `first[:last]` file pair, relative to the
+                // -M source dirs — FilteredSeries has enumerated the bin's files itself and
+                // must not have them re-derived (and re-scanned) from timestamps here.
+                $this->cfg['option'][$option] = \is_array($value)
+                    ? $this->convert_date_to_path($value[0], $value[1])
+                    : (string) $value;
 
                 break;
 

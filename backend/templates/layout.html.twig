@@ -129,19 +129,39 @@
              style="flex-direction: row"
              data-show="$_currentView != 'settings'"
              data-indicator:nfcapd._counting
-             data-on:change__window__throttle.1000ms="($_currentView === 'flows' || $_currentView === 'statistics' || $_currentView === 'sankey') && evt.target.closest('nfsen-daterange') && @post('{{ countFiles.url() }}')">
+             data-on:change__window__throttle.1000ms="($_currentView === 'flows' || $_currentView === 'statistics' || $_currentView === 'sankey' || $_currentView === 'investigate' || ($_currentView === 'graphs' && ${{ graph_mode.id() }} === 'filtered')) && evt.target.closest('nfsen-daterange') && @post('{{ countFiles.url() }}')">
             <div class="col-12">
                 <div class="card">
                     <div class="card-body">
 
                         {% include 'partials/date-range.html.twig' %}
 
-                        {# View-specific filter panels — all rendered, visibility via data-show #}
-                        <div data-show="$_currentView == 'graphs'" class="col-12">
-                            {% include 'partials/graph-filters.html.twig' %}
-                        </div>
-                        <div data-show="$_currentView == 'flows'" class="col-12" style="display: none;">
-                            {% include 'partials/flow-filters.html.twig' %}
+                        {#
+                            View-specific filter panels — all rendered, visibility via data-show.
+
+                            'investigate' (#166) shows the graph and flows panels together, so the
+                            same window and filter can be read as a timeline and as records side by
+                            side. It reuses these single instances rather than including the
+                            partials a second time: duplicate DOM ids, and two nfsen-chart elements
+                            competing for the shared #legend/#series containers, would break both
+                            copies. Sources and the date range are already shared signals, so the
+                            two panels stay consistent for free.
+                        #}
+                        {#
+                            On Investigate both panels are visible at once, and stacked they
+                            ran to ~1050px against a 1000px viewport — the graph, the whole
+                            point of the view, started below the fold. .filter-split lays them
+                            side by side from 1200px up (see nfsen-ng.css); everywhere else
+                            only one of the two is shown and the class is absent, so the
+                            single-panel views are untouched.
+                        #}
+                        <div data-class:filter-split="$_currentView === 'investigate'">
+                            <div data-show="$_currentView == 'graphs' || $_currentView == 'investigate'" class="col-12">
+                                {% include 'partials/graph-filters.html.twig' %}
+                            </div>
+                            <div data-show="$_currentView == 'flows' || $_currentView == 'investigate'" class="col-12" style="display: none;">
+                                {% include 'partials/flow-filters.html.twig' %}
+                            </div>
                         </div>
                         <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
                             {% include 'partials/stats-filters.html.twig' %}
@@ -156,10 +176,10 @@
         </div>
 
         {# ── View panels ───────────────────────────────────────────────────── #}
-        <div data-show="$_currentView == 'graphs'" class="col-12">
+        <div data-show="$_currentView == 'graphs' || $_currentView == 'investigate'" class="col-12">
             {% include 'partials/graph-view.html.twig' %}
         </div>
-        <div data-show="$_currentView == 'flows'" class="col-12" style="display: none;">
+        <div data-show="$_currentView == 'flows' || $_currentView == 'investigate'" class="col-12" style="display: none;">
             {% include 'partials/flow-view.html.twig' %}
         </div>
         <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">

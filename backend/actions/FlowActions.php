@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\common\Table;
 use mbolli\nfsen_ng\processor\Nfdump;
 use Mbolli\PhpVia\Context;
@@ -79,6 +80,15 @@ final class FlowActions {
                 $processor->setProfile($selectedProfile->string());
                 $processor->setOption('-M', implode(':', $srcs));
                 $processor->setOption('-R', [$datestart->int(), $dateend->int()]);
+                // Denominator for the progress estimate: bytes nfdump is about to read.
+                // Deferred — QueryRunner evaluates it inside the coroutine so the walk does
+                // not sit in front of this action's response.
+                $ds = $datestart->int();
+                $de = $dateend->int();
+                $profile = $selectedProfile->string();
+                $totalBytes = static fn (): int => NfcapdFiles::totalSize(
+                    NfcapdFiles::list($ds, $de, $srcs, $profile)
+                );
                 $processor->setOption('-c', $flowLimit->int());
                 $processor->setOption('-o', 'json');
                 if ($flowOrderByTstart->bool()) {
@@ -99,36 +109,54 @@ final class FlowActions {
                     $combinedFlowFilter = $thresholdFilter . ($combinedFlowFilter !== '' ? ' and ' . $combinedFlowFilter : '');
                 }
                 $processor->setFilter($combinedFlowFilter);
-                $result = $processor->execute();
 
-                // nfdump can answer with a JSON object rather than an array; Table::generate()
-                // indexes the first row positionally, so re-key to a list.
-                $flowData = array_values((array) ($result['decoded'] ?? []));
+                // nfdump runs in a coroutine so the action can return immediately and the
+                // button can show real progress instead of an indeterminate spinner.
+                QueryRunner::run($c, 'flows', $totalBytes, 'Starting nfdump…', static function () use (
+                    $processor,
+                    $ipInfoAction,
+                    $flowCount,
+                    $time,
+                    &$flowNotifications,
+                    &$flowTableHtml
+                ): void {
+                    try {
+                        $result = $processor->execute();
 
-                $flowCount->setValue(\count($flowData), broadcast: false);
-                $elapsed = round(microtime(true) - $time, 3);
-                $cmd = htmlspecialchars((string) ($result['command'] ?? ''), ENT_QUOTES | ENT_HTML5);
-                $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
-                    ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
-                    : "Flows processed in {$elapsed}s."]];
+                        // nfdump can answer with a JSON object rather than an array; Table::generate()
+                        // indexes the first row positionally, so re-key to a list.
+                        $flowData = array_values((array) ($result['decoded'] ?? []));
 
-                if (!empty($result['stderr'])) {
-                    $flowNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES | ENT_HTML5)];
-                }
+                        $flowCount->setValue(\count($flowData), broadcast: false);
+                        $elapsed = round(microtime(true) - $time, 3);
+                        $cmd = htmlspecialchars((string) ($result['command'] ?? ''), ENT_QUOTES | ENT_HTML5);
+                        $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
+                            ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
+                            : "Flows processed in {$elapsed}s."]];
 
-                $flowTableHtml = Table::generate($flowData, 'flowTable', [
-                    'hiddenFields' => [],
-                    'linkIpAddresses' => true,
-                    'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
-                    'originalData' => $result['rawOutput'] ?? null,
-                ]);
+                        if (!empty($result['stderr'])) {
+                            $flowNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES | ENT_HTML5)];
+                        }
+
+                        $flowTableHtml = Table::generate($flowData, 'flowTable', [
+                            'hiddenFields' => [],
+                            'linkIpAddresses' => true,
+                            'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
+                            'originalData' => $result['rawOutput'] ?? null,
+                        ]);
+                    } catch (\Throwable $e) {
+                        Debug::getInstance()->log('Flow action error: ' . $e->getMessage(), LOG_ERR);
+                        $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
+                        $flowTableHtml = '';
+                    }
+                });
             } catch (\Throwable $e) {
+                // Failure while *building* the command — nothing started, report synchronously.
                 Debug::getInstance()->log('Flow action error: ' . $e->getMessage(), LOG_ERR);
                 $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
                 $flowTableHtml = '';
+                $c->sync();
             }
-
-            $c->sync();
         }, 'flow-actions');
     }
 }

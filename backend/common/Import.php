@@ -403,19 +403,7 @@ class Import {
     }
 
     private function formatEta(int $seconds): string {
-        if ($seconds < 60) {
-            return "~{$seconds}s";
-        }
-        if ($seconds < 3600) {
-            $m = (int) ($seconds / 60);
-            $s = $seconds % 60;
-
-            return "~{$m}m {$s}s";
-        }
-        $h = (int) ($seconds / 3600);
-        $m = (int) (($seconds % 3600) / 60);
-
-        return "~{$h}h {$m}m";
+        return QueryProgress::formatEta($seconds);
     }
 
     /**

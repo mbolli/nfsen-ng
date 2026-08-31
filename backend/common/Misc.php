@@ -57,6 +57,43 @@ class Misc {
     }
 
     /**
+     * Bytes a running process has read so far, from /proc/<pid>/io, or null when that
+     * cannot be answered (no procfs, process gone, or the kernel denies access).
+     *
+     * Reads `rchar` rather than `read_bytes` deliberately: `read_bytes` counts actual
+     * block-device traffic and stays at 0 for files already in the page cache, which is
+     * the common case for a freshly written nfcapd file. `rchar` counts bytes returned
+     * by read() regardless of where they came from, so it tracks nfdump's real progress
+     * through its input.
+     *
+     * procfs is Linux-only; on FreeBSD and macOS this returns null and callers fall back
+     * to an indeterminate progress indicator.
+     */
+    public static function processReadBytes(int $pid): ?int {
+        if ($pid <= 0) {
+            return null;
+        }
+
+        // is_file() first: @ suppresses the warning for PHP, but a test runner's error
+        // handler still promotes it to a failure, and a missing pid is an expected case.
+        $path = '/proc/' . $pid . '/io';
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $io = @file_get_contents($path);   // still races process exit
+        if ($io === false) {
+            return null;
+        }
+
+        if (preg_match('/^rchar:\s*(\d+)/m', $io, $m) !== 1) {
+            return null;
+        }
+
+        return (int) $m[1];
+    }
+
+    /**
      * Whether a process-inspection tool (pgrep or ps) is available.
      * countProcessesByName() silently returns 0 without either — surfaced as a
      * health check so a missing procps package doesn't masquerade as

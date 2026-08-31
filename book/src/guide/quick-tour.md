@@ -3,17 +3,16 @@
 When you open nfsen-ng, you land on the **Graphs** tab — a live traffic
 chart for whatever's currently being captured.
 
-![The five tabs](../images/00-page-graphs.png)
+![The Graphs tab](../images/00-page-graphs.png)
 
 ## The navigation bar
 
 Across the top: a home/reload icon, a dark-mode toggle (moon/sun), a
 reconnect spinner (only appears if your connection to the server drops —
 see below), and the tabs: **Graphs**, **Investigate**, **Flows**,
-**Statistics**, **Sankey**, and **Settings**. **Investigate** is the graph and
-the flow table on one screen, for when you want to see *when* something happened
-and *what* it was at the same time. Whichever preset (source) you're viewing shows
-in the top-left corner.
+**Statistics**, **Sankey**, and **Settings**. (**Investigate** is the graph and
+the flow table on one screen — [see below](#the-investigate-tab).) Whichever
+preset (source) you're viewing shows in the top-left corner.
 
 Switching tabs is instant — there's no page reload, and whatever filters you
 had set on a tab are still there when you come back to it.
@@ -42,6 +41,26 @@ querying flow records runs the real `nfdump` tool, which costs real time and
 I/O, so those tabs only run a query when you click their **Process data**
 button. Nothing happens automatically until you do.
 
+While a query runs, the button itself tells you how far along it is, with an
+ETA and a **Kill** button for the times you asked for more than you meant to:
+
+![A running query's progress bar](../images/guide-query-progress.png)
+
+## The Investigate tab
+
+**Investigate** is the Graphs chart and the Flows table stacked on one screen,
+sharing one date range:
+
+![The Investigate tab](../images/09-page-investigate.png)
+
+It's for the moment you've spotted a spike and want to know what it was made
+of. There's a single nfdump filter on screen — the flows table hides its own box
+and follows the chart's — so one expression gives you both the shape of the
+traffic over time and the individual records behind it, without switching tabs
+and losing your place. Both panels still only run when you ask
+them to (**Apply filter** for the chart, **Process data** for the table), for
+the same reason as above: each one costs a real `nfdump` run.
+
 ## If you see a "Reconnecting…" banner
 
 nfsen-ng pushes live updates to your browser over a persistent connection
@@ -53,6 +72,7 @@ home/reload icon) never hurts if it seems stuck.
 
 ## Where to go next
 
-- [The Dashboard](dashboard.md) — reading the traffic graph
+- [The Dashboard](dashboard.md) — reading the traffic graph, and
+  [graphing only what a filter matches](dashboard.md#asking-a-narrower-question)
 - [Browsing Flows](browsing-flows.md) — searching individual flow records
 - [Setting Up Alerts](alerts.md) — get notified when traffic crosses a threshold

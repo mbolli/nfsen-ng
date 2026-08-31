@@ -13,8 +13,13 @@ range and filters, then click **Process data**. This runs the real `nfdump`
 tool against your capture files, which is shown to you verbatim above the
 results table (handy for confirming exactly what was asked for, or for
 copy-pasting into a terminal if you want to run the same query outside the
-UI). A **Kill** button appears next to it while a query is running, in case
-you asked for more than you meant to.
+UI).
+
+While it runs, the button reports its progress and a rough ETA — estimated
+from how much of your capture data it has read so far — and a **Kill** button
+appears next to it, in case you asked for more than you meant to:
+
+![A running query's progress bar](../images/guide-query-progress.png)
 
 ## Filters
 

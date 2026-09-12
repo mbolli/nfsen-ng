@@ -116,6 +116,17 @@ class Import {
                 echo PHP_EOL . 'Validating RRD structure...' . PHP_EOL;
             }
             Config::$db->validateStructure($sources[0], 0, true, $this->quiet, $this->profile ?? Config::$settings->nfdumpProfile);
+
+            // Ports whose RRD would otherwise only appear on their first non-empty write, so a
+            // quiet port stays missing and the graph fails when it is selected (#172).
+            if ($this->processPorts === true || $this->processPortsBySource === true) {
+                Config::$db->createMissingPortDatabases(
+                    $sources,
+                    $this->processPorts,
+                    $this->processPortsBySource,
+                    $this->profile ?? Config::$settings->nfdumpProfile,
+                );
+            }
         }
 
         // if in force mode, reset existing data

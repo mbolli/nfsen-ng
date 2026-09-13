@@ -613,6 +613,9 @@ $app->page('/', function (Context $c) use ($app): void {
 
             // ── Deployment config (read-only display in Settings tab) ─────
             'deployDatasource' => Config::$settings->datasourceName,
+            // Decides whether the Import tab offers a non-destructive backfill or the
+            // rebuild that RRD needs to fill in history (#171).
+            'datasourceAcceptsHistoricWrites' => Config::$db->acceptsHistoricWrites(),
             'deployImportYears' => Config::$settings->importYears,
             'deployDefaultTheme' => Config::$settings->defaultTheme,
             'deployNfdumpBinary' => Config::$settings->nfdumpBinary,

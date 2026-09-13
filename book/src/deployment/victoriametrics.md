@@ -75,9 +75,24 @@ $nfsen_config = [
 ### 3. Import
 
 On a fresh install, run the first import from **Settings → Import → Trigger
-Import** in the web UI. To rebuild from scratch, use **Force Rescan**. `nfcapd`
-files are still required — VictoriaMetrics is a storage backend, not a
-replacement for the raw captures nfdump reads for Flows and Statistics.
+Import** in the web UI. `nfcapd` files are still required — VictoriaMetrics is a
+storage backend, not a replacement for the raw captures nfdump reads for Flows
+and Statistics.
+
+### Importing captures older than the install
+
+A normal Trigger resumes at the newest sample already stored and never looks
+behind it, so an archive of `nfcapd` files collected before nfsen-ng was
+installed is skipped. Use **Settings → Import → Backfill**, which re-reads every
+capture file and writes each sample at the timestamp it belongs to. Nothing is
+deleted, so it is safe to run on a populated instance, and it can be cancelled.
+
+One prerequisite: VictoriaMetrics silently drops samples older than its
+retention window on ingest, without an error. Set `--retentionPeriod` to cover
+your oldest capture *before* backfilling — the bundled
+`deploy/docker-compose.victoriametrics.yml` sets `3y` to match
+`NFSEN_IMPORT_YEARS`, but the default on a stock VictoriaMetrics is one month,
+which will make a backfill look like it did nothing.
 
 ## Data model
 
@@ -119,7 +134,8 @@ config sanity. No browser polling is involved either way.
 ## Migrating between RRD and VictoriaMetrics
 
 1. Change `general.db` (or `NFSEN_DATASOURCE`) to the target datasource.
-2. Run **Force Rescan** to populate it from the `nfcapd` files.
+2. Run **Backfill** (VictoriaMetrics) or **Rescan** (RRD) to populate it from the
+   `nfcapd` files.
 3. The two datasources are independent — switching to VM does not touch existing
    `.rrd` files, and you can roll back by setting the datasource to `RRD` again.
    Remove the now-unused `backend/datasources/data/*.rrd` only after verifying the

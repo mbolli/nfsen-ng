@@ -137,12 +137,22 @@
                                         data-on:click="${{ admin_target_profile.id() }} = '{{ profile }}'; @post('{{ triggerImport.url() }}')">
                                     Trigger
                                 </button>
+                                {% if datasourceAcceptsHistoricWrites %}
+                                <button class="btn btn-sm btn-outline-primary"
+                                        data-attr:disabled="${{ import_running.id() }}"
+                                        data-show="!${{ import_running.id() }}"
+                                        title="Re-reads every capture file, including those older than the newest sample. Nothing is deleted."
+                                        data-on:click="${{ admin_target_profile.id() }} = '{{ profile }}'; @post('{{ backfillImport.url() }}')">
+                                    Backfill
+                                </button>
+                                {% else %}
                                 <button class="btn btn-sm btn-outline-danger"
                                         data-attr:disabled="${{ import_running.id() }}"
                                         data-show="!${{ confirm_rescan.id() }} && !${{ import_running.id() }}"
                                         data-on:click="${{ admin_target_profile.id() }} = '{{ profile }}'; ${{ confirm_rescan.id() }} = true">
                                     Rescan
                                 </button>
+                                {% endif %}
                             </div>
                         </td>
                     </tr>
@@ -153,6 +163,7 @@
                 </div>
 
                 {# Shared confirm-rescan dialog (shown after clicking Rescan for any profile) #}
+                {% if not datasourceAcceptsHistoricWrites %}
                 <div data-show="${{ confirm_rescan.id() }}" style="display: none;" class="mb-2">
                     <div class="d-flex gap-2 align-items-center flex-wrap">
                         <span class="text-danger fw-semibold small">
@@ -171,6 +182,7 @@
                         </button>
                     </div>
                 </div>
+                {% endif %}
 
                 {# Cancel — only visible while an import is running #}
                 <div class="d-flex gap-2 align-items-center flex-wrap">
@@ -213,6 +225,19 @@
                     Trigger Import
                 </button>
 
+                {% if datasourceAcceptsHistoricWrites %}
+                <button class="btn btn-outline-primary"
+                        data-attr:disabled="${{ import_running.id() }}"
+                        data-show="!${{ import_running.id() }}"
+                        title="Re-reads every capture file, including those older than the newest sample. Nothing is deleted."
+                        data-on:click="@post('{{ backfillImport.url() }}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-counterclockwise me-1" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2z"/>
+                        <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308c-.12.1-.12.284 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466"/>
+                    </svg>
+                    Backfill
+                </button>
+                {% else %}
                 <button class="btn btn-outline-danger"
                         data-attr:disabled="${{ import_running.id() }}"
                         data-show="!${{ confirm_rescan.id() }} && !${{ import_running.id() }}"
@@ -223,6 +248,7 @@
                     </svg>
                     Force Rescan
                 </button>
+                {% endif %}
 
                 <button class="btn btn-warning"
                         data-show="${{ import_running.id() }}" style="display: none;"
@@ -236,6 +262,7 @@
                     Cancel Import
                 </button>
 
+                {% if not datasourceAcceptsHistoricWrites %}
                 <div data-show="${{ confirm_rescan.id() }}" style="display: none;">
                     <div class="d-flex gap-2 align-items-center flex-wrap">
                     <span class="text-danger fw-semibold small">
@@ -252,6 +279,7 @@
                     </button>
                     </div>
                 </div>
+                {% endif %}
 
                 {# Port-scanning toggle — only shown when ports are configured in settings #}
                 {% if hasPorts %}

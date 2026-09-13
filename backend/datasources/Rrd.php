@@ -491,6 +491,14 @@ WARNING;
     }
 
     /**
+     * RRDTool refuses an update at or before the file's last update, so history can only be
+     * filled by recreating the file — which is what reset() does.
+     */
+    public function acceptsHistoricWrites(): bool {
+        return false;
+    }
+
+    /**
      * Creates a new database for every source/port combination.
      */
     public function reset(array $sources, string $profile = ''): bool {

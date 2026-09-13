@@ -48,10 +48,25 @@ step in:
 - **Trigger** — re-run the catch-up import for a profile. Use this if
   you've just pointed nfsen-ng at a directory with existing historical data
   it hasn't seen yet, or you suspect it missed something.
-- **Rescan** — resets that profile's stored data and re-imports everything
-  from scratch. This is destructive (it discards existing aggregated data
-  for the profile first) and asks for confirmation — reach for it only if
-  the data looks genuinely wrong and a normal Trigger doesn't fix it.
+- **Backfill** (VictoriaMetrics) — re-reads *every* capture file, including
+  those older than the newest sample already stored, and writes each one to
+  the slot it belongs to. Nothing is deleted. This is the button to use when
+  you point nfsen-ng at an archive of `nfcapd` files that predates the
+  install: a normal Trigger starts at the newest sample and never looks
+  behind it. It reads the whole archive, so it takes a while, and it can be
+  cancelled.
+- **Rescan** (RRD) — resets that profile's stored data and re-imports
+  everything from scratch. This is destructive (it discards existing
+  aggregated data for the profile first) and asks for confirmation — reach
+  for it only if the data looks genuinely wrong and a normal Trigger doesn't
+  fix it.
+
+Which of the two you see depends on the datasource, because they differ in
+what they can be told after the fact. RRD files are written in time order and
+RRDTool refuses an update at or before the file's last update, so filling in
+history means rebuilding the file. A VictoriaMetrics sample is addressed by
+its timestamp, so an old capture can simply be written where it belongs, and
+a destructive reset would be pointless there.
 
 Both show progress live, and can be cancelled mid-way if you change your
 mind.

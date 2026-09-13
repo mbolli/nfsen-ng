@@ -14,6 +14,7 @@ class Import {
     private readonly bool $cli;
     private bool $verbose = false;
     private bool $force = false;
+    private bool $rescan = false;
     private bool $quiet = false;
     private bool $processPorts = false;
     private bool $processPortsBySource = false;
@@ -31,8 +32,8 @@ class Import {
     /**
      * Count the number of nfcapd files that start() would process for the given
      * start date. Used for progress-bar initialisation and dynamic recount.
-     * Respects $this->force: if true, counts all files (reset mode); if false,
-     * counts only files after each source's last_update.
+     * Respects $this->force and $this->rescan: if either is set, counts all files; if
+     * neither is, counts only files after each source's last_update.
      */
     public function countFiles(\DateTime $dateStart): int {
         $sources = Config::$settings->sources;
@@ -45,7 +46,7 @@ class Import {
             $date = clone $dateStart;
             $lastUpdate = null;
 
-            if ($this->force === false) {
+            if ($this->force === false && $this->rescan === false) {
                 $lastUpdateDb = Config::$db->last_update($source, 0, $this->profile ?? Config::$settings->nfdumpProfile);
                 if ($lastUpdateDb > 0) {
                     $nfcapdTz = Config::nfcapdTimezone();
@@ -164,7 +165,7 @@ class Import {
                 $lastUpdate = (new \DateTime())->setTimestamp($lastUpdateDb);
             }
 
-            if ($this->force === false && isset($lastUpdate)) {
+            if ($this->force === false && $this->rescan === false && isset($lastUpdate)) {
                 $daysSaved = (int) $date->diff($lastUpdate)->format('%a');
                 $daysTotal -= $daysSaved;
                 if ($this->quiet === false) {
@@ -354,7 +355,9 @@ class Import {
      * @throws \Exception
      */
     public function dbUpdatable(string $file, string $source = '', int $port = 0): bool {
-        if ($this->checkLastUpdate === false) {
+        // A backfill deliberately revisits capture files the cursor has already passed, so
+        // every file is offered to the datasource and it decides what to do with the slot.
+        if ($this->checkLastUpdate === false || $this->rescan === true) {
             return true;
         }
 
@@ -391,6 +394,15 @@ class Import {
 
     public function setForce(bool $force): void {
         $this->force = $force;
+    }
+
+    /**
+     * Re-reads every capture file without resetting anything, so a datasource that accepts
+     * historic writes fills in what it missed. Pointless where it does not: RRDTool refuses
+     * those slots, and the writer skips them (#171).
+     */
+    public function setRescan(bool $rescan): void {
+        $this->rescan = $rescan;
     }
 
     public function setQuiet(bool $quiet): void {

@@ -374,3 +374,7 @@ Delete the listed files; already-imported RRD/VictoriaMetrics data is unaffected
 Use **Settings → Import → Force Rescan** in the web UI. This wipes the selected
 profile's datasource and re-imports from the capture files. (There is no
 force-import environment variable; the rescan is a UI action.)
+
+On VictoriaMetrics the button is **Backfill** instead, and it deletes nothing —
+old samples are simply rewritten in place. See
+[VictoriaMetrics](victoriametrics.md#importing-captures-older-than-the-install).

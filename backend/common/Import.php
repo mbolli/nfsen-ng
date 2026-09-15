@@ -335,13 +335,16 @@ class Import {
                 return;
             }
 
-            // write general port data (not depending on source, so only executed per port)
-            if ($last === true) {
+            // write general port data (queries data for all sources at once, so it may
+            // only run once all sources have delivered the file — i.e. on the last one)
+            if ($this->processPorts === true && $last === true) {
                 $this->writePortsData($file);
             }
 
-            // if enabled, process ports per source as well (source_80.rrd)
-            if ($this->processPorts === true) {
+            // if enabled, process ports per source as well (source_80.rrd).
+            // Gated on processPortsBySource, exactly as in start() — gating it on
+            // processPorts meant the per-source port RRDs were never written (#173).
+            if ($this->processPortsBySource === true) {
                 $this->writePortsData($file, $source);
             }
         } catch (\Exception $e) {
@@ -510,12 +513,21 @@ class Import {
      */
     private function writePortsData(string $statsPath, string $source = ''): bool {
         $ports = Config::$settings->ports;
+        $ok = true;
 
         foreach ($ports as $port) {
-            $this->writePortData($port, $statsPath, $source);
+            // Contain a failure to the port that caused it: letting it bubble up would
+            // abort every remaining port of this capture file, and the per-source pass
+            // that start()/importFile() run afterwards (#173).
+            try {
+                $this->writePortData($port, $statsPath, $source);
+            } catch (\Exception $e) {
+                $this->d->log('Error writing port ' . $port . ($source === '' ? '' : ' of ' . $source) . ': ' . $e->getMessage(), LOG_WARNING);
+                $ok = false;
+            }
         }
 
-        return true;
+        return $ok;
     }
 
     /**
@@ -530,8 +542,25 @@ class Import {
         $nfdump->setProfile($this->profile ?? Config::$settings->nfdumpProfile);
 
         if (empty($source)) {
-            // if no source is specified, get data for all sources
-            $nfdump->setOption('-M', implode(':', $sources));
+            // If no source is specified, get data for all sources. nfdump reads the same
+            // relative path from every source directory and aborts that directory with
+            // "stat() error ...: File not found!" if its capture has not been rotated into
+            // place yet, so only ask for the sources that actually have the file (#173).
+            $available = array_values(array_filter(
+                $sources,
+                fn (string $s): bool => file_exists($this->capturePath($s, $statsPath)),
+            ));
+            if (empty($available)) {
+                return false;
+            }
+            if (\count($available) !== \count($sources)) {
+                $this->d->log(
+                    'Aggregating ' . $statsPath . ' over ' . implode(',', $available)
+                    . ' only — no capture (yet) for ' . implode(',', array_diff($sources, $available)),
+                    LOG_DEBUG,
+                );
+            }
+            $nfdump->setOption('-M', implode(':', $available));
             if ($this->dbUpdatable($statsPath, '', $port) === false) {
                 return false;
             }
@@ -589,17 +618,15 @@ class Import {
                 continue;
             } // skip header row
 
-            $proto = strtolower((string) $row['pr']);
+            $proto = self::protocolBucket((string) $row['pr']);
 
-            // add protocol-specific
-            $data['fields']['flows_' . $proto] = (int) $row['fl'];
-            $data['fields']['packets_' . $proto] = (int) $row['ipkt'];
-            $data['fields']['bytes_' . $proto] = (int) $row['ibyt'];
-
-            // add to overall stats
-            $data['fields']['flows'] += (int) $row['fl'];
-            $data['fields']['packets'] += (int) $row['ipkt'];
-            $data['fields']['bytes'] += (int) $row['ibyt'];
+            // add protocol-specific and overall stats. Summed, not assigned: several
+            // rows can share a bucket (every protocol but TCP/UDP/ICMP lands in 'other').
+            foreach (['flows' => 'fl', 'packets' => 'ipkt', 'bytes' => 'ibyt'] as $metric => $column) {
+                $value = (int) $row[$column];
+                $data['fields'][$metric . '_' . $proto] = ($data['fields'][$metric . '_' . $proto] ?? 0) + $value;
+                $data['fields'][$metric] += $value;
+            }
         }
 
         // write to database
@@ -608,5 +635,34 @@ class Import {
         }
 
         return true;
+    }
+
+    /**
+     * Absolute path of a capture file, i.e. the profile's source directory plus the
+     * source-relative path (YYYY/MM/DD/nfcapd.…) that nfdump is given as -r.
+     */
+    private function capturePath(string $source, string $statsPath): string {
+        return implode(\DIRECTORY_SEPARATOR, [
+            Config::$settings->nfdumpProfilesData,
+            $this->profile ?? Config::$settings->nfdumpProfile,
+            $source,
+            $statsPath,
+        ]);
+    }
+
+    /**
+     * Maps a protocol name as nfdump prints it to one of the RRD's per-protocol data
+     * sources. Those are tcp/udp/icmp/other, mirroring the buckets of nfdump's own `-I`
+     * summary that source.rrd is filled from — so everything else (GRE, ESP, SCTP, …)
+     * belongs in 'other'. Writing the raw name instead made RRDUpdater throw
+     * "unknown DS name 'flows_gre'" and cost the whole capture file its port data (#173).
+     */
+    private static function protocolBucket(string $protocol): string {
+        return match (strtolower($protocol)) {
+            'tcp' => 'tcp',
+            'udp' => 'udp',
+            'icmp', 'icmp6', 'icmpv6', 'ipv6-icmp' => 'icmp',
+            default => 'other',
+        };
     }
 }

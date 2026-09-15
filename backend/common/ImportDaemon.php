@@ -118,10 +118,7 @@ class ImportDaemon {
 
         // Prepare the shared importer for ongoing use (quiet mode, no re-init)
         // (only reached if start() did not throw)
-        $this->importer = new Import();
-        $this->importer->setQuiet(true);
-        $this->importer->setVerbose(false);
-        $this->importer->setProfile($this->profile);
+        $this->importer = $this->newOngoingImporter();
 
         // Set up inotify watches after the initial import completes
         $this->initWatches();
@@ -134,10 +131,7 @@ class ImportDaemon {
      * After this returns, pollOnce() will begin responding to inotify events.
      */
     public function setupWatchesOnly(): void {
-        $this->importer = new Import();
-        $this->importer->setQuiet(true);
-        $this->importer->setVerbose(false);
-        $this->importer->setProfile($this->profile);
+        $this->importer = $this->newOngoingImporter();
 
         $this->initWatches();
         $this->debug->log('ImportDaemon: inotify watches ready (startup import skipped)', LOG_INFO);
@@ -222,11 +216,7 @@ class ImportDaemon {
             );
 
             try {
-                if ($this->importer === null) {
-                    $this->importer = new Import();
-                    $this->importer->setQuiet(true);
-                    $this->importer->setVerbose(false);
-                }
+                $this->importer ??= $this->newOngoingImporter();
                 $this->importer->importFile($relativePath, $source, $isLastSource);
                 $this->debug->log("ImportDaemon: catch-up imported {$filename} (source: {$source})", LOG_INFO);
                 $this->lastAutoImportTime = time();
@@ -235,6 +225,25 @@ class ImportDaemon {
                 $this->debug->log("ImportDaemon: catch-up error {$filename}: " . $e->getMessage(), LOG_ERR);
             }
         }
+    }
+
+    /**
+     * Importer used for every ongoing (inotify-driven) import.
+     *
+     * Port processing must be enabled here exactly as it is for the bulk import in
+     * initialImport(): without it importFile() writes source.rrd and the all-sources
+     * port.rrd but never source_port.rrd, so the per-source port graphs — which is
+     * what the ports view reads — stop at the last bulk import and stay empty (#173).
+     */
+    private function newOngoingImporter(): Import {
+        $importer = new Import();
+        $importer->setQuiet(true);
+        $importer->setVerbose(false);
+        $importer->setProcessPorts(true);
+        $importer->setProcessPortsBySource(true);
+        $importer->setProfile($this->profile);
+
+        return $importer;
     }
 
     private function initWatches(): void {
@@ -357,11 +366,7 @@ class ImportDaemon {
 
         try {
             // Lazy-init importer if initialImport() hasn't run yet (edge case)
-            if ($this->importer === null) {
-                $this->importer = new Import();
-                $this->importer->setQuiet(true);
-                $this->importer->setVerbose(false);
-            }
+            $this->importer ??= $this->newOngoingImporter();
 
             $this->importer->importFile($relativePath, $eventSource, $isLastSource);
             $this->debug->log("ImportDaemon: processed {$filename}", LOG_INFO);

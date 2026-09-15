@@ -5,6 +5,7 @@ declare(strict_types=1);
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\processor\Processor;
+use mbolli\nfsen_ng\query\FlowsQuery;
 use mbolli\nfsen_ng\query\QueryResult;
 use mbolli\nfsen_ng\query\StatsQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
@@ -148,6 +149,91 @@ describe('StatsQuery::run()', function (): void {
         expect($result->isEmpty())->toBeTrue()
             ->and($result->command)->toBe('')
             ->and($result->stderr)->toBe('')
+        ;
+    });
+});
+
+describe('FlowsQuery', function (): void {
+    test('maps its arguments onto nfdump options', function (): void {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        $processor = (new FlowsQuery(
+            window: TimeWindow::raw(10, 20),
+            sources: ['gw'],
+            profile: 'live',
+            limit: 500,
+            orderByStart: true,
+        ))->processor();
+
+        expect($processor->options['-c'])->toBe(500)
+            ->and($processor->options['-R'])->toBe([10, 20])
+            ->and($processor->options['-O'])->toBe('tstart')
+            ->and($processor->options['-o'])->toBe('json')
+        ;
+    });
+
+    test('leaves the ordering option off when not ordering by start', function (): void {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        $processor = (new FlowsQuery(
+            window: TimeWindow::raw(10, 20),
+            sources: ['gw'],
+            profile: 'live',
+            limit: 10,
+        ))->processor();
+
+        expect($processor->options)->not->toHaveKey('-O');
+    });
+
+    // Bidirectional is a flag of its own, every other aggregation is a spec passed to -a.
+    test('bidirectional aggregation uses its own flag', function (): void {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        $processor = (new FlowsQuery(
+            window: TimeWindow::raw(10, 20),
+            sources: ['gw'],
+            profile: 'live',
+            limit: 10,
+            aggregation: ['bidirectional' => true],
+        ))->processor();
+
+        expect($processor->options)->toHaveKey('-B')
+            ->and($processor->options)->not->toHaveKey('-a')
+        ;
+    });
+
+    test('field aggregation is passed to -a', function (): void {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        $processor = (new FlowsQuery(
+            window: TimeWindow::raw(10, 20),
+            sources: ['gw'],
+            profile: 'live',
+            limit: 10,
+            aggregation: ['srcport' => true, 'dstport' => true],
+        ))->processor();
+
+        expect($processor->options['-a'])->toBe('-Asrcport,dstport');
+    });
+
+    test('combines byte thresholds with the user filter', function (): void {
+        statsQuerySettings();
+
+        $query = new FlowsQuery(
+            window: TimeWindow::raw(10, 20),
+            sources: ['gw'],
+            profile: 'live',
+            limit: 10,
+            filter: 'proto udp',
+            upperLimit: '10M',
+        );
+
+        expect($query->effectiveFilter())->toContain('proto udp')
+            ->and($query->effectiveFilter())->toContain('and')
         ;
     });
 });

@@ -6,6 +6,7 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\processor\Processor;
 use mbolli\nfsen_ng\query\FlowsQuery;
+use mbolli\nfsen_ng\query\MatrixQuery;
 use mbolli\nfsen_ng\query\QueryResult;
 use mbolli\nfsen_ng\query\StatsQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
@@ -234,6 +235,61 @@ describe('FlowsQuery', function (): void {
 
         expect($query->effectiveFilter())->toContain('proto udp')
             ->and($query->effectiveFilter())->toContain('and')
+        ;
+    });
+});
+
+describe('MatrixQuery', function (): void {
+    test('reads anything that is not packets as bytes', function (): void {
+        statsQuerySettings();
+
+        $bytes = new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'nonsense', 10);
+        $packets = new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'packets', 10);
+
+        expect($bytes->metric())->toBe('bytes')
+            ->and($packets->metric())->toBe('packets')
+        ;
+    });
+
+    // Ports add the middle column of the diagram, so they join the aggregation key.
+    test('adds the destination port to the key only when showing ports', function (): void {
+        statsQuerySettings();
+
+        $without = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10))->aggregation();
+        $with = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, showPorts: true))->aggregation();
+
+        expect($without)->not->toHaveKey('dstport')
+            ->and($with)->toHaveKey('dstport')
+        ;
+    });
+
+    // #159: 1.7.5 rejects a custom fmt: alongside -A, so it gets plain aggregated csv.
+    test('falls back to csv on the nfdump version that cannot combine fmt with aggregation', function (): void {
+        statsQuerySettings();
+        $query = new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10);
+
+        expect($query->outputFormat('1.7.5'))->toBe('csv')
+            ->and($query->outputFormat('1.7.6'))->toStartWith('fmt:')
+        ;
+    });
+
+    test('asks for the port field only when showing ports', function (): void {
+        statsQuerySettings();
+
+        $with = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, showPorts: true))->outputFormat('1.7.6');
+        $without = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10))->outputFormat('1.7.6');
+
+        expect($with)->toContain('%dp')
+            ->and($without)->not->toContain('%dp')
+        ;
+    });
+
+    test('rejects a processor answer that is not a table', function (): void {
+        statsQuerySettings();
+        $query = new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10);
+
+        expect(fn () => $query->run(recordingProcessor(['decoded' => 'not a table'])))
+            ->toThrow(RuntimeException::class)
         ;
     });
 });

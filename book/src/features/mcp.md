@@ -97,6 +97,35 @@ These are enforced by the server, not suggested to the model:
   shell command. Obvious mistakes such as unbalanced parentheses are rejected with a readable
   error rather than run.
 
+## Alert-triggered triage
+
+The strongest use is asynchronous rather than interactive: an alert fires, an agent
+investigates while you are still reading the notification, and the summary arrives with the
+addresses already enriched.
+
+Point a rule's webhook at a receiver that runs `scripts/alert-triage.sh`, with the rule's
+webhook template producing JSON that carries the tokens the script reads:
+
+```json
+{"rule":"{rule}","sources":"{sources}","time":"{time}","condition":"{condition}"}
+```
+
+The script builds a prompt that walks the tools in the intended order, cheap before
+expensive, and asks for a short answer that says plainly when the data does not support a
+conclusion. It is a worked example rather than something nfsen-ng runs: the agent binary, its
+credentials and where it posts the result are yours to choose.
+
+One detail that decides whether it works at all: an agent started non-interactively cannot ask
+anyone to approve a tool, so the tools have to be allowlisted when it launches. The script does
+that through `ALLOWED_TOOLS`, listing only read-only tools. Without it the run ends with
+"permission not granted" and no investigation.
+
+Note also that the server needs no credentials of its own. The only credentials involved are
+the agent's own access to whichever model it uses.
+
+This runs *beside* the incident rather than inside it. It does not decide anything and it
+cannot act, which is what makes it safe to wire up.
+
 ## What it cannot do
 
 Nothing in the server writes. There is no tool to create an alert rule, trigger an import,

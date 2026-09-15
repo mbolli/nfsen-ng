@@ -258,3 +258,87 @@ describe('Rrd get_graph_data trailing-slot handling (#154)', function (): void {
         }
     });
 });
+
+// ── createMissingPortDatabases (#172) ─────────────────────────────────────────
+
+describe('Rrd::createMissingPortDatabases()', function (): void {
+    beforeEach(function (): void {
+        $this->dir = makeRrdFeatureSettings(3);
+        $this->rrd = new Rrd();
+    });
+
+    afterEach(function (): void {
+        cleanRrdDir($this->dir);
+    });
+
+    test('creates the aggregate and per-source database of a port with no traffic', function (): void {
+        expect($this->rrd->createMissingPortDatabases(['gw'], true, true))->toBeTrue();
+
+        expect(file_exists($this->dir . '/live/80.rrd'))->toBeTrue();
+        expect(file_exists($this->dir . '/live/gw_80.rrd'))->toBeTrue();
+    });
+
+    test('leaves an existing database untouched', function (): void {
+        $this->rrd->create('gw', 80);
+        $file = $this->dir . '/live/gw_80.rrd';
+        $before = filemtime($file);
+
+        sleep(1);
+        $this->rrd->createMissingPortDatabases(['gw'], true, true);
+
+        expect(filemtime($file))->toBe($before);
+    });
+
+    test('creates only the aggregate when ports are not processed by source', function (): void {
+        $this->rrd->createMissingPortDatabases(['gw'], true, false);
+
+        expect(file_exists($this->dir . '/live/80.rrd'))->toBeTrue();
+        expect(file_exists($this->dir . '/live/gw_80.rrd'))->toBeFalse();
+    });
+
+    test('creates only the per-source database when the aggregate is not processed', function (): void {
+        $this->rrd->createMissingPortDatabases(['gw'], false, true);
+
+        expect(file_exists($this->dir . '/live/80.rrd'))->toBeFalse();
+        expect(file_exists($this->dir . '/live/gw_80.rrd'))->toBeTrue();
+    });
+});
+
+// ── graph data with missing databases (#172) ──────────────────────────────────
+
+describe('Rrd::get_graph_data() with missing databases', function (): void {
+    beforeEach(function (): void {
+        $this->dir = makeRrdFeatureSettings(3);
+        $this->rrd = new Rrd();
+    });
+
+    afterEach(function (): void {
+        cleanRrdDir($this->dir);
+    });
+
+    // Before #172 a port RRD that was never created made rrd_xport fail, taking the whole
+    // graph down with "No such file or directory" instead of drawing the ports that do exist.
+    test('a port without a database yields an empty series instead of an error', function (): void {
+        $result = $this->rrd->get_graph_data(time() - 3600, time(), ['gw'], ['any'], [80], 'flows', 'ports');
+
+        expect($result)->toBeArray();
+        expect($result['data'])->toBe([]);
+        expect($result['legend'])->toBe([]);
+    });
+
+    test('an existing port is still graphed when another port has no database', function (): void {
+        $this->rrd->create('', 80);
+
+        $result = $this->rrd->get_graph_data(time() - 3600, time(), ['any'], ['any'], [80, 443], 'flows', 'ports');
+
+        expect($result)->toBeArray();
+        expect($result['legend'])->toHaveCount(1);
+    });
+
+    test('a source without a database yields an empty series instead of an error', function (): void {
+        $result = $this->rrd->get_graph_data(time() - 3600, time(), ['gw'], ['any'], [], 'flows', 'sources');
+
+        expect($result)->toBeArray();
+        expect($result['data'])->toBe([]);
+    });
+});

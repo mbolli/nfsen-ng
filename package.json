@@ -15,6 +15,6 @@
     "nouislider": "^15.8.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.2"
+    "@biomejs/biome": "^2.5.13"
   }
 }

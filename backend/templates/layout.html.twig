@@ -1,24 +1,76 @@
 <!DOCTYPE html>
 <html lang="en"
-    {# Seed _darkMode from the deployment default; must precede data-persist, which restores a saved toggle over it (see #156). #}
     {# Every signal named in data-persist below must be seeded *here*, not further down the
        page: data-persist reads them once on apply, and a path that doesn't exist yet reads
        back as '' — which it then writes to localStorage and restores unconditionally on
        every later load, beating the seed that was supposed to own the default. That is how
        _graph_stepplot (default true) ended up permanently '' and the graph silently stopped
        rendering as a step plot. #}
-    data-signals__ifmissing="{_darkMode: {% if defaults.theme|default('auto') == 'dark' %}true{% elseif defaults.theme|default('auto') == 'light' %}false{% else %}window.matchMedia('(prefers-color-scheme: dark)').matches{% endif %}, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences', _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _autoSyncGraph: false}"
-    data-persist="{_darkMode: $_darkMode, _currentView: $_currentView, _settingsSection: $_settingsSection, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _autoSyncGraph: $_autoSyncGraph}"
-    {# Paint the deployment default on the first frame (before datastar boots) so a dark/light install doesn't flash; 'auto' resolves client-side (see #156). #}
+    {# _darkMode is seeded from the head script's already-painted value, so signal and
+       attribute cannot disagree. Not persisted — only the explicit choice is (#167). #}
+    data-signals__ifmissing="{_darkMode: window.__nfsenTheme.dark, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences', _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _autoSyncGraph: false}"
+    data-persist="{_currentView: $_currentView, _settingsSection: $_settingsSection, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _autoSyncGraph: $_autoSyncGraph}"
+    {# Fallback for JS off entirely; the head script overrides it (#156, #167). #}
     {% if defaults.theme|default('auto') == 'dark' %}data-bs-theme="dark"{% elseif defaults.theme|default('auto') == 'light' %}data-bs-theme="light"{% endif %}
     data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'"
+    {# Dispatched by the head script's matchMedia listener. #}
+    data-on:nfsen-colorscheme__window="$_darkMode = evt.detail.dark"
     {# Keep the client's live theme across SSE morphs, which otherwise strip/overwrite data-bs-theme and let a chart re-render read the wrong theme (see #151). #}
     data-preserve-attr="data-bs-theme">
 <head>
     <meta charset="utf-8">
+    {# Blocking, and above the stylesheets: data-attr:data-bs-theme is applied by Datastar,
+       a module at the end of <body>, so the light frame had already painted (#167).
+       Precedence: explicit toggle, else NFSEN_DEFAULT_THEME, else the OS. #}
+    <script>
+        (function () {
+            var DEFAULT = {{ (defaults.theme|default('auto'))|json_encode|raw }};
+            var mq = window.matchMedia('(prefers-color-scheme: dark)');
+            var choice = null;
+            try {
+                choice = localStorage.getItem('nfsen-theme');
+                // Pre-#167 key held the resolved value, so it cannot be told apart from an
+                // auto-resolved one. Dropped rather than migrated.
+                localStorage.removeItem('nfsen-persist:_darkMode');
+            } catch (e) { /* storage disabled */ }
+
+            function resolve() {
+                if (choice === 'dark' || choice === 'light') return choice === 'dark';
+                if (DEFAULT === 'dark') return true;
+                if (DEFAULT === 'light') return false;
+                return mq.matches;
+            }
+
+            function apply(dark) {
+                document.documentElement.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+            }
+
+            window.__nfsenTheme = {
+                dark: resolve(),
+                choose: function (dark) {
+                    choice = dark ? 'dark' : 'light';
+                    try { localStorage.setItem('nfsen-theme', choice); } catch (e) {}
+                },
+            };
+            apply(window.__nfsenTheme.dark);
+
+            // With no explicit choice, follow the OS live. The event moves the signal too,
+            // so the sun/moon icon stays in step.
+            mq.addEventListener('change', function (e) {
+                if (choice === 'dark' || choice === 'light') return;
+                window.__nfsenTheme.dark = e.matches;
+                apply(e.matches);
+                window.dispatchEvent(new CustomEvent('nfsen-colorscheme', { detail: { dark: e.matches } }));
+            });
+        })();
+    </script>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>nfsen-ng</title>
+    {# Derived from the Unraid app icon: same palette, simplified to stay legible at 16px (#170). #}
+    <link rel="icon" type="image/svg+xml" href="{{ basePath }}favicon.svg?v={{ assetVersion }}">
+    <link rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href="{{ basePath }}favicon.ico?v={{ assetVersion }}">
+    <link rel="apple-touch-icon" href="{{ basePath }}apple-touch-icon.png?v={{ assetVersion }}">
 
     {#
         php-via SSE bootstrap — mirrors the pattern in php-via's shell.html.

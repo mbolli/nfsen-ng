@@ -227,6 +227,14 @@ class VictoriaMetrics implements Datasource {
      * Creates a new database for every source/port combination.
      * Note: VictoriaMetrics doesn't require pre-creation, but we can verify connectivity.
      */
+    /**
+     * A sample is addressed by its timestamp and labels, so re-importing an older capture
+     * simply writes the slot it belongs to. Retention is the only limit (#171).
+     */
+    public function acceptsHistoricWrites(): bool {
+        return true;
+    }
+
     public function reset(array $sources, string $profile = ''): bool {
         // VictoriaMetrics doesn't need reset - it's schemaless
         // But we could delete existing data if needed

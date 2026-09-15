@@ -106,6 +106,13 @@ interface Datasource {
     public function reset(array $sources, string $profile = ''): bool;
 
     /**
+     * Whether the store accepts writes for timestamps older than its newest sample.
+     * False means filling in history needs reset() first, because the write is refused;
+     * true means a plain re-import backfills without deleting anything (#171).
+     */
+    public function acceptsHistoricWrites(): bool;
+
+    /**
      * Gets the timestamps of the first and last entry in the datasource (for this specific source).
      *
      * @return array{int, int} (timestampfirst, timestamplast)

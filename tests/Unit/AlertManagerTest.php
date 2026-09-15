@@ -68,6 +68,10 @@ function makeDatasource(array $latestSlot, array $rollingAvg = ['flows' => 0.0, 
             return true;
         }
 
+        public function acceptsHistoricWrites(): bool {
+            return true;
+        }
+
         public function date_boundaries(string $source, string $profile = ''): array {
             return [0, 0];
         }

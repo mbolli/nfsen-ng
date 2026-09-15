@@ -93,14 +93,16 @@ final class IpLookup {
         // file_get_contents() populates $http_response_header in this scope; seed it
         // so a non-HTTP wrapper (a misconfigured URL) leaves a defined value behind.
         $http_response_header = [];
+        // An empty array means "no lookup was attempted" (the modal renders nothing for a
+        // private IP on that basis), so a failure that did happen has to say so instead (#168).
         $json = @file_get_contents(self::geoUrl($ip), false, $ctx);
         if ($json === false) {
-            return [];
+            return ['error' => true, 'reason' => 'Could not reach the geolocation service.'];
         }
 
         $data = json_decode($json, true);
         if (!\is_array($data)) {
-            return [];
+            return ['error' => true, 'reason' => 'The geolocation service returned an unreadable response.'];
         }
 
         /** @var array<string, mixed> $data */

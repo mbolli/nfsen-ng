@@ -349,10 +349,18 @@ WARNING;
             $ports = Config::$settings->ports;
         }
 
+        // A database that does not exist yet is not an error: a port can be configured long
+        // before it sees its first flow, and a source can be added between imports (#172).
+        $exports = 0;
+
         switch ($display) {
             case 'protocols':
                 foreach ($protocols as $protocol) {
                     $rrdFile = $this->get_data_path($sources[0], 0, $profile);
+                    if (!file_exists($rrdFile)) {
+                        continue;
+                    }
+                    ++$exports;
                     $proto = ($protocol === 'any') ? '' : '_' . $protocol;
                     $legend = array_filter([$protocol, $type, $sources[0]]);
                     $options[] = 'DEF:data' . $sources[0] . $protocol . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
@@ -364,6 +372,10 @@ WARNING;
             case 'sources':
                 foreach ($sources as $source) {
                     $rrdFile = $this->get_data_path($source, 0, $profile);
+                    if (!file_exists($rrdFile)) {
+                        continue;
+                    }
+                    ++$exports;
                     $proto = ($protocols[0] === 'any') ? '' : '_' . $protocols[0];
                     $legend = array_filter([$source, $type, $protocols[0]]);
                     $options[] = 'DEF:data' . $source . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
@@ -378,9 +390,25 @@ WARNING;
                     $proto = ($protocols[0] === 'any') ? '' : '_' . $protocols[0];
                     $legend = array_filter([$port, $type, $source, $protocols[0]]);
                     $rrdFile = $this->get_data_path($source, $port, $profile);
+                    if (!file_exists($rrdFile)) {
+                        continue;
+                    }
+                    ++$exports;
                     $options[] = 'DEF:data' . $source . $port . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
                     $options[] = 'XPORT:data' . $source . $port . ':' . implode('_', $legend);
                 }
+        }
+
+        // rrd_xport fails outright without a single DEF, so answer an empty series rather
+        // than turning "nothing imported yet" into a graph error (#172).
+        if ($exports === 0) {
+            return [
+                'data' => [],
+                'start' => $start - ($start % 300),
+                'end' => $end - ($end % 300),
+                'step' => 300,
+                'legend' => [],
+            ];
         }
 
         ob_start();
@@ -426,6 +454,48 @@ WARNING;
         }
 
         return $output;
+    }
+
+    /**
+     * Creates the port databases that don't exist yet, leaving existing ones untouched.
+     * reset() covers this for a force import; incrementally a port RRD was only created by
+     * the first write that returned data, so a port with no traffic never got one (#172).
+     *
+     * @param list<string> $sources
+     */
+    public function createMissingPortDatabases(array $sources, bool $aggregate, bool $bySource, string $profile = ''): bool {
+        if (empty($sources)) {
+            $sources = Config::$settings->sources;
+        }
+
+        // '' is the all-sources aggregate written when ports are processed without a source,
+        // mirroring what reset() lays out for every configured port.
+        $targets = $aggregate ? [''] : [];
+        if ($bySource) {
+            $targets = array_merge($targets, $sources);
+        }
+
+        $return = true;
+        foreach (Config::$settings->ports as $port) {
+            foreach ($targets as $source) {
+                if (file_exists($this->get_data_path($source, $port, $profile))) {
+                    continue;
+                }
+                if ($this->create($source, $port, false, $profile) === false) {
+                    $return = false;
+                }
+            }
+        }
+
+        return $return;
+    }
+
+    /**
+     * RRDTool refuses an update at or before the file's last update, so history can only be
+     * filled by recreating the file — which is what reset() does.
+     */
+    public function acceptsHistoricWrites(): bool {
+        return false;
     }
 
     /**

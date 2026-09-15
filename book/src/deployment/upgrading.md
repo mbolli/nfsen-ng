@@ -84,7 +84,7 @@ fit together.
    environment variables ([Configuration](configuration.md)).
 
 5. **Build the graph data.** Run **Settings → Import → Trigger Import** (or
-   **Force Rescan**) once. This rebuilds the RRD/VictoriaMetrics graph data from
+   **Force Rescan** on RRD, **Backfill** on VictoriaMetrics) once. This rebuilds the RRD/VictoriaMetrics graph data from
    your `nfcapd` files — the v1 RRD structure differs from v0's, so re-importing
    from the captures is the reliable path rather than reusing old `.rrd` files.
    Flows and Statistics work directly off the capture files and need no import.

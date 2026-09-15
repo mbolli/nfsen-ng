@@ -12,6 +12,7 @@ use mbolli\nfsen_ng\common\QueryProgress;
 use mbolli\nfsen_ng\common\UserPreferences;
 use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\FilteredSeries;
+use mbolli\nfsen_ng\query\TimelineQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
 use OpenSwoole\Coroutine;
@@ -113,28 +114,23 @@ final class GraphActions {
             return $cached;
         }
 
+        $query = new TimelineQuery(
+            window: TimeWindow::raw($ds, $de),
+            sources: $sources,
+            protocols: self::normalizeProtocols($graphProtocols->array()),
+            ports: $ports,
+            unit: $unit,
+            display: $display,
+            resolution: $graphResolution->int(),
+            profile: $selectedProfile->string(),
+        );
+
         try {
-            $data = Config::$db->get_graph_data(
-                $ds,
-                $de,
-                $sources,
-                self::normalizeProtocols($graphProtocols->array()),
-                $ports,
-                $unit,
-                $display,
-                $graphResolution->int(),
-                $selectedProfile->string()
-            );
+            // A datasource may answer with an error string instead of a series (RRD does);
+            // the query turns that into an exception so both failures arrive the same way.
+            $data = $query->run();
         } catch (\Throwable $e) {
             $error->setValue('Graph error: ' . $e->getMessage(), broadcast: false);
-
-            return [];
-        }
-
-        // A datasource may answer with an error string instead of a series (RRD does).
-        // Report it like any other failure — counting it would be a TypeError.
-        if (\is_string($data)) {
-            $error->setValue('Graph error: ' . $data, broadcast: false);
 
             return [];
         }
@@ -142,13 +138,8 @@ final class GraphActions {
         $pointCount = \count($data['data']);
         $graphActualRes->setValue($pointCount, broadcast: false);
 
-        // Use the actual RRD last-write time rather than wall-clock "now"
-        $activeSources = array_values(array_filter($sources, static fn (string $s) => $s !== 'any'))
-            ?: Config::$settings->sources;
-        $lastWrite = empty($activeSources) ? 0 : max(array_map(
-            fn ($s) => Config::$db->last_update($s, 0, $selectedProfile->string()),
-            $activeSources
-        ));
+        // Use the actual datasource last-write time rather than wall-clock "now"
+        $lastWrite = $query->lastWrite();
         $graphLastUpdate->setValue($lastWrite > 0 ? $lastWrite : time(), broadcast: false);
         $error->setValue('', broadcast: false);
 

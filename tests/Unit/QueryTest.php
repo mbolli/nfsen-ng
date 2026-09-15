@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
+use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\Processor;
 use mbolli\nfsen_ng\query\FlowsQuery;
 use mbolli\nfsen_ng\query\MatrixQuery;
 use mbolli\nfsen_ng\query\QueryResult;
 use mbolli\nfsen_ng\query\StatsQuery;
+use mbolli\nfsen_ng\query\TimelineQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
 
 /**
@@ -41,6 +43,73 @@ function recordingProcessor(array $executeResult = []): Processor {
             ++$this->executed;
 
             return $this->executeResult;
+        }
+    };
+}
+
+/**
+ * Records what the timeline asks the datasource for, with canned answers. Implementing the
+ * interface keeps this honest: a signature change breaks the double rather than the assertions.
+ */
+function recordingDatasource(): Datasource {
+    return new class implements Datasource {
+        /** @var list<mixed> */
+        public array $graphArgs = [];
+        public array|string $graphReturn = ['data' => [], 'start' => 0, 'end' => 0, 'step' => 300, 'legend' => []];
+
+        /** @var array<string, int> */
+        public array $lastUpdates = [];
+
+        public function write(array $data): bool {
+            return true;
+        }
+
+        public function get_graph_data(
+            int $start,
+            int $end,
+            array $sources,
+            array $protocols,
+            array $ports,
+            string $type = 'flows',
+            string $display = 'sources',
+            ?int $maxrows = 500,
+            string $profile = '',
+        ): array|string {
+            $this->graphArgs = [$start, $end, $sources, $protocols, $ports, $type, $display, $maxrows, $profile];
+
+            return $this->graphReturn;
+        }
+
+        public function reset(array $sources, string $profile = ''): bool {
+            return true;
+        }
+
+        public function acceptsHistoricWrites(): bool {
+            return true;
+        }
+
+        public function date_boundaries(string $source, string $profile = ''): array {
+            return [0, 0];
+        }
+
+        public function last_update(string $source, int $port = 0, string $profile = ''): int {
+            return $this->lastUpdates[$source] ?? 0;
+        }
+
+        public function get_data_path(string $source = '', int $port = 0, string $profile = ''): string {
+            return '';
+        }
+
+        public function healthChecks(string $group, array $sources): array {
+            return [];
+        }
+
+        public function fetchLatestSlot(array $sources, string $profile): array {
+            return ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+        }
+
+        public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array {
+            return ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
         }
     };
 }
@@ -291,5 +360,55 @@ describe('MatrixQuery', function (): void {
         expect(fn () => $query->run(recordingProcessor(['decoded' => 'not a table'])))
             ->toThrow(RuntimeException::class)
         ;
+    });
+});
+
+describe('TimelineQuery', function (): void {
+    beforeEach(function (): void {
+        statsQuerySettings();
+        Config::$db = recordingDatasource();
+    });
+
+    test('passes the window and display options to the datasource', function (): void {
+        $query = new TimelineQuery(
+            window: TimeWindow::raw(300, 900),
+            sources: ['gw'],
+            protocols: ['tcp'],
+            ports: [80],
+            unit: 'bits',
+            display: 'ports',
+            resolution: 250,
+            profile: 'live',
+        );
+        $query->run();
+
+        expect(Config::$db->graphArgs)->toBe([300, 900, ['gw'], ['tcp'], [80], 'bits', 'ports', 250, 'live']);
+    });
+
+    // RRD reports failures by returning a string rather than throwing, so the query
+    // normalises both into one exception for callers.
+    test('turns a datasource error string into an exception', function (): void {
+        Config::$db->graphReturn = 'rrd_xport failed';
+
+        $query = new TimelineQuery(window: TimeWindow::raw(0, 300), sources: ['gw']);
+
+        expect(fn () => $query->run())->toThrow(RuntimeException::class, 'rrd_xport failed');
+    });
+
+    test('ignores the any pseudo-source when asking for the last write', function (): void {
+        Config::$db->lastUpdates = ['gw' => 500, 'dmz' => 900];
+
+        $query = new TimelineQuery(window: TimeWindow::raw(0, 300), sources: ['any']);
+
+        // 'any' is not a source, so it falls back to everything configured.
+        expect($query->lastWrite())->toBe(500);
+    });
+
+    test('reports the newest write across the selected sources', function (): void {
+        Config::$db->lastUpdates = ['gw' => 500, 'dmz' => 900];
+
+        $query = new TimelineQuery(window: TimeWindow::raw(0, 300), sources: ['gw', 'dmz']);
+
+        expect($query->lastWrite())->toBe(900);
     });
 });

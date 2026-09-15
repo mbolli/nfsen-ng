@@ -12,6 +12,7 @@ use mbolli\nfsen_ng\common\QueryProgress;
 use mbolli\nfsen_ng\common\UserPreferences;
 use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\FilteredSeries;
+use mbolli\nfsen_ng\query\CoverageQuery;
 use mbolli\nfsen_ng\query\TimelineQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
@@ -365,26 +366,10 @@ final class GraphActions {
             return;
         }
 
-        $fallbackMin = time() - Config::$settings->importYears * 365 * 86400;
-        $firsts = [];
-        $lasts = [];
+        $coverage = (new CoverageQuery($sources, $selectedProfile->string()))->run();
 
-        foreach ($sources as $source) {
-            try {
-                [$first, $last] = Config::$db->date_boundaries($source, $selectedProfile->string());
-                if ($first > 0) {
-                    $firsts[] = $first;
-                }
-                if ($last > 0) {
-                    $lasts[] = $last;
-                }
-            } catch (\Throwable) {
-                // RRD may not exist yet — skip
-            }
-        }
-
-        $dataRangeMin->setValue(empty($firsts) ? $fallbackMin : min($firsts), broadcast: false);
-        $dataRangeMax->setValue(empty($lasts) ? time() : max($lasts), broadcast: false);
+        $dataRangeMin->setValue($coverage['first'] > 0 ? $coverage['first'] : CoverageQuery::fallbackFirst(), broadcast: false);
+        $dataRangeMax->setValue($coverage['last'] > 0 ? $coverage['last'] : time(), broadcast: false);
     }
 
     /** Register the change-profile and refresh-graphs actions. */

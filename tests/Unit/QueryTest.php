@@ -6,7 +6,9 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\Processor;
+use mbolli\nfsen_ng\query\CoverageQuery;
 use mbolli\nfsen_ng\query\FlowsQuery;
+use mbolli\nfsen_ng\query\LoadQuery;
 use mbolli\nfsen_ng\query\MatrixQuery;
 use mbolli\nfsen_ng\query\QueryResult;
 use mbolli\nfsen_ng\query\StatsQuery;
@@ -60,6 +62,15 @@ function recordingDatasource(): Datasource {
         /** @var array<string, int> */
         public array $lastUpdates = [];
 
+        /** @var array<string, array{int, int}> */
+        public array $boundaries = [];
+        public bool $boundariesThrow = false;
+        public array $latestSlot = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+        public array $rollingAverage = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+
+        /** @var list<string> */
+        public array $latestSlotSources = [];
+
         public function write(array $data): bool {
             return true;
         }
@@ -89,7 +100,11 @@ function recordingDatasource(): Datasource {
         }
 
         public function date_boundaries(string $source, string $profile = ''): array {
-            return [0, 0];
+            if ($this->boundariesThrow) {
+                throw new RuntimeException('no database');
+            }
+
+            return $this->boundaries[$source] ?? [0, 0];
         }
 
         public function last_update(string $source, int $port = 0, string $profile = ''): int {
@@ -105,11 +120,13 @@ function recordingDatasource(): Datasource {
         }
 
         public function fetchLatestSlot(array $sources, string $profile): array {
-            return ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+            $this->latestSlotSources = $sources;
+
+            return $this->latestSlot;
         }
 
         public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array {
-            return ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+            return $this->rollingAverage;
         }
     };
 }
@@ -410,5 +427,81 @@ describe('TimelineQuery', function (): void {
         $query = new TimelineQuery(window: TimeWindow::raw(0, 300), sources: ['gw', 'dmz']);
 
         expect($query->lastWrite())->toBe(900);
+    });
+});
+
+describe('LoadQuery', function (): void {
+    test('reports how many times the average the current slot is', function (): void {
+        statsQuerySettings();
+        $db = recordingDatasource();
+        $db->latestSlot = ['flows' => 200.0, 'packets' => 50.0, 'bytes' => 1000.0];
+        $db->rollingAverage = ['flows' => 100.0, 'packets' => 50.0, 'bytes' => 4000.0];
+        Config::$db = $db;
+
+        $result = (new LoadQuery(['gw']))->run();
+
+        expect($result['ratio']['flows'])->toBe(2.0)
+            ->and($result['ratio']['packets'])->toBe(1.0)
+            ->and($result['ratio']['bytes'])->toBe(0.25)
+        ;
+    });
+
+    // A quiet source has no meaningful multiple, and infinity is not a useful answer.
+    test('a zero average reports no multiple rather than infinity', function (): void {
+        statsQuerySettings();
+        $db = recordingDatasource();
+        $db->latestSlot = ['flows' => 5.0, 'packets' => 0.0, 'bytes' => 0.0];
+        $db->rollingAverage = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+        Config::$db = $db;
+
+        expect((new LoadQuery(['gw']))->run()['ratio']['flows'])->toBe(0.0);
+    });
+
+    test('falls back to the configured sources when given none', function (): void {
+        statsQuerySettings();
+        $db = recordingDatasource();
+        Config::$db = $db;
+
+        (new LoadQuery([]))->run();
+
+        expect($db->latestSlotSources)->toBe(['gw']);
+    });
+});
+
+describe('CoverageQuery', function (): void {
+    test('summarises the first and last sample across sources', function (): void {
+        statsQuerySettings();
+        $db = recordingDatasource();
+        $db->boundaries = ['gw' => [100, 500], 'dmz' => [50, 400]];
+        $db->lastUpdates = ['gw' => 500, 'dmz' => 400];
+        Config::$db = $db;
+
+        $result = (new CoverageQuery(['gw', 'dmz']))->run();
+
+        expect($result['first'])->toBe(50)
+            ->and($result['last'])->toBe(500)
+            ->and($result['sources'])->toHaveCount(2)
+            ->and($result['sources'][0]['last_update'])->toBe(500)
+        ;
+    });
+
+    // A configured source that was never imported has no database to ask.
+    test('a source whose datasource throws is reported as empty, not fatal', function (): void {
+        statsQuerySettings();
+        $db = recordingDatasource();
+        $db->boundariesThrow = true;
+        Config::$db = $db;
+
+        $result = (new CoverageQuery(['gw']))->run();
+
+        expect($result['first'])->toBe(0)
+            ->and($result['sources'][0]['first'])->toBe(0)
+        ;
+    });
+
+    test('offers the retention depth as a lower bound when nothing is imported', function (): void {
+        statsQuerySettings();
+
+        expect(CoverageQuery::fallbackFirst())->toBeLessThan(time());
     });
 });

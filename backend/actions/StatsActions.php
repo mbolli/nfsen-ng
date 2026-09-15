@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\actions;
 
-use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
-use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\common\Table;
-use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\query\StatsQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
 
@@ -57,44 +55,31 @@ final class StatsActions {
             $statsNotifications = [];
 
             try {
-                $srcs = Helpers::resolveSources($graphSources->array());
+                $query = new StatsQuery(
+                    window: TimeWindow::clamped($datestart->int(), $dateend->int()),
+                    sources: Helpers::resolveSources($graphSources->array()),
+                    profile: $selectedProfile->string(),
+                    for: $statsFor->string(),
+                    orderBy: $statsOrderBy->string(),
+                    limit: $statsCount->int(),
+                    filter: $statsFilter->string(),
+                    lowerLimit: $statsLowerLimit->string(),
+                    upperLimit: $statsUpperLimit->string(),
+                );
 
-                $processor = new Config::$processorClass();
-                $processor->setProfile($selectedProfile->string());
-                $processor->setOption('-M', implode(':', $srcs));
-                $window = TimeWindow::clamped($datestart->int(), $dateend->int());
-                $ds = $window->start;
-                $de = $window->end;
-                if ($window->clamped) {
-                    $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $window->clampNotice()];
+                if ($query->window->clamped) {
+                    $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $query->window->clampNotice()];
                 }
-                $processor->setOption('-R', $window->toRangeOption());
-                // Denominator for the progress estimate: how many bytes nfdump is about to
-                // read. Sized after the clamp above, so it matches the range actually queried,
-                // and deferred so the walk runs inside the coroutine rather than in front of
-                // this action's response.
-                $profile = $selectedProfile->string();
-                $totalBytes = static fn (): int => NfcapdFiles::totalSize(
-                    NfcapdFiles::list($ds, $de, $srcs, $profile)
-                );
-                $processor->setOption('-n', $statsCount->int());
-                $processor->setOption('-o', 'json');
-                $processor->setOption('-s', $forParam);
-                // Byte thresholds are prepended to the filter expression.
-                // nfdump -l/-L only work for line/packed output, not for -s stats mode.
-                $thresholdFilter = Nfdump::buildThresholdFilter(
-                    trim($statsLowerLimit->string()),
-                    trim($statsUpperLimit->string())
-                );
-                $combinedFilter = trim($statsFilter->string());
-                if ($thresholdFilter !== '') {
-                    $combinedFilter = $thresholdFilter . ($combinedFilter !== '' ? ' and ' . $combinedFilter : '');
-                }
-                $processor->setFilter($combinedFilter);
+
+                // Denominator for the progress estimate, deferred so the walk runs inside the
+                // coroutine rather than in front of this action's response.
+                $totalBytes = static fn (): int => $query->totalBytes();
+                $processor = $query->processor();
 
                 // nfdump runs in a coroutine so the action can return immediately and the
                 // button can show real progress instead of an indeterminate spinner.
                 QueryRunner::run($c, 'stats', $totalBytes, 'Starting nfdump…', static function () use (
+                    $query,
                     $processor,
                     $ipInfoAction,
                     $time,
@@ -102,27 +87,23 @@ final class StatsActions {
                     &$statsTableHtml
                 ): void {
                     try {
-                        $result = $processor->execute();
-
-                        // nfdump can answer with a JSON object rather than an array; Table::generate()
-                        // indexes the first row positionally, so re-key to a list.
-                        $statsData = array_values((array) ($result['decoded'] ?? []));
+                        $result = $query->run($processor);
 
                         $elapsed = round(microtime(true) - $time, 3);
-                        $cmd = htmlspecialchars((string) ($result['command'] ?? ''), ENT_QUOTES | ENT_HTML5);
+                        $cmd = htmlspecialchars($result->command, ENT_QUOTES | ENT_HTML5);
                         $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
                             ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
                             : "Statistics processed in {$elapsed}s."];
 
-                        if (!empty($result['stderr'])) {
-                            $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES | ENT_HTML5)];
+                        if ($result->stderr !== '') {
+                            $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars($result->stderr, ENT_QUOTES | ENT_HTML5)];
                         }
 
-                        $statsTableHtml = Table::generate($statsData, 'statsTable', [
+                        $statsTableHtml = Table::generate($result->rows, 'statsTable', [
                             'hiddenFields' => [],
                             'linkIpAddresses' => true,
                             'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
-                            'originalData' => $result['rawOutput'] ?? null,
+                            'originalData' => $result->rawOutput,
                         ]);
                     } catch (\Throwable $e) {
                         Debug::getInstance()->log('Stats action error: ' . $e->getMessage(), LOG_ERR);

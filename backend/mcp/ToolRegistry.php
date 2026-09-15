@@ -8,6 +8,9 @@ use mbolli\nfsen_ng\mcp\Tool\CurrentLoadTool;
 use mbolli\nfsen_ng\mcp\Tool\DataCoverageTool;
 use mbolli\nfsen_ng\mcp\Tool\EstimateCostTool;
 use mbolli\nfsen_ng\mcp\Tool\FlowMatrixTool;
+use mbolli\nfsen_ng\mcp\Tool\ListAlertsTool;
+use mbolli\nfsen_ng\mcp\Tool\ListFlowsTool;
+use mbolli\nfsen_ng\mcp\Tool\LookupAddressTool;
 use mbolli\nfsen_ng\mcp\Tool\StatusTool;
 use mbolli\nfsen_ng\mcp\Tool\ToolInterface;
 use mbolli\nfsen_ng\mcp\Tool\TopTalkersTool;
@@ -31,6 +34,9 @@ final class ToolRegistry {
         EstimateCostTool::class,
         TopTalkersTool::class,
         FlowMatrixTool::class,
+        ListFlowsTool::class,
+        LookupAddressTool::class,
+        ListAlertsTool::class,
     ];
 
     /**

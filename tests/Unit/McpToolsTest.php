@@ -189,3 +189,51 @@ describe('Guard', function (): void {
         ;
     });
 });
+
+describe('MCP tool coverage of the triage loop', function (): void {
+    test('the expensive tools all take a filter and a window', function (): void {
+        $expensive = array_filter(
+            ToolRegistry::tools(),
+            static fn (string $tool): bool => $tool::tier() === Tier::Expensive
+        );
+
+        expect($expensive)->not->toBeEmpty();
+        foreach ($expensive as $tool) {
+            $properties = $tool::inputSchema()['properties'];
+
+            expect($properties)->toHaveKey('start')
+                ->and($properties)->toHaveKey('end')
+                ->and($properties)->toHaveKey('filter')
+            ;
+        }
+    });
+
+    // Every expensive tool has to pass its window and filter through the guard, or the
+    // ceilings are advisory. Asserted on the source because the alternative is running nfdump.
+    test('every expensive tool routes its arguments through the guard', function (): void {
+        foreach (ToolRegistry::tools() as $tool) {
+            if ($tool::tier() !== Tier::Expensive) {
+                continue;
+            }
+
+            $source = file_get_contents((new ReflectionClass($tool))->getFileName());
+
+            expect($source)->toContain('Guard::window(')
+                ->and($source)->toContain('Guard::filter(')
+                ->and($source)->toContain('Guard::limit(')
+                ->and($source)->toContain('Guard::assertAffordable(')
+            ;
+        }
+    });
+
+    test('nothing in the registry writes', function (): void {
+        foreach (ToolRegistry::tools() as $tool) {
+            $source = file_get_contents((new ReflectionClass($tool))->getFileName());
+
+            expect($source)->not->toContain('->write(')
+                ->and($source)->not->toContain('Import(')
+                ->and($source)->not->toContain('->reset(')
+            ;
+        }
+    });
+});

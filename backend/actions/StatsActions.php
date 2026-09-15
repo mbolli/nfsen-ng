@@ -9,6 +9,7 @@ use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\common\Table;
 use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
 
 /**
@@ -61,14 +62,13 @@ final class StatsActions {
                 $processor = new Config::$processorClass();
                 $processor->setProfile($selectedProfile->string());
                 $processor->setOption('-M', implode(':', $srcs));
-                $ds = $datestart->int();
-                $de = $dateend->int();
-                $maxWindow = Config::$settings->maxStatsWindow;
-                if ($maxWindow > 0 && ($de - $ds) > $maxWindow) {
-                    $ds = $de - $maxWindow;
-                    $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => 'Time window clamped to ' . round($maxWindow / 86400, 1) . ' days (NFSEN_MAX_STATS_WINDOW).'];
+                $window = TimeWindow::clamped($datestart->int(), $dateend->int());
+                $ds = $window->start;
+                $de = $window->end;
+                if ($window->clamped) {
+                    $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $window->clampNotice()];
                 }
-                $processor->setOption('-R', [$ds, $de]);
+                $processor->setOption('-R', $window->toRangeOption());
                 // Denominator for the progress estimate: how many bytes nfdump is about to
                 // read. Sized after the clamp above, so it matches the range actually queried,
                 // and deferred so the walk runs inside the coroutine rather than in front of

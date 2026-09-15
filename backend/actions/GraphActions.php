@@ -12,6 +12,7 @@ use mbolli\nfsen_ng\common\QueryProgress;
 use mbolli\nfsen_ng\common\UserPreferences;
 use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\FilteredSeries;
+use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
 use OpenSwoole\Coroutine;
 
@@ -220,13 +221,9 @@ final class GraphActions {
      * @return array{int, int, bool} start, end, whether the window was shortened
      */
     public static function clampFilteredWindow(int $start, int $end): array {
-        $max = Config::$settings->maxStatsWindow;
+        $window = TimeWindow::clamped($start, $end);
 
-        if ($max > 0 && ($end - $start) > $max) {
-            return [$end - $max, $end, true];
-        }
-
-        return [$start, $end, false];
+        return [$window->start, $window->end, $window->clamped];
     }
 
     /**

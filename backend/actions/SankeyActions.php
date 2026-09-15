@@ -7,6 +7,7 @@ namespace mbolli\nfsen_ng\actions;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
 
 /**
@@ -78,14 +79,13 @@ final class SankeyActions {
                 $processor->setProfile($selectedProfile->string());
                 $processor->setOption('-M', implode(':', $srcs));
 
-                $ds = $datestart->int();
-                $de = $dateend->int();
-                $maxWindow = Config::$settings->maxStatsWindow;
-                if ($maxWindow > 0 && ($de - $ds) > $maxWindow) {
-                    $ds = $de - $maxWindow;
-                    $sankeyNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => 'Time window clamped to ' . round($maxWindow / 86400, 1) . ' days (NFSEN_MAX_STATS_WINDOW).'];
+                $window = TimeWindow::clamped($datestart->int(), $dateend->int());
+                $ds = $window->start;
+                $de = $window->end;
+                if ($window->clamped) {
+                    $sankeyNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $window->clampNotice()];
                 }
-                $processor->setOption('-R', [$ds, $de]);
+                $processor->setOption('-R', $window->toRangeOption());
 
                 // With ports enabled, the destination L4 port joins the aggregation key so
                 // the diagram gains a middle column (src IP -> dst port -> dst IP).

@@ -102,6 +102,7 @@ describe('NfdumpProgressWatcher', function (): void {
 
         // No nfdump running, so nothing is sampled — but it stays trackable.
         expect($watcher->tick())->toBeTrue()
-            ->and($watcher->isTrackable())->toBeTrue();
+            ->and($watcher->isTrackable())->toBeTrue()
+        ;
     });
 });

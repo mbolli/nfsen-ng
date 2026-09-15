@@ -521,6 +521,7 @@ final class GraphActions {
                             $progress->update($d, $t);
                         },
                         shouldCancel: static fn (): bool => QueryCancel::isRequested($contextId),
+                        handle: $contextId,
                     );
 
                     // A cancelled run is still worth showing, but it is not the answer for

@@ -65,6 +65,7 @@ final class StatsActions {
                     filter: $statsFilter->string(),
                     lowerLimit: $statsLowerLimit->string(),
                     upperLimit: $statsUpperLimit->string(),
+                    handle: $c->getId(),
                 );
 
                 if ($query->window->clamped) {

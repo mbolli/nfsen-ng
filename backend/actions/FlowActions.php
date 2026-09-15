@@ -83,6 +83,7 @@ final class FlowActions {
                         'dstipPrefix' => $flowAggDstIpPrefix->string(),
                     ],
                     orderByStart: $flowOrderByTstart->bool(),
+                    handle: $c->getId(),
                 );
 
                 // Denominator for the progress estimate, deferred so the walk runs inside the

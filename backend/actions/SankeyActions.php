@@ -76,6 +76,7 @@ final class SankeyActions {
                     filter: $sankeyFilter->string(),
                     lowerLimit: $sankeyLowerLimit->string(),
                     upperLimit: $sankeyUpperLimit->string(),
+                    handle: $c->getId(),
                 );
                 $metric = $query->metric();
                 $showPorts = $query->showPorts;

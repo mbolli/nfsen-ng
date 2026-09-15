@@ -26,6 +26,7 @@ function recordingProcessor(array $executeResult = []): Processor {
         public array $options = [];
         public string $filter = '';
         public string $profile = '';
+        public string $handle = '';
         public int $executed = 0;
 
         public function __construct(private readonly array $executeResult = []) {}
@@ -40,6 +41,10 @@ function recordingProcessor(array $executeResult = []): Processor {
 
         public function setProfile(string $profile): void {
             $this->profile = $profile;
+        }
+
+        public function setQueryHandle(string $handle): void {
+            $this->handle = $handle;
         }
 
         public function execute(): array {

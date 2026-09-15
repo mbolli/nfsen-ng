@@ -14,7 +14,7 @@ audit). Both are populated by `HealthChecker::run()`
 |---|---|
 | PHP Extensions | PHP version, `ext-openswoole`, `ext-rrd` (only required for the RRD datasource), `ext-inotify` |
 | Timezone | PHP timezone, `NFCAPD_TZ` validity, and a plausibility check comparing the most recent nfcapd filename's timestamp against "now" |
-| nfdump | Binary presence/version (minimum 1.7.2 — the JSON field-name scheme changed from 1.6.x), max-processes config, and **process inspection** (below) |
+| nfdump | Binary presence/version (minimum 1.7.2 — the JSON field-name scheme changed from 1.6.x) and max-processes, showing how many of the configured slots are in use right now |
 | Sources | At least one configured |
 | Import Daemon | Running / initializing / watching N directories, last auto-import age |
 | nfcapd Paths | `profiles-data` reachable; per-profile, per-source directory presence, flat-vs-nested layout, and capture freshness (warns past ~12 minutes — 2.4× nfcapd's default 5-minute rotation) |
@@ -24,15 +24,17 @@ audit). Both are populated by `HealthChecker::run()`
 Every entry is `ok` / `warning` / `error`, sorted errors-first within its
 group, with an optional hint line explaining what to actually do about it.
 
-## Process inspection
+## nfdump concurrency
 
-`Misc::countProcessesByName()` — the function backing the nfdump
-concurrency guard (see [Nfdump Integration](../architecture/nfdump-integration.md)) —
-needs `ps` or `pgrep` on `PATH`. Without either, it silently returns `0`,
-which makes the guard permanently believe no nfdump process is running. The
-**Process inspection** health entry exists specifically to surface that
-condition as a `warning` rather than let it look like a healthy, quiet
-system.
+`NFSEN_NFDUMP_MAX_PROCESSES` bounds how many nfdump processes run at once, and the
+**Max processes** health entry shows how many of those slots are in use right now.
+
+The limit counts the processes nfsen-ng started, including the import daemon's, and a
+caller that finds no free slot waits briefly rather than failing. It used to be enforced
+by counting every process named `nfdump` on the machine with `ps` or `pgrep`, which
+counted runs this app never started and silently enforced nothing when neither tool was
+installed — hence the separate process-inspection warning that used to live here, now
+removed along with the mechanism that needed it.
 
 ## Import (Admin)
 

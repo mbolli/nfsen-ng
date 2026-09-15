@@ -47,15 +47,22 @@ separates stdout/stderr, and:
 
 ## The concurrency guard
 
-`Config::$settings->nfdumpMaxProcesses` caps how many nfdump processes may
-run at once; `execute()` checks `Misc::countProcessesByName('nfdump')`
-before starting a new one and throws if the cap is already hit, rather than
-piling up parallel scans on a system that's likely I/O-bound already.
+`NfdumpSlots` caps how many nfdump processes run at once, at
+`Config::$settings->nfdumpMaxProcesses`, rather than piling up parallel scans on a
+system that is likely I/O-bound already. `execute()` takes a slot before spawning and
+releases it afterwards, so a caller that finds none free waits briefly and only fails if
+none frees up in time.
 
-That counter needs `ps` or `pgrep` on `PATH` — if neither is present (e.g. a
-minimal container image missing `procps`), it silently returns `0` and the
-guard never trips. That failure mode is exactly why there's a "Process
-inspection" entry in the Admin health panel's `nfdump` group: it flags a
-missing `ps`/`pgrep` explicitly, rather than leaving the guard's silence to
-look like "no other nfdump running" (see
-[Health Checks & Admin](../features/health-admin.md)).
+A slot is taken per nfdump run, not per query, because a filtered-graph build runs one
+per time bin and would otherwise hold the cap for its whole duration. The import daemon's
+runs take slots too, which is why the default is `2` rather than `1`: browsing while an
+import is in progress should not queue behind it.
+
+`NfdumpSlots` also records which query owns each running process, keyed by the caller's
+context id. That is what the Kill action targets — with more than one query in flight, a
+single "last started" process id killed the wrong one.
+
+It bounds this worker's own processes. An nfdump someone starts by hand, or a second
+nfsen-ng on the same host, is not counted; the previous implementation counted those by
+scanning `ps`/`pgrep` output, and in exchange counted nothing at all on an image without
+either tool.

@@ -30,6 +30,7 @@ final class FakeProcessor implements Processor {
     private array $options = [];
     private string $filter = '';
     private string $profile = '';
+    private string $handle = '';
 
     public static function reset(): void {
         self::$calls = [];
@@ -53,6 +54,10 @@ final class FakeProcessor implements Processor {
 
     public function setProfile(string $profile): void {
         $this->profile = $profile;
+    }
+
+    public function setQueryHandle(string $handle): void {
+        $this->handle = $handle;
     }
 
     public function execute(): array {

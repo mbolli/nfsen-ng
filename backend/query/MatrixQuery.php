@@ -31,6 +31,8 @@ final readonly class MatrixQuery {
         public string $filter = '',
         public string $lowerLimit = '',
         public string $upperLimit = '',
+        /** Names this query's nfdump runs, so a kill can target it. */
+        public string $handle = 'default',
     ) {}
 
     public function metric(): string {
@@ -82,6 +84,7 @@ final readonly class MatrixQuery {
 
     public function processor(): Processor {
         $processor = new Config::$processorClass();
+        $processor->setQueryHandle($this->handle);
         $processor->setProfile($this->profile);
         $processor->setOption('-M', implode(':', $this->sources));
         $processor->setOption('-R', $this->window->toRangeOption());

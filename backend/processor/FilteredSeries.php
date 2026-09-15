@@ -67,6 +67,7 @@ final class FilteredSeries {
         string $profile = '',
         ?callable $onProgress = null,
         ?callable $shouldCancel = null,
+        string $handle = 'default',
     ): array {
         $d = Debug::getInstance();
 
@@ -156,7 +157,7 @@ final class FilteredSeries {
                     continue;
                 }
 
-                $stats = self::runBin($group, $groupFiles, $filter, $profile);
+                $stats = self::runBin($group, $groupFiles, $filter, $profile, $handle);
 
                 if ($stats === null) {
                     // nfdump failed for this bin — leave the seeded null so it draws as a
@@ -267,13 +268,17 @@ final class FilteredSeries {
      * @return null|array<array<string, mixed>> decoded nfdump rows, or null when the
      *                                          invocation failed — which is a gap, not a zero
      */
-    private static function runBin(array $group, array $files, string $filter, string $profile): ?array {
+    private static function runBin(array $group, array $files, string $filter, string $profile, string $handle = 'default'): ?array {
         $relPaths = array_column($files, 'relPath');
         sort($relPaths);
         $first = $relPaths[0];
         $last = $relPaths[\count($relPaths) - 1];
 
         $nfdump = new Config::$processorClass();
+        // Every bin runs under the build's handle, so cancelling the build kills whichever bin
+        // happens to be in flight. A slot is taken per bin, not for the whole build, so a long
+        // build does not starve the UI or an agent for minutes.
+        $nfdump->setQueryHandle($handle);
         $nfdump->setProfile($profile);
         $nfdump->setOption('-M', implode(':', $group));
 

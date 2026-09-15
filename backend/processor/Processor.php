@@ -32,6 +32,12 @@ interface Processor {
      * Override the nfdump profile used for path construction.
      * Must be called before setOption('-M', ...) to take effect.
      */
+    /**
+     * Names this processor's runs so a concurrent caller can kill its own query rather than
+     * whichever one started last. Implementations that cannot run concurrently may ignore it.
+     */
+    public function setQueryHandle(string $handle): void;
+
     public function setProfile(string $profile): void;
 
     /**

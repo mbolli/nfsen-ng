@@ -30,6 +30,8 @@ final readonly class FlowsQuery {
         public string $upperLimit = '',
         public array $aggregation = [],
         public bool $orderByStart = false,
+        /** Names this query's nfdump runs, so a kill can target it. */
+        public string $handle = 'default',
     ) {}
 
     public function aggregationString(): string {
@@ -61,6 +63,7 @@ final readonly class FlowsQuery {
 
     public function processor(): Processor {
         $processor = new Config::$processorClass();
+        $processor->setQueryHandle($this->handle);
         $processor->setProfile($this->profile);
         $processor->setOption('-M', implode(':', $this->sources));
         $processor->setOption('-R', $this->window->toRangeOption());

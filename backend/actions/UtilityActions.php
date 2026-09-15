@@ -6,7 +6,7 @@ namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\IpLookup;
 use mbolli\nfsen_ng\common\QueryCancel;
-use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
 use Mbolli\PhpVia\Context;
 
 /**
@@ -74,9 +74,10 @@ final class UtilityActions {
             // loop marches straight on to the next one — it has to be told to stop.
             QueryCancel::request($c->getId());
 
-            $pid = Nfdump::$runningPid;
+            // Kill this tab's own run, not whichever started last: with an agent or a second
+            // tab querying concurrently, Nfdump::$runningPid is no longer unambiguous.
+            $pid = NfdumpSlots::kill($c->getId()) ?? NfdumpSlots::kill('default');
             if ($pid !== null && $pid > 0) {
-                posix_kill($pid, SIGTERM);
                 $msg = 'nfdump process (PID ' . $pid . ') was killed.';
                 $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $msg]];
                 $statsNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $msg]];

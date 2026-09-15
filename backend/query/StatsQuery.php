@@ -31,6 +31,8 @@ final readonly class StatsQuery {
         public string $filter = '',
         public string $lowerLimit = '',
         public string $upperLimit = '',
+        /** Names this query's nfdump runs, so a kill can target it. */
+        public string $handle = 'default',
     ) {}
 
     /**
@@ -60,6 +62,7 @@ final readonly class StatsQuery {
 
     public function processor(): Processor {
         $processor = new Config::$processorClass();
+        $processor->setQueryHandle($this->handle);
         $processor->setProfile($this->profile);
         $processor->setOption('-M', implode(':', $this->sources));
         $processor->setOption('-R', $this->window->toRangeOption());

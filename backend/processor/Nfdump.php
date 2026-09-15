@@ -6,7 +6,6 @@ namespace mbolli\nfsen_ng\processor;
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
-use mbolli\nfsen_ng\common\Misc;
 
 /**
  * @phpstan-type NfdumpConfig array{
@@ -21,8 +20,17 @@ use mbolli\nfsen_ng\common\Misc;
 class Nfdump implements Processor {
     public static ?self $_instance = null;
 
-    /** PID of the currently running nfdump process, or null if idle. Safe as static in single-worker OpenSwoole. */
+    /**
+     * PID of the most recently started nfdump process, or null if idle.
+     *
+     * Kept for callers that only ever run one query at a time. Anything that can run
+     * concurrently should own a handle and ask NfdumpSlots instead, because this is whichever
+     * run started last.
+     */
     public static ?int $runningPid = null;
+
+    /** Identifies this processor's runs to NfdumpSlots, so a kill reaches the right one. */
+    private string $queryHandle = 'default';
 
     /** @var NfdumpConfig */
     private array $cfg;
@@ -192,11 +200,10 @@ class Nfdump implements Processor {
         // check for already running nfdump processes
         // use pgrep if available, fallback to ps, or skip check if neither available
         $bin_name = basename($this->cfg['env']['bin']);
-        $process_count = Misc::countProcessesByName($bin_name);
-
-        if ($process_count > Config::$settings->nfdumpMaxProcesses) {
-            throw new \Exception('There already are ' . $process_count . ' processes of NfDump running!');
-        }
+        // Wait for a slot rather than counting nfdump processes on the machine. That count
+        // included runs this app never started, raced between counting and spawning, and made
+        // "busy" an error instead of a short wait.
+        NfdumpSlots::acquire();
 
         // execute nfdump using proc_open to separate stdout and stderr
         $descriptorspec = [
@@ -220,8 +227,11 @@ class Nfdump implements Processor {
         // Close stdin as we don't need it
         fclose($pipes[0]);
 
-        // Track running PID so the kill-nfdump action can send SIGTERM
-        self::$runningPid = proc_get_status($process)['pid'];
+        // Track the running PID so a kill can reach it, both by handle and through the
+        // single static the existing single-query callers read.
+        $pid = proc_get_status($process)['pid'];
+        self::$runningPid = $pid;
+        NfdumpSlots::register($this->queryHandle, $pid);
 
         // Read stdout and stderr
         $stdout = (string) stream_get_contents($pipes[1]);
@@ -233,6 +243,8 @@ class Nfdump implements Processor {
         // Get return code
         $return = proc_close($process);
         self::$runningPid = null;
+        NfdumpSlots::unregister($this->queryHandle);
+        NfdumpSlots::release();
 
         // Log stderr if present (but don't fail on benign messages)
         if (!empty($stderr)) {
@@ -519,6 +531,18 @@ class Nfdump implements Processor {
      * Override the nfdump profile used for path construction.
      * Must be called before setOption('-M', ...) to take effect.
      */
+    /**
+     * Names this processor's runs, so concurrent callers can kill their own query rather than
+     * whichever one started last. Defaults to a shared handle for the single-query case.
+     */
+    public function setQueryHandle(string $handle): void {
+        $this->queryHandle = $handle !== '' ? $handle : 'default';
+    }
+
+    public function queryHandle(): string {
+        return $this->queryHandle;
+    }
+
     public function setProfile(string $profile): void {
         $this->cfg['env']['profile'] = $profile;
     }

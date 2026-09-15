@@ -54,7 +54,7 @@ final class EnvRegistry {
             new EnvVar('NFSEN_NFDUMP_BINARY', 'nfdump', 'string', '/usr/local/nfdump/bin/nfdump', 'Path to the nfdump binary.', format: 'path'),
             new EnvVar('NFSEN_NFDUMP_PROFILES', 'nfdump', 'string', '/var/nfdump/profiles-data', 'nfdump profiles-data directory.', format: 'path'),
             new EnvVar('NFSEN_NFDUMP_PROFILE', 'nfdump', 'string', 'live', 'nfdump profile name.'),
-            new EnvVar('NFSEN_NFDUMP_MAX_PROCESSES', 'nfdump', 'int', 1, 'Max concurrent nfdump processes.', min: 1),
+            new EnvVar('NFSEN_NFDUMP_MAX_PROCESSES', 'nfdump', 'int', 2, 'Max concurrent nfdump processes.', min: 1),
 
             // ── Integrations ──────────────────────────────────────────────────
             new EnvVar('NFSEN_NETBOX_URL', 'integrations', 'string', '', 'NetBox base URL for IP enrichment.', format: 'url'),

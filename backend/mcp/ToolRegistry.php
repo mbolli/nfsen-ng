@@ -6,8 +6,11 @@ namespace mbolli\nfsen_ng\mcp;
 
 use mbolli\nfsen_ng\mcp\Tool\CurrentLoadTool;
 use mbolli\nfsen_ng\mcp\Tool\DataCoverageTool;
+use mbolli\nfsen_ng\mcp\Tool\EstimateCostTool;
+use mbolli\nfsen_ng\mcp\Tool\FlowMatrixTool;
 use mbolli\nfsen_ng\mcp\Tool\StatusTool;
 use mbolli\nfsen_ng\mcp\Tool\ToolInterface;
+use mbolli\nfsen_ng\mcp\Tool\TopTalkersTool;
 use mbolli\nfsen_ng\mcp\Tool\TrafficTimelineTool;
 use Mcp\Server;
 use Mcp\Server\Builder;
@@ -25,6 +28,9 @@ final class ToolRegistry {
         CurrentLoadTool::class,
         DataCoverageTool::class,
         StatusTool::class,
+        EstimateCostTool::class,
+        TopTalkersTool::class,
+        FlowMatrixTool::class,
     ];
 
     /**

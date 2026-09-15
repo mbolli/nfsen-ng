@@ -6,6 +6,7 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\Processor;
+use mbolli\nfsen_ng\query\CostEstimate;
 use mbolli\nfsen_ng\query\CoverageQuery;
 use mbolli\nfsen_ng\query\FlowsQuery;
 use mbolli\nfsen_ng\query\LoadQuery;
@@ -503,5 +504,53 @@ describe('CoverageQuery', function (): void {
         statsQuerySettings();
 
         expect(CoverageQuery::fallbackFirst())->toBeLessThan(time());
+    });
+});
+
+describe('CostEstimate', function (): void {
+    test('a single pass is one run regardless of the window', function (): void {
+        statsQuerySettings();
+
+        $estimate = CostEstimate::forSinglePass(TimeWindow::raw(0, 86400), [], 'live');
+
+        expect($estimate->runs)->toBe(1);
+    });
+
+    // A filtered series runs one nfdump per bin per group, which is what makes it expensive.
+    test('a filtered series scales its run count with the group count', function (): void {
+        statsQuerySettings();
+        $window = TimeWindow::raw(0, 86400);
+
+        $one = CostEstimate::runsForFilteredSeries($window, 288, 1);
+        $three = CostEstimate::runsForFilteredSeries($window, 288, 3);
+
+        expect($three)->toBeGreaterThan($one);
+    });
+
+    test('never reports fewer than one run', function (): void {
+        statsQuerySettings();
+
+        expect(CostEstimate::runsForFilteredSeries(TimeWindow::raw(100, 100), 1, 1))->toBeGreaterThanOrEqual(1);
+    });
+
+    // The whole point of the split: the panel calls this on every render.
+    test('the run count needs no filesystem access', function (): void {
+        statsQuerySettings();
+        $window = TimeWindow::raw(0, 3600);
+
+        expect(CostEstimate::runsForFilteredSeries($window, 60, 1))->toBeInt();
+    });
+
+    test('carries the clamp flag through to its array form', function (): void {
+        statsQuerySettings();
+
+        $estimate = new CostEstimate(3, 400, 2, TimeWindow::clamped(0, 86400 * 400, 86400));
+
+        expect($estimate->toArray())->toBe([
+            'files' => 3,
+            'bytes' => 400,
+            'runs' => 2,
+            'window_clamped' => true,
+        ]);
     });
 });

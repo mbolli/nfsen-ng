@@ -12,6 +12,7 @@ use mbolli\nfsen_ng\common\QueryProgress;
 use mbolli\nfsen_ng\common\UserPreferences;
 use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\FilteredSeries;
+use mbolli\nfsen_ng\query\CostEstimate;
 use mbolli\nfsen_ng\query\CoverageQuery;
 use mbolli\nfsen_ng\query\TimelineQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
@@ -233,12 +234,20 @@ final class GraphActions {
         $files = $c->getSignal('nfcapd_file_count');
         $bytes = $c->getSignal('nfcapd_total_bytes');
         $groups = $p['display'] === 'sources' ? max(1, \count($p['sources'])) : 1;
-        $step = FilteredSeries::binWidth($p['start'], $p['end'], $p['points'], $groups);
+
+        // File count and size come from the signals the count-files action maintains: this
+        // runs on every render and must not walk the capture tree itself, so only the run
+        // count is computed here.
+        $runs = CostEstimate::runsForFilteredSeries(
+            TimeWindow::raw($p['start'], $p['end']),
+            $p['points'],
+            $groups,
+        );
 
         return [
             'files' => $files?->int() ?? 0,
             'bytes' => QueryRunner::formatBytes($bytes?->int() ?? 0),
-            'intervals' => (int) ceil(max(1, $p['end'] - $p['start']) / $step) * $groups,
+            'intervals' => $runs,
             'clamped' => $p['clamped'],
             'window' => self::formatWindow(Config::$settings->maxStatsWindow),
         ];

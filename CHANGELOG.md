@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+---
+
+## [1.0.0-beta.5] — 2026-09-16
+
 ### Added
 
 - **Traffic over time**, a collapsed section above the Flows results, plots the flow query you just described, which is what [#166](https://github.com/mbolli/nfsen-ng/issues/166) asked for: filter in Flows, then see *when* those flows happened, without describing the query twice. The panel states what it would read before it reads anything, and builds only when you press the button, because plotting a filter means one nfdump run per interval. The byte thresholds are part of the plotted expression since the table applies them too; the row limit and aggregation options are not, because they truncate and regroup the table rather than change which records match, so the table can list 100 flows beside a graph of every matching byte. A built graph survives a moving window: the panel keeps showing it and says the query has changed, rather than discarding a graph you waited for.

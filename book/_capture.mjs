@@ -335,10 +335,21 @@ function imgDims(file) {
 // shots are already wide (light+dark stitched), so a vertical 1-column tile
 // keeps the width and lets you scroll old vs new vs diff.
 function buildVisibleDiff(name, oldFile, newFile, rawDiff) {
-  const args = ['-label', 'committed', oldFile, '-label', 'new', newFile];
-  if (rawDiff) args.push('-label', 'diff', rawDiff);
-  args.push('-tile', '1x', '-geometry', '+0+8', '-background', 'white', '-fill', 'black', join(DIFFS, name + '.png'));
-  execFileSync('montage', args);
+  const panes = rawDiff ? [oldFile, newFile, rawDiff] : [oldFile, newFile];
+  const tile = ['-tile', '1x', '-geometry', '+0+8', '-background', 'white', '-fill', 'black', join(DIFFS, name + '.png')];
+  const labelled = ['-label', 'committed', oldFile, '-label', 'new', newFile];
+  if (rawDiff) labelled.push('-label', 'diff', rawDiff);
+
+  // montage renders a caption per tile, so it needs a font even with no -label, and an
+  // ImageMagick without fontconfig fails the whole thing with "unable to read font
+  // `(null)'". The diff is a convenience for whoever reviews the shots, so losing its
+  // captions must not abort a capture run: fall back to stacking the same panes with
+  // convert, which draws no text at all.
+  try {
+    execFileSync('montage', [...labelled, ...tile], { stdio: 'pipe' });
+  } catch {
+    execFileSync('convert', [...panes, '-append', join(DIFFS, name + '.png')], { stdio: 'pipe' });
+  }
 }
 
 // commitShot decides whether a freshly captured shot (newFile) should replace

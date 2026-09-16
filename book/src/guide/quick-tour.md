@@ -9,9 +9,8 @@ chart for whatever's currently being captured.
 
 Across the top: a home/reload icon, a dark-mode toggle (moon/sun), a
 reconnect spinner (only appears if your connection to the server drops —
-see below), and the tabs: **Graphs**, **Investigate**, **Flows**,
-**Statistics**, **Sankey**, and **Settings**. (**Investigate** is the graph and
-the flow table on one screen — [see below](#the-investigate-tab).) Whichever
+see below), and the tabs: **Graphs**, **Flows**, **Statistics**, **Sankey**,
+and **Settings**. Whichever
 preset (source) you're viewing shows in the top-left corner.
 
 Switching tabs is instant — there's no page reload, and whatever filters you
@@ -19,7 +18,7 @@ had set on a tab are still there when you come back to it.
 
 ## The shared control bar
 
-Every data tab (Graphs, Investigate, Flows, Statistics, Sankey) shares the same date
+Every data tab (Graphs, Flows, Statistics, Sankey) shares the same date
 range control at the top, plus a filter panel specific to that tab below it:
 
 ![Date range and filter panel](../images/guide-controls-bar.png)
@@ -46,20 +45,26 @@ ETA and a **Kill** button for the times you asked for more than you meant to:
 
 ![A running query's progress bar](../images/guide-query-progress.png)
 
-## The Investigate tab
+## Seeing when your flows happened
 
-**Investigate** is the Graphs chart and the Flows table stacked on one screen,
-sharing one date range:
+Once you have filtered in **Flows**, expand **Traffic over time** above the
+results to plot that same filter:
 
-![The Investigate tab](../images/09-page-investigate.png)
+![The traffic panel on the Flows tab](../images/09-page-flows-graph.png)
 
-It's for the moment you've spotted a spike and want to know what it was made
-of. There's a single nfdump filter on screen — the flows table hides its own box
-and follows the chart's — so one expression gives you both the shape of the
-traffic over time and the individual records behind it, without switching tabs
-and losing your place. Both panels still only run when you ask
-them to (**Apply filter** for the chart, **Process data** for the table), for
-the same reason as above: each one costs a real `nfdump` run.
+It answers "when did this happen" without describing the query twice. The graph
+plots the filter you already typed, including the min and max byte limits, so
+it shows exactly the traffic the table lists.
+
+Two caveats it states on screen. The row limit and the aggregation options do
+not apply to it, because they truncate and regroup the table rather than change
+which records match — so a table of 100 rows can sit beside a graph of every
+matching byte. And plotting a filter means reading capture files, one nfdump run
+per interval, so it never builds on its own: the panel tells you what it will
+read and waits for you to press **Build graph**.
+
+If the query or the window moves after a build, the panel says so and keeps
+showing what it built, rather than throwing away a graph you waited for.
 
 ## If you see a "Reconnecting…" banner
 

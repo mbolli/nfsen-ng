@@ -26,6 +26,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 use mbolli\nfsen_ng\actions\AlertActions;
 use mbolli\nfsen_ng\actions\FlowActions;
+use mbolli\nfsen_ng\actions\FlowGraphActions;
 use mbolli\nfsen_ng\actions\GraphActions;
 use mbolli\nfsen_ng\actions\Helpers;
 use mbolli\nfsen_ng\actions\ImportActions;
@@ -212,6 +213,14 @@ $app->page('/', function (Context $c) use ($app): void {
 
     // Flow signals
     $flowFilter = $c->signal('', 'flows_filter', clientWritable: true);
+    // Traffic-over-time panel on the Flows tab (#166). Hidden until asked for, because
+    // building it reads capture files.
+    $flowsGraphShown = $c->signal(false, 'flows_graph_shown', clientWritable: true);
+    $flowsGraphUnit = $c->signal('bytes', 'flows_graph_unit', clientWritable: true);
+    // Which series the panel is showing: the cache key of the last build, so a moving
+    // window does not blank a graph someone waited for.
+    $flowsGraphKey = $c->signal('', 'flows_graph_key');
+    $flowsGraphFingerprint = $c->signal('', 'flows_graph_fingerprint');
     $flowLimit = $c->signal(
         Config::$settings->defaultFlowLimit,
         'flows_limit',
@@ -368,6 +377,7 @@ $app->page('/', function (Context $c) use ($app): void {
     // ── Actions ──────────────────────────────────────────────────────────────
     GraphActions::register($c);
     FlowActions::register($c, $flowNotifications, $flowTableHtml);
+    FlowGraphActions::register($c);
     StatsActions::register($c, $flowNotifications, $statsNotifications, $statsTableHtml);
     SankeyActions::register($c, $sankeyNotifications, $sankeyData);
     ImportActions::register($c, $app);
@@ -414,7 +424,8 @@ $app->page('/', function (Context $c) use ($app): void {
         &$cachedImportSources,
         &$lastHealthFetch,
         &$cachedHealthChecks,
-        &$lastAlertShown
+        &$lastAlertShown,
+        $flowsGraphShown
     ): string {
         // ── Result-panel revival snapshot (issue #151) ────────────────────────
         // Flow/stats/sankey results live in plain-PHP containers, not signals, so a
@@ -526,8 +537,19 @@ $app->page('/', function (Context $c) use ($app): void {
             // so sliding it by a second — which this does on every render while the window
             // ends near now — leaves the freshly built series unreachable and the graph
             // permanently empty. A filtered build is a snapshot of one explicit window.
+            // A built flows traffic series is a snapshot of one explicit window, for the same
+            // reason a filtered graph is: slide the window under it and the series no longer
+            // matches the query, so the panel calls itself stale within minutes. Keyed on
+            // having built something, not on the panel being open — expanding a disclosure
+            // should not freeze the live window for the whole tab.
+            // Open *and* built: the key is never cleared, so keying on it alone froze the
+            // live window for the rest of the session — the Graphs tab stopped tracking now
+            // and only a reload recovered. Collapsing the panel releases it.
+            $flowsGraphPinned = $flowsGraphShown->bool()
+                && ($c->getSignal('flows_graph_key')?->string() ?? '') !== '';
+
             $de = $dateend->int();
-            if ($graphMode->string() === 'stored' && $now - $de < 600) {
+            if ($graphMode->string() === 'stored' && !$flowsGraphPinned && $now - $de < 600) {
                 $window = $de - $datestart->int();
                 $dateend->setValue($now, broadcast: false);
                 $datestart->setValue($now - $window, broadcast: false);
@@ -674,6 +696,20 @@ $app->page('/', function (Context $c) use ($app): void {
                 ? GraphActions::filteredCost($c)
                 : null,
             'flowTableHtml' => $flowTableHtml,
+            // The Flows tab's own traffic panel: the series if it has been built for the
+            // current query, and what building it would cost if it has not (#166).
+            // Computed whether or not the panel is open, because opening it is a client-side
+            // toggle with no round trip — gating on the signal left the cost line blank until
+            // something else happened to re-render. Both are cheap: a cache lookup and
+            // arithmetic over counts another action already maintains.
+            // The whole series object, not just its rows: nfsen-chart reads {data, legend, …}
+            // and falls back to an unlabelled, empty render when the legend is missing.
+            'flowsGraphData' => !$hasFatalError
+                ? json_encode(FlowGraphActions::cached($c) ?? [], JSON_THROW_ON_ERROR)
+                : '[]',
+            'flowsGraphBuilt' => !$hasFatalError && FlowGraphActions::cached($c) !== null,
+            'flowsGraphCost' => !$hasFatalError ? FlowGraphActions::cost($c) : null,
+            'flowsGraphStale' => !$hasFatalError && FlowGraphActions::isStale($c),
             'flowNotifications' => $flowNotifications,
             'statsTableHtml' => $statsTableHtml,
             'statsNotifications' => $statsNotifications,

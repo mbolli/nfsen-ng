@@ -49,9 +49,9 @@ an ETA while it works, and a **Kill** button if you asked for more than you
 meant to. Narrow the date range first; it's the window width, not the number of
 points, that decides how long it takes.
 
-The **Investigate** tab puts this graph and the flow table on one screen, so
-you can read the same filter as a timeline and as individual records at the
-same time — see the [Quick Tour](quick-tour.md#the-investigate-tab).
+To read a filter as a timeline *and* as individual records, filter in **Flows**
+and expand **Traffic over time** there — see the
+[Quick Tour](quick-tour.md#seeing-when-your-flows-happened).
 
 ## Zooming in
 

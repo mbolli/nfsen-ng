@@ -683,19 +683,19 @@ async function main() {
     console.log('shot guide-graphs-filtered');
     await shot('guide-graphs-filtered');
 
-    // ---- 09: Investigate -- the same window as a timeline and as records ----
-    console.log('shot 09 investigate');
-    await go(`_currentView = 'investigate'`);
-    // The flows panel follows the graph's filter in this view (it hides its own box),
-    // so there is nothing to click -- just let the mirror settle before shooting.
-    await sleep(400);
-    // Fewer rows than the standalone Flows shot -- the graph is on the same
-    // screen here, and the page is already tall.
-    // 20 is the smallest limit this control offers -- setting a value it has no option
-    // for leaves selectedIndex at -1 and the select renders blank in the shot.
-    if (!await evaluate(`__setSelect('#filterFlowsLimit select', 20)`)) throw new Error('flows limit select: no 20 option');
-    await processData();
-    await shot('09-page-investigate');
+    // ---- 09: the Flows tab's traffic panel -- the same filter as a timeline ----
+    // Replaces the old Investigate shot: that view was retired once this panel covered
+    // what #166 asked for, and go() on a removed view throws into the catch below,
+    // which silently left the book citing an image nobody was capturing.
+    console.log('shot 09 flows traffic panel');
+    await go(`_currentView = 'flows'`);
+    if (!await evaluate(`__clickText('Traffic over time', 'button')`)) throw new Error('traffic panel disclosure not found');
+    await sleep(300);
+    if (!await evaluate(`__clickText('Build graph', 'button')`)) throw new Error('"Build graph" button not found');
+    // One nfdump run per interval: wait for the panel's own outcome line, not a fixed sleep.
+    await waitJs(`/Done in|Failed/.test(document.body.innerText)`, { timeout: 300000, label: 'traffic panel build' });
+    await sleep(600);
+    await shot('09-page-flows-graph');
   } catch (e) {
     console.warn('  skipped the #166 shots:', e.message);
   }

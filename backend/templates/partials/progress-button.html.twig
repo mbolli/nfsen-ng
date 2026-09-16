@@ -23,9 +23,9 @@
       onClick    — optional extra JS to run before the POST
 #}
 {#
-    Only this panel's own query drives its button. The Investigate view has the graph and
-    flows panels on screen together and they share the query_* signals, so without the kind
-    check a flows query would light up the graph's Apply button and vice versa.
+    Only this panel's own query drives its button. Panels sharing a screen share the query_*
+    signals — the Flows tab carries both Process data and the traffic panel's Build graph — so
+    without the kind check one query would light up the other's button.
 
     `disabled` still keys off the bare running flag: only one query runs at a time, so a
     click on another panel's button would be silently dropped.

@@ -19,6 +19,8 @@ final readonly class TimeWindow {
         public int $start,
         public int $end,
         public bool $clamped,
+        /** The bound actually applied, which is not always the configured one. */
+        public int $max = 0,
     ) {}
 
     /**
@@ -28,10 +30,10 @@ final readonly class TimeWindow {
         $max ??= Config::$settings->maxStatsWindow;
 
         if ($max > 0 && ($end - $start) > $max) {
-            return new self($end - $max, $end, true);
+            return new self($end - $max, $end, true, $max);
         }
 
-        return new self($start, $end, false);
+        return new self($start, $end, false, $max);
     }
 
     /**
@@ -49,8 +51,29 @@ final readonly class TimeWindow {
      * The message the UI shows when a range was shortened, and the same text MCP returns.
      */
     public function clampNotice(): string {
-        return 'Time window clamped to ' . round(Config::$settings->maxStatsWindow / 86400, 1)
-            . ' days (NFSEN_MAX_STATS_WINDOW).';
+        // The bound this window was built with, not the configured one: a caller may pass its
+        // own (the MCP tools do), and quoting the setting then names a number nobody applied.
+        $max = $this->max > 0 ? $this->max : Config::$settings->maxStatsWindow;
+
+        return 'Time window clamped to ' . self::humanize($max) . ' (NFSEN_MAX_STATS_WINDOW).';
+    }
+
+    /**
+     * A duration in whatever unit reads naturally.
+     *
+     * Days alone are not enough: a one-hour cap formatted as days rounds to "0 days", which
+     * tells the reader nothing and looks broken.
+     */
+    public static function humanize(int $seconds): string {
+        if ($seconds >= 86400) {
+            return self::plural(round($seconds / 86400, 1), 'day');
+        }
+
+        if ($seconds >= 3600) {
+            return self::plural(round($seconds / 3600, 1), 'hour');
+        }
+
+        return self::plural(max(1, (int) round($seconds / 60)), 'minute');
     }
 
     /**
@@ -60,5 +83,11 @@ final readonly class TimeWindow {
      */
     public function toRangeOption(): array {
         return [$this->start, $this->end];
+    }
+
+    private static function plural(float|int $value, string $unit): string {
+        $rendered = (float) $value === floor((float) $value) ? (string) (int) $value : (string) $value;
+
+        return $rendered . ' ' . $unit . ((float) $value === 1.0 ? '' : 's');
     }
 }

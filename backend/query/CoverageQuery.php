@@ -20,6 +20,12 @@ final readonly class CoverageQuery {
     public function __construct(
         public array $sources = [],
         public string $profile = '',
+        /**
+         * Ask each source when it was last imported. Off for callers that only want the data
+         * range: on VictoriaMetrics every one of these is an HTTP round trip, and the date
+         * picker recomputes its bounds on every render.
+         */
+        public bool $withLastUpdate = true,
     ) {}
 
     /**
@@ -49,7 +55,7 @@ final readonly class CoverageQuery {
                 'source' => $source,
                 'first' => $first,
                 'last' => $last,
-                'last_update' => Config::$db->last_update($source, 0, $this->profile),
+                'last_update' => $this->withLastUpdate ? Config::$db->last_update($source, 0, $this->profile) : 0,
             ];
 
             if ($first > 0) {

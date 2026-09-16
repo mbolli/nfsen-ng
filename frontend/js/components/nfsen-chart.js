@@ -403,14 +403,22 @@ export class NfsenChart extends HTMLElement {
         const theme = this.getThemeColors();
         const seriesNames = labels.slice(1);
         const formatY = this.valueFormatter();
+        const builtinLegend = this.hasAttribute('data-builtin-legend');
 
         return {
             backgroundColor: theme.backgroundColor,
             color: theme.palette,
             textStyle: { color: theme.textColor },
             title: { text: title, textStyle: { color: theme.textColor, fontSize: 14 } },
-            grid: { left: 60, right: 20, top: 40, bottom: 70 },
-            legend: { show: false }, // external #series checkboxes + #legend div are used instead
+            // A chart with no external controls beside it carries ECharts' own legend, so its
+            // lines are identifiable: the Graphs tab has the #series checkboxes and the #legend
+            // readout for that, the flows-side traffic panel has neither.
+            grid: { left: 60, right: 20, top: builtinLegend ? 78 : 40, bottom: 70 },
+            // Below the title, not beside it: at the same height the centred title lands in the
+            // middle of the legend row.
+            legend: builtinLegend
+                ? { show: true, top: 34, left: 'center', textStyle: { color: theme.textColor }, itemHeight: 10 }
+                : { show: false },
             tooltip: {
                 trigger: 'axis',
                 backgroundColor: theme.tooltipBg,
@@ -510,12 +518,29 @@ export class NfsenChart extends HTMLElement {
     }
 
     /**
+     * Resolve one of this chart's external control elements (#legend, #series).
+     *
+     * A page can hold more than one chart -- Graphs and the flows-side traffic panel -- and a
+     * bare getElementById() would let the second chart write its legend and series checkboxes
+     * into the first one's controls. `data-external-prefix` scopes them per instance; without
+     * it the ids stay as they were, which keeps the Graphs tab untouched.
+     *
+     * @param {string} name - 'legend' or 'series'
+     * @returns {HTMLElement|null}
+     */
+    externalEl(name) {
+        const prefix = this.getAttribute('data-external-prefix');
+
+        return document.getElementById(prefix ? `${prefix}-${name}` : name);
+    }
+
+    /**
      * Update the external #legend div to show the series values at the hovered x-position,
      * matching the Dygraph labelsDiv behavior. ECharts has no built-in "render legend into
      * an arbitrary external DOM node" option, so this is hand-rolled.
      */
     updateExternalLegend(params) {
-        const legendEl = document.getElementById('legend');
+        const legendEl = this.externalEl('legend');
         if (!legendEl || !this.chart) return;
 
         const dataIndex = params.dataIndex;
@@ -550,7 +575,7 @@ export class NfsenChart extends HTMLElement {
      * @param {Array} seriesLabels - Array of series names
      */
     populateSeriesControls(seriesLabels) {
-        const seriesContainer = document.getElementById('series');
+        const seriesContainer = this.externalEl('series');
         if (!seriesContainer) return;
 
         seriesContainer.innerHTML = '';

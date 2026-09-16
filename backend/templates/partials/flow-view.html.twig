@@ -4,6 +4,137 @@
     The dismiss button posts back to remove a notification server-side, so
     broadcasts re-render only the notifications still active on the server.
 #}
+{#
+    Traffic over time for the flow query described above (#166).
+
+    Hidden until asked for, and never rebuilt on its own: plotting a filter means one nfdump
+    run per time bin, so it happens on an explicit click and says what that will cost first.
+    The row limit and the aggregation options above do not apply here — they truncate and
+    regroup the table, they do not change which records match — which the caption says out
+    loud, because a table of 100 rows beside a graph of everything reads as a bug otherwise.
+#}
+{#
+    The panel's own chart config. It used to borrow the Graphs tab's, which meant the axis and
+    title described that tab's datatype, unit, display and sources: a default install plotted
+    bytes under a bits/s axis, and the panel's own Bytes/Packets/Flows buttons changed the data
+    without changing the label. 'bytes' here means bytes, hence type traffic with trafficUnit
+    bytes; packets and flows are types of their own.
+
+    The 'any' sentinel is resolved to the configured sources the way the server's
+    resolveSources() does, or the title would describe a different breakdown than the series.
+#}
+<div class="row mb-3"
+     data-computed:flows._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ['any'], ports: [], display: ((${{ graph_sources.id() }}.includes('any') || ${{ graph_sources.id() }}.length === 0 ? {{ sources|length }} : ${{ graph_sources.id() }}.length) > 1 ? 'sources' : 'protocols'), type: (${{ flows_graph_unit.id() }} === 'bytes' ? 'traffic' : ${{ flows_graph_unit.id() }}), trafficUnit: 'bytes', logscale: false, stacked: false, stepplot: true, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                {#
+                    A disclosure, not a second submit button. Sitting beside Process data it
+                    read as an alternative way to run the query, when it only opens a section
+                    that has its own button. Collapsed, it states what it is and what it costs.
+                #}
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <button type="button" class="btn btn-link p-0 text-decoration-none text-body fw-semibold"
+                            data-on:click="${{ flows_graph_shown.id() }} = !${{ flows_graph_shown.id() }}"
+                            data-attr:aria-expanded="${{ flows_graph_shown.id() }} ? 'true' : 'false'">
+                        {# Bootstrap icons, not a unicode arrow: ▸/▾ render as tofu in the
+                           stack's default font on Linux. #}
+                        <svg data-show="!${{ flows_graph_shown.id() }}" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-caret-right-fill me-1" viewBox="0 0 16 16">
+                            <path d="m12.14 8.753-5.482 4.796c-.646.566-1.658.106-1.658-.753V3.204a1 1 0 0 1 1.659-.753l5.48 4.796a1 1 0 0 1 0 1.506z"/>
+                        </svg>
+                        <svg data-show="${{ flows_graph_shown.id() }}" style="display:none" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-caret-down-fill me-1" viewBox="0 0 16 16">
+                            <path d="M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z"/>
+                        </svg>
+                        Traffic over time
+                    </button>
+                    {# The visibility wrapper carries no d-flex: Bootstrap's display utilities are
+                       !important, so they beat the inline display:none that data-show sets and the
+                       element could never hide. Layout goes on the inner element instead. #}
+                    <div data-show="${{ flows_graph_shown.id() }}" style="display:none">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Unit">
+                            {% for u in ['bytes', 'packets', 'flows'] %}
+                                {# el.checked, not data-attr:checked: the attribute only seeds
+                                   defaultChecked, and Bootstrap lights the label off the property. #}
+                                <input type="radio" class="btn-check" name="flowsGraphUnit" id="flowsGraphUnit_{{ u }}"
+                                       value="{{ u }}" {{ bind(flows_graph_unit) }}
+                                       data-effect="el.checked = ${{ flows_graph_unit.id() }} === '{{ u }}'"
+                                       data-on:change="@post('{{ touchFlowsGraph.url() }}')">
+                                <label class="btn btn-outline-secondary" for="flowsGraphUnit_{{ u }}">{{ u|capitalize }}</label>
+                            {% endfor %}
+                        </div>
+                        {# The label is static: this tooltip is data-ignore-morph, so a label
+                           computed per render would never update. State is carried by the
+                           "not built yet" and "query has changed" lines below instead. #}
+                        <nfsen-tooltip data-ignore-morph text="Runs one nfdump per interval over the capture files" placement="top" no-icon>
+                            {% include 'partials/progress-button.html.twig' with {
+                                id: 'flowsGraphRun',
+                                label: 'Build graph',
+                                action: buildFlowsGraph.url(),
+                                killAction: killNfdump.url(),
+                                running: query_running.id(),
+                                permille: query_permille.id(),
+                                status: query_status.id(),
+                                eta: query_eta.id(),
+                                exact: query_exact.id(),
+                                kindSignal: query_kind.id(),
+                                kind: 'flowsgraph',
+                            } only %}
+                        </nfsen-tooltip>
+                    </div>
+                    </div>
+                </div>
+
+                <p class="small text-muted mb-0 mt-1" data-show="!${{ flows_graph_shown.id() }}">
+                    Plot this filter over time. Reads capture files, so it builds only when you ask.
+                </p>
+
+                <div data-show="${{ flows_graph_shown.id() }}" style="display:none">
+                {% if flowsGraphCost %}
+                {#
+                    The file count and byte total cover the range in the picker, which is not the
+                    range a clamped build reads, so they are dropped rather than overstated when
+                    the window is shortened. The run count is always for the window actually read.
+                #}
+                <p class="small text-muted mb-2 mt-2">
+                    {% if flowsGraphCost.clamped %}
+                        <span class="text-warning">Window shortened to the {{ flowsGraphCost.window }} allowed by NFSEN_MAX_STATS_WINDOW.</span>
+                        Will read that range in {{ flowsGraphCost.intervals }} nfdump run{{ flowsGraphCost.intervals == 1 ? '' : 's' }}.
+                    {% else %}
+                        Will read {{ flowsGraphCost.files }} capture file{{ flowsGraphCost.files == 1 ? '' : 's' }}
+                        ({{ flowsGraphCost.bytes }}) in {{ flowsGraphCost.intervals }} nfdump run{{ flowsGraphCost.intervals == 1 ? '' : 's' }}.
+                    {% endif %}
+                    The row limit and aggregation options above do not apply to this graph.
+                </p>
+                {% endif %}
+
+                {% if flowsGraphBuilt and flowsGraphStale %}
+                <p class="small text-warning mb-2">
+                    The query or window has changed since this graph was built. Rebuild to match the table.
+                </p>
+                {% endif %}
+
+                {% if flowsGraphBuilt %}
+                <nfsen-chart data-external-prefix="flowsGraph" data-builtin-legend
+                             data-attr:data-chart-config="$flows._config"
+                             data-chart-data="{{ flowsGraphData }}">
+                    <div class="chart-container" data-ignore-morph data-ignore>
+                        <div class="chart-canvas" style="width: 100%; height: 260px;"></div>
+                    </div>
+                </nfsen-chart>
+                <div id="flowsGraph-legend" class="small text-muted mt-1"></div>
+                {% else %}
+                <p class="text-muted small mb-0">
+                    Not built yet. The graph plots the filter above, so it reads capture files rather than
+                    stored averages.
+                </p>
+                {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row" data-signals__ifmissing='{"_flows_queried": false}'>
     <div class="col-12">
         {# Empty state — shown until the user submits the first query #}

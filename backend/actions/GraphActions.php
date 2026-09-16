@@ -245,6 +245,8 @@ final class GraphActions {
         );
 
         return [
+            // The counts cover the selected range, which is not what a clamped build reads, so
+            // the panel drops them when the window was shortened rather than overstating.
             'files' => $files?->int() ?? 0,
             'bytes' => QueryRunner::formatBytes($bytes?->int() ?? 0),
             'intervals' => $runs,
@@ -260,17 +262,7 @@ final class GraphActions {
      * which tells the user nothing and looks broken.
      */
     public static function formatWindow(int $seconds): string {
-        if ($seconds >= 86400) {
-            $days = round($seconds / 86400, 1);
-
-            return self::plural($days, 'day');
-        }
-
-        if ($seconds >= 3600) {
-            return self::plural(round($seconds / 3600, 1), 'hour');
-        }
-
-        return self::plural(max(1, (int) round($seconds / 60)), 'minute');
+        return TimeWindow::humanize($seconds);
     }
 
     /** Cache key for the filtered query the UI currently describes. */
@@ -375,7 +367,9 @@ final class GraphActions {
             return;
         }
 
-        $coverage = (new CoverageQuery($sources, $selectedProfile->string()))->run();
+        // withLastUpdate: false — this runs on every render and only the first/last sample are
+        // used, while each last_update() is an HTTP request on VictoriaMetrics.
+        $coverage = (new CoverageQuery($sources, $selectedProfile->string(), withLastUpdate: false))->run();
 
         $dataRangeMin->setValue($coverage['first'] > 0 ? $coverage['first'] : CoverageQuery::fallbackFirst(), broadcast: false);
         $dataRangeMax->setValue($coverage['last'] > 0 ? $coverage['last'] : time(), broadcast: false);
@@ -559,12 +553,17 @@ final class GraphActions {
             $dateend = $c->getSignal('dateend');
             \assert($datestart !== null && $dateend !== null);
 
-            // Advance live window if within 10 min of now — but not in filtered mode,
-            // where the window is part of the series' cache key (see app.php).
+            // Advance live window if within 10 min of now — but not in filtered mode, where
+            // the window is part of the series' cache key, and not while the Flows tab holds a
+            // built traffic series, which is a snapshot of one explicit window for the same
+            // reason. Both conditions have to match app.php's: this path runs on a 15 s
+            // interval, so gating only the render path left the window sliding anyway.
             $graphMode = $c->getSignal('graph_mode');
+            $flowsGraphPinned = ($c->getSignal('flows_graph_shown')?->bool() ?? false)
+                && ($c->getSignal('flows_graph_key')?->string() ?? '') !== '';
             $now = time();
             $de = $dateend->int();
-            if ($graphMode?->string() === 'stored' && $now - $de < 600) {
+            if ($graphMode?->string() === 'stored' && !$flowsGraphPinned && $now - $de < 600) {
                 $window = $de - $datestart->int();
                 $dateend->setValue($now, broadcast: false);
                 $datestart->setValue($now - $window, broadcast: false);
@@ -592,12 +591,5 @@ final class GraphActions {
             self::fetchGraphData($c);
             $c->sync();
         }, 'refresh-graphs');
-    }
-
-    /** "1 day" / "2.5 days", trimming a trailing .0 so whole values read naturally. */
-    private static function plural(float|int $value, string $noun): string {
-        $text = (float) $value === floor((float) $value) ? (string) (int) $value : (string) $value;
-
-        return $text . ' ' . $noun . ((float) $value === 1.0 ? '' : 's');
     }
 }

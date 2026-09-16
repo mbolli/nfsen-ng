@@ -23,14 +23,7 @@
         </div>
     </div>
 
-    {#
-        Sources and the nfdump filter below are both duplicated by the graph panel in the
-        Investigate view — the Sources select is bound to the very same graph_sources signal,
-        so it renders identical state twice, and two identically-labelled filter boxes on one
-        screen invite the question of which one applies. Both are hidden there; the graph
-        panel's copies drive them.
-    #}
-    <div id="filterFlowSources" class="col-2" data-show="$_currentView !== 'investigate'">
+    <div id="filterFlowSources" class="col-2">
         <div class="filter-group">
         <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
@@ -44,9 +37,7 @@
         </div>
     </div>
 
-    {# NFDUMP filter — hidden in Investigate, where the graph panel's box is authoritative. #}
-    <div class="col" data-show="$_currentView !== 'investigate'"
-         data-effect="$_currentView === 'investigate' && (${{ flows_filter.id() }} = ${{ graph_filter.id() }})">
+    <div class="col">
         <div class="filter-group">
         <p class="filter-label">NFDUMP filter
             <nfsen-tooltip data-ignore-morph text="Filter syntax similar to tcpdump/pcap. Example: dst port 80" placement="right"></nfsen-tooltip>
@@ -158,16 +149,14 @@
         </div>
     </div>
 
-    {# Submit #}
-    <div class="col-12 border-top mt-3 pt-3">
+    {# Submit. Flex, because the progress button's own root is a block-level flex container:
+       left to itself it drops below any sibling control on this row. #}
+    <div class="col-12 border-top mt-3 pt-3 d-flex align-items-center gap-2 flex-wrap">
         {#
             The query runs in a coroutine now, so query_running (server-owned) is what says
             whether it is still going — not Datastar's request indicator, which clears the
             moment the action returns. Progress is a byte-read estimate, hence exact=false.
         #}
-        <span class="small text-muted me-2" style="display:none" data-show="$_currentView === 'investigate'">
-            Using the filter above.
-        </span>
         <nfsen-tooltip data-ignore-morph text="Execute nfdump query with current filters" placement="top" no-icon>
             {% include 'partials/progress-button.html.twig' with {
                 id: 'flowsRun',

@@ -69,8 +69,8 @@ than something that keeps up with the capture:
 
 **Stored** is the default and is unchanged: live, instant, auto-refreshing.
 
-The [Investigate](../guide/quick-tour.md#the-investigate-tab) view pairs this graph with the flow
-table so the same filter can be read as a timeline and as records at once.
+The Flows tab carries the same machinery in its own **Traffic over time** panel, so a filter
+typed there can be read as a timeline without repeating it here (see [Flow Browser](flows.md)).
 
 ## Resolution & display controls
 

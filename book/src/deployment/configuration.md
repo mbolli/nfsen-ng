@@ -57,6 +57,7 @@ called out on the Health page, so misconfiguration is visible instead of silent.
 | `NFSEN_NFDUMP_BINARY` | `/usr/local/nfdump/bin/nfdump` | Path to the nfdump binary. The Docker image compiles nfdump to `/usr/local/nfdump/bin`. |
 | `NFSEN_NFDUMP_PROFILES` | `/var/nfdump/profiles-data` | Root path to the `nfcapd` data tree. In Docker this must match the container-side bind-mount (the shipped compose maps it to `/data/nfsen-ng`). |
 | `NFSEN_NFDUMP_PROFILE` | `live` | Default profile subfolder. See [Profiles](profiles.md). |
+| `NFSEN_PORT_DIRECTION` | `dst` | Which side of a flow a per-port graph counts: `dst`, `src`, or `any` for either direction. Set `any` if your exporter reports one direction of each flow and your port graphs are empty. |
 | `NFSEN_NFDUMP_MAX_PROCESSES` | `2` | Max concurrent nfdump processes (floored at 1). One slot is taken per nfdump run, including the import daemon's, so `1` makes browsing wait while an import is in progress. |
 | `NFCAPD_TZ` | _(PHP default TZ)_ | Timezone `nfcapd` used when writing filenames. Set this when `nfcapd` ran on a non-UTC host and nfsen-ng runs at `TZ=UTC` — otherwise epoch timestamps are off by the UTC offset. E.g. `Europe/Berlin`. |
 | `TZ` | _(system)_ | The container/process timezone. nfsen-ng also compares it against php.ini in a health check. |

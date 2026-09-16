@@ -15,6 +15,21 @@ class Import {
     private bool $verbose = false;
     private bool $force = false;
     private bool $rescan = false;
+
+    /**
+     * Ports this run found traffic for, and ports it never did.
+     *
+     * A configured port with no traffic draws a flat line, which is indistinguishable on
+     * screen from a port whose data is not being collected at all. Naming them once at the
+     * end of a run costs nothing — the answer is already in hand — and turns a silent empty
+     * graph into a sentence (#173).
+     *
+     * @var array<int, true>
+     */
+    private array $portsWithData = [];
+
+    /** @var array<int, true> */
+    private array $portsWithoutData = [];
     private bool $quiet = false;
     private bool $processPorts = false;
     private bool $processPortsBySource = false;
@@ -318,6 +333,8 @@ class Import {
         if ($processedSources === 0) {
             $this->d->log('Import did not process any sources.', LOG_WARNING);
         }
+
+        $this->reportPortsWithoutData();
         if ($this->cli === true && $this->quiet === false) {
             echo ProgressBar::finish();
         }
@@ -446,6 +463,30 @@ class Import {
             'icmp', 'icmp6', 'icmpv6', 'ipv6-icmp' => 'icmp',
             default => 'other',
         };
+    }
+
+    /**
+     * Says which configured ports this run saw nothing for, once, at the end.
+     *
+     * Only when some other port did have traffic: if nothing at all came through, the problem
+     * is the capture files or the filter, not the ports, and a list of every port would be
+     * noise on top of an already obvious failure.
+     */
+    private function reportPortsWithoutData(): void {
+        if ($this->portsWithoutData === [] || $this->portsWithData === []) {
+            return;
+        }
+
+        $silent = array_keys($this->portsWithoutData);
+        sort($silent);
+
+        $this->d->log(
+            'No traffic seen for port' . (\count($silent) === 1 ? ' ' : 's ') . implode(', ', $silent)
+            . ' in this run, so their graphs stay flat. Other ports did report traffic, so the '
+            . 'capture files are being read — either nothing used these ports, or they are not '
+            . 'in the exported flows.',
+            LOG_WARNING,
+        );
     }
 
     private function formatEta(int $seconds): string {
@@ -579,8 +620,18 @@ class Import {
             }
         }
 
-        $nfdump->setFilter('dst port ' . $port);
-        $nfdump->setOption('-s', 'dstport:p');
+        // Destination port by default, which is what every release so far counted: widening it
+        // silently would step every existing port series upward, against data already on disk
+        // under the old meaning.
+        //
+        // NFSEN_PORT_DIRECTION=any counts the port in either direction, which is the honest
+        // reading of "traffic for port N" and the fix for an exporter that reports one
+        // direction of each flow — ingress-only or egress-only sampling, which is ordinary,
+        // and which leaves these graphs empty while the per-source graphs work (#173).
+        $direction = Config::$settings->portDirection;
+        $prefix = $direction === 'any' ? '' : $direction . ' ';
+        $nfdump->setFilter($prefix . 'port ' . $port);
+        $nfdump->setOption('-s', ($direction === 'any' ? '' : $direction) . 'port:p');
         $nfdump->setOption('-r', $statsPath);
 
         try {
@@ -594,6 +645,8 @@ class Import {
         // No stats returned for this port (e.g. no matching flows or nfdump couldn't read the file).
         // Skip the write so RRD last_update stays at the correct position for future runs.
         if (empty($input['decoded'])) {
+            $this->portsWithoutData[$port] = true;
+
             return false;
         }
 
@@ -626,6 +679,15 @@ class Import {
                 continue;
             } // skip header row
 
+            // -s port:p reports *both* ports of every matching flow, so a request from 10007
+            // to 443 yields a row for each. Without this the peer's traffic lands in this
+            // port's series and every value roughly doubles: measured on the dev captures,
+            // 49000 bytes against the 40000 that are actually port 443's. Harmless under
+            // dst/src, where every row is this port by construction.
+            if (!isset($row['val']) || (int) $row['val'] !== $port) {
+                continue;
+            }
+
             $proto = self::protocolBucket((string) $row['pr']);
 
             // add protocol-specific and overall stats. Summed, not assigned: several
@@ -635,6 +697,16 @@ class Import {
                 $data['fields'][$metric . '_' . $proto] = ($data['fields'][$metric . '_' . $proto] ?? 0) + $value;
                 $data['fields'][$metric] += $value;
             }
+        }
+
+        // Every row may have belonged to the peer port, in which case nfdump matched the
+        // filter but this port carried nothing here: still a zero write, but not evidence
+        // of traffic for the end-of-run summary.
+        if ($data['fields']['flows'] === 0 && $data['fields']['bytes'] === 0) {
+            $this->portsWithoutData[$port] = true;
+        } else {
+            unset($this->portsWithoutData[$port]);
+            $this->portsWithData[$port] = true;
         }
 
         // write to database

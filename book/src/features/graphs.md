@@ -38,9 +38,9 @@ button that is the only thing that ever starts a build:
 
 ![The nfdump filter panel in filtered mode](../images/guide-graphs-filter-panel.png)
 
-This is the same mechanism the per-port graphs have always used — the import
-writes a per-port RRD by running nfdump over each capture with `dst port N` —
-generalised to any filter expression.
+This is the same mechanism the per-port graphs have always used (the import writes a
+per-port RRD by running nfdump over each capture with `port N`), generalised to any filter
+expression.
 
 What that costs, and why the mode behaves differently from **Stored**:
 

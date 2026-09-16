@@ -84,6 +84,8 @@ final class Settings {
         public private(set) string $nfdumpProfilesData,
         public private(set) string $nfdumpProfile,
         public private(set) int $nfdumpMaxProcesses,
+        /** Which side of a flow the per-port series counts: 'any', 'dst' or 'src'. */
+        public private(set) string $portDirection,
         public private(set) int $importYears,
         public private(set) int $logPriority,
         public private(set) int $maxStatsWindow,
@@ -141,6 +143,7 @@ final class Settings {
             nfdumpProfilesData: (string) ($raw['nfdump']['profiles-data'] ?? EnvRegistry::value('NFSEN_NFDUMP_PROFILES')),
             nfdumpProfile: (string) ($raw['nfdump']['profile'] ?? EnvRegistry::value('NFSEN_NFDUMP_PROFILE')),
             nfdumpMaxProcesses: max(1, (int) ($raw['nfdump']['max-processes'] ?? EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'))),
+            portDirection: self::normalizePortDirection($raw['nfdump']['port-direction'] ?? EnvRegistry::value('NFSEN_PORT_DIRECTION')),
             importYears: $importYears,
             logPriority: $logPriority,
             maxStatsWindow: max(0, (int) ($raw['general']['max_stats_window'] ?? EnvRegistry::value('NFSEN_MAX_STATS_WINDOW'))),
@@ -198,6 +201,7 @@ final class Settings {
             nfdumpProfilesData: (string) EnvRegistry::value('NFSEN_NFDUMP_PROFILES'),
             nfdumpProfile: (string) EnvRegistry::value('NFSEN_NFDUMP_PROFILE'),
             nfdumpMaxProcesses: (int) EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'),
+            portDirection: self::normalizePortDirection(EnvRegistry::value('NFSEN_PORT_DIRECTION')),
             importYears: (int) EnvRegistry::value('NFSEN_IMPORT_YEARS'),
             logPriority: self::logLevelFromString((string) EnvRegistry::value('NFSEN_LOG_LEVEL')),
             maxStatsWindow: (int) EnvRegistry::value('NFSEN_MAX_STATS_WINDOW'),
@@ -243,6 +247,21 @@ final class Settings {
      */
     public static function datasourceNames(): array {
         return array_keys(self::DATASOURCE_MAP);
+    }
+
+    /**
+     * A port graph counts one side of a flow, or either.
+     *
+     * 'dst' is the default because it is what every release so far counted: changing it
+     * silently would step every existing port series upward at an upgrade, for data already
+     * on disk under the old meaning. 'any' is the honest reading of "traffic for port N" and
+     * the fix for an exporter that reports one direction of each flow, which ingress-only or
+     * egress-only sampling does, but it is opt-in.
+     */
+    public static function normalizePortDirection(mixed $value): string {
+        $value = \is_string($value) ? strtolower(trim($value)) : '';
+
+        return \in_array($value, ['any', 'dst', 'src'], true) ? $value : 'dst';
     }
 
     /**

@@ -57,6 +57,7 @@ final class EnvRegistry {
             new EnvVar('NFSEN_NFDUMP_PROFILES', 'nfdump', 'string', '/var/nfdump/profiles-data', 'nfdump profiles-data directory.', format: 'path'),
             new EnvVar('NFSEN_NFDUMP_PROFILE', 'nfdump', 'string', 'live', 'nfdump profile name.'),
             new EnvVar('NFSEN_NFDUMP_MAX_PROCESSES', 'nfdump', 'int', 2, 'Max concurrent nfdump processes.', min: 1),
+            new EnvVar('NFSEN_PORT_DIRECTION', 'nfdump', 'enum', 'dst', 'Which side of a flow a per-port graph counts: dst (default), src, or any (either direction).', enum: ['any', 'dst', 'src']),
 
             // ── Integrations ──────────────────────────────────────────────────
             new EnvVar('NFSEN_NETBOX_URL', 'integrations', 'string', '', 'NetBox base URL for IP enrichment.', format: 'url'),

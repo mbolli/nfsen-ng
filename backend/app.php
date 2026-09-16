@@ -42,6 +42,7 @@ use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\ImportDaemon;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\UserPreferences;
+use mbolli\nfsen_ng\mcp\HttpEndpoint;
 use Mbolli\PhpVia\Config as ViaConfig;
 use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
@@ -130,6 +131,15 @@ $app->onStart(static fn () => AppStartup::boot($app));
 //
 // Signal naming mirrors the existing Datastar store keys used in the frontend
 // templates so Phase-4 template migration can happen incrementally.
+
+// MCP over HTTP. Registered unconditionally because routes are built before settings are
+// loaded; the middleware answers 404 when NFSEN_MCP_HTTP is off, which is what an operator who
+// never enabled it should see. It answers every other request to this path itself, so the
+// handler below is unreachable in practice.
+$app->page(
+    HttpEndpoint::PATH,
+    static fn (Context $c) => $c->renderString('MCP endpoint')
+)->middleware(new HttpEndpoint(Config::VERSION));
 
 $app->page('/', function (Context $c) use ($app): void {
     $debug = Debug::getInstance();

@@ -6,10 +6,16 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\mcp\Args;
 use mbolli\nfsen_ng\mcp\Guard;
+use mbolli\nfsen_ng\mcp\HttpEndpoint;
 use mbolli\nfsen_ng\mcp\Tier;
 use mbolli\nfsen_ng\mcp\Tool\ToolInterface;
 use mbolli\nfsen_ng\mcp\ToolRegistry;
 use Mcp\Exception\ToolCallException;
+use Nyholm\Psr7\Response;
+use Nyholm\Psr7\ServerRequest;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
 
 describe('MCP tool declarations', function (): void {
     test('every registered tool implements the contract', function (): void {
@@ -235,5 +241,67 @@ describe('MCP tool coverage of the triage loop', function (): void {
                 ->and($source)->not->toContain('->reset(')
             ;
         }
+    });
+});
+
+describe('HttpEndpoint', function (): void {
+    beforeEach(function (): void {
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump', 'mcp_http' => false],
+            'nfdump' => ['binary' => '/usr/bin/nfdump', 'profiles-data' => '/tmp', 'profile' => 'live', 'max-processes' => 2],
+            'db' => ['RRD' => ['data_path' => sys_get_temp_dir(), 'import_years' => 3]],
+            'log' => ['priority' => LOG_WARNING],
+        ]);
+    });
+
+    test('is off unless enabled', function (): void {
+        expect(HttpEndpoint::isEnabled())->toBeFalse();
+    });
+
+    test('reports enabled once the setting is on', function (): void {
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump', 'mcp_http' => true],
+            'nfdump' => ['binary' => '/usr/bin/nfdump', 'profiles-data' => '/tmp', 'profile' => 'live', 'max-processes' => 2],
+            'db' => ['RRD' => ['data_path' => sys_get_temp_dir(), 'import_years' => 3]],
+            'log' => ['priority' => LOG_WARNING],
+        ]);
+
+        expect(HttpEndpoint::isEnabled())->toBeTrue();
+    });
+
+    // Attached per route, but the path check makes it safe to attach globally too.
+    test('passes through a request for any other path', function (): void {
+        $endpoint = new HttpEndpoint('test');
+        $passed = false;
+
+        $handler = new class($passed) implements RequestHandlerInterface {
+            public function __construct(private bool &$passed) {}
+
+            public function handle(ServerRequestInterface $request): ResponseInterface {
+                $this->passed = true;
+
+                return new Response(200);
+            }
+        };
+
+        $endpoint->process(new ServerRequest('GET', '/graphs'), $handler);
+
+        expect($passed)->toBeTrue();
+    });
+
+    // Disabled has to look like absent: an operator who never enabled it should not learn
+    // that the endpoint exists.
+    test('answers 404 on its own path while disabled', function (): void {
+        $endpoint = new HttpEndpoint('test');
+
+        $handler = new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface {
+                throw new RuntimeException('must not reach the page handler');
+            }
+        };
+
+        $response = $endpoint->process(new ServerRequest('POST', HttpEndpoint::PATH), $handler);
+
+        expect($response->getStatusCode())->toBe(404);
     });
 });

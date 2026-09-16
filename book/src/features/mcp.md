@@ -4,7 +4,7 @@ nfsen-ng ships an optional [Model Context Protocol](https://modelcontextprotocol
 read-only access to your NetFlow data for an AI agent, so investigating traffic does not mean
 writing nfdump filter expressions by hand.
 
-It is **off by default**. Nothing listens, nothing runs, until you start it.
+It is **off by default**. Nothing listens, nothing runs, until you start it or turn the HTTP endpoint on.
 
 ## What it is for
 
@@ -37,6 +37,34 @@ In Docker, point the client at the running container:
 stdio means no listening socket and no credentials to manage: whoever can run the command
 already has access to the data. It also runs as its own process, so an agent's queries never
 compete with the web UI for the OpenSwoole worker.
+
+## Over HTTP
+
+For an agent that does not live on this host, set `NFSEN_MCP_HTTP=true` and the same tools are
+served at `/_mcp`, **on the app's own port**. That is deliberate: nfsen-ng has no
+authentication of its own and is protected by where you deploy it, so an endpoint on a second
+port would sit outside whatever guards the dashboard. On the app's port it inherits that
+protection exactly, and there are no separate credentials to manage.
+
+```
+NFSEN_MCP_HTTP=true
+NFSEN_MCP_HOSTS=nfsen.example.com    # hostnames a client may address this server as
+```
+
+`NFSEN_MCP_HOSTS` exists for DNS rebinding protection, which the specification asks for: a
+browser tricked into resolving an attacker's name to your address otherwise reaches a server
+that trusts its own network position. Leave it empty and only `localhost` is accepted, which
+is right for a client on the same machine and wrong for anything else. A request whose `Host`
+is not listed gets `403`.
+
+With `NFSEN_MCP_HTTP` off, `/_mcp` answers `404`, the same as any path that does not exist.
+
+The endpoint speaks the stateless revision of the protocol, so there is no handshake and no
+session: each request carries its own protocol version and client info. Any current MCP client
+does this for you.
+
+Anything reaching this endpoint can read your flow data, exactly as anything reaching the
+dashboard can. Whatever protects one has to protect the other.
 
 ## The two tiers
 

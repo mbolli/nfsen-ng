@@ -44,6 +44,8 @@ called out on the Health page, so misconfiguration is visible instead of silent.
 | `NFSEN_DATASOURCE` | `RRD` | Datasource: `RRD` or `VictoriaMetrics`. |
 | `NFSEN_PROCESSOR` | `NfDump` | Flow processor. Only `NfDump` is implemented. |
 | `NFSEN_LOG_LEVEL` | `INFO` | Log verbosity. Accepts `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERR`/`ERROR`, `CRIT`, `ALERT`, `EMERG` (and `LOG_`-prefixed forms). Controls both the app and the Swoole server. |
+| `NFSEN_MCP_HTTP` | `false` | Serve the read-only MCP endpoint at `/_mcp` on the app's own port. See [MCP Server](../features/mcp.md). |
+| `NFSEN_MCP_HOSTS` | *(empty)* | Hostnames an MCP client may address this server as, comma-separated. Empty means localhost only. |
 | `NFSEN_MAX_STATS_WINDOW` | `0` | Max statistics query window in seconds (`0` = unlimited). Also `general.max_stats_window` in `settings.php`. |
 | `NFSEN_DEFAULT_THEME` | `auto` | Default UI colour theme for a browser with no saved preference (e.g. after a cache wipe). `auto` follows the OS `prefers-color-scheme`; `dark`/`light` force it. A user's manual dark-mode toggle is stored client-side and always overrides this. Also settable as `frontend.defaults.theme` in `settings.php`. |
 | `NFSEN_DEV_MODE` | `false` | Enables php-via dev mode (static assets served `no-cache`). Leave off in production. |

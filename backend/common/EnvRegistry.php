@@ -35,6 +35,8 @@ final class EnvRegistry {
             new EnvVar('NFSEN_LOG_LEVEL', 'core', 'enum', 'info', 'Minimum log level.', enum: Settings::logLevelNames()),
             new EnvVar('NFSEN_DEFAULT_THEME', 'core', 'enum', 'auto', 'Default UI theme for browsers with no saved toggle.', enum: ['auto', 'dark', 'light']),
             new EnvVar('NFSEN_MAX_STATS_WINDOW', 'core', 'int', 0, 'Max statistics time window in seconds (0 = unlimited).', min: 0),
+            new EnvVar('NFSEN_MCP_HTTP', 'core', 'bool', false, 'Serve the read-only MCP endpoint at /_mcp on the app\'s own port.'),
+            new EnvVar('NFSEN_MCP_HOSTS', 'core', 'csv', [], 'Hostnames an MCP client may address this server as (empty = localhost only).'),
             new EnvVar('NFSEN_DEV_MODE', 'core', 'bool', false, 'Development mode: verbose errors, relaxed origin checks.'),
 
             // ── Sources / data selection ──────────────────────────────────────

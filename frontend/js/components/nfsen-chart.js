@@ -186,6 +186,10 @@ export class NfsenChart extends HTMLElement {
                 color: theme.palette,
                 textStyle: { color: theme.textColor },
                 title: { textStyle: { color: theme.textColor } },
+                // The legend too, for the charts that carry one: applyTheme() is what runs on a
+                // light/dark switch, and leaving it out left the labels drawn in the previous
+                // theme's colour — invisible on the other background.
+                legend: { textStyle: { color: theme.textColor } },
                 xAxis: {
                     axisLine: { lineStyle: { color: theme.axisLineColor } },
                     splitLine: { lineStyle: { color: theme.splitLineColor } },

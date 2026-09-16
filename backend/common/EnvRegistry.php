@@ -35,6 +35,8 @@ final class EnvRegistry {
             new EnvVar('NFSEN_LOG_LEVEL', 'core', 'enum', 'info', 'Minimum log level.', enum: Settings::logLevelNames()),
             new EnvVar('NFSEN_DEFAULT_THEME', 'core', 'enum', 'auto', 'Default UI theme for browsers with no saved toggle.', enum: ['auto', 'dark', 'light']),
             new EnvVar('NFSEN_MAX_STATS_WINDOW', 'core', 'int', 0, 'Max statistics time window in seconds (0 = unlimited).', min: 0),
+            new EnvVar('NFSEN_MCP_HTTP', 'core', 'bool', false, 'Serve the read-only MCP endpoint at /_mcp on the app\'s own port.'),
+            new EnvVar('NFSEN_MCP_HOSTS', 'core', 'csv', [], 'Hostnames an MCP client may address this server as (empty = localhost only).'),
             new EnvVar('NFSEN_DEV_MODE', 'core', 'bool', false, 'Development mode: verbose errors, relaxed origin checks.'),
 
             // ── Sources / data selection ──────────────────────────────────────
@@ -54,7 +56,7 @@ final class EnvRegistry {
             new EnvVar('NFSEN_NFDUMP_BINARY', 'nfdump', 'string', '/usr/local/nfdump/bin/nfdump', 'Path to the nfdump binary.', format: 'path'),
             new EnvVar('NFSEN_NFDUMP_PROFILES', 'nfdump', 'string', '/var/nfdump/profiles-data', 'nfdump profiles-data directory.', format: 'path'),
             new EnvVar('NFSEN_NFDUMP_PROFILE', 'nfdump', 'string', 'live', 'nfdump profile name.'),
-            new EnvVar('NFSEN_NFDUMP_MAX_PROCESSES', 'nfdump', 'int', 1, 'Max concurrent nfdump processes.', min: 1),
+            new EnvVar('NFSEN_NFDUMP_MAX_PROCESSES', 'nfdump', 'int', 2, 'Max concurrent nfdump processes.', min: 1),
 
             // ── Integrations ──────────────────────────────────────────────────
             new EnvVar('NFSEN_NETBOX_URL', 'integrations', 'string', '', 'NetBox base URL for IP enrichment.', format: 'url'),

@@ -91,7 +91,9 @@ describe('Settings::fromArray()', function (): void {
             ->and($s->nfdumpBinary)->toBe('/usr/local/nfdump/bin/nfdump')
             ->and($s->nfdumpProfilesData)->toBe('/var/nfdump/profiles-data')
             ->and($s->nfdumpProfile)->toBe('live')
-            ->and($s->nfdumpMaxProcesses)->toBe(1)
+            // Two, not one: the import daemon takes a slot per nfdump run, so a cap of one
+            // makes browsing queue behind an import in progress.
+            ->and($s->nfdumpMaxProcesses)->toBe(2)
             ->and($s->logPriority)->toBe(LOG_INFO)
             ->and($s->defaultEmailSubjectTemplate)->toBe('')
             ->and($s->defaultEmailBodyTemplate)->toBe('')

@@ -25,7 +25,7 @@ A signal has a default value, a human-readable name, and a scope:
 
 Client-local signals — prefixed with `_`, e.g. `$_currentView`,
 `$_darkMode` — never round-trip to the server at all. Every "page" nfsen-ng
-appears to have (Graphs, Flows, Statistics, Sankey, the Settings sub-tabs) is
+appears to have (Graphs, Investigate, Flows, Statistics, Sankey, the Settings sub-tabs) is
 actually one of these: a client-local signal toggling `data-show` on a
 `<div>` that's already in the DOM. There's exactly one server route (`/`).
 

@@ -41,6 +41,7 @@
 - [Health Checks & Admin](features/health-admin.md)
 - [Preferences & Timezones](features/preferences.md)
 - [IP Info Lookup](features/ip-info.md)
+- [MCP Server](features/mcp.md)
 - [Actions Reference](api.md)
 
 # Roadmap

@@ -24,3 +24,6 @@ wiki
 book/book/
 # _capture.mjs visible-diff scratch (regenerated per run)
 book/.capture-diffs/
+
+# FUSE leaves these behind when a file is deleted while still open (bind-mounted dev setups)
+.fuse_hidden*

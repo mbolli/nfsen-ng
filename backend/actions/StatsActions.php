@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\actions;
 
-use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\Table;
-use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\query\StatsQuery;
+use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
 
 /**
@@ -55,62 +55,71 @@ final class StatsActions {
             $statsNotifications = [];
 
             try {
-                $srcs = Helpers::resolveSources($graphSources->array());
-
-                $processor = new Config::$processorClass();
-                $processor->setProfile($selectedProfile->string());
-                $processor->setOption('-M', implode(':', $srcs));
-                $ds = $datestart->int();
-                $de = $dateend->int();
-                $maxWindow = Config::$settings->maxStatsWindow;
-                if ($maxWindow > 0 && ($de - $ds) > $maxWindow) {
-                    $ds = $de - $maxWindow;
-                    $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => 'Time window clamped to ' . round($maxWindow / 86400, 1) . ' days (NFSEN_MAX_STATS_WINDOW).'];
-                }
-                $processor->setOption('-R', [$ds, $de]);
-                $processor->setOption('-n', $statsCount->int());
-                $processor->setOption('-o', 'json');
-                $processor->setOption('-s', $forParam);
-                // Byte thresholds are prepended to the filter expression.
-                // nfdump -l/-L only work for line/packed output, not for -s stats mode.
-                $thresholdFilter = Nfdump::buildThresholdFilter(
-                    trim($statsLowerLimit->string()),
-                    trim($statsUpperLimit->string())
+                $query = new StatsQuery(
+                    window: TimeWindow::clamped($datestart->int(), $dateend->int()),
+                    sources: Helpers::resolveSources($graphSources->array()),
+                    profile: $selectedProfile->string(),
+                    for: $statsFor->string(),
+                    orderBy: $statsOrderBy->string(),
+                    limit: $statsCount->int(),
+                    filter: $statsFilter->string(),
+                    lowerLimit: $statsLowerLimit->string(),
+                    upperLimit: $statsUpperLimit->string(),
+                    handle: $c->getId(),
                 );
-                $combinedFilter = trim($statsFilter->string());
-                if ($thresholdFilter !== '') {
-                    $combinedFilter = $thresholdFilter . ($combinedFilter !== '' ? ' and ' . $combinedFilter : '');
-                }
-                $processor->setFilter($combinedFilter);
-                $result = $processor->execute();
 
-                // nfdump can answer with a JSON object rather than an array; Table::generate()
-                // indexes the first row positionally, so re-key to a list.
-                $statsData = array_values((array) ($result['decoded'] ?? []));
-
-                $elapsed = round(microtime(true) - $time, 3);
-                $cmd = htmlspecialchars((string) ($result['command'] ?? ''), ENT_QUOTES | ENT_HTML5);
-                $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
-                    ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
-                    : "Statistics processed in {$elapsed}s."];
-
-                if (!empty($result['stderr'])) {
-                    $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES | ENT_HTML5)];
+                if ($query->window->clamped) {
+                    $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $query->window->clampNotice()];
                 }
 
-                $statsTableHtml = Table::generate($statsData, 'statsTable', [
-                    'hiddenFields' => [],
-                    'linkIpAddresses' => true,
-                    'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
-                    'originalData' => $result['rawOutput'] ?? null,
-                ]);
+                // Denominator for the progress estimate, deferred so the walk runs inside the
+                // coroutine rather than in front of this action's response.
+                $totalBytes = static fn (): int => $query->totalBytes();
+                $processor = $query->processor();
+
+                // nfdump runs in a coroutine so the action can return immediately and the
+                // button can show real progress instead of an indeterminate spinner.
+                QueryRunner::run($c, 'stats', $totalBytes, 'Starting nfdump…', static function () use (
+                    $query,
+                    $processor,
+                    $ipInfoAction,
+                    $time,
+                    &$statsNotifications,
+                    &$statsTableHtml
+                ): void {
+                    try {
+                        $result = $query->run($processor);
+
+                        $elapsed = round(microtime(true) - $time, 3);
+                        $cmd = htmlspecialchars($result->command, ENT_QUOTES | ENT_HTML5);
+                        $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
+                            ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
+                            : "Statistics processed in {$elapsed}s."];
+
+                        if ($result->stderr !== '') {
+                            $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars($result->stderr, ENT_QUOTES | ENT_HTML5)];
+                        }
+
+                        $statsTableHtml = Table::generate($result->rows, 'statsTable', [
+                            'hiddenFields' => [],
+                            'linkIpAddresses' => true,
+                            'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
+                            'originalData' => $result->rawOutput,
+                        ]);
+                    } catch (\Throwable $e) {
+                        Debug::getInstance()->log('Stats action error: ' . $e->getMessage(), LOG_ERR);
+                        $statsNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
+                        $statsTableHtml = '';
+                    }
+                });
             } catch (\Throwable $e) {
+                // Failure while *building* the command (bad window, unreadable profile) —
+                // nothing was started, so report it synchronously.
                 Debug::getInstance()->log('Stats action error: ' . $e->getMessage(), LOG_ERR);
                 $statsNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
                 $statsTableHtml = '';
+                $c->sync();
             }
-
-            $c->sync();
         }, 'stats-actions');
 
         // Dismiss a notification by ID from either tab
@@ -133,10 +142,15 @@ final class StatsActions {
             $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
             \assert($datestart !== null && $dateend !== null && $graphSources !== null && $selectedProfile !== null && $nfcapdFileCount !== null);
 
+            $graphMode = $c->getSignal('graph_mode');
             $srcs = Helpers::resolveSources($graphSources->array());
-            $nfcapdFileCount->setValue(
-                Helpers::countNfcapdFiles($datestart->int(), $dateend->int(), $srcs, $selectedProfile->string()),
-                broadcast: false
+            Helpers::measureNfcapdFiles(
+                $c,
+                $datestart->int(),
+                $dateend->int(),
+                $srcs,
+                $selectedProfile->string(),
+                $graphMode?->string() === 'filtered'
             );
             $c->sync();
         }, 'count-files');

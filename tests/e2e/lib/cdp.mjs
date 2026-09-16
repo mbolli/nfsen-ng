@@ -154,18 +154,24 @@ class Page {
      * Wait until some element has a `data-show` attribute exactly equal to
      * `signal == 'value'` (nfsen-ng's Datastar view-switch convention, e.g.
      * `$_currentView == 'flows'`) and is actually visible (offsetParent !==
-     * null). Uses an *exact* attribute match rather than a substring one --
-     * `[data-show*="import"]` looks tempting but nfsen-ng's hashed signal ids
-     * (e.g. `import_running____<hash>`) routinely contain unrelated tab/section
-     * names as substrings, silently matching the wrong (often hidden) element.
+     * null). Matches a whole clause rather than a substring -- `[data-show*="import"]`
+     * looks tempting but nfsen-ng's hashed signal ids (e.g.
+     * `import_running____<hash>`) routinely contain unrelated tab/section names
+     * as substrings, silently matching the wrong (often hidden) element.
+     *
+     * A panel may serve more than one view, e.g. the flow table is shown for both
+     * Flows and Investigate (`$_currentView == 'flows' || $_currentView ==
+     * 'investigate'`), so the attribute is split on `||` and each clause compared
+     * exactly. An equality test against the whole attribute missed those panels.
      */
     async waitForPanel(signal, value, opts = {}) {
         const attr = `${signal} == '${value}'`;
         await this.waitFor(
             `[...document.querySelectorAll('[data-show]')].some(function(e){
-                return e.getAttribute('data-show') === ${JSON.stringify(attr)} && e.offsetParent !== null;
+                return e.getAttribute('data-show').split('||').map(function(c){ return c.trim(); })
+                    .indexOf(${JSON.stringify(attr)}) !== -1 && e.offsetParent !== null;
             })`,
-            { label: `a visible panel with data-show="${attr}"`, ...opts }
+            { label: `a visible panel with data-show clause "${attr}"`, ...opts }
         );
     }
 

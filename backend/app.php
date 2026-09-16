@@ -42,6 +42,7 @@ use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\ImportDaemon;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\UserPreferences;
+use mbolli\nfsen_ng\mcp\HttpEndpoint;
 use Mbolli\PhpVia\Config as ViaConfig;
 use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
@@ -131,6 +132,15 @@ $app->onStart(static fn () => AppStartup::boot($app));
 // Signal naming mirrors the existing Datastar store keys used in the frontend
 // templates so Phase-4 template migration can happen incrementally.
 
+// MCP over HTTP. Registered unconditionally because routes are built before settings are
+// loaded; the middleware answers 404 when NFSEN_MCP_HTTP is off, which is what an operator who
+// never enabled it should see. It answers every other request to this path itself, so the
+// handler below is unreachable in practice.
+$app->page(
+    HttpEndpoint::PATH,
+    static fn (Context $c) => $c->renderString('MCP endpoint')
+)->middleware(new HttpEndpoint(Config::VERSION));
+
 $app->page('/', function (Context $c) use ($app): void {
     $debug = Debug::getInstance();
     $fatalError = $app->globalState('_fatalError', null);
@@ -176,10 +186,29 @@ $app->page('/', function (Context $c) use ($app): void {
     );
     $graphTrafficUnit = $c->signal('bits', 'graph_trafficUnit', clientWritable: true);
     $graphResolution = $c->signal(500, 'graph_resolution', clientWritable: true);
+    // Filtered-graph mode (#166). 'stored' plots the pre-aggregated datasource series
+    // (RRD or VictoriaMetrics — whichever NFSEN_DATASOURCE selects);
+    // 'filtered' re-reads the nfcapd files through an nfdump filter, which only the
+    // run-filtered-graph action may do — never the render path.
+    $graphMode = $c->signal('stored', 'graph_mode', clientWritable: true);
+    $graphFilter = $c->signal('', 'graph_filter', clientWritable: true);
     // Server-side graph metadata (read-only for browser)
     $graphIsLive = $c->signal(false, 'graph_isLive');
     $graphActualRes = $c->signal(0, 'graph_actualResolution');
     $graphLastUpdate = $c->signal(0, 'graph_lastUpdate');
+    // Query progress, server-owned. Updated from the worker coroutine via syncSignals()
+    // so a long build reports per-mille progress without re-rendering the page each tick.
+    // query_exact distinguishes the filtered graph's known bin count from the byte-sampled
+    // estimate a single-shot nfdump can offer.
+    $queryRunning = $c->signal(false, 'query_running');
+    $queryPermille = $c->signal(0, 'query_permille');
+    $queryStatus = $c->signal('', 'query_status');
+    $queryEta = $c->signal('', 'query_eta');
+    $queryExact = $c->signal(true, 'query_exact');
+    // Which panel the running query belongs to ('graph'|'flows'|'stats'). The Investigate
+    // view shows the graph and flows panels at once, so without this each would render the
+    // other's progress on its own button.
+    $queryKind = $c->signal('', 'query_kind');
 
     // Flow signals
     $flowFilter = $c->signal('', 'flows_filter', clientWritable: true);
@@ -217,6 +246,11 @@ $app->page('/', function (Context $c) use ($app): void {
     $statsUpperLimit = $c->signal('', 'stats_upper_limit', clientWritable: true);
     // nfcapd file count — updated by count-files action and on initial render
     $nfcapdFileCount = $c->signal(0, 'nfcapd_file_count');
+    // Bytes behind that file count, so the filtered graph can say what a build will cost
+    // before it starts rather than only warning that cost grows with the window.
+    $nfcapdTotalBytes = $c->signal(0, 'nfcapd_total_bytes');
+    // Inputs the counts above were measured for, so the scan is skipped when nothing changed.
+    $nfcapdMeasured = $c->signal('', 'nfcapd_measured');
 
     // Sankey signals
     $sankeyFilter = $c->signal('', 'sankey_filter', clientWritable: true);
@@ -439,6 +473,7 @@ $app->page('/', function (Context $c) use ($app): void {
         $importRunning = $c->getSignal('import_running');
         $selectedProfile = $c->getSignal('selected_profile');
         $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
+        $graphMode = $c->getSignal('graph_mode');
         assert(
             $datestart !== null
             && $dateend !== null
@@ -446,6 +481,7 @@ $app->page('/', function (Context $c) use ($app): void {
             && $importRunning !== null
             && $selectedProfile !== null
             && $nfcapdFileCount !== null
+            && $graphMode !== null
         );
 
         // Sync importRunning signal to daemon lock state so all tabs reflect the
@@ -464,9 +500,13 @@ $app->page('/', function (Context $c) use ($app): void {
         // Subsequent changes are handled by countFilesAction triggered from the browser.
         if (!$hasFatalError && !$isUpdate) {
             $srcs = Helpers::resolveSources($graphSources->array());
-            $nfcapdFileCount->setValue(
-                Helpers::countNfcapdFiles($datestart->int(), $dateend->int(), $srcs, $selectedProfile->string()),
-                broadcast: false
+            Helpers::measureNfcapdFiles(
+                $c,
+                $datestart->int(),
+                $dateend->int(),
+                $srcs,
+                $selectedProfile->string(),
+                $graphMode->string() === 'filtered'
             );
         }
 
@@ -481,8 +521,13 @@ $app->page('/', function (Context $c) use ($app): void {
             // (dateend within 10 min of now). This runs on every rrd:live broadcast
             // so the selection tracks new data even when the graph refresh interval
             // has stopped (graphIsLive=false after the 5-min SSE liveness window).
+            //
+            // Never in filtered mode: the window is part of the filtered series' cache key,
+            // so sliding it by a second — which this does on every render while the window
+            // ends near now — leaves the freshly built series unreachable and the graph
+            // permanently empty. A filtered build is a snapshot of one explicit window.
             $de = $dateend->int();
-            if ($now - $de < 600) {
+            if ($graphMode->string() === 'stored' && $now - $de < 600) {
                 $window = $de - $datestart->int();
                 $dateend->setValue($now, broadcast: false);
                 $datestart->setValue($now - $window, broadcast: false);
@@ -624,6 +669,10 @@ $app->page('/', function (Context $c) use ($app): void {
 
             // ── Computed / pre-rendered data ──────────────────────────────
             'graphData' => $graphData,
+            // Only in filtered mode: the Apply button's projected cost (see filteredCost()).
+            'filteredCost' => (!$hasFatalError && $graphMode->string() === 'filtered')
+                ? GraphActions::filteredCost($c)
+                : null,
             'flowTableHtml' => $flowTableHtml,
             'flowNotifications' => $flowNotifications,
             'statsTableHtml' => $statsTableHtml,

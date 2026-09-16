@@ -87,6 +87,10 @@ final class Settings {
         public private(set) int $importYears,
         public private(set) int $logPriority,
         public private(set) int $maxStatsWindow,
+        /** Serve MCP over HTTP at /_mcp, on the app's own port and behind whatever guards it. */
+        public private(set) bool $mcpHttpEnabled,
+        /** @var list<string> hostnames an MCP client may use; empty means localhost only */
+        public private(set) array $mcpHttpHosts,
         public private(set) string $netboxUrl,
         public private(set) string $netboxToken,
         /** @var list<AlertRule> Alert rules stored in preferences.json */
@@ -140,6 +144,8 @@ final class Settings {
             importYears: $importYears,
             logPriority: $logPriority,
             maxStatsWindow: max(0, (int) ($raw['general']['max_stats_window'] ?? EnvRegistry::value('NFSEN_MAX_STATS_WINDOW'))),
+            mcpHttpEnabled: (bool) ($raw['general']['mcp_http'] ?? EnvRegistry::value('NFSEN_MCP_HTTP')),
+            mcpHttpHosts: array_values(array_filter(array_map('strval', (array) ($raw['general']['mcp_http_hosts'] ?? EnvRegistry::value('NFSEN_MCP_HOSTS'))))),
             netboxUrl: (string) ($raw['general']['netbox_url'] ?? EnvRegistry::value('NFSEN_NETBOX_URL')),
             netboxToken: (string) ($raw['general']['netbox_token'] ?? EnvRegistry::value('NFSEN_NETBOX_TOKEN')),
             alerts: [],
@@ -195,6 +201,8 @@ final class Settings {
             importYears: (int) EnvRegistry::value('NFSEN_IMPORT_YEARS'),
             logPriority: self::logLevelFromString((string) EnvRegistry::value('NFSEN_LOG_LEVEL')),
             maxStatsWindow: (int) EnvRegistry::value('NFSEN_MAX_STATS_WINDOW'),
+            mcpHttpEnabled: (bool) EnvRegistry::value('NFSEN_MCP_HTTP'),
+            mcpHttpHosts: array_values(array_filter(array_map('strval', (array) EnvRegistry::value('NFSEN_MCP_HOSTS')))),
             netboxUrl: (string) EnvRegistry::value('NFSEN_NETBOX_URL'),
             netboxToken: (string) EnvRegistry::value('NFSEN_NETBOX_TOKEN'),
             alerts: [],

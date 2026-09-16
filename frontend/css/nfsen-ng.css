@@ -553,3 +553,42 @@ dialog#ip-modal-inner::backdrop {
     vertical-align: -0.15em;
     margin-left: 0.35rem;
 }
+
+/* ── Investigate: the two filter panels side by side (#166) ──────────────── */
+
+/* Investigate is the only view that shows the graph and flow filter panels at
+   the same time, and stacked they measured ~1050px against a 1000px viewport,
+   pushing the graph below the fold. Laid out side by side the pair fits on one
+   screen. Only from 1200px up: below that there isn't room for two panels and
+   stacking is the better failure mode. The class is toggled on the wrapper by
+   the current view (see layout.html.twig), so Graphs and Flows on their own are
+   unaffected — and a hidden panel is display:none, which flex skips anyway. */
+@media (min-width: 1200px) {
+    .filter-split {
+        display: flex;
+        align-items: flex-start;
+        gap: 1.5rem;
+    }
+
+    .filter-split > * {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    /* The panels' own control groups are Bootstrap col-md-*, which are sized
+       against the viewport, not the container — inside a half-width panel a
+       col-md-2 would collapse to ~120px and the multi-button groups would
+       overflow. Let them take their content's width and wrap instead. */
+    .filter-split .row > [class*='col-'] {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+    }
+
+    /* Except the full-width rows (the nfdump filter box and its Apply button),
+       which should still span their panel. */
+    .filter-split .row > .col-12 {
+        flex: 1 1 100%;
+        width: 100%;
+    }
+}

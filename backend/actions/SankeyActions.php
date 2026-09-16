@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\actions;
 
-use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
-use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\query\MatrixQuery;
+use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
 
 /**
@@ -66,75 +66,36 @@ final class SankeyActions {
             $sankeyNotifications = [];
 
             try {
-                $srcs = $graphSources->array();
-                if (\in_array('any', $srcs, true) || empty($srcs)) {
-                    $srcs = Config::$settings->sources;
-                }
-
-                $metric = $sankeyMetric->string() === 'packets' ? 'packets' : 'bytes';
-                $showPorts = $sankeyShowPorts->bool();
-
-                $processor = new Config::$processorClass();
-                $processor->setProfile($selectedProfile->string());
-                $processor->setOption('-M', implode(':', $srcs));
-
-                $ds = $datestart->int();
-                $de = $dateend->int();
-                $maxWindow = Config::$settings->maxStatsWindow;
-                if ($maxWindow > 0 && ($de - $ds) > $maxWindow) {
-                    $ds = $de - $maxWindow;
-                    $sankeyNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => 'Time window clamped to ' . round($maxWindow / 86400, 1) . ' days (NFSEN_MAX_STATS_WINDOW).'];
-                }
-                $processor->setOption('-R', [$ds, $de]);
-
-                // With ports enabled, the destination L4 port joins the aggregation key so
-                // the diagram gains a middle column (src IP -> dst port -> dst IP).
-                $aggregation = $showPorts
-                    ? ['srcip' => 'srcip', 'dstport' => true, 'dstip' => 'dstip']
-                    : ['srcip' => 'srcip', 'dstip' => 'dstip'];
-                $processor->setOption('-a', '-A' . Nfdump::buildAggregationString($aggregation));
-                $processor->setOption('-O', $metric);
-                $processor->setOption('-n', $sankeyTopN->int());
-                $processor->setOption('-N', null);
-                // nfdump 1.7.5 rejects a custom `fmt:` format alongside `-A` aggregation, so
-                // there it gets the plain aggregated csv instead — same fields under different
-                // names, which buildSankeyPayload() reads as aliases. Every other supported
-                // version keeps `fmt:`; see Nfdump::needsAggregatedCsv() and #159.
-                $nfdumpVersion = Nfdump::version();
-                if (Nfdump::needsAggregatedCsv($nfdumpVersion)) {
-                    $processor->setOption('-o', 'csv');
-                    Debug::getInstance()->log('nfdump ' . $nfdumpVersion . ' cannot combine a custom fmt: format with aggregation — using -o csv for the Sankey', LOG_DEBUG);
-                } else {
-                    $processor->setOption('-o', $showPorts ? 'fmt:%sa %da %dp %ibyt %ipkt %fl' : 'fmt:%sa %da %ibyt %ipkt %fl');
-                }
-
-                // Byte thresholds are prepended to the filter expression, same as Flows/Statistics.
-                $thresholdFilter = Nfdump::buildThresholdFilter(
-                    trim($sankeyLowerLimit->string()),
-                    trim($sankeyUpperLimit->string())
+                $query = new MatrixQuery(
+                    window: TimeWindow::clamped($datestart->int(), $dateend->int()),
+                    sources: Helpers::resolveSources($graphSources->array()),
+                    profile: $selectedProfile->string(),
+                    metric: $sankeyMetric->string(),
+                    topN: $sankeyTopN->int(),
+                    showPorts: $sankeyShowPorts->bool(),
+                    filter: $sankeyFilter->string(),
+                    lowerLimit: $sankeyLowerLimit->string(),
+                    upperLimit: $sankeyUpperLimit->string(),
+                    handle: $c->getId(),
                 );
-                $combinedFilter = trim($sankeyFilter->string());
-                if ($thresholdFilter !== '') {
-                    $combinedFilter = $thresholdFilter . ($combinedFilter !== '' ? ' and ' . $combinedFilter : '');
-                }
-                $processor->setFilter($combinedFilter);
-                $result = $processor->execute();
+                $metric = $query->metric();
+                $showPorts = $query->showPorts;
 
-                $rows = $result['decoded'] ?? [];
-                if (!\is_array($rows)) {
-                    throw new \RuntimeException('Invalid data from nfdump processor');
+                if ($query->window->clamped) {
+                    $sankeyNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $query->window->clampNotice()];
                 }
 
-                $sankeyData = json_encode(self::buildSankeyPayload($rows, $metric, $showPorts), JSON_THROW_ON_ERROR);
+                $result = $query->run();
+                $sankeyData = json_encode(self::buildSankeyPayload($result->rows, $metric, $showPorts), JSON_THROW_ON_ERROR);
 
                 $elapsed = round(microtime(true) - $time, 3);
-                $cmd = htmlspecialchars((string) ($result['command'] ?? ''), ENT_QUOTES | ENT_HTML5);
+                $cmd = htmlspecialchars($result->command, ENT_QUOTES | ENT_HTML5);
                 $sankeyNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
                     ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
                     : "Sankey data processed in {$elapsed}s."];
 
-                if (!empty($result['stderr'])) {
-                    $sankeyNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars((string) $result['stderr'], ENT_QUOTES | ENT_HTML5)];
+                if ($result->stderr !== '') {
+                    $sankeyNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars($result->stderr, ENT_QUOTES | ENT_HTML5)];
                 }
             } catch (\Throwable $e) {
                 Debug::getInstance()->log('Sankey action error: ' . $e->getMessage(), LOG_ERR);

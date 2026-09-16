@@ -30,9 +30,9 @@ RRD file creation, for example).
   alongside the `.rrd` — a cleanup glob for `*.rrd` alone won't catch it.
 - **`Misc::countProcessesByName()` needs real `ps`/`pgrep`.** A container
   image missing `procps` makes this (and the "finds running php processes"
-  test) silently return 0 rather than fail loudly — see
-  [Nfdump Integration](../architecture/nfdump-integration.md) for why that
-  matters beyond tests.
+  test) silently return 0 rather than fail loudly. nfdump concurrency no
+  longer depends on it — see
+  [Nfdump Integration](../architecture/nfdump-integration.md).
 
 ## End-to-end tests
 

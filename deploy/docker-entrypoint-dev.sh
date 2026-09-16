@@ -25,8 +25,13 @@ while true; do
         grep -v vendor | grep -v node_modules | \
         entr -dn sh -c "echo 'File change detected, reloading server...'; \
             kill \$(cat $PID_FILE) 2>/dev/null; sleep 1; \
-            php ${ENTRY_SCRIPT} & echo \$! > $PID_FILE; echo \"Started new server (PID: \$(cat $PID_FILE))\""
-    # entr -d exits when a new file appears in a watched dir; restart the watch loop
+            php ${ENTRY_SCRIPT} & echo \$! > $PID_FILE; echo \"Started new server (PID: \$(cat $PID_FILE))\"" \
+        || true
+    # entr -d exits when a new file appears in a watched dir; restart the watch loop.
+    # The `|| true` is load-bearing: that exit is non-zero (status 2), and `set -e` above
+    # would otherwise kill this script — which is PID 1 — so the whole dev container went
+    # down every time a file was *added* rather than edited. Adding a test file, a template
+    # or a screenshot stopped the stack instead of reloading it.
     echo "Restarting file watcher..."
     sleep 0.5
 done

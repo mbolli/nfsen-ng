@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\NfcapdFiles;
+use Mbolli\PhpVia\Context;
 
 /**
  * Shared static helpers used by multiple action classes.
@@ -39,50 +41,61 @@ final class Helpers {
 
     /**
      * Count nfcapd files in a date range for the given sources.
-     * Scans the filesystem path structure: profiles-data/profile/source/YYYY/MM/DD/.
+     *
+     * Thin wrapper over NfcapdFiles::list() — the scan itself is shared with the
+     * filtered-graph builder and the nfdump progress estimator, which need the
+     * paths and sizes rather than just the tally.
      *
      * @param list<string> $sources
      */
     public static function countNfcapdFiles(int $ds, int $de, array $sources, string $profile = ''): int {
-        $sourcePath = Config::$settings->nfdumpProfilesData
-            . \DIRECTORY_SEPARATOR
-            . ($profile !== '' ? $profile : Config::$settings->nfdumpProfile);
-        $count = 0;
+        return \count(NfcapdFiles::list($ds, $de, $sources, $profile));
+    }
 
-        foreach ($sources as $source) {
-            $cur = (new \DateTime('', Config::nfcapdTimezone()))->setTimestamp($ds);
-            $end = (new \DateTime('', Config::nfcapdTimezone()))->setTimestamp($de);
-
-            while ($cur->format('Ymd') <= $end->format('Ymd')) {
-                $dayPath = $sourcePath
-                    . \DIRECTORY_SEPARATOR . (string) $source
-                    . \DIRECTORY_SEPARATOR . $cur->format('Y')
-                    . \DIRECTORY_SEPARATOR . $cur->format('m')
-                    . \DIRECTORY_SEPARATOR . $cur->format('d');
-                $cur->modify('+1 day');
-
-                if (!is_dir($dayPath)) {
-                    continue;
-                }
-
-                foreach (scandir($dayPath) ?: [] as $file) {
-                    if (!preg_match('/^nfcapd\.(\d{12})$/', (string) $file, $m)) {
-                        continue;
-                    }
-
-                    $dt = \DateTime::createFromFormat('YmdHi', $m[1], Config::nfcapdTimezone());
-                    if ($dt === false) {
-                        continue;
-                    }
-
-                    $ft = $dt->getTimestamp();
-                    if ($ft >= $ds && $ft <= $de) {
-                        ++$count;
-                    }
-                }
-            }
+    /**
+     * Scan once and publish both the file count and the total size behind it.
+     *
+     * The Flows/Statistics tabs show the count; the filtered graph also needs the size, so
+     * it can state what a build will read before it starts. One scan feeds both — the walk
+     * is the expensive part, not the tally.
+     *
+     * When $clampToFilteredWindow is set the measurement covers the window a filtered build
+     * would actually read (NFSEN_MAX_STATS_WINDOW applies), so the figure shown next to
+     * Apply matches the work that button will do.
+     *
+     * @param list<string> $sources
+     */
+    public static function measureNfcapdFiles(
+        Context $c,
+        int $ds,
+        int $de,
+        array $sources,
+        string $profile = '',
+        bool $clampToFilteredWindow = false,
+    ): void {
+        $count = $c->getSignal('nfcapd_file_count');
+        $bytes = $c->getSignal('nfcapd_total_bytes');
+        if ($count === null || $bytes === null) {
+            return;
         }
 
-        return $count;
+        if ($clampToFilteredWindow) {
+            [$ds, $de] = GraphActions::clampFilteredWindow($ds, $de);
+        }
+
+        // Skip the walk when nothing that defines it has changed. This is called from the
+        // graph's change handler, which fires on every protocol/datatype/filter interaction
+        // in filtered mode — and the walk now stat()s every file, so repeating it per
+        // keystroke-adjacent event would block the single worker on a wide window.
+        $signature = implode("\x1f", [$ds, $de, implode(',', $sources), $profile]);
+        $measured = $c->getSignal('nfcapd_measured');
+        if ($measured !== null && $measured->string() === $signature) {
+            return;
+        }
+
+        $files = NfcapdFiles::list($ds, $de, $sources, $profile);
+        $count->setValue(\count($files), broadcast: false);
+        $bytes->setValue(NfcapdFiles::totalSize($files), broadcast: false);
+        $measured?->setValue($signature, broadcast: false);
     }
 }

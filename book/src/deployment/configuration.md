@@ -44,6 +44,8 @@ called out on the Health page, so misconfiguration is visible instead of silent.
 | `NFSEN_DATASOURCE` | `RRD` | Datasource: `RRD` or `VictoriaMetrics`. |
 | `NFSEN_PROCESSOR` | `NfDump` | Flow processor. Only `NfDump` is implemented. |
 | `NFSEN_LOG_LEVEL` | `INFO` | Log verbosity. Accepts `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERR`/`ERROR`, `CRIT`, `ALERT`, `EMERG` (and `LOG_`-prefixed forms). Controls both the app and the Swoole server. |
+| `NFSEN_MCP_HTTP` | `false` | Serve the read-only MCP endpoint at `/_mcp` on the app's own port. See [MCP Server](../features/mcp.md). |
+| `NFSEN_MCP_HOSTS` | *(empty)* | Hostnames an MCP client may address this server as, comma-separated. Empty means localhost only. |
 | `NFSEN_MAX_STATS_WINDOW` | `0` | Max statistics query window in seconds (`0` = unlimited). Also `general.max_stats_window` in `settings.php`. |
 | `NFSEN_DEFAULT_THEME` | `auto` | Default UI colour theme for a browser with no saved preference (e.g. after a cache wipe). `auto` follows the OS `prefers-color-scheme`; `dark`/`light` force it. A user's manual dark-mode toggle is stored client-side and always overrides this. Also settable as `frontend.defaults.theme` in `settings.php`. |
 | `NFSEN_DEV_MODE` | `false` | Enables php-via dev mode (static assets served `no-cache`). Leave off in production. |
@@ -55,7 +57,7 @@ called out on the Health page, so misconfiguration is visible instead of silent.
 | `NFSEN_NFDUMP_BINARY` | `/usr/local/nfdump/bin/nfdump` | Path to the nfdump binary. The Docker image compiles nfdump to `/usr/local/nfdump/bin`. |
 | `NFSEN_NFDUMP_PROFILES` | `/var/nfdump/profiles-data` | Root path to the `nfcapd` data tree. In Docker this must match the container-side bind-mount (the shipped compose maps it to `/data/nfsen-ng`). |
 | `NFSEN_NFDUMP_PROFILE` | `live` | Default profile subfolder. See [Profiles](profiles.md). |
-| `NFSEN_NFDUMP_MAX_PROCESSES` | `1` | Max concurrent nfdump processes (floored at 1). |
+| `NFSEN_NFDUMP_MAX_PROCESSES` | `2` | Max concurrent nfdump processes (floored at 1). One slot is taken per nfdump run, including the import daemon's, so `1` makes browsing wait while an import is in progress. |
 | `NFCAPD_TZ` | _(PHP default TZ)_ | Timezone `nfcapd` used when writing filenames. Set this when `nfcapd` ran on a non-UTC host and nfsen-ng runs at `TZ=UTC` — otherwise epoch timestamps are off by the UTC offset. E.g. `Europe/Berlin`. |
 | `TZ` | _(system)_ | The container/process timezone. nfsen-ng also compares it against php.ini in a health check. |
 
@@ -284,7 +286,7 @@ defaults):
 | `nfdump.binary` | nfdump path | `/usr/local/nfdump/bin/nfdump` |
 | `nfdump.profiles-data` | Capture data root | `/var/nfdump/profiles-data` |
 | `nfdump.profile` | Default profile | `live` |
-| `nfdump.max-processes` | Max concurrent nfdump procs | `1` |
+| `nfdump.max-processes` | Max concurrent nfdump procs | `2` |
 | `db.RRD.data_path` | RRD storage dir (`null` = default) | `null` |
 | `db.<datasource>.import_years` | Years to import/retain | `3` |
 | `log.priority` | Syslog level constant | `\LOG_INFO` |

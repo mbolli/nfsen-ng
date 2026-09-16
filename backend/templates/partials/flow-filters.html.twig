@@ -23,8 +23,14 @@
         </div>
     </div>
 
-    {# Sources #}
-    <div id="filterFlowSources" class="col-2">
+    {#
+        Sources and the nfdump filter below are both duplicated by the graph panel in the
+        Investigate view — the Sources select is bound to the very same graph_sources signal,
+        so it renders identical state twice, and two identically-labelled filter boxes on one
+        screen invite the question of which one applies. Both are hidden there; the graph
+        panel's copies drive them.
+    #}
+    <div id="filterFlowSources" class="col-2" data-show="$_currentView !== 'investigate'">
         <div class="filter-group">
         <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
@@ -38,8 +44,9 @@
         </div>
     </div>
 
-    {# NFDUMP filter #}
-    <div class="col">
+    {# NFDUMP filter — hidden in Investigate, where the graph panel's box is authoritative. #}
+    <div class="col" data-show="$_currentView !== 'investigate'"
+         data-effect="$_currentView === 'investigate' && (${{ flows_filter.id() }} = ${{ graph_filter.id() }})">
         <div class="filter-group">
         <p class="filter-label">NFDUMP filter
             <nfsen-tooltip data-ignore-morph text="Filter syntax similar to tcpdump/pcap. Example: dst port 80" placement="right"></nfsen-tooltip>
@@ -153,22 +160,30 @@
 
     {# Submit #}
     <div class="col-12 border-top mt-3 pt-3">
+        {#
+            The query runs in a coroutine now, so query_running (server-owned) is what says
+            whether it is still going — not Datastar's request indicator, which clears the
+            moment the action returns. Progress is a byte-read estimate, hence exact=false.
+        #}
+        <span class="small text-muted me-2" style="display:none" data-show="$_currentView === 'investigate'">
+            Using the filter above.
+        </span>
         <nfsen-tooltip data-ignore-morph text="Execute nfdump query with current filters" placement="top" no-icon>
-            <button type="button"
-                    class="btn btn-primary"
-                    data-indicator:flows._indicator
-                    data-class:loading="$flows._indicator"
-                    data-on:click="$_flows_queried = true; @post('{{ flowActions.url() }}')">
-                <span data-show="!$flows._indicator">Process data</span>
-                <span class="spinner-grow spinner-grow-sm" data-show="$flows._indicator" role="status" aria-hidden="true"></span>
-                <span data-show="$flows._indicator">Processing…</span>
-            </button>
+            {% include 'partials/progress-button.html.twig' with {
+                id: 'flowsRun',
+                label: 'Process data',
+                action: flowActions.url(),
+                killAction: killNfdump.url(),
+                running: query_running.id(),
+                permille: query_permille.id(),
+                status: query_status.id(),
+                eta: query_eta.id(),
+                exact: query_exact.id(),
+                kindSignal: query_kind.id(),
+                kind: 'flows',
+                onClick: '$_flows_queried = true; ',
+            } only %}
         </nfsen-tooltip>
-        <button type="button"
-                class="btn btn-outline-danger btn-sm ms-1"
-                style="display:none"
-                data-show="$flows._indicator"
-                data-on:click="@post('{{ killNfdump.url() }}')">Kill</button>
     </div>
 
 </div>

@@ -65,6 +65,15 @@ const DIFFS = process.env.DIFFS || join(import.meta.dirname, '.capture-diffs');
 // summary prints each shot's measured diff so the thresholds are easy to calibrate.
 const FUZZ = process.env.FUZZ || '2%';
 const DIFF_THRESHOLD = Number(process.env.DIFF_THRESHOLD ?? '0.0002');
+// The #166 filtered-graph shots re-read every capture file in the selected
+// window (see book/src/features/graphs.md), so unlike every other shot they
+// can't just run at the Year range the rest of the run uses -- a year of
+// captures per build. They get their own (narrower) quick-range preset, an
+// explicit filter expression, and a generous completion timeout, all
+// env-tunable for instances whose data sits somewhere else on the calendar.
+const FILTER_RANGE = process.env.FILTER_RANGE || 'Week';
+const FILTER_EXPR = process.env.FILTER_EXPR || 'proto tcp';
+const FILTER_TIMEOUT = Number(process.env.FILTER_TIMEOUT ?? '300000');
 const PORT = 9334; // Chrome's own remote-debugging port, unrelated to the app's port
 const W = 1440, H = 1000;
 // Device pixel ratio for captured screenshots. Chrome is launched at
@@ -186,6 +195,11 @@ const HELPERS = `
 window.__setSelect = function(selector, value){
   var e = document.querySelector(selector);
   if (!e) return false;
+  // Refuse a value the select has no option for. Assigning one silently sets
+  // selectedIndex to -1, so the control renders blank and the shot looks broken
+  // for no visible reason -- better to fail the step than to capture that.
+  var has = Array.prototype.some.call(e.options, function(o){ return o.value === String(value); });
+  if (!has) return false;
   var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
   setter.call(e, String(value));
   e.dispatchEvent(new Event('input', {bubbles:true}));
@@ -201,6 +215,18 @@ window.__setCheckbox = function(id, checked){
   if (!e) return false;
   var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'checked').set;
   setter.call(e, !!checked);
+  e.dispatchEvent(new Event('input', {bubbles:true}));
+  e.dispatchEvent(new Event('change', {bubbles:true}));
+  return true;
+};
+// Same idea again for a Datastar-bound <textarea> (the graph panel's nfdump
+// filter box, #graphNfdumpTextarea) -- typing key by key over CDP would be
+// slower and no more faithful, since bind() only ever reacts to input/change.
+window.__setTextarea = function(selector, value){
+  var e = document.querySelector(selector);
+  if (!e) return false;
+  var setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+  setter.call(e, String(value));
   e.dispatchEvent(new Event('input', {bubbles:true}));
   e.dispatchEvent(new Event('change', {bubbles:true}));
   return true;
@@ -429,15 +455,17 @@ async function go(clickSub, { settle = 700 } = {}) {
   await sleep(settle);
 }
 
-// selectYearRange clicks the "Year" quick-range preset. A freshly started dev
-// stack with no live traffic generator has nothing in the last 24h (the
-// default range) but may well have real historical nfcapd data further
-// back -- Year reaches a full year behind "now", which is enough to surface
-// it for user-guide shots that need to show actual flow rows/IPs rather than
-// an empty table.
-async function selectYearRange() {
-  const clicked = await evaluate(`__clickText('Year', 'button')`);
-  if (!clicked) throw new Error('Year preset button not found');
+// selectRange clicks one of the quick-range preset buttons ('1 hour',
+// '24 hours', 'Week', 'Month', 'Year' -- see date-range.html.twig). Most of the
+// run uses 'Year': a freshly started dev stack with no live traffic generator
+// has nothing in the last 24h (the default range) but may well have real
+// historical nfcapd data further back, and Year reaches far enough behind "now"
+// to surface it for user-guide shots that need actual flow rows/IPs rather than
+// an empty table. The filtered-graph shots use FILTER_RANGE instead -- see its
+// note up top.
+async function selectRange(label) {
+  const clicked = await evaluate(`__clickText(${JSON.stringify(label)}, 'button')`);
+  if (!clicked) throw new Error(`${label} preset button not found`);
   await sleep(900);
 }
 
@@ -455,7 +483,13 @@ async function processData({ timeout = 20000 } = {}) {
   // fetch actually starting, and a query that finishes fast enough (or an
   // indicator that hasn't flipped yet) can otherwise look indistinguishable
   // from "already done", letting the shot fire mid-query.
-  const isVisible = `(function(){var s=document.querySelector('.spinner-grow');return !!s&&s.offsetParent!==null;})()`;
+  // Ask whether ANY spinner is visible rather than looking at the first match:
+  // since #166 every panel's submit button carries its own .spinner-grow (see
+  // progress-button.html.twig) and the graph filter panel's comes first in
+  // document order, so querySelector would keep returning that one -- hidden
+  // whenever the graph isn't in filtered mode, which reads as "already done"
+  // and lets every shot below fire mid-query.
+  const isVisible = `[...document.querySelectorAll('.spinner-grow')].some(s => s.offsetParent !== null)`;
   await waitJs(isVisible, { timeout: 5000, label: 'Process data query to start' }).catch(() => {});
   await waitJs(`!(${isVisible})`, { timeout, label: 'Process data query to finish' });
   await sleep(300);
@@ -480,7 +514,7 @@ async function main() {
   // show something real instead of an empty state. Harmless if there's
   // truly nothing to find; the tabs just render their empty state instead.
   console.log('selecting Year date range');
-  await selectYearRange();
+  await selectRange('Year');
 
   // ---- 00: Graphs -- the default landing view ----
   console.log('shot 00 graphs');
@@ -497,7 +531,7 @@ async function main() {
   // Cap the result count before running the query -- real historical data
   // (via the Year range above) can mean hundreds of rows, which makes for
   // an unreasonably tall documentation screenshot.
-  await evaluate(`__setSelect('#filterFlowsLimit select', 20)`);
+  if (!await evaluate(`__setSelect('#filterFlowsLimit select', 20)`)) throw new Error('flows limit select: no 20 option');
   await processData(); // Flows doesn't auto-query on date/filter change -- see processData()'s doc comment
   await shot('01-page-flows');
 
@@ -592,6 +626,78 @@ async function main() {
     await shot('guide-ip-info-modal', '#ip-modal-inner');
   } catch (e) {
     console.warn('  skipped guide-ip-info-modal:', e.message);
+  }
+
+  // ---- #166: filtered graphs, real query progress, and the Investigate view.
+  //
+  // Deliberately last. This block switches the date range to FILTER_RANGE and
+  // leaves the graph in Filtered mode -- a filtered build re-reads every capture
+  // file in the selected window, so running it at the Year range everything
+  // above uses would mean reading a year of captures per Apply -- and nothing
+  // earlier should inherit either bit of state.
+  console.log('shots for #166 (filtered graphs / progress / Investigate)');
+  try {
+    // The best-effort IP-info shot above leaves its <dialog> open, and an open
+    // modal would sit on top of every full-page capture from here on.
+    await evaluate(`(()=>{var d=document.getElementById('ip-modal-inner'); if(d&&d.open) d.close(); return true;})()`);
+
+    await go(`_currentView = 'graphs'`);
+    await selectRange(FILTER_RANGE);
+
+    // Source data: Stored -> Filtered. Click the Bootstrap btn-check's <label>,
+    // which is what a user actually hits -- the <input type=radio> itself is
+    // visually hidden (see graph-filters.html.twig).
+    if (!await evaluate(`__clickText('Filtered', 'label')`)) throw new Error('"Filtered" source-data button not found');
+    await sleep(600);
+
+    // The filter box + Apply button, cropped: the panel only exists in filtered
+    // mode (data-show on #filterGraphNfdump), so it can't be shot from 00.
+    console.log('shot guide-graphs-filter-panel');
+    await shot('guide-graphs-filter-panel', '#filterGraphNfdump');
+
+    if (!await evaluate(`__setTextarea('#graphNfdumpTextarea', ${JSON.stringify(FILTER_EXPR)})`)) throw new Error('graph nfdump textarea not found');
+    await sleep(200);
+
+    // The progress bar only exists while the query runs (progress-button.html.twig
+    // keeps the status line afterwards but drops the bar), so it doubles as the
+    // "still running" probe.
+    const bar = `(function(){var b=document.querySelector('#graphFilterRun .progress');return !!b&&b.offsetParent!==null;})()`;
+    if (!await evaluate(`__clickText('Apply filter', 'button')`)) throw new Error('"Apply filter" button not found');
+
+    // Best-effort mid-flight shot of the progress button. It's inherently racy --
+    // shot() captures light and dark a beat apart, so a build that finishes in
+    // between yields a half-progress/half-done stitch -- hence FILTER_RANGE
+    // rather than an hour, and hence skip-don't-fail if the bar never appears
+    // (a build fast enough to be over before the first poll).
+    try {
+      await waitJs(bar, { timeout: 8000, label: 'filtered-graph progress bar' });
+      console.log('shot guide-query-progress');
+      await shot('guide-query-progress', '#graphFilterRun');
+    } catch (e) {
+      console.warn('  skipped guide-query-progress:', e.message);
+    }
+
+    await waitJs(`!(${bar})`, { timeout: FILTER_TIMEOUT, label: 'filtered graph build to finish' });
+    await sleep(500);
+
+    console.log('shot guide-graphs-filtered');
+    await shot('guide-graphs-filtered');
+
+    // ---- 09: Investigate -- the same window as a timeline and as records ----
+    console.log('shot 09 investigate');
+    await go(`_currentView = 'investigate'`);
+    // The flows panel follows the graph's filter in this view (it hides its own box),
+    // so there is nothing to click -- just let the mirror settle before shooting.
+    await sleep(400);
+    // Fewer rows than the standalone Flows shot -- the graph is on the same
+    // screen here, and the page is already tall.
+    // 20 is the smallest limit this control offers -- setting a value it has no option
+    // for leaves selectedIndex at -1 and the select renders blank in the shot.
+    if (!await evaluate(`__setSelect('#filterFlowsLimit select', 20)`)) throw new Error('flows limit select: no 20 option');
+    await processData();
+    await shot('09-page-investigate');
+  } catch (e) {
+    console.warn('  skipped the #166 shots:', e.message);
   }
 
   console.log('DONE');

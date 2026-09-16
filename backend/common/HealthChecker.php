@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\common;
 
 use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
 
 /**
  * HealthChecker — runs a suite of configuration and environment checks.
@@ -266,27 +267,17 @@ class HealthChecker {
             }
         }
 
+        // Concurrency is enforced by NfdumpSlots, which counts the processes this app started
+        // rather than every nfdump on the machine, so the old ps/pgrep availability check has
+        // no bearing on it any more and was dropped.
         $maxProc = $settings->nfdumpMaxProcesses;
+        $inUse = NfdumpSlots::inUse();
         $add(
             'nfdump_max_processes',
             'Max processes',
             $maxProc >= 1 ? 'ok' : 'error',
-            $maxProc >= 1 ? (string) $maxProc : 'max-processes must be ≥ 1',
+            $maxProc >= 1 ? $inUse . ' of ' . $maxProc . ' in use' : 'max-processes must be ≥ 1',
             'nfdump'
-        );
-
-        // Misc::countProcessesByName() (used to enforce nfdumpMaxProcesses) silently
-        // returns 0 when neither tool is present, so the concurrency guard never
-        // trips — surface that as a warning rather than let it fail invisibly.
-        $hasProcTool = Misc::hasProcessInspectionTool();
-        $add(
-            'nfdump_process_inspection',
-            'Process inspection',
-            $hasProcTool ? 'ok' : 'warning',
-            $hasProcTool ? 'ps/pgrep available' : 'Neither ps nor pgrep found',
-            'nfdump',
-            false,
-            $hasProcTool ? '' : 'Max processes above is not enforced — install procps (provides ps and pgrep) in the container image'
         );
 
         // ── 4. Sources ───────────────────────────────────────────────────────

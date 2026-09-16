@@ -197,9 +197,6 @@ class Nfdump implements Processor {
         $command = $this->cfg['env']['bin'] . ' ' . $this->flatten($this->cfg['option']) . $filter;
         $this->d->log('Trying to execute ' . $command, LOG_DEBUG);
 
-        // check for already running nfdump processes
-        // use pgrep if available, fallback to ps, or skip check if neither available
-        $bin_name = basename($this->cfg['env']['bin']);
         // Wait for a slot rather than counting nfdump processes on the machine. That count
         // included runs this app never started, raced between counting and spawning, and made
         // "busy" an error instead of a short wait.
@@ -218,33 +215,52 @@ class Nfdump implements Processor {
         // Prefix with 'exec' so the shell replaces itself with nfdump directly.
         // Without this, proc_open spawns /bin/sh -c "...", and proc_get_status()['pid']
         // returns the shell's PID — killing the shell leaves nfdump running and completing normally.
-        $process = proc_open('exec ' . $command, $descriptorspec, $pipes);
+        // try/finally around everything the slot covers: a failed proc_open used to throw
+        // straight past release(), and a worker that leaked both slots wedged every later
+        // nfdump call behind the acquire timeout until it was restarted.
+        $pid = null;
+        $process = null;
+        $closed = false;
 
-        if (!\is_resource($process)) {
-            throw new \Exception('Failed to start nfdump process');
+        try {
+            $process = proc_open('exec ' . $command, $descriptorspec, $pipes);
+
+            if (!\is_resource($process)) {
+                throw new \Exception('Failed to start nfdump process');
+            }
+
+            // Close stdin as we don't need it
+            fclose($pipes[0]);
+
+            // Track the running PID so a kill can reach it, both by handle and through the
+            // single static the existing single-query callers read.
+            $pid = proc_get_status($process)['pid'];
+            self::$runningPid = $pid;
+            NfdumpSlots::register($this->queryHandle, $pid);
+
+            // Read stdout and stderr
+            $stdout = (string) stream_get_contents($pipes[1]);
+            $stderr = (string) stream_get_contents($pipes[2]);
+
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+
+            // Get return code
+            $return = proc_close($process);
+            $closed = true;
+        } finally {
+            // A throw while reading the pipes would otherwise leave the child unreaped and
+            // its handle open for the life of the worker.
+            if (\is_resource($process) && !$closed) {
+                proc_terminate($process);
+                proc_close($process);
+            }
+            self::$runningPid = null;
+            if ($pid !== null) {
+                NfdumpSlots::unregister($this->queryHandle, $pid);
+            }
+            NfdumpSlots::release();
         }
-
-        // Close stdin as we don't need it
-        fclose($pipes[0]);
-
-        // Track the running PID so a kill can reach it, both by handle and through the
-        // single static the existing single-query callers read.
-        $pid = proc_get_status($process)['pid'];
-        self::$runningPid = $pid;
-        NfdumpSlots::register($this->queryHandle, $pid);
-
-        // Read stdout and stderr
-        $stdout = (string) stream_get_contents($pipes[1]);
-        $stderr = (string) stream_get_contents($pipes[2]);
-
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-
-        // Get return code
-        $return = proc_close($process);
-        self::$runningPid = null;
-        NfdumpSlots::unregister($this->queryHandle);
-        NfdumpSlots::release();
 
         // Log stderr if present (but don't fail on benign messages)
         if (!empty($stderr)) {

@@ -24,6 +24,15 @@ final class Guard {
     public const MAX_LIMIT = 500;
 
     /**
+     * Widest window an expensive tool reads when the deployment sets no bound of its own.
+     *
+     * NFSEN_MAX_STATS_WINDOW defaults to 0, meaning unlimited, which is a reasonable default
+     * for a person clicking a button and a bad one for an agent that can loop. The operator's
+     * value still wins when they set one.
+     */
+    public const DEFAULT_MAX_WINDOW_SECONDS = 7 * 86400;
+
+    /**
      * Clamps the range to NFSEN_MAX_STATS_WINDOW, the same bound the Statistics and Sankey
      * panels apply. The result reports whether it shortened the range, so the answer can say so.
      */
@@ -33,7 +42,14 @@ final class Guard {
             $end = $start + 300;
         }
 
-        return TimeWindow::clamped($start, $end);
+        return TimeWindow::clamped($start, $end, self::maxWindowSeconds());
+    }
+
+    /** The configured bound, or this server's own when the deployment sets none. */
+    public static function maxWindowSeconds(): int {
+        $configured = Config::$settings->maxStatsWindow;
+
+        return $configured > 0 ? $configured : self::DEFAULT_MAX_WINDOW_SECONDS;
     }
 
     public static function limit(int $requested): int {
@@ -79,14 +95,8 @@ final class Guard {
      * @throws ToolCallException when the window would read more capture data than allowed
      */
     public static function assertAffordable(int $bytes): void {
-        $max = Config::$settings->maxStatsWindow;
-
-        // Without a configured window bound there is nothing to scale a byte ceiling against,
-        // so the operator has opted out of this protection entirely.
-        if ($max <= 0) {
-            return;
-        }
-
+        // Unconditional. It used to skip the check when NFSEN_MAX_STATS_WINDOW was unset,
+        // which is the default, so the ceiling protected nobody on a stock install.
         if ($bytes > self::maxBytes()) {
             throw new ToolCallException(\sprintf(
                 'This query would read %s of capture data, more than the %s ceiling. Narrow the time window or add a filter.',

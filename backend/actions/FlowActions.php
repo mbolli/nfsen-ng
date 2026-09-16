@@ -127,6 +127,10 @@ final class FlowActions {
                         Debug::getInstance()->log('Flow action error: ' . $e->getMessage(), LOG_ERR);
                         $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
                         $flowTableHtml = '';
+
+                        // Rethrow: QueryRunner owns the status line, and swallowing here left it
+                        // reading "Done in 0.4s." beside the red error notification.
+                        throw $e;
                     }
                 });
             } catch (\Throwable $e) {

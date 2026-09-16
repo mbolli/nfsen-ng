@@ -33,7 +33,13 @@ final class NfdumpSlots {
 
     private static int $inUse = 0;
 
-    /** @var array<string, int> query handle => running nfdump pid */
+    /**
+     * @var array<string, list<int>> query handle => the pids it currently owns
+     *
+     * A list, not one pid: concurrent runs can share a handle — the import daemon and every
+     * MCP call use the default one — and a scalar meant the second run overwrote the first and
+     * then erased it on exit, so a kill found nothing while a process was still going
+     */
     private static array $pids = [];
 
     /**
@@ -77,41 +83,63 @@ final class NfdumpSlots {
     }
 
     /**
-     * Records the process a query owns, so a kill reaches that run and not another.
+     * Records a process a query owns, so a kill reaches that run and not another.
      */
     public static function register(string $handle, int $pid): void {
-        self::$pids[$handle] = $pid;
-    }
-
-    public static function unregister(string $handle): void {
-        unset(self::$pids[$handle]);
-    }
-
-    public static function pidFor(string $handle): ?int {
-        return self::$pids[$handle] ?? null;
+        self::$pids[$handle][] = $pid;
     }
 
     /**
-     * @return array<string, int>
+     * Drops one pid. Without the pid, one run ending cleared a sibling's entry too.
+     */
+    public static function unregister(string $handle, int $pid): void {
+        if (!isset(self::$pids[$handle])) {
+            return;
+        }
+
+        self::$pids[$handle] = array_values(array_filter(
+            self::$pids[$handle],
+            static fn (int $known): bool => $known !== $pid
+        ));
+
+        if (self::$pids[$handle] === []) {
+            unset(self::$pids[$handle]);
+        }
+    }
+
+    /** The most recent pid this query owns, for a progress sampler following one run. */
+    public static function pidFor(string $handle): ?int {
+        $pids = self::$pids[$handle] ?? [];
+
+        return $pids === [] ? null : $pids[\count($pids) - 1];
+    }
+
+    /**
+     * @return array<string, list<int>>
      */
     public static function running(): array {
         return self::$pids;
     }
 
     /**
-     * Sends SIGTERM to the process owned by $handle.
+     * Sends SIGTERM to every process owned by $handle. A chunked build has one in flight at a
+     * time, but a handle shared by concurrent callers can own several.
      *
-     * @return ?int the pid signalled, or null when that query owns nothing right now
+     * @return ?int the last pid signalled, or null when that query owns nothing right now
      */
     public static function kill(string $handle): ?int {
-        $pid = self::$pids[$handle] ?? null;
-        if ($pid === null || $pid <= 0) {
+        $pids = array_filter(self::$pids[$handle] ?? [], static fn (int $pid): bool => $pid > 0);
+        if ($pids === []) {
             return null;
         }
 
-        posix_kill($pid, SIGTERM);
-        Debug::getInstance()->log('Sent SIGTERM to nfdump pid ' . $pid . ' for query ' . $handle, LOG_DEBUG);
+        $last = null;
+        foreach ($pids as $pid) {
+            posix_kill($pid, SIGTERM);
+            Debug::getInstance()->log('Sent SIGTERM to nfdump pid ' . $pid . ' for query ' . $handle, LOG_DEBUG);
+            $last = $pid;
+        }
 
-        return $pid;
+        return $last;
     }
 }

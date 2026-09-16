@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\common;
 
 use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
 use OpenSwoole\Coroutine;
 use OpenSwoole\Coroutine\Http\Client;
 
@@ -270,8 +271,13 @@ final class AlertManager {
     private function fetchFilteredSlot(AlertRule $rule, string $profile): array {
         $empty = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
 
-        if (Nfdump::$runningPid !== null) {
-            return $empty; // another nfdump is running; skip rather than queue
+        // Skip rather than queue when there is no free slot. This used to read
+        // Nfdump::$runningPid, which now means "whichever run started last" and says nothing
+        // about capacity: with the process cap at two it let a call through while both slots
+        // were busy, where acquire() blocks for thirty seconds and the rule then evaluates on
+        // zeros — a threshold that silently does not fire.
+        if (NfdumpSlots::inUse() >= max(1, Config::$settings->nfdumpMaxProcesses)) {
+            return $empty;
         }
 
         try {

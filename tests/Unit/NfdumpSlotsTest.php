@@ -24,8 +24,10 @@ function releaseAllSlots(): void {
     while (NfdumpSlots::inUse() > 0) {
         NfdumpSlots::release();
     }
-    foreach (array_keys(NfdumpSlots::running()) as $handle) {
-        NfdumpSlots::unregister($handle);
+    foreach (NfdumpSlots::running() as $handle => $pids) {
+        foreach ($pids as $pid) {
+            NfdumpSlots::unregister($handle, $pid);
+        }
     }
 }
 
@@ -114,7 +116,7 @@ describe('NfdumpSlots ownership', function (): void {
     test('unregistering clears only that query', function (): void {
         NfdumpSlots::register('tab-a', 111);
         NfdumpSlots::register('tab-b', 222);
-        NfdumpSlots::unregister('tab-a');
+        NfdumpSlots::unregister('tab-a', 111);
 
         expect(NfdumpSlots::pidFor('tab-a'))->toBeNull()
             ->and(NfdumpSlots::pidFor('tab-b'))->toBe(222)
@@ -125,6 +127,67 @@ describe('NfdumpSlots ownership', function (): void {
         NfdumpSlots::register('tab-a', 111);
         NfdumpSlots::register('tab-b', 222);
 
-        expect(NfdumpSlots::running())->toBe(['tab-a' => 111, 'tab-b' => 222]);
+        expect(NfdumpSlots::running())->toBe(['tab-a' => [111], 'tab-b' => [222]]);
+    });
+
+    // The import daemon and every MCP call share the default handle, so two runs can own it at
+    // once. A scalar meant the second overwrote the first and then erased it on exit, leaving a
+    // live process that Kill could not find.
+    test('one handle can own several concurrent processes', function (): void {
+        NfdumpSlots::register('default', 111);
+        NfdumpSlots::register('default', 222);
+
+        expect(NfdumpSlots::running()['default'])->toBe([111, 222]);
+    });
+
+    test('a finished run leaves its sibling registered', function (): void {
+        NfdumpSlots::register('default', 111);
+        NfdumpSlots::register('default', 222);
+        NfdumpSlots::unregister('default', 111);
+
+        expect(NfdumpSlots::running()['default'])->toBe([222])
+            ->and(NfdumpSlots::pidFor('default'))->toBe(222)
+        ;
+    });
+
+    test('unregistering a pid the handle does not own changes nothing', function (): void {
+        NfdumpSlots::register('tab-a', 111);
+        NfdumpSlots::unregister('tab-a', 999);
+
+        expect(NfdumpSlots::pidFor('tab-a'))->toBe(111);
+    });
+});
+
+describe('NfdumpSlots leak safety', function (): void {
+    beforeEach(function (): void {
+        releaseAllSlots();
+    });
+
+    afterEach(function (): void {
+        releaseAllSlots();
+    });
+
+    // Nfdump::execute() holds a slot across proc_open. That throw used to skip release(), and
+    // two such failures wedged every later query behind the acquire timeout until a restart.
+    test('a failure between acquire and release must not leak the slot', function (): void {
+        slotSettings(1);
+
+        try {
+            NfdumpSlots::acquire();
+
+            try {
+                throw new RuntimeException('proc_open failed');
+            } finally {
+                NfdumpSlots::release();
+            }
+        } catch (RuntimeException) {
+            // expected
+        }
+
+        expect(NfdumpSlots::inUse())->toBe(0);
+
+        // Still usable afterwards, which is the point.
+        NfdumpSlots::acquire(0.2);
+        expect(NfdumpSlots::inUse())->toBe(1);
     });
 });

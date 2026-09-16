@@ -111,6 +111,15 @@ describe('Args', function (): void {
     });
 });
 
+function unboundedWindowSettings(): void {
+    Config::$settings = Settings::fromArray([
+        'general' => ['sources' => ['gw'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump', 'max_stats_window' => 0],
+        'nfdump' => ['binary' => '/usr/bin/nfdump', 'profiles-data' => '/tmp', 'profile' => 'live', 'max-processes' => 2],
+        'db' => ['RRD' => ['data_path' => sys_get_temp_dir(), 'import_years' => 3]],
+        'log' => ['priority' => LOG_WARNING],
+    ]);
+}
+
 describe('Guard', function (): void {
     beforeEach(function (): void {
         Config::$settings = Settings::fromArray([
@@ -174,18 +183,36 @@ describe('Guard', function (): void {
         expect(true)->toBeTrue();
     });
 
-    // Turning the window bound off is an operator opting out of the byte ceiling too.
-    test('no configured window means no byte ceiling', function (): void {
-        Config::$settings = Settings::fromArray([
-            'general' => ['sources' => ['gw'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump', 'max_stats_window' => 0],
-            'nfdump' => ['binary' => '/usr/bin/nfdump', 'profiles-data' => '/tmp', 'profile' => 'live', 'max-processes' => 1],
-            'db' => ['RRD' => ['data_path' => sys_get_temp_dir(), 'import_years' => 3]],
-            'log' => ['priority' => LOG_WARNING],
-        ]);
+    // NFSEN_MAX_STATS_WINDOW is 0 by default, which is fine for a person clicking a button
+    // and useless against an agent that loops, so the server carries bounds of its own.
+    test('the byte ceiling holds with no configured window', function (): void {
+        unboundedWindowSettings();
 
-        Guard::assertAffordable(Guard::maxBytes() * 10);
+        expect(fn () => Guard::assertAffordable(Guard::maxBytes() + 1))->toThrow(ToolCallException::class);
+    });
 
-        expect(true)->toBeTrue();
+    test('an unset window bound falls back to the server default', function (): void {
+        unboundedWindowSettings();
+
+        expect(Guard::maxWindowSeconds())->toBe(Guard::DEFAULT_MAX_WINDOW_SECONDS);
+
+        $window = Guard::window(0, Guard::DEFAULT_MAX_WINDOW_SECONDS * 4);
+
+        expect($window->clamped)->toBeTrue()
+            ->and($window->duration())->toBe(Guard::DEFAULT_MAX_WINDOW_SECONDS)
+        ;
+    });
+
+    test('a configured window bound still wins', function (): void {
+        expect(Guard::maxWindowSeconds())->toBe(86400);
+    });
+
+    // The notice has to name the bound that was applied, not the configured one, or it quotes
+    // a number nobody used.
+    test('the clamp notice names the bound actually applied', function (): void {
+        unboundedWindowSettings();
+
+        expect(Guard::window(0, Guard::DEFAULT_MAX_WINDOW_SECONDS * 4)->clampNotice())->toContain('7 days');
     });
 
     test('formats bytes in the unit that reads naturally', function (): void {

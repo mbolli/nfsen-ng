@@ -92,25 +92,29 @@ final class QueryRunner {
                 $c->syncSignals();
             });
 
-            // Sized here rather than before the action returned: walking the window and
-            // stat()-ing every file is thousands of syscalls at a wide range.
-            $sizeInBytes = $totalBytes();
-            $watcher = NfdumpProgressWatcher::forRunningNfdump($progress, $sizeInBytes);
-
-            // Sampler runs alongside the query. It stops once the work is finished, or
-            // permanently the first time the platform cannot report bytes read.
-            Coroutine::create(static function () use ($progress, $watcher): void {
-                while (!$progress->isFinished() && $watcher->isTrackable()) {
-                    Coroutine::usleep(self::POLL_INTERVAL_US);
-                    if (!$watcher->tick()) {
-                        return;
-                    }
-                }
-            });
-
             $finalStatus = '';
+            $sizeInBytes = 0;
 
             try {
+                // Sized here rather than before the action returned: walking the window and
+                // stat()-ing every file is thousands of syscalls at a wide range. Inside the
+                // try because it touches the filesystem: a throw out here used to leave
+                // query_running true forever, with every button disabled and nothing to
+                // clear it, and an uncaught throw in a coroutine takes the worker with it.
+                $sizeInBytes = $totalBytes();
+                $watcher = NfdumpProgressWatcher::forRunningNfdump($progress, $sizeInBytes, $c->getId());
+
+                // Sampler runs alongside the query. It stops once the work is finished, or
+                // permanently the first time the platform cannot report bytes read.
+                Coroutine::create(static function () use ($progress, $watcher): void {
+                    while (!$progress->isFinished() && $watcher->isTrackable()) {
+                        Coroutine::usleep(self::POLL_INTERVAL_US);
+                        if (!$watcher->tick()) {
+                            return;
+                        }
+                    }
+                });
+
                 $work();
                 $finalStatus = 'Done in ' . round($progress->elapsed(), 1) . 's.';
             } catch (\Throwable $e) {

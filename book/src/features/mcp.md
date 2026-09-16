@@ -116,11 +116,13 @@ cannot watch.
 These are enforced by the server, not suggested to the model:
 
 - **Time windows** are clamped to `NFSEN_MAX_STATS_WINDOW`, the same bound the Statistics and
-  Sankey panels apply. The answer says when it shortened your range.
+  Sankey panels apply. The answer says when it shortened your range. That setting defaults to
+  `0`, meaning unlimited, which is reasonable for a person clicking a button and not for an
+  agent that can loop, so with no configured bound these tools fall back to seven days.
 - **Row limits** default to 20 and are capped at 500, whatever the caller asks for.
 - **A byte ceiling** of 16 GiB per call refuses a query that would read more capture data than
-  that, with a message telling the caller to narrow the window or add a filter. Setting
-  `NFSEN_MAX_STATS_WINDOW` to `0` opts out of both the window bound and this ceiling.
+  that, with a message telling the caller to narrow the window or add a filter. It applies
+  whatever `NFSEN_MAX_STATS_WINDOW` is set to.
 - **Filter expressions** reach nfdump as a single escaped argument, never interpolated into a
   shell command. Obvious mistakes such as unbalanced parentheses are rejected with a readable
   error rather than run.

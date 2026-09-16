@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Import;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\Processor;
@@ -557,5 +558,44 @@ describe('CostEstimate', function (): void {
             'runs' => 2,
             'window_clamped' => true,
         ]);
+    });
+});
+
+describe('TimeWindow::clampNotice()', function (): void {
+    // "clamped to 0 days" was the exact wording bug the window formatter was added to fix,
+    // and the notice was still rounding to days on its own.
+    test('names a sub-day bound in a unit that reads', function (): void {
+        makeWindowSettings(3600);
+
+        expect(TimeWindow::clamped(0, 86400)->clampNotice())->toContain('1 hour')
+            ->and(TimeWindow::clamped(0, 86400)->clampNotice())->not->toContain('0 days')
+        ;
+    });
+
+    test('names the bound the caller passed, not the configured one', function (): void {
+        makeWindowSettings(86400 * 30);
+
+        expect(TimeWindow::clamped(0, 86400 * 10, 86400)->clampNotice())->toContain('1 day');
+    });
+
+    test('humanises days, hours and minutes', function (): void {
+        expect(TimeWindow::humanize(86400 * 3))->toBe('3 days')
+            ->and(TimeWindow::humanize(86400))->toBe('1 day')
+            ->and(TimeWindow::humanize(7200))->toBe('2 hours')
+            ->and(TimeWindow::humanize(300))->toBe('5 minutes')
+        ;
+    });
+});
+
+describe('FilteredSeries protocol bucketing', function (): void {
+    // Stored and filtered mode read the same nfdump output; when they used separate maps,
+    // ICMPv6 counted as icmp in one graph and other in the other for the same window.
+    test('buckets ICMPv6 with icmp, as the import does', function (): void {
+        expect(Import::protocolBucket('ICMP6'))->toBe('icmp')
+            ->and(Import::protocolBucket('IPv6-ICMP'))->toBe('icmp')
+            ->and(Import::protocolBucket('icmp'))->toBe('icmp')
+            ->and(Import::protocolBucket('GRE'))->toBe('other')
+            ->and(Import::protocolBucket('TCP'))->toBe('tcp')
+        ;
     });
 });

@@ -428,6 +428,26 @@ class Import {
         $this->profile = $profile;
     }
 
+    /**
+     * Maps a protocol name as nfdump prints it to one of the RRD's per-protocol data
+     * sources. Those are tcp/udp/icmp/other, mirroring the buckets of nfdump's own `-I`
+     * summary that source.rrd is filled from — so everything else (GRE, ESP, SCTP, …)
+     * belongs in 'other'. Writing the raw name instead made RRDUpdater throw
+     * "unknown DS name 'flows_gre'" and cost the whole capture file its port data (#173).
+     *
+     * Public because the filtered series buckets the same nfdump output: when the two used
+     * separate maps they disagreed for the same window, with ICMPv6 counted as icmp in the
+     * stored graph and other in the filtered one.
+     */
+    public static function protocolBucket(string $protocol): string {
+        return match (strtolower($protocol)) {
+            'tcp' => 'tcp',
+            'udp' => 'udp',
+            'icmp', 'icmp6', 'icmpv6', 'ipv6-icmp' => 'icmp',
+            default => 'other',
+        };
+    }
+
     private function formatEta(int $seconds): string {
         return QueryProgress::formatEta($seconds);
     }
@@ -636,21 +656,5 @@ class Import {
             $source,
             $statsPath,
         ]);
-    }
-
-    /**
-     * Maps a protocol name as nfdump prints it to one of the RRD's per-protocol data
-     * sources. Those are tcp/udp/icmp/other, mirroring the buckets of nfdump's own `-I`
-     * summary that source.rrd is filled from — so everything else (GRE, ESP, SCTP, …)
-     * belongs in 'other'. Writing the raw name instead made RRDUpdater throw
-     * "unknown DS name 'flows_gre'" and cost the whole capture file its port data (#173).
-     */
-    private static function protocolBucket(string $protocol): string {
-        return match (strtolower($protocol)) {
-            'tcp' => 'tcp',
-            'udp' => 'udp',
-            'icmp', 'icmp6', 'icmpv6', 'ipv6-icmp' => 'icmp',
-            default => 'other',
-        };
     }
 }

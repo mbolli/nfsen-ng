@@ -74,9 +74,10 @@ final class UtilityActions {
             // loop marches straight on to the next one — it has to be told to stop.
             QueryCancel::request($c->getId());
 
-            // Kill this tab's own run, not whichever started last: with an agent or a second
-            // tab querying concurrently, Nfdump::$runningPid is no longer unambiguous.
-            $pid = NfdumpSlots::kill($c->getId()) ?? NfdumpSlots::kill('default');
+            // This tab's own run and nothing else. The fallback to the 'default' handle that
+            // used to be here belongs to the import daemon and every MCP call, so pressing
+            // Kill with no query of your own in flight SIGTERMed theirs.
+            $pid = NfdumpSlots::kill($c->getId());
             if ($pid !== null && $pid > 0) {
                 $msg = 'nfdump process (PID ' . $pid . ') was killed.';
                 $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $msg]];

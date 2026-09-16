@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\common;
 
-use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
 
 /**
  * Estimates how far a single long-running nfdump has got.
@@ -38,12 +38,18 @@ final class NfdumpProgressWatcher {
         private readonly \Closure $byteReader,
     ) {}
 
-    /** Build a watcher wired to the live nfdump process and procfs. */
-    public static function forRunningNfdump(QueryProgress $progress, int $totalBytes): self {
+    /**
+     * Build a watcher wired to one query's nfdump process and procfs.
+     *
+     * Keyed by query handle rather than reading the process-global pid: with the process cap
+     * defaulting to two, a panel's bar would otherwise sample whichever run started last —
+     * another tab's, the import daemon's, or an MCP call's — and freeze when that one exited.
+     */
+    public static function forRunningNfdump(QueryProgress $progress, int $totalBytes, string $handle = 'default'): self {
         return new self(
             $progress,
             $totalBytes,
-            static fn (): ?int => Nfdump::$runningPid,
+            static fn (): ?int => NfdumpSlots::pidFor($handle),
             static fn (int $pid): ?int => Misc::processReadBytes($pid),
         );
     }

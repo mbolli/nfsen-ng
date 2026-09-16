@@ -110,6 +110,10 @@ final class StatsActions {
                         Debug::getInstance()->log('Stats action error: ' . $e->getMessage(), LOG_ERR);
                         $statsNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
                         $statsTableHtml = '';
+
+                        // Rethrow: QueryRunner owns the status line, and swallowing here left it
+                        // reading "Done in 0.4s." beside the red error notification.
+                        throw $e;
                     }
                 });
             } catch (\Throwable $e) {
@@ -142,7 +146,11 @@ final class StatsActions {
             $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
             \assert($datestart !== null && $dateend !== null && $graphSources !== null && $selectedProfile !== null && $nfcapdFileCount !== null);
 
-            $graphMode = $c->getSignal('graph_mode');
+            // Never clamped. One count serves Flows, Statistics, Sankey and the filtered
+            // graph, and only some of those clamp their window, so keying the clamp on the
+            // Graphs tab's mode made the Flows count under-report whenever that tab happened
+            // to be in filtered mode. It describes the selected range; a consumer that reads a
+            // shorter one says so itself.
             $srcs = Helpers::resolveSources($graphSources->array());
             Helpers::measureNfcapdFiles(
                 $c,
@@ -150,7 +158,6 @@ final class StatsActions {
                 $dateend->int(),
                 $srcs,
                 $selectedProfile->string(),
-                $graphMode?->string() === 'filtered'
             );
             $c->sync();
         }, 'count-files');

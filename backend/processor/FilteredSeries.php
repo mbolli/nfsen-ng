@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\processor;
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\Import;
 use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\datasources\Datasource;
 
@@ -269,7 +270,25 @@ final class FilteredSeries {
      *                                          invocation failed — which is a gap, not a zero
      */
     private static function runBin(array $group, array $files, string $filter, string $profile, string $handle = 'default'): ?array {
-        $relPaths = array_column($files, 'relPath');
+        // Only the sources that actually have a capture in this bin. nfdump reads the same
+        // relative path from every -M directory and aborts one with "stat() error …: File not
+        // found!" when its file has not been rotated into place yet — the same case the import
+        // guards (#173) — which failed the bin and drew it as a gap rather than real traffic.
+        $present = array_values(array_intersect($group, array_unique(array_column($files, 'source'))));
+        $sources = $present === [] ? $group : $present;
+
+        if (\count($sources) !== \count($group)) {
+            Debug::getInstance()->log(
+                'Filtered bin over ' . implode(',', $sources) . ' only — no capture (yet) for '
+                . implode(',', array_diff($group, $sources)),
+                LOG_DEBUG,
+            );
+        }
+
+        $relPaths = array_column(
+            array_filter($files, static fn (array $f): bool => \in_array($f['source'], $sources, true)),
+            'relPath'
+        );
         sort($relPaths);
         $first = $relPaths[0];
         $last = $relPaths[\count($relPaths) - 1];
@@ -280,7 +299,7 @@ final class FilteredSeries {
         // build does not starve the UI or an agent for minutes.
         $nfdump->setQueryHandle($handle);
         $nfdump->setProfile($profile);
-        $nfdump->setOption('-M', implode(':', $group));
+        $nfdump->setOption('-M', implode(':', $sources));
 
         // -r for one file, -R only for a real range. nfdump reads a single-path -R as a
         // *prefix* ("read all files beginning with file"), which happens to select exactly
@@ -319,7 +338,6 @@ final class FilteredSeries {
      */
     private static function sumProtocol(array $rows, string $protocol, string $unit): float {
         $sum = 0.0;
-        $matchedAny = false;
 
         foreach ($rows as $row) {
             // All four keys, exactly as Import::writePortData() checks them. nfdump
@@ -334,19 +352,19 @@ final class FilteredSeries {
                 continue; // header echoed into the body
             }
 
-            $isKnown = \in_array($rowProto, ['tcp', 'udp', 'icmp'], true);
-            $matches = ($protocol === 'other') ? !$isKnown : $rowProto === $protocol;
-            if (!$matches) {
+            // The same bucketing the import writes, so the two graph modes agree: ICMPv6 is
+            // icmp in both, and everything nfdump names beyond tcp/udp/icmp is other.
+            if (Import::protocolBucket($rowProto) !== $protocol) {
                 continue;
             }
 
-            $matchedAny = true;
             $sum += self::counter($row, $unit);
         }
 
-        // Distinguish "nfdump reported 0 for this protocol" from "nfdump reported nothing":
-        // both are 0 here, and 0 is the honest answer for a bin nfdump did read.
-        return $matchedAny ? $sum : 0.0;
+        // No rows for this protocol is 0, the same as rows that summed to 0: nfdump read the
+        // bin either way, so the traffic really was zero. A gap means nfdump could not read
+        // the bin at all, which runBin() reports as null before this is ever called.
+        return $sum;
     }
 
     /**

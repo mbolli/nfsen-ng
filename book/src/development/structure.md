@@ -3,11 +3,19 @@
 ```
 backend/
   app.php                  entry point — every signal, action, and view is defined here
+  mcp.php                  MCP server over stdio, run as its own process (see features/mcp.md)
   common/                  Config, Settings, HealthChecker, AlertManager, ImportDaemon, Misc, ...
-  actions/                 one file per feature area: GraphActions, FlowActions, StatsActions,
-                            SankeyActions, AlertActions, SettingsActions, ImportActions, UtilityActions
+  actions/                 one file per feature area: GraphActions, FlowActions, FlowGraphActions,
+                            StatsActions, SankeyActions, AlertActions, SettingsActions,
+                            ImportActions, UtilityActions, plus QueryRunner (progress + cancel)
+  query/                   transport-agnostic queries: TimeWindow, StatsQuery, FlowsQuery,
+                            MatrixQuery, TimelineQuery, LoadQuery, CoverageQuery, CostEstimate.
+                            Actions and the MCP tools both call these; neither calls the other
+  mcp/                     optional read-only MCP server: ToolRegistry, Guard, HttpEndpoint,
+                            Tool/ (one class per tool). Entry point: backend/mcp.php (stdio)
   datasources/             Datasource interface + Rrd, VictoriaMetrics implementations
-  processor/               Nfdump — the nfdump subprocess wrapper
+  processor/               Nfdump — the nfdump subprocess wrapper — plus NfdumpSlots (how many
+                            run at once, and which query owns each) and FilteredSeries
   templates/               Twig: layout.html.twig (shell) + partials/ (one per tab/section)
   settings/                env vars = deployment config; settings.php(.dist) = deprecated file overlay; preferences.json = user-saved overrides (win on overlap)
 frontend/
@@ -17,6 +25,8 @@ frontend/
 tests/
   Unit/                    Pest unit tests — one file per class, roughly
   Feature/                 tests that exercise real I/O (RRD file creation, etc.)
+  e2e/                     browser tests driving a real headless Chrome over CDP; run.mjs runs
+                            them all against a live instance (BASE=, CHROME=)
 deploy/
   Dockerfile, Dockerfile.dev, docker-compose*.yml, Caddyfile*
 .github/workflows/

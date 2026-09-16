@@ -6,6 +6,9 @@ composer test-coverage     # with coverage
 docker compose exec nfsen vendor/bin/pest   # from inside the dev container
 ```
 
+Run them in the app image, not on a host PHP without the `rrd` extension: those tests skip
+silently there, and whole files return early, so a green run can mean "nothing ran".
+
 Tests are [Pest](https://pestphp.com/) PHP, split into `tests/Unit/` (pure
 logic, one file roughly per class) and `tests/Feature/` (real I/O — actual
 RRD file creation, for example).

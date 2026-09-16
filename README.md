@@ -48,6 +48,21 @@ docker compose -f deploy/docker-compose.dev.yml up -d
 
 Set `NFSEN_SOURCES`, `NFSEN_NFDUMP_PROFILES`, and other options as environment variables in your compose file. See [Installation](https://mbolli.github.io/nfsen-ng/deployment/installation.html) and [Configuration](https://mbolli.github.io/nfsen-ng/deployment/configuration.html) in the book for the full guide.
 
+## MCP server (AI agent access, optional)
+
+nfsen-ng ships an optional, **off by default**, read-only [MCP](https://modelcontextprotocol.io) server, so an AI agent can investigate traffic through the same data the UI shows without anyone writing nfdump filter expressions by hand.
+
+Ten tools in two tiers, and every description says which: the cheap ones answer from the stored five-minute aggregates immediately, while the rest read capture files with nfdump and cost time proportional to the window. `estimate_cost` prices a window before you commit to it.
+
+```bash
+# stdio: a client launches it as a subprocess, no socket, no credentials
+docker exec -i nfsen-ng php /var/www/html/nfsen-ng/backend/mcp.php
+```
+
+Set `NFSEN_MCP_HTTP=true` to serve the same tools at `/_mcp` on nfsen-ng's own port instead, for an agent that does not live on this host.
+
+Nothing in it writes: no rule creation, no import triggering, no settings changes, so the worst case is disclosure of flow data rather than control of the box. Access to it is equivalent to access to the dashboard. See the [MCP chapter](https://mbolli.github.io/nfsen-ng/features/mcp.html).
+
 ## Documentation
 
 The full user guide and developer reference now live in the **[nfsen-ng book](https://mbolli.github.io/nfsen-ng/)** — installation, configuration, every tab's feature docs, and the architecture/signals/SSE internals for contributors.

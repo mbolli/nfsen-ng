@@ -15,7 +15,7 @@
             <nfsen-tooltip data-ignore-morph text="Maximum number of flow records to display (-c option)." placement="top"></nfsen-tooltip>
         </p>
         {% set _flowLimit = flows_limit.int() %}
-        <select class="form-control form-select" {{ bind(flows_limit) }}>
+        <select  {{ bind(flows_limit) }}>
             {% for n in [20, 50, 100, 500, 1000, 10000] %}
             <option value="{{ n }}"{{ _flowLimit == n ? ' selected' : '' }}>{{ n }}</option>
             {% endfor %}
@@ -28,7 +28,7 @@
         <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
         </p>
-        <select {{ bind(graph_sources) }} multiple class="form-control form-select">
+        <select {{ bind(graph_sources) }} multiple >
             <option value="any">Any</option>
             {% for source in sources %}
             <option value="{{ source }}" selected>{{ source }}</option>
@@ -42,7 +42,7 @@
         <p class="filter-label">NFDUMP filter
             <nfsen-tooltip data-ignore-morph text="Filter syntax similar to tcpdump/pcap. Example: dst port 80" placement="right"></nfsen-tooltip>
         </p>
-        <textarea class="form-control" id="filterNfdumpTextarea"
+        <textarea  id="filterNfdumpTextarea"
                   {{ bind(flows_filter) }} rows="3" autocomplete="on"></textarea>
         <nfsen-filter-manager
             data-ignore-morph
@@ -63,12 +63,12 @@
         <div class="filter-subgrid filter-subgrid--tight">
             <div>
                 <label class="filter-sublabel" for="flows_lower_limitInput">Min</label>
-                <input type="text" id="flows_lower_limitInput" {{ bind(flows_lower_limit) }} class="form-control" placeholder="e.g. 1M"
+                <input type="text" id="flows_lower_limitInput" {{ bind(flows_lower_limit) }}  placeholder="e.g. 1M"
                        title="Only show flows with at least this many bytes. Prepended as 'bytes &gt; value'. Accepts SI suffixes: k, M, G.">
             </div>
             <div>
                 <label class="filter-sublabel" for="flows_upper_limitInput">Max</label>
-                <input type="text" id="flows_upper_limitInput" {{ bind(flows_upper_limit) }} class="form-control" placeholder="e.g. 100M"
+                <input type="text" id="flows_upper_limitInput" {{ bind(flows_upper_limit) }}  placeholder="e.g. 100M"
                        title="Only show flows with at most this many bytes. Prepended as 'bytes &lt; value'. Accepts SI suffixes: k, M, G.">
             </div>
         </div>
@@ -78,7 +78,7 @@
     {# Aggregation & output #}
     <div id="filterFlowAggregation" class="filter-cell filter-cell--wide">
         <div class="filter-group">
-        <p class="filter-label mb-2">Aggregation &amp; Output
+        <p class="filter-label">Aggregation &amp; Output
             <nfsen-tooltip data-ignore-morph text="Aggregate flows: Bi-directional (-b), Protocol, Port, IP/prefix, or sort by tstart." placement="top"></nfsen-tooltip>
         </p>
         <div class="filter-subgrid">
@@ -96,12 +96,12 @@
             } only %}
 
             {# Output options #}
-            <div class="col" id="filterOutput">
+            <div  id="filterOutput">
                 <label class="filter-sublabel">Options</label>
-                <div id="flowsFilterOther">
-                    <input type="checkbox" class="btn-check" name="ordertstart"
+                <div class="segmented" id="flowsFilterOther">
+                    <input type="checkbox"  name="ordertstart"
                            id="flowsFilterOrderTstart" {{ bind(flows_orderByTstart) }}>
-                    <label class="btn btn-outline-primary btn-sm" for="flowsFilterOrderTstart">Order by tstart</label>
+                    <label data-size="sm" for="flowsFilterOrderTstart">Order by tstart</label>
                 </div>
             </div>
 
@@ -111,7 +111,7 @@
 
     {# Submit. Flex, because the progress button's own root is a block-level flex container:
        left to itself it drops below any sibling control on this row. #}
-    <div class="filter-submit border-top mt-2 pt-3 d-flex align-items-center gap-2 flex-wrap">
+    <div class="cluster filter-submit">
         {#
             The query runs in a coroutine now, so query_running (server-owned) is what says
             whether it is still going — not Datastar's request indicator, which clears the

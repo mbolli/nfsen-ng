@@ -85,16 +85,16 @@ class NfsenFilterManager extends HTMLElement {
     render() {
         this.innerHTML = `
             <label for="${this.instanceId}">Filters</label>
-            <div class="btn-group mt-1 mb-2" role="group" aria-label="Filter Manager">
-                <select id="${this.instanceId}" class="form-control form-select" title="Filters">
+            <div class="filter-manager" role="group" aria-label="Filter Manager">
+                <select id="${this.instanceId}" title="Filters">
                     <option value="" disabled selected>Select your filter</option>
                 </select>
 
-                <button type="button" class="btn btn-outline-primary filter-delete-btn" disabled>
-                    Delete filter <span class="small">(local)</span>
+                <button type="button" class="filter-delete-btn" disabled>
+                    Delete filter <span class="muted">(local)</span>
                 </button>
-                <button type="button" class="btn btn-outline-primary filter-save-btn">
-                    Save filter <span class="small">(local)</span>
+                <button type="button" class="filter-save-btn">
+                    Save filter <span class="muted">(local)</span>
                 </button>
             </div>
         `;

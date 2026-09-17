@@ -13,7 +13,7 @@ export default async function smokeTest() {
         const title = await page.evaluate('document.title');
         assert.match(title, /nfsen-ng/, `expected page title to mention nfsen-ng, got: ${title}`);
 
-        const defaultView = await page.evaluate(`document.querySelector('a.nav-link.active')?.textContent.trim()`);
+        const defaultView = await page.evaluate(`document.querySelector('.tabs a.active')?.textContent.trim()`);
         assert.match(defaultView, /Graphs/, `expected Graphs to be the default active tab, got: ${defaultView}`);
 
         // Click through every data tab + Settings and back to Graphs, confirming

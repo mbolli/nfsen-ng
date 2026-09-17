@@ -182,7 +182,7 @@ class Page {
      * data-on:click element) has to wait for this first.
      */
     async waitForBoot(opts = {}) {
-        await this.waitFor(`!!document.querySelector('a.nav-link.active')`, { label: 'Datastar to boot', ...opts });
+        await this.waitFor(`!!document.querySelector('.tabs a.active')`, { label: 'Datastar to boot', ...opts });
     }
 
     /**

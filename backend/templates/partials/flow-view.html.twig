@@ -23,9 +23,9 @@
     The 'any' sentinel is resolved to the configured sources the way the server's
     resolveSources() does, or the title would describe a different breakdown than the series.
 #}
-<div class="row mb-3"
+<div 
      data-computed:flows._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ['any'], ports: [], display: ((${{ graph_sources.id() }}.includes('any') || ${{ graph_sources.id() }}.length === 0 ? {{ sources|length }} : ${{ graph_sources.id() }}.length) > 1 ? 'sources' : 'protocols'), type: (${{ flows_graph_unit.id() }} === 'bytes' ? 'traffic' : ${{ flows_graph_unit.id() }}), trafficUnit: 'bytes', logscale: false, stacked: false, stepplot: true, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}">
-    <div class="col-12">
+    <div>
         <div class="card">
             <div class="card-body">
                 {#
@@ -33,34 +33,34 @@
                     read as an alternative way to run the query, when it only opens a section
                     that has its own button. Collapsed, it states what it is and what it costs.
                 #}
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <button type="button" class="btn btn-link p-0 text-decoration-none text-body fw-semibold"
+                <div class="cluster cluster-between">
+                    <button type="button" class="strong" data-variant="link"
                             data-on:click="${{ flows_graph_shown.id() }} = !${{ flows_graph_shown.id() }}"
                             data-attr:aria-expanded="${{ flows_graph_shown.id() }} ? 'true' : 'false'">
-                        {# Bootstrap icons, not a unicode arrow: ▸/▾ render as tofu in the
+                        {# Inline SVG, not a unicode arrow: ▸/▾ render as tofu in the
                            stack's default font on Linux. #}
-                        <svg data-show="!${{ flows_graph_shown.id() }}" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-caret-right-fill me-1" viewBox="0 0 16 16">
+                        <svg data-show="!${{ flows_graph_shown.id() }}" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor"  viewBox="0 0 16 16">
                             <path d="m12.14 8.753-5.482 4.796c-.646.566-1.658.106-1.658-.753V3.204a1 1 0 0 1 1.659-.753l5.48 4.796a1 1 0 0 1 0 1.506z"/>
                         </svg>
-                        <svg data-show="${{ flows_graph_shown.id() }}" style="display:none" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-caret-down-fill me-1" viewBox="0 0 16 16">
+                        <svg data-show="${{ flows_graph_shown.id() }}" style="display:none" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor"  viewBox="0 0 16 16">
                             <path d="M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z"/>
                         </svg>
                         Traffic over time
                     </button>
-                    {# The visibility wrapper carries no d-flex: Bootstrap's display utilities are
+                    {# The visibility wrapper carries no layout class of its own: a display rule there
                        !important, so they beat the inline display:none that data-show sets and the
                        element could never hide. Layout goes on the inner element instead. #}
                     <div data-show="${{ flows_graph_shown.id() }}" style="display:none">
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="btn-group btn-group-sm" role="group" aria-label="Unit">
+                    <div class="cluster">
+                        <div class="segmented"  role="group" aria-label="Unit">
                             {% for u in ['bytes', 'packets', 'flows'] %}
                                 {# el.checked, not data-attr:checked: the attribute only seeds
-                                   defaultChecked, and Bootstrap lights the label off the property. #}
-                                <input type="radio" class="btn-check" name="flowsGraphUnit" id="flowsGraphUnit_{{ u }}"
+                                   defaultChecked, and the segmented control lights the label off :checked. #}
+                                <input type="radio"  name="flowsGraphUnit" id="flowsGraphUnit_{{ u }}"
                                        value="{{ u }}" {{ bind(flows_graph_unit) }}
                                        data-effect="el.checked = ${{ flows_graph_unit.id() }} === '{{ u }}'"
                                        data-on:change="@post('{{ touchFlowsGraph.url() }}')">
-                                <label class="btn btn-outline-secondary" for="flowsGraphUnit_{{ u }}">{{ u|capitalize }}</label>
+                                <label  for="flowsGraphUnit_{{ u }}">{{ u|capitalize }}</label>
                             {% endfor %}
                         </div>
                         {# The label is static: this tooltip is data-ignore-morph, so a label
@@ -85,7 +85,7 @@
                     </div>
                 </div>
 
-                <p class="small text-muted mb-0 mt-1" data-show="!${{ flows_graph_shown.id() }}">
+                <p class="muted" data-show="!${{ flows_graph_shown.id() }}">
                     Plot this filter over time. Reads capture files, so it builds only when you ask.
                 </p>
 
@@ -96,7 +96,7 @@
                     range a clamped build reads, so they are dropped rather than overstated when
                     the window is shortened. The run count is always for the window actually read.
                 #}
-                <p class="small text-muted mb-2 mt-2">
+                <p class="muted">
                     {% if flowsGraphCost.clamped %}
                         <span class="text-warning">Window shortened to the {{ flowsGraphCost.window }} allowed by NFSEN_MAX_STATS_WINDOW.</span>
                         Will read that range in {{ flowsGraphCost.intervals }} nfdump run{{ flowsGraphCost.intervals == 1 ? '' : 's' }}.
@@ -109,7 +109,7 @@
                 {% endif %}
 
                 {% if flowsGraphBuilt and flowsGraphStale %}
-                <p class="small text-warning mb-2">
+                <p class="muted text-warning">
                     The query or window has changed since this graph was built. Rebuild to match the table.
                 </p>
                 {% endif %}
@@ -122,9 +122,9 @@
                         <div class="chart-canvas" style="width: 100%; height: 260px;"></div>
                     </div>
                 </nfsen-chart>
-                <div id="flowsGraph-legend" class="small text-muted mt-1"></div>
+                <div id="flowsGraph-legend" class="muted"></div>
                 {% else %}
-                <p class="text-muted small mb-0">
+                <p class="muted">
                     Not built yet. The graph plots the filter above, so it reads capture files rather than
                     stored averages.
                 </p>
@@ -135,32 +135,32 @@
     </div>
 </div>
 
-<div class="row" data-signals__ifmissing='{"_flows_queried": false}'>
-    <div class="col-12">
+<div  data-signals__ifmissing='{"_flows_queried": false}'>
+    <div>
         {# Empty state — shown until the user submits the first query #}
-        <div data-show="!$_flows_queried" class="text-center py-5 text-muted">
-            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-funnel mb-3 opacity-25" viewBox="0 0 16 16">
+        <div data-show="!$_flows_queried" class="center muted">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor"  viewBox="0 0 16 16">
                 <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2z"/>
             </svg>
-            <p class="mb-1 fw-semibold">No results yet</p>
-            <p class="small">Configure filters above and click <strong>Process data</strong> to query flows.</p>
+            <p class="strong">No results yet</p>
+            <p class="muted">Configure filters above and click <strong>Process data</strong> to query flows.</p>
         </div>
         {# Results card — shown after the first query #}
         <div data-show="$_flows_queried">
         <div class="card" data-class:loading="${{ query_running.id() }}">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="card-title mb-0">Network Flows</h5>
-                    <div class="d-flex align-items-center gap-2">
-                        <span class="badge bg-info" data-text="${{ flows_count.id() }}"></span>
-                        <span class="text-muted small">flows</span>
+                <div class="cluster cluster-between">
+                    <h5 class="strong">Network Flows</h5>
+                    <div class="cluster">
+                        <span class="badge" data-level="info" data-text="${{ flows_count.id() }}"></span>
+                        <span class="muted">flows</span>
                     </div>
                 </div>
                 <div id="flowMessage">
                     {% for n in flowNotifications %}
-                    <div class="alert alert-{{ n.type == 'error' ? 'danger' : n.type }} alert-dismissible fade show" role="alert">
+                    <div class="notice dismissible" data-level="{{ n.type }}" role="alert">
                         {{ n.message|raw }}
-                        <button type="button" class="btn-close" data-on:click="@post('{{ dismissNotification.url() }}?id={{ n.id }}')" aria-label="Close"></button>
+                        <button type="button" data-variant="close" data-on:click="@post('{{ dismissNotification.url() }}?id={{ n.id }}')" aria-label="Close"></button>
                     </div>
                     {% endfor %}
                 </div>

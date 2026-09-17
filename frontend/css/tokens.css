@@ -1,0 +1,138 @@
+/*
+ * Design tokens.
+ *
+ * Two layers, the split Open Props uses: primitives that never mention the app (a size
+ * scale, a radius scale, one hue per status), and semantic names that everything else
+ * refers to (--surface-2, --text-2, --border). Only the semantic layer changes between
+ * themes, so a component never has to know which theme is on.
+ *
+ * Colours are oklch() so a "subtle" or "emphasis" variant can be mixed from the same hue
+ * instead of being a second hand-picked hex, and light-dark() pairs the two themes in one
+ * declaration. That works because the theme is also a real color-scheme below, which gets
+ * native form controls, scrollbars and the canvas colour for free.
+ */
+
+:root {
+    /* ── Primitives ─────────────────────────────────────────────────────── */
+
+    /* Spacing, a rough 1.5x scale. --size-2 (0.5rem) is the default gap. */
+    --size-1: 0.25rem;
+    --size-2: 0.5rem;
+    --size-3: 0.75rem;
+    --size-4: 1rem;
+    --size-5: 1.5rem;
+    --size-6: 2rem;
+    --size-7: 3rem;
+    --size-8: 4rem;
+
+    --radius-1: 0.25rem;
+    --radius-2: 0.375rem;
+    --radius-3: 0.5rem;
+    --radius-round: 100vmax;
+
+    --font-sans:
+        system-ui, -apple-system, 'Segoe UI', roboto, 'Helvetica Neue', arial, sans-serif;
+    --font-mono: ui-monospace, sfmono-regular, 'SF Mono', menlo, consolas, monospace;
+
+    /* A small type scale: 12, 14, 16, 18, 22, 28px at a 16px root. */
+    --font-size-00: 0.75rem;
+    --font-size-0: 0.875rem;
+    --font-size-1: 1rem;
+    --font-size-2: 1.125rem;
+    --font-size-3: 1.375rem;
+    --font-size-4: 1.75rem;
+
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+
+    --line-height-tight: 1.25;
+    --line-height-normal: 1.5;
+
+    --shadow-1: 0 1px 2px light-dark(rgb(0 0 0 / 8%), rgb(0 0 0 / 40%));
+    --shadow-2:
+        0 4px 12px light-dark(rgb(0 0 0 / 10%), rgb(0 0 0 / 50%)),
+        0 1px 3px light-dark(rgb(0 0 0 / 6%), rgb(0 0 0 / 35%));
+
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --duration-fast: 120ms;
+    --duration-normal: 220ms;
+
+    /* One hue per meaning, so every tint of it can be mixed rather than picked. */
+    --hue-brand: 255;
+    --hue-danger: 27;
+    --hue-warning: 75;
+    --hue-success: 150;
+    --hue-info: 230;
+
+    /* ── Semantic ───────────────────────────────────────────────────────── */
+
+    /* Default: follow the operating system. [data-theme] pins it below. */
+    color-scheme: light dark;
+
+    --surface-1: light-dark(oklch(98.5% 0.002 var(--hue-brand)), oklch(19% 0.012 var(--hue-brand)));
+    --surface-2: light-dark(oklch(100% 0 0), oklch(23% 0.014 var(--hue-brand)));
+    --surface-3: light-dark(oklch(96.5% 0.004 var(--hue-brand)), oklch(27% 0.016 var(--hue-brand)));
+    --surface-4: light-dark(oklch(93% 0.006 var(--hue-brand)), oklch(32% 0.018 var(--hue-brand)));
+
+    --text-1: light-dark(oklch(25% 0.02 var(--hue-brand)), oklch(95% 0.008 var(--hue-brand)));
+    --text-2: light-dark(oklch(50% 0.02 var(--hue-brand)), oklch(75% 0.015 var(--hue-brand)));
+    --text-on-accent: oklch(99% 0 0);
+
+    --border: light-dark(oklch(88% 0.008 var(--hue-brand)), oklch(36% 0.016 var(--hue-brand)));
+    --border-strong: light-dark(oklch(76% 0.012 var(--hue-brand)), oklch(48% 0.02 var(--hue-brand)));
+
+    --brand: light-dark(oklch(53% 0.19 var(--hue-brand)), oklch(68% 0.16 var(--hue-brand)));
+    --danger: light-dark(oklch(54% 0.2 var(--hue-danger)), oklch(68% 0.17 var(--hue-danger)));
+    --warning: light-dark(oklch(68% 0.16 var(--hue-warning)), oklch(80% 0.15 var(--hue-warning)));
+    --success: light-dark(oklch(52% 0.15 var(--hue-success)), oklch(72% 0.14 var(--hue-success)));
+    --info: light-dark(oklch(55% 0.13 var(--hue-info)), oklch(72% 0.12 var(--hue-info)));
+
+    /* Tints of the same hue: a filled badge background, and text that stays legible on it. */
+    --danger-subtle: color-mix(in oklab, var(--danger) 16%, var(--surface-2));
+    --warning-subtle: color-mix(in oklab, var(--warning) 22%, var(--surface-2));
+    --success-subtle: color-mix(in oklab, var(--success) 16%, var(--surface-2));
+    --info-subtle: color-mix(in oklab, var(--info) 16%, var(--surface-2));
+    --brand-subtle: color-mix(in oklab, var(--brand) 14%, var(--surface-2));
+
+    --danger-emphasis: light-dark(
+        color-mix(in oklab, var(--danger) 80%, black),
+        color-mix(in oklab, var(--danger) 75%, white)
+    );
+    --warning-emphasis: light-dark(
+        color-mix(in oklab, var(--warning) 70%, black),
+        color-mix(in oklab, var(--warning) 80%, white)
+    );
+    --success-emphasis: light-dark(
+        color-mix(in oklab, var(--success) 80%, black),
+        color-mix(in oklab, var(--success) 75%, white)
+    );
+    --info-emphasis: light-dark(
+        color-mix(in oklab, var(--info) 80%, black),
+        color-mix(in oklab, var(--info) 75%, white)
+    );
+
+    /* Focus ring, one definition for every control. */
+    --focus-ring: 0 0 0 3px color-mix(in oklab, var(--brand) 35%, transparent);
+}
+
+/*
+ * An explicit choice pins color-scheme, which is what makes light-dark() resolve and what
+ * tells the browser to render native widgets to match. The attribute is set by a blocking
+ * script in <head> before first paint (#167).
+ */
+:root[data-theme='light'] {
+    color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+    color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --duration-fast: 0ms;
+        --duration-normal: 0ms;
+    }
+}

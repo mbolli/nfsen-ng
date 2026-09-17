@@ -99,7 +99,7 @@ export class NfsenChart extends HTMLElement {
         this._themeObserver = new MutationObserver(() => {
             if (this.chart) this.applyTheme();
         });
-        this._themeObserver.observe(document.documentElement, { attributeFilter: ['data-bs-theme'] });
+        this._themeObserver.observe(document.documentElement, { attributeFilter: ['data-theme'] });
     }
 
     disconnectedCallback() {
@@ -125,8 +125,8 @@ export class NfsenChart extends HTMLElement {
         const typeClasses = {
             error: 'alert alert-danger',
             warning: 'alert alert-warning',
-            info: 'text-center py-5 text-muted',
-            loading: 'text-center py-5 text-muted',
+            info: 'chart-placeholder',
+            loading: 'chart-placeholder',
         };
 
         const cssClass = typeClasses[type] || typeClasses.info;
@@ -158,7 +158,7 @@ export class NfsenChart extends HTMLElement {
     }
 
     getThemeColors() {
-        const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         return {
             backgroundColor: isDark ? '#212529' : '#ffffff',
             textColor: isDark ? '#dee2e6' : '#212529',
@@ -610,8 +610,8 @@ export class NfsenChart extends HTMLElement {
         const hidden = ranked.length - shown.length;
 
         const rows = shown.map((row) => `<div>${escapeHtml(row.name)}: <b>${formatY(row.value)}</b></div>`).join('');
-        const more = hidden > 0 ? `<div class="text-muted">+${hidden} more</div>` : '';
-        legendEl.innerHTML = `<div class="fw-semibold">${escapeHtml(this.dateFmt(tsMs))}</div>${rows}${more}`;
+        const more = hidden > 0 ? `<div class="muted">+${hidden} more</div>` : '';
+        legendEl.innerHTML = `<div class="strong">${escapeHtml(this.dateFmt(tsMs))}</div>${rows}${more}`;
     }
 
     // Method to update chart data (can be called from Datastar)

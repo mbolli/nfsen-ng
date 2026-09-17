@@ -378,7 +378,7 @@ class TableFormatter {
         }
 
         if ($value === '........') {
-            return '<span class="text-muted small">-</span>';
+            return '<span class="muted">-</span>';
         }
 
         // Handle string format like "......S." (from nfdump)
@@ -406,7 +406,7 @@ class TableFormatter {
             }
 
             return implode(', ', $flagNames)
-                   . \sprintf(' <span class="text-muted small">(%s)</span>', $value);
+                   . \sprintf(' <span class="muted">(%s)</span>', $value);
         }
 
         // Handle numeric format (hex or decimal)
@@ -445,7 +445,7 @@ class TableFormatter {
             }
 
             return implode(', ', $flagNames)
-                   . \sprintf(' <span class="text-muted small">(0x%02X)</span>', $flags);
+                   . \sprintf(' <span class="muted">(0x%02X)</span>', $flags);
         }
 
         return (string) $value;
@@ -500,7 +500,7 @@ class TableFormatter {
 
         if (isset($dscpNames[$dscp])) {
             return \sprintf(
-                '%s <span class="text-muted small">(ToS:%d/DSCP:%d)</span>',
+                '%s <span class="muted">(ToS:%d/DSCP:%d)</span>',
                 $dscpNames[$dscp],
                 $tos,
                 $dscp
@@ -509,7 +509,7 @@ class TableFormatter {
 
         // If not a common value, just show ToS and DSCP values
         if ($dscp > 0) {
-            return \sprintf('DSCP %d <span class="text-muted small">(ToS:%d)</span>', $dscp, $tos);
+            return \sprintf('DSCP %d <span class="muted">(ToS:%d)</span>', $dscp, $tos);
         }
 
         return (string) $value;
@@ -559,7 +559,7 @@ class TableFormatter {
 
         if (isset($icmpTypes[$typeNum])) {
             return \sprintf(
-                '%s <span class="text-muted small">(%d)</span>',
+                '%s <span class="muted">(%d)</span>',
                 $icmpTypes[$typeNum],
                 $typeNum
             );
@@ -617,7 +617,7 @@ class TableFormatter {
 
         if (isset($statusNames[$status])) {
             // Color-code based on status type
-            $class = 'text-muted';
+            $class = 'muted';
             if ($status >= 65 && $status < 128) {
                 $class = 'text-success'; // Forwarded = green
             } elseif ($status >= 128 && $status < 192) {
@@ -627,7 +627,7 @@ class TableFormatter {
             }
 
             return \sprintf(
-                '<span class="%s">%s</span> <span class="text-muted small">(%d)</span>',
+                '<span class="%s">%s</span> <span class="muted">(%d)</span>',
                 $class,
                 $statusNames[$status],
                 $status
@@ -652,7 +652,7 @@ class TableFormatter {
 
         if ($protoName !== false) {
             return \sprintf(
-                '%s <span class="text-muted small">(%d)</span>',
+                '%s <span class="muted">(%d)</span>',
                 strtoupper($protoName),
                 $protoNum
             );
@@ -676,7 +676,7 @@ class TableFormatter {
 
         if ($service !== false) {
             return \sprintf(
-                '%d <span class="text-muted small">(%s)</span>',
+                '%d <span class="muted">(%s)</span>',
                 $port,
                 htmlspecialchars($service, ENT_QUOTES | ENT_HTML5)
             );
@@ -730,7 +730,7 @@ class TableFormatter {
                 return \sprintf('<span class="badge bg-%s">%s</span>', $color, htmlspecialchars($label, ENT_QUOTES | ENT_HTML5));
             }
 
-            return \sprintf('<span class="badge bg-secondary">event %d</span>', $code);
+            return \sprintf('<span class="badge">event %d</span>', $code);
         }
 
         return htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5);

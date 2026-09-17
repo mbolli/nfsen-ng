@@ -114,7 +114,7 @@ export default async function graphsTest() {
 
         // Dark mode should re-theme without throwing.
         await page.clickByAttr(`_darkMode = !`);
-        await page.waitFor(`document.documentElement.getAttribute('data-bs-theme') === 'dark'`, { label: 'dark theme to apply' });
+        await page.waitFor(`document.documentElement.getAttribute('data-theme') === 'dark'`, { label: 'dark theme to apply' });
         await page.clickByAttr(`_darkMode = !`); // leave in light mode for whatever runs next
 
         const errors = page.realErrors();

@@ -11,15 +11,15 @@
     data-signals__ifmissing="{_darkMode: window.__nfsenTheme.dark, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences', _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _autoSyncGraph: false, _filtersOpen: false}"
     data-persist="{_currentView: $_currentView, _settingsSection: $_settingsSection, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _autoSyncGraph: $_autoSyncGraph}"
     {# Fallback for JS off entirely; the head script overrides it (#156, #167). #}
-    {% if defaults.theme|default('auto') == 'dark' %}data-bs-theme="dark"{% elseif defaults.theme|default('auto') == 'light' %}data-bs-theme="light"{% endif %}
-    data-attr:data-bs-theme="$_darkMode ? 'dark' : 'light'"
+    {% if defaults.theme|default('auto') == 'dark' %}data-theme="dark"{% elseif defaults.theme|default('auto') == 'light' %}data-theme="light"{% endif %}
+    data-attr:data-theme="$_darkMode ? 'dark' : 'light'"
     {# Dispatched by the head script's matchMedia listener. #}
     data-on:nfsen-colorscheme__window="$_darkMode = evt.detail.dark"
-    {# Keep the client's live theme across SSE morphs, which otherwise strip/overwrite data-bs-theme and let a chart re-render read the wrong theme (see #151). #}
-    data-preserve-attr="data-bs-theme">
+    {# Keep the client's live theme across SSE morphs, which otherwise strip/overwrite data-theme and let a chart re-render read the wrong theme (see #151). #}
+    data-preserve-attr="data-theme">
 <head>
     <meta charset="utf-8">
-    {# Blocking, and above the stylesheets: data-attr:data-bs-theme is applied by Datastar,
+    {# Blocking, and above the stylesheets: data-attr:data-theme is applied by Datastar,
        a module at the end of <body>, so the light frame had already painted (#167).
        Precedence: explicit toggle, else NFSEN_DEFAULT_THEME, else the OS. #}
     {#
@@ -58,7 +58,7 @@
             }
 
             function apply(dark) {
-                document.documentElement.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+                document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
             }
 
             window.__nfsenTheme = {
@@ -101,7 +101,8 @@
                              ((evt.detail.type.startsWith('datastar') && ($_disconnected = false)) ||
                              (['retrying', 'error', 'finished'].includes(evt.detail.type) && ($_disconnected = true)))">
     <meta data-init="window.addEventListener('beforeunload', () => { navigator.sendBeacon('{{ basePath }}_session/close', '{{ contextId }}'); });">
-    <link rel="stylesheet" type="text/css" href="{{ basePath }}css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="{{ basePath }}css/tokens.css?v={{ assetVersion }}">
+    <link rel="stylesheet" type="text/css" href="{{ basePath }}css/ui.css?v={{ assetVersion }}">
     <link rel="stylesheet" type="text/css" href="{{ basePath }}css/nouislider.min.css?v={{ assetVersion }}">
     <link rel="stylesheet" type="text/css" href="{{ basePath }}css/nfsen-ng.css?v={{ assetVersion }}">
 </head>
@@ -114,29 +115,27 @@
     SSE context's cleanup grace period expires while the tab is backgrounded)
     restores the tab the user was on instead of defaulting to Graphs.
 #}
-<body class="p-2">
+<body>
     {# ── Reconnect banner ─────────────────────────────────────────────────── #}
-    <div data-show="$_disconnected" style="display:none" class="alert alert-warning py-1 mb-1 text-center small">
+    <div data-show="$_disconnected" style="display:none" class="notice" data-level="warning" role="status">
         ⚠ Reconnecting to server…
     </div>
 
     {# ── Fatal config error ────────────────────────────────────────────────── #}
     {% if fatalError %}
-    <div class="alert alert-danger">
+    <div class="notice" data-level="error" role="alert">
         <strong>Fatal error:</strong> {{ fatalError }}
     </div>
     {% endif %}
 
-    <header class="d-flex align-items-center gap-2">
-        <a class="link-secondary flex-shrink-0" style="text-decoration: none;"
-           href="https://github.com/mbolli/nfsen-ng" target="_blank">
+    <header class="cluster">
+        <a class="brand" href="https://github.com/mbolli/nfsen-ng" target="_blank">
             nfsen-ng <span id="version">{{ version }}</span>
         </a>
         {# Profile selector — only shown when multiple profiles are detected #}
         {% set availableProfilesList = available_profiles.getValue() %}
         {% if availableProfilesList|length > 1 %}
-            <select class="form-select form-select-sm d-inline-block w-auto flex-shrink-0"
-                    {{ bind(selected_profile) }}
+            <select class="profile-select" {{ bind(selected_profile) }}
                     data-on:change="@post('{{ changeProfile.url() }}')">
                 {% set lastGroup = null %}
                 {% for p in availableProfilesList %}
@@ -164,43 +163,38 @@
     <div id="importStatusStrip"
          data-show="${{ import_running.id() }}"
          style="display:none; cursor:pointer;"
-         class="border-bottom mb-2"
+         class="import-strip"
          data-on:click="$_currentView = 'settings'; $_settingsSection = 'import'"
          title="Import in progress — click to view details">
-        <div class="progress rounded-0" style="height:4px;">
-            <div class="progress-bar progress-bar-striped progress-bar-animated"
-                 style="width: {{ importProgress }}%"></div>
-        </div>
-        <div class="d-flex justify-content-between align-items-center px-2 py-1">
-            <small class="text-muted">
+        <progress data-indeterminate max="100" value="{{ importProgress }}"></progress>
+        <div class="cluster cluster-between import-strip-line">
+            <small class="muted">
                 {{ importStatusText ?: 'Importing\u2026' }}
                 {% if importCurrentFile %}
-                    &bull; <code class="small">{{ importCurrentFile|split('/')|last }}</code>
+                    &bull; <code>{{ importCurrentFile|split('/')|last }}</code>
                 {% endif %}
             </small>
-            <small class="fw-semibold">
+            <small class="strong">
                 {{ importProgress }}%{% if importEta %} &bull; {{ importEta }}{% endif %}
             </small>
         </div>
     </div>
 
-    <main class="container-fluid tab-content">
+    <main class="tab-content">
 
         {# ── Server error signal (pushed by server, never sent back) ───────── #}
-        <div class="alert alert-danger"
+        <div class="notice" data-level="error"
              data-effect="el.style.display = (${{ _error.id() }} != null && ${{ _error.id() }} != '') ? 'block' : 'none'"
              role="alert"
              data-text="${{ _error.id() }}"
              style="display: none;"></div>
 
-        <div class="filter row align-items-start bg-body-tertiary border-bottom py-3 mb-3"
-             style="flex-direction: row"
+        <div class="filter-bar"
              data-show="$_currentView != 'settings'"
              data-indicator:nfcapd._counting
              data-on:change__window__throttle.1000ms="($_currentView === 'flows' || $_currentView === 'statistics' || $_currentView === 'sankey' || ($_currentView === 'graphs' && ${{ graph_mode.id() }} === 'filtered')) && evt.target.closest('nfsen-daterange') && @post('{{ countFiles.url() }}')">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-body">
+            <div class="card">
+                <div class="card-body stack">
 
                         {% include 'partials/date-range.html.twig' %}
 
@@ -210,70 +204,69 @@
                             submit row is deliberately left outside what collapses, so a
                             query can still be run without opening the filters first.
                         #}
-                        <button type="button" class="btn btn-sm btn-outline-secondary filter-toggle align-items-center gap-1 mb-3"
+                        <button type="button" class="filter-toggle" data-size="sm"
                                 data-on:click="$_filtersOpen = !$_filtersOpen"
                                 data-text="$_filtersOpen ? 'Hide filters' : 'Show filters'"></button>
 
                         {# View-specific filter panels — all rendered, visibility via data-show. #}
                         <div data-class:filter-collapsed="!$_filtersOpen">
                             <div>
-                                <div data-show="$_currentView == 'graphs'" class="col-12">
+                                <div data-show="$_currentView == 'graphs'">
                                     {% include 'partials/graph-filters.html.twig' %}
                                 </div>
-                                <div data-show="$_currentView == 'flows'" class="col-12" style="display: none;">
+                                <div data-show="$_currentView == 'flows'" style="display: none;">
                                     {% include 'partials/flow-filters.html.twig' %}
                                 </div>
                             </div>
-                            <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
+                            <div data-show="$_currentView == 'statistics'" style="display: none;">
                                 {% include 'partials/stats-filters.html.twig' %}
                             </div>
-                            <div data-show="$_currentView == 'sankey'" class="col-12" style="display: none;">
+                            <div data-show="$_currentView == 'sankey'" style="display: none;">
                                 {% include 'partials/sankey-filters.html.twig' %}
                             </div>
                         </div>
 
-                    </div>
                 </div>
             </div>
         </div>
 
         {# ── View panels ───────────────────────────────────────────────────── #}
-        <div data-show="$_currentView == 'graphs'" class="col-12">
+        <div data-show="$_currentView == 'graphs'">
             {% include 'partials/graph-view.html.twig' %}
         </div>
-        <div data-show="$_currentView == 'flows'" class="col-12" style="display: none;">
+        <div data-show="$_currentView == 'flows'" style="display: none;">
             {% include 'partials/flow-view.html.twig' %}
         </div>
-        <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
+        <div data-show="$_currentView == 'statistics'" style="display: none;">
             {% include 'partials/stats-view.html.twig' %}
         </div>
-        <div data-show="$_currentView == 'sankey'" class="col-12" style="display: none;">
+        <div data-show="$_currentView == 'sankey'" style="display: none;">
             {% include 'partials/sankey-view.html.twig' %}
         </div>
-        <div data-show="$_currentView == 'settings'" class="col-12" style="display: none;">
+        <div data-show="$_currentView == 'settings'" style="display: none;">
             {% include 'partials/settings.html.twig' %}
         </div>
 
     </main>
 
     {# ── Server stats footer ───────────────────────────────────────────────── #}
-    <footer class="mt-4 pt-2 border-top text-center text-muted small">
+    <footer class="center muted">
         {# Traffic light: capture health (nfcapd proxy) + import daemon #}
         <span title="{{ captureLabel }}" style="cursor:help">
             <span class="text-{{ captureStatus }}">&#9679;</span> nfcapd
         </span>
-        <span class="mx-1 text-muted opacity-50">|</span>
+        <span class="muted">|</span>
         <span title="{{ daemonLabel }}" style="cursor:help">
             <span class="text-{{ daemonStatus }}">&#9679;</span> daemon
         </span>
         &bull;
-        <span class="badge bg-primary">{{ connections }} connection{{ connections != 1 ? 's' : '' }}</span>
+        <span class="badge" data-level="brand">{{ connections }} connection{{ connections != 1 ? 's' : '' }}</span>
         &bull;
-        <a href="https://github.com/mbolli/nfsen-ng" target="_blank" rel="noopener" class="text-muted">nfsen-ng {{ version }}</a>
+        <a href="https://github.com/mbolli/nfsen-ng" target="_blank" rel="noopener" class="muted">nfsen-ng {{ version }}</a>
         &bull;
-        <a href="https://github.com/mbolli/nfsen-ng/releases" target="_blank" rel="noopener" class="text-muted">Changelog</a>
+        <a href="https://github.com/mbolli/nfsen-ng/releases" target="_blank" rel="noopener" class="muted">Changelog</a>
         &bull;
-        <a href="https://github.com/mbolli/nfsen-ng/issues" target="_blank" rel="noopener" class="text-muted">Issues</a>
+        <a href="https://github.com/mbolli/nfsen-ng/issues" target="_blank" rel="noopener" class="muted">Issues</a>
     </footer>
 
     {# ── JS ────────────────────────────────────────────────────────────────── #}

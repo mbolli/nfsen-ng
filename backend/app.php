@@ -79,7 +79,7 @@ $viaConfig = (new ViaConfig())
         // any change to those files changes the URL, not just the file contents. The
         // vendored third-party libs below are NOT versioned in the template, so they
         // stay on a shorter, revalidated cache instead.
-        $unversioned = ['bootstrap.min.css', 'nouislider.min.js', 'echarts.min.js'];
+        $unversioned = ['nouislider.min.js', 'echarts.min.js'];
         if (in_array(basename($filePath), $unversioned, true)) {
             return 'public, max-age=604800, must-revalidate';
         }

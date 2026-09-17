@@ -33,7 +33,7 @@ export class NfsenSankey extends HTMLElement {
         this._themeObserver = new MutationObserver(() => {
             if (this.chart && this.lastPayload) this.renderChart(this.lastPayload);
         });
-        this._themeObserver.observe(document.documentElement, { attributeFilter: ['data-bs-theme'] });
+        this._themeObserver.observe(document.documentElement, { attributeFilter: ['data-theme'] });
     }
 
     disconnectedCallback() {
@@ -54,8 +54,8 @@ export class NfsenSankey extends HTMLElement {
         const typeClasses = {
             error: 'alert alert-danger',
             warning: 'alert alert-warning',
-            info: 'text-center py-5 text-muted',
-            loading: 'text-center py-5 text-muted',
+            info: 'chart-placeholder',
+            loading: 'chart-placeholder',
         };
 
         if (this.chart) {
@@ -128,7 +128,7 @@ export class NfsenSankey extends HTMLElement {
     }
 
     getThemeColors() {
-        const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         return {
             textColor: isDark ? '#dee2e6' : '#212529',
             lineColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)',

@@ -8,22 +8,22 @@
 #}
 <div>
     <label class="filter-sublabel">Global</label>
-    <div class="btn-group btn-group-sm d-flex mb-2" id="{{ idPrefix }}AggregationGlobal">
-        <input type="checkbox" class="btn-check" name="bidirectional"
+    <div class="segmented" data-stretch id="{{ idPrefix }}AggregationGlobal">
+        <input type="checkbox" name="bidirectional"
                id="{{ idPrefix }}AggBi" {{ bind(aggBidirectional) }}>
-        <label class="btn btn-outline-primary" for="{{ idPrefix }}AggBi">Bi-directional</label>
-        <input type="checkbox" class="btn-check" name="proto"
+        <label for="{{ idPrefix }}AggBi">Bi-directional</label>
+        <input type="checkbox" name="proto"
                id="{{ idPrefix }}AggProto" {{ bind(aggProto) }}>
-        <label class="btn btn-outline-primary" for="{{ idPrefix }}AggProto">Protocol</label>
+        <label for="{{ idPrefix }}AggProto">Protocol</label>
     </div>
     <label class="filter-sublabel">Port</label>
-    <div class="btn-group btn-group-sm d-flex" id="{{ idPrefix }}AggregationPort">
-        <input type="checkbox" class="btn-check" name="srcport"
+    <div class="segmented" data-stretch id="{{ idPrefix }}AggregationPort">
+        <input type="checkbox" name="srcport"
                id="{{ idPrefix }}AggPortSrc" {{ bind(aggSrcPort) }}>
-        <label class="btn btn-outline-primary" for="{{ idPrefix }}AggPortSrc">Source</label>
-        <input type="checkbox" class="btn-check" name="dstport"
+        <label for="{{ idPrefix }}AggPortSrc">Source</label>
+        <input type="checkbox" name="dstport"
                id="{{ idPrefix }}AggPortDst" {{ bind(aggDstPort) }}>
-        <label class="btn btn-outline-primary" for="{{ idPrefix }}AggPortDst">Destination</label>
+        <label for="{{ idPrefix }}AggPortDst">Destination</label>
     </div>
 </div>
 
@@ -32,8 +32,7 @@
     <div class="filter-subgrid filter-subgrid--tight">
         <div>
             <select data-attr:disabled="${{ aggBidirectional.id() }}"
-                    class="form-select form-select-sm"
-                    {{ bind(aggSrcIp) }}>
+                                        {{ bind(aggSrcIp) }}>
                 <option value="none">Src: None</option>
                 <option value="srcip">Src: IP</option>
                 <option value="srcip4">Src: IPv4 /</option>
@@ -41,13 +40,12 @@
             </select>
             <input data-attr:disabled="${{ aggSrcIp.id() }} == 'srcip' || ${{ aggSrcIp.id() }} == 'none'"
                    placeholder="24" type="text"
-                   class="form-control form-control-sm mt-1" style="width:3.5rem"
+                   class="prefix-input"
                    {{ bind(aggSrcIpPrefix) }}>
         </div>
         <div>
             <select data-attr:disabled="${{ aggBidirectional.id() }}"
-                    class="form-select form-select-sm"
-                    {{ bind(aggDstIp) }}>
+                                        {{ bind(aggDstIp) }}>
                 <option value="none">Dst: None</option>
                 <option value="dstip">Dst: IP</option>
                 <option value="dstip4">Dst: IPv4 /</option>
@@ -55,7 +53,7 @@
             </select>
             <input data-attr:disabled="${{ aggDstIp.id() }} == 'dstip' || ${{ aggDstIp.id() }} == 'none'"
                    placeholder="24" type="text"
-                   class="form-control form-control-sm mt-1" style="width:3.5rem"
+                   class="prefix-input"
                    {{ bind(aggDstIpPrefix) }}>
         </div>
     </div>

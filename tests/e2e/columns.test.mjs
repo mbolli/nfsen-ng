@@ -8,7 +8,7 @@ import { withPage, BASE } from './lib/cdp.mjs';
 
 const BTN = '#flowTable .column-selector button';
 const MENU = '#flowTable .column-selector-menu';
-const MENU_OPEN = `(function(){var m=document.querySelector('${MENU}');return !!m&&m.classList.contains('show')&&m.offsetParent!==null;})()`;
+const MENU_OPEN = `(function(){var m=document.querySelector('${MENU}');return !!m&&m.hasAttribute('data-open')&&m.offsetParent!==null;})()`;
 
 export default async function columnsTest() {
     await withPage(async (page) => {
@@ -87,7 +87,7 @@ export default async function columnsTest() {
         await page.waitFor(`!!document.querySelector('#statsTable .column-selector button')`, { label: 'stats column selector' });
         await page.evaluate(`document.querySelector('#statsTable .column-selector button').click()`);
         await page.waitFor(
-            `document.querySelector('#statsTable .column-selector-menu').classList.contains('show')`,
+            `document.querySelector('#statsTable .column-selector-menu').hasAttribute('data-open')`,
             { label: 'stats menu to open' }
         );
         assert.equal(await page.evaluate(MENU_OPEN), false, "the Statistics menu should not open the Flows table's menu");

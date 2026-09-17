@@ -1,0 +1,1095 @@
+/*
+ * The UI layer: a reset, then plain elements, then the handful of things this app actually
+ * has (a card, a segmented control, tabs, a menu, a notice).
+ *
+ * Written against elements and roles rather than utility classes, so the markup says what a
+ * thing is and this file says what that looks like. Where a class is unavoidable it names a
+ * component, never a declaration: .segmented, not .d-flex.
+ *
+ * Layout uses logical properties (inline/block) throughout, so a right-to-left locale would
+ * mirror without a second stylesheet.
+ */
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+* {
+    margin: 0;
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+    tab-size: 4;
+}
+
+body {
+    min-block-size: 100dvb;
+    padding: var(--size-2);
+    background: var(--surface-1);
+    color: var(--text-1);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-1);
+    line-height: var(--line-height-normal);
+    -webkit-font-smoothing: antialiased;
+}
+
+img,
+svg,
+video,
+canvas {
+    display: block;
+    max-inline-size: 100%;
+}
+
+svg {
+    display: inline-block;
+    vertical-align: -0.125em;
+}
+
+input,
+button,
+textarea,
+select {
+    font: inherit;
+    color: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+:where(p, h1, h2, h3, h4, h5, h6) {
+    overflow-wrap: break-word;
+}
+
+:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+}
+
+/* Keyboard focus is drawn by the ring above; a mouse click should not paint one. */
+:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────── */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
+    text-wrap: balance;
+}
+
+h1 {
+    font-size: var(--font-size-4);
+}
+
+h2 {
+    font-size: var(--font-size-3);
+}
+
+h3 {
+    font-size: var(--font-size-2);
+}
+
+h4,
+h5,
+h6 {
+    font-size: var(--font-size-1);
+}
+
+p {
+    text-wrap: pretty;
+}
+
+small,
+.muted {
+    font-size: var(--font-size-0);
+}
+
+small,
+.muted {
+    color: var(--text-2);
+}
+
+/* Small marks the size; muted marks the role. Both together must not shrink twice. */
+small.muted {
+    font-size: var(--font-size-0);
+}
+
+code,
+kbd,
+samp,
+pre,
+.mono {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+}
+
+code {
+    padding-inline: 0.2em;
+    border-radius: var(--radius-1);
+    background: var(--surface-3);
+}
+
+pre {
+    overflow-x: auto;
+    padding: var(--size-3);
+    border-radius: var(--radius-2);
+    background: var(--surface-3);
+}
+
+pre code {
+    padding: 0;
+    background: none;
+}
+
+hr {
+    border: none;
+    border-block-start: 1px solid var(--border);
+    margin-block: var(--size-4);
+}
+
+a {
+    color: var(--brand);
+    text-underline-offset: 0.15em;
+}
+
+a:hover {
+    color: color-mix(in oklab, var(--brand) 80%, var(--text-1));
+}
+
+/* Four typographic helpers, kept because they name a role rather than a declaration:
+   text that is secondary, emphasised, tabular, or carries a status colour. */
+.strong {
+    font-weight: var(--font-weight-semibold);
+}
+
+.center {
+    text-align: center;
+}
+
+/* A column of actions or figures, read from the end of the line. */
+.text-end {
+    text-align: end;
+}
+
+.nowrap {
+    white-space: nowrap;
+}
+
+.italic {
+    font-style: italic;
+}
+
+.upper {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.lower {
+    text-transform: lowercase;
+}
+
+.text-danger {
+    color: var(--danger-emphasis);
+}
+
+.text-warning {
+    color: var(--warning-emphasis);
+}
+
+.text-success {
+    color: var(--success-emphasis);
+}
+
+.text-info {
+    color: var(--info-emphasis);
+}
+
+/* ── Layout primitives ──────────────────────────────────────────────────── */
+
+/* Vertical rhythm without a margin utility on every child. */
+.stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-gap, var(--size-3));
+}
+
+/* A row of things that wraps when it runs out of room. */
+.cluster {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cluster-gap, var(--size-2));
+}
+
+.cluster-between {
+    justify-content: space-between;
+}
+
+.cluster-end {
+    justify-content: flex-end;
+}
+
+/* Columns that decide their own count from the width available. */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(var(--grid-min, 14rem), 1fr));
+    gap: var(--grid-gap, var(--size-3));
+}
+
+.spacer {
+    margin-inline-start: auto;
+}
+
+.visually-hidden:not(:focus-visible) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* ── Surfaces ───────────────────────────────────────────────────────────── */
+
+.card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    background: var(--surface-2);
+}
+
+.card > header,
+.card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2);
+    padding: var(--size-3) var(--size-4);
+    border-block-end: 1px solid var(--border);
+    background: var(--surface-3);
+    border-start-start-radius: inherit;
+    border-start-end-radius: inherit;
+    font-weight: var(--font-weight-semibold);
+}
+
+.card-body {
+    padding: var(--size-4);
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+button,
+.button,
+input[type='submit'],
+input[type='reset'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--size-2);
+    padding: var(--size-2) var(--size-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-2);
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-tight);
+    text-decoration: none;
+    transition: background var(--duration-fast) var(--ease-out),
+        border-color var(--duration-fast) var(--ease-out);
+}
+
+button:hover:not(:disabled),
+.button:hover:not(:disabled) {
+    background: var(--surface-3);
+    border-color: var(--brand);
+}
+
+button:disabled,
+.button[aria-disabled='true'] {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+button[data-variant='primary'],
+.button[data-variant='primary'] {
+    border-color: transparent;
+    background: var(--brand);
+    color: var(--text-on-accent);
+}
+
+button[data-variant='primary']:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--brand) 85%, black);
+    border-color: transparent;
+}
+
+button[data-variant='danger'] {
+    border-color: transparent;
+    background: var(--danger);
+    color: var(--text-on-accent);
+}
+
+button[data-variant='danger']:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--danger) 85%, black);
+    border-color: transparent;
+}
+
+button[data-variant='ghost'] {
+    border-color: transparent;
+    background: none;
+}
+
+button[data-variant='ghost']:hover:not(:disabled) {
+    background: var(--surface-3);
+    border-color: transparent;
+}
+
+button[data-variant='link'] {
+    padding-inline: 0;
+    border-color: transparent;
+    background: none;
+    color: var(--brand);
+    text-decoration: underline;
+}
+
+button[data-size='sm'],
+.button[data-size='sm'] {
+    padding: var(--size-1) var(--size-2);
+    font-size: var(--font-size-00);
+}
+
+/* A close affordance: the × is drawn, not typed, so it needs no icon font. */
+button[data-variant='close'] {
+    padding: var(--size-1);
+    border: none;
+    background: none;
+    color: var(--text-2);
+    font-size: var(--font-size-2);
+    line-height: 1;
+}
+
+button[data-variant='close']::before {
+    content: '\00d7';
+}
+
+button[data-variant='close']:hover {
+    color: var(--text-1);
+    background: none;
+}
+
+/* Buttons joined into one control. Unlike .segmented these are real buttons that do
+   something when pressed, so "currently chosen" is aria-pressed rather than a checked
+   input, and the state is announced instead of only drawn. */
+.button-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+}
+
+.button-group > button {
+    border-radius: 0;
+}
+
+.button-group > button:not(:first-child) {
+    margin-inline-start: -1px;
+}
+
+.button-group > button:first-child {
+    border-start-start-radius: var(--radius-2);
+    border-end-start-radius: var(--radius-2);
+}
+
+.button-group > button:last-child {
+    border-start-end-radius: var(--radius-2);
+    border-end-end-radius: var(--radius-2);
+}
+
+.button-group > button:hover,
+.button-group > button:focus-visible {
+    z-index: 1;
+}
+
+button[aria-pressed='true'] {
+    border-color: var(--brand);
+    background: var(--brand-subtle);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* ── Segmented control ──────────────────────────────────────────────────── */
+
+/*
+ * One choice out of a few, drawn as joined buttons: the radio or checkbox stays in the DOM
+ * and keeps the keyboard and the form value, while its label is what is painted. Checked
+ * state comes from :checked, not from a class the server has to keep in sync, which is what
+ * the old markup got wrong often enough to be worth saying twice.
+ */
+.segmented {
+    display: inline-flex;
+    flex-wrap: wrap;
+}
+
+.segmented input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.segmented label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--size-1);
+    padding: var(--size-2) var(--size-3);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-size: var(--font-size-0);
+    line-height: var(--line-height-tight);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+}
+
+.segmented label:not(:first-of-type) {
+    margin-inline-start: -1px;
+}
+
+.segmented label:first-of-type {
+    border-start-start-radius: var(--radius-2);
+    border-end-start-radius: var(--radius-2);
+}
+
+.segmented label:last-of-type {
+    border-start-end-radius: var(--radius-2);
+    border-end-end-radius: var(--radius-2);
+}
+
+.segmented label:hover {
+    background: var(--surface-3);
+}
+
+.segmented input:checked + label {
+    z-index: 1;
+    border-color: var(--brand);
+    background: var(--brand-subtle);
+    color: var(--text-1);
+    font-weight: var(--font-weight-semibold);
+}
+
+.segmented input:focus-visible + label {
+    z-index: 2;
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+}
+
+.segmented input:disabled + label {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* Stacked in a narrow column rather than side by side. */
+.segmented[data-orientation='block'] {
+    flex-direction: column;
+}
+
+.segmented[data-orientation='block'] label:not(:first-of-type) {
+    margin-inline-start: 0;
+    margin-block-start: -1px;
+}
+
+.segmented[data-orientation='block'] label:first-of-type {
+    border-radius: var(--radius-2) var(--radius-2) 0 0;
+}
+
+.segmented[data-orientation='block'] label:last-of-type {
+    border-radius: 0 0 var(--radius-2) var(--radius-2);
+}
+
+/* Fills its container instead of hugging its labels. */
+.segmented[data-stretch] {
+    display: flex;
+}
+
+.segmented[data-stretch] label {
+    flex: 1;
+}
+
+/* ── Forms ──────────────────────────────────────────────────────────────── */
+
+label {
+    font-size: var(--font-size-0);
+}
+
+input[type='text'],
+input[type='search'],
+input[type='number'],
+input[type='password'],
+input[type='email'],
+input[type='url'],
+input[type='date'],
+input[type='datetime-local'],
+select,
+textarea {
+    inline-size: 100%;
+    min-inline-size: 0;
+    padding: var(--size-2) var(--size-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-2);
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-size: var(--font-size-0);
+}
+
+textarea {
+    resize: vertical;
+    field-sizing: content;
+    min-block-size: 4lh;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: var(--focus-ring);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+    background: var(--surface-3);
+    color: var(--text-2);
+    cursor: not-allowed;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--text-2);
+    opacity: 0.8;
+}
+
+select[multiple] {
+    padding: var(--size-1);
+}
+
+select[multiple] option {
+    padding: var(--size-1) var(--size-2);
+    border-radius: var(--radius-1);
+}
+
+/* Native controls follow color-scheme, so they only need a hue. */
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'] {
+    accent-color: var(--brand);
+    inline-size: auto;
+}
+
+input[type='range'] {
+    inline-size: 100%;
+}
+
+/* A labelled control with its label above it. */
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-1);
+}
+
+.field > label,
+.field-label {
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* A checkbox or radio beside its label. */
+.choice {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-2);
+    font-size: var(--font-size-0);
+}
+
+.choice input {
+    flex-shrink: 0;
+}
+
+/* An on/off control that reads as one. */
+.switch {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-2);
+    font-size: var(--font-size-0);
+    cursor: pointer;
+}
+
+.switch input {
+    appearance: none;
+    inline-size: 2.25rem;
+    block-size: 1.25rem;
+    flex-shrink: 0;
+    padding: 2px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-round);
+    background: var(--surface-3);
+    transition: background var(--duration-fast) var(--ease-out);
+    cursor: pointer;
+}
+
+.switch input::after {
+    content: '';
+    display: block;
+    inline-size: 1rem;
+    block-size: 1rem;
+    border-radius: 50%;
+    background: var(--text-2);
+    transition: translate var(--duration-fast) var(--ease-out);
+}
+
+.switch input:checked {
+    border-color: var(--brand);
+    background: var(--brand);
+}
+
+.switch input:checked::after {
+    translate: 1rem 0;
+    background: var(--text-on-accent);
+}
+
+.switch input:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+}
+
+/* Explanatory line under a control. */
+.help {
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+}
+
+/* Controls that read as one unit: a text field with a unit select and a button. */
+.input-group {
+    display: flex;
+    align-items: stretch;
+}
+
+.input-group > * {
+    border-radius: 0;
+}
+
+.input-group > :first-child {
+    border-start-start-radius: var(--radius-2);
+    border-end-start-radius: var(--radius-2);
+}
+
+.input-group > :last-child {
+    border-start-end-radius: var(--radius-2);
+    border-end-end-radius: var(--radius-2);
+}
+
+.input-group > :not(:first-child) {
+    margin-inline-start: -1px;
+}
+
+.input-group input,
+.input-group select {
+    inline-size: auto;
+    min-inline-size: 3rem;
+}
+
+.input-group :focus-visible {
+    z-index: 1;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+table {
+    inline-size: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-0);
+}
+
+th,
+td {
+    padding: var(--size-2) var(--size-3);
+    text-align: start;
+    vertical-align: middle;
+}
+
+thead th {
+    border-block-end: 2px solid var(--border);
+    color: var(--text-1);
+    font-weight: var(--font-weight-semibold);
+    white-space: nowrap;
+}
+
+tbody tr {
+    border-block-end: 1px solid var(--border);
+}
+
+tbody tr:nth-child(odd) {
+    background: color-mix(in oklab, var(--surface-3) 60%, transparent);
+}
+
+tbody tr:hover {
+    background: var(--surface-3);
+}
+
+tbody tr[aria-selected='true'] {
+    background: var(--brand-subtle);
+}
+
+/* A row that carries a status: the health table marks what is wrong, and the tint
+   has to survive the striping and hover rules above it. */
+tbody tr[data-level='warning'],
+tbody tr[data-level='warning']:nth-child(odd) {
+    background: color-mix(in oklab, var(--warning) 16%, var(--surface-2));
+}
+
+tbody tr[data-level='error'],
+tbody tr[data-level='error']:nth-child(odd) {
+    background: color-mix(in oklab, var(--danger) 16%, var(--surface-2));
+}
+
+tbody tr[data-level='warning']:hover {
+    background: color-mix(in oklab, var(--warning) 26%, var(--surface-2));
+}
+
+tbody tr[data-level='error']:hover {
+    background: color-mix(in oklab, var(--danger) 26%, var(--surface-2));
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────────── */
+
+.tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-1);
+    list-style: none;
+    padding: 0;
+}
+
+.tabs a {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-2);
+    padding: var(--size-2) var(--size-3);
+    border: 1px solid transparent;
+    border-radius: var(--radius-2) var(--radius-2) 0 0;
+    color: var(--text-2);
+    text-decoration: none;
+}
+
+.tabs a:hover {
+    background: var(--surface-3);
+    color: var(--text-1);
+}
+
+.tabs a[aria-current='page'],
+.tabs a.active {
+    border-color: var(--border);
+    border-block-end-color: var(--surface-2);
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* A vertical list of sections, as the settings page uses. */
+.tabs[aria-orientation='vertical'] {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.tabs[aria-orientation='vertical'] a {
+    border-radius: var(--radius-2);
+}
+
+.tabs[aria-orientation='vertical'] a.active {
+    border-color: transparent;
+    background: var(--brand-subtle);
+}
+
+/* ── Menu ───────────────────────────────────────────────────────────────── */
+
+.menu {
+    position: relative;
+    display: inline-block;
+}
+
+.menu-list {
+    position: absolute;
+    z-index: 30;
+    inset-block-start: calc(100% + var(--size-1));
+    inset-inline-end: 0;
+    min-inline-size: 12rem;
+    max-block-size: 60vh;
+    overflow-y: auto;
+    padding: var(--size-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    background: var(--surface-2);
+    box-shadow: var(--shadow-2);
+    list-style: none;
+}
+
+.menu-list:not([data-open]) {
+    display: none;
+}
+
+.menu-list li > * {
+    display: flex;
+    align-items: center;
+    gap: var(--size-2);
+    inline-size: 100%;
+    padding: var(--size-1) var(--size-2);
+    border: none;
+    border-radius: var(--radius-1);
+    background: none;
+    color: var(--text-1);
+    font-size: var(--font-size-0);
+    text-align: start;
+    text-decoration: none;
+}
+
+.menu-list li > *:hover {
+    background: var(--surface-3);
+}
+
+/* ── Notices ────────────────────────────────────────────────────────────── */
+
+.notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--size-2);
+    padding: var(--size-2) var(--size-3);
+    border: 1px solid var(--border);
+    border-inline-start: 3px solid var(--text-2);
+    border-radius: var(--radius-2);
+    background: var(--surface-3);
+    color: var(--text-1);
+    font-size: var(--font-size-0);
+}
+
+.notice[data-level='error'] {
+    border-inline-start-color: var(--danger);
+    background: var(--danger-subtle);
+}
+
+.notice[data-level='warning'] {
+    border-inline-start-color: var(--warning);
+    background: var(--warning-subtle);
+}
+
+.notice[data-level='success'] {
+    border-inline-start-color: var(--success);
+    background: var(--success-subtle);
+}
+
+.notice[data-level='info'] {
+    border-inline-start-color: var(--info);
+    background: var(--info-subtle);
+}
+
+/* On its way out: the toast keeps its box while it fades, so the ones below it do not
+   jump up a row before the animation finishes. */
+.notice.is-dismissing {
+    opacity: 0;
+    transition: opacity var(--duration-normal) var(--ease-out);
+}
+
+/* A notice that can be closed keeps room for the button at its end. */
+.notice.dismissible {
+    position: relative;
+    padding-inline-end: var(--size-6);
+}
+
+.notice.dismissible > button[data-variant='close'] {
+    position: absolute;
+    inset-block-start: var(--size-1);
+    inset-inline-end: var(--size-1);
+}
+
+/* Dialog interior, matching the header/body/footer above. */
+.dialog-content {
+    display: flex;
+    flex-direction: column;
+    max-block-size: inherit;
+}
+
+.dialog-title {
+    font-size: var(--font-size-2);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* Said by a chart that has nothing to draw yet. */
+.chart-placeholder {
+    padding-block: var(--size-7);
+    color: var(--text-2);
+    text-align: center;
+}
+
+/* ── Badge ──────────────────────────────────────────────────────────────── */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-1);
+    padding: 0.15em 0.55em;
+    border-radius: var(--radius-round);
+    background: var(--surface-4);
+    color: var(--text-1);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-tight);
+    white-space: nowrap;
+}
+
+.badge[data-level='error'] {
+    background: var(--danger-subtle);
+    color: var(--danger-emphasis);
+}
+
+.badge[data-level='warning'] {
+    background: var(--warning-subtle);
+    color: var(--warning-emphasis);
+}
+
+.badge[data-level='success'] {
+    background: var(--success-subtle);
+    color: var(--success-emphasis);
+}
+
+.badge[data-level='info'] {
+    background: var(--info-subtle);
+    color: var(--info-emphasis);
+}
+
+.badge[data-level='brand'] {
+    background: var(--brand);
+    color: var(--text-on-accent);
+}
+
+/* ── Progress and spinners ──────────────────────────────────────────────── */
+
+progress {
+    inline-size: 100%;
+    block-size: var(--size-2);
+    appearance: none;
+    border: none;
+    border-radius: var(--radius-round);
+    overflow: hidden;
+    background: var(--surface-4);
+}
+
+progress::-webkit-progress-bar {
+    background: var(--surface-4);
+}
+
+progress::-webkit-progress-value {
+    background: var(--brand);
+    transition: inline-size var(--duration-normal) var(--ease-out);
+}
+
+progress::-moz-progress-bar {
+    background: var(--brand);
+}
+
+/* An indeterminate progress bar: a stripe pattern that moves. */
+progress[data-indeterminate]::-webkit-progress-value {
+    background-image: repeating-linear-gradient(
+        45deg,
+        color-mix(in oklab, var(--text-on-accent) 25%, transparent) 0 0.5rem,
+        transparent 0.5rem 1rem
+    );
+    animation: progress-stripes 1s linear infinite;
+}
+
+@keyframes progress-stripes {
+    from {
+        background-position-x: 0;
+    }
+
+    to {
+        background-position-x: 1.42rem;
+    }
+}
+
+.spinner {
+    display: inline-block;
+    inline-size: 1em;
+    block-size: 1em;
+    border: 2px solid currentcolor;
+    border-block-start-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        rotate: 1turn;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner {
+        animation-duration: 2s;
+    }
+}
+
+/* ── Dialog ─────────────────────────────────────────────────────────────── */
+
+dialog {
+    max-inline-size: min(48rem, 92vw);
+    max-block-size: 85dvb;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    background: var(--surface-2);
+    color: var(--text-1);
+    box-shadow: var(--shadow-2);
+}
+
+dialog::backdrop {
+    background: rgb(0 0 0 / 45%);
+    backdrop-filter: blur(2px);
+}
+
+dialog > header,
+.dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-3);
+    padding: var(--size-3) var(--size-4);
+    border-block-end: 1px solid var(--border);
+}
+
+.dialog-body {
+    padding: var(--size-4);
+    overflow-y: auto;
+}
+
+.dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--size-2);
+    padding: var(--size-3) var(--size-4);
+    border-block-start: 1px solid var(--border);
+}

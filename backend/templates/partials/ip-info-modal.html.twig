@@ -1,20 +1,20 @@
 {#
     IP info modal fragment — pushed by the server as a Datastar patchElements event.
     Replaces #ip-modal-placeholder in the DOM, then JS calls .showModal() on #ip-modal-inner.
-    Uses a native <dialog> element — no Bootstrap JS / Popper required.
+    Uses a native <dialog> element, shown with showModal().
 #}
 <div id="ip-modal-placeholder">
     <dialog id="ip-modal-inner" aria-labelledby="ipModalLabel">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h1 class="modal-title fs-5" id="ipModalLabel">Info for IP: {{ ip }}</h1>
-                <button type="button" class="btn-close" aria-label="Close"
+        <div class="dialog-content">
+            <div class="dialog-header">
+                <h1 class="dialog-title" id="ipModalLabel">Info for IP: {{ ip }}</h1>
+                <button type="button" data-variant="close" aria-label="Close"
                         data-on:click="document.getElementById('ip-modal-inner').close()"></button>
             </div>
-            <div class="modal-body">
-                <dl class="row mb-3">
-                    <dt class="col-sm-3">Hostname</dt>
-                    <dd class="col-sm-9{% if hostname == 'could not be resolved' %} text-secondary fst-italic{% endif %}">{{ hostname }}</dd>
+            <div class="dialog-body">
+                <dl>
+                    <dt>Hostname</dt>
+                    <dd{% if hostname == 'could not be resolved' %} class="muted italic"{% endif %}>{{ hostname }}</dd>
                 </dl>
 
                 {# Rows stay curated rather than looping the payload: netbox() returns the raw
@@ -22,7 +22,7 @@
                    .label/.name, and which carries id/url/timestamps nobody needs here (#168). #}
                 {% if netboxData is defined and netboxData is not empty %}
                     <h3>{{ ip }} (Netbox)</h3>
-                    <table class="table table-striped table-hover table-sm">
+                    <table>
                         {% if netboxData.address is defined %}
                             <tr><th>Address</th><td>{{ netboxData.address }}</td></tr>
                         {% endif %}
@@ -54,7 +54,7 @@
                    else-branch below rendered a bare heading over an empty table (#168). #}
                 {% if geoData is defined and geoData is not empty %}
                 {% if geoData.error is defined and geoData.error %}
-                    <div class="alert alert-warning">{{ geoData.reason ?? 'IP lookup failed' }}</div>
+                    <div class="notice" data-level="warning">{{ geoData.reason ?? 'IP lookup failed' }}</div>
                 {% else %}
                     {% set countryName = geoData.country_name ?? geoData.country_code ?? '' %}
                     <h3>
@@ -73,7 +73,7 @@
                                       'country_population', 'continent_code', 'in_eu', 'network', 'version',
                                       'error', 'reason', 'readme', 'success', 'status', 'message',
                                       'country_flag'] %}
-                    <table class="table table-striped table-hover table-sm">
+                    <table>
                         {% for key, value in geoData %}
                             {% if key not in ignored %}
                                 {# providers differ: a nested object would blow up on string conversion #}
@@ -84,8 +84,8 @@
                 {% endif %}
                 {% endif %}
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary"
+            <div class="dialog-footer">
+                <button type="button" 
                         data-on:click="document.getElementById('ip-modal-inner').close()">Close</button>
             </div>
         </div>

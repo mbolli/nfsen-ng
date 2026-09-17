@@ -52,7 +52,7 @@
         <p class="filter-label">Display
             <nfsen-tooltip data-ignore-morph text="Choose what to visualize: individual sources, protocol breakdown, or port statistics." placement="top"></nfsen-tooltip>
         </p>
-        <select id="filterDisplaySelect" class="form-control form-select" {{ bind(graph_display) }}
+        <select id="filterDisplaySelect"  {{ bind(graph_display) }}
                 data-on:change="el.value === 'protocols' ? ${{ graph_protocols.id() }} = ['tcp', 'udp', 'icmp', 'other'] : (${{ graph_protocols.id() }} = ['any']); ${{ graph_sources.id() }} = el.value === 'sources' ? $_sourcesDefault : (el.value === 'ports' ? ['any'] : $_sourcesDefault.slice(0, 1))">
             <option value="sources">Sources</option>
             <option value="protocols">Protocols</option>
@@ -92,7 +92,7 @@
             <nfsen-tooltip data-ignore-morph text="Select NetFlow sources to include in the graph." placement="top"></nfsen-tooltip>
         </p>
         <select id="filterSourcesSelect"
-                class="form-control form-select"{{ graph_display.string() == 'sources' ? ' multiple' : '' }}
+                {{ graph_display.string() == 'sources' ? ' multiple' : '' }}
                 data-on:change="${{ graph_sources.id() }} = [...el.selectedOptions].map(o => o.value)"
                 data-effect="el.multiple = ${{ graph_display.id() }} === 'sources'; [...el.options].forEach(o => o.selected = ${{ graph_sources.id() }}.includes(o.value))">
             <option value="any"{{ 'any' in selectedSources ? ' selected' : '' }}
@@ -110,7 +110,7 @@
         <p class="filter-label">Ports
             <nfsen-tooltip data-ignore-morph text="Select ports to track. Each port shows as a separate series." placement="top"></nfsen-tooltip>
         </p>
-        <select id="filterPortsSelect" multiple class="form-control form-select" {{ bind(graph_ports) }}>
+        <select id="filterPortsSelect" multiple  {{ bind(graph_ports) }}>
             {% for port in ports %}
             <option value="{{ port }}" selected>{{ port }}</option>
             {% endfor %}
@@ -124,22 +124,22 @@
         <p class="filter-label">Protocols
             <nfsen-tooltip data-ignore-morph text="Filter by protocol. 'Any' shows all traffic." placement="top"></nfsen-tooltip>
         </p>
-        <div class="btn-group" role="group" id="filterProtocolButtons">
+        <div class="segmented"  role="group" id="filterProtocolButtons">
             <input type="checkbox"
-                   class="btn-check"
+                   
                    id="filterProtocolAny"
                    value="any"
                    data-effect="el.checked = ${{ graph_protocols.id() }}.includes('any') || (${{ graph_display.id() }} === 'protocols' && ${{ graph_protocols.id() }}.length >= 4)"
                    data-on:change="${{ graph_display.id() }} !== 'protocols' ? el.checked && (${{ graph_protocols.id() }} = ['any']) : (el.checked ? (${{ graph_protocols.id() }} = ['tcp', 'udp', 'icmp', 'other']) : ${{ graph_protocols.id() }} = ['tcp'])">
-            <label class="btn btn-outline-primary btn-sm" for="filterProtocolAny">Any</label>
+            <label data-size="sm" for="filterProtocolAny">Any</label>
             {% for value, label in {'tcp': 'TCP', 'udp': 'UDP', 'icmp': 'ICMP', 'other': 'Others'} %}
             <input type="checkbox"
-                   class="btn-check"
+                   
                    id="filterProtocol{{ value|capitalize }}"
                    value="{{ value }}"
                    data-effect="el.checked = ${{ graph_protocols.id() }}.includes('{{ value }}')"
                    data-on:change="${{ graph_display.id() }} !== 'protocols' ? el.checked && (${{ graph_protocols.id() }} = [el.value]) : (el.checked ? ${{ graph_protocols.id() }}.push(el.value) : ${{ graph_protocols.id() }} = ${{ graph_protocols.id() }}.filter(p => p !== el.value))">
-            <label class="btn btn-outline-primary btn-sm" for="filterProtocol{{ value|capitalize }}">{{ label }}</label>
+            <label data-size="sm" for="filterProtocol{{ value|capitalize }}">{{ label }}</label>
             {% endfor %}
         </div>
         </div>
@@ -151,12 +151,12 @@
         <p class="filter-label">Data Type
             <nfsen-tooltip data-ignore-morph text="Traffic (bits/bytes per second), Packets, or Flows per second." placement="top"></nfsen-tooltip>
         </p>
-        <div class="btn-group" role="group">
+        <div class="segmented"  role="group">
             {% for value, label in {'traffic': 'Traffic', 'packets': 'Packets', 'flows': 'Flows'} %}
-            <input type="radio" class="btn-check" name="datatype"
+            <input type="radio"  name="datatype"
                    value="{{ value }}"{% if value == 'traffic' %} checked{% endif %}
                    id="dataType{{ value|capitalize }}" {{ bind(graph_datatype) }}>
-            <label class="btn btn-outline-primary btn-sm" for="dataType{{ value|capitalize }}">{{ label }}</label>
+            <label data-size="sm" for="dataType{{ value|capitalize }}">{{ label }}</label>
             {% endfor %}
         </div>
         </div>
@@ -172,22 +172,22 @@
         <p class="filter-label">Source data
             <nfsen-tooltip data-ignore-morph text="Stored: the pre-aggregated database series — instant and live. Filtered: re-reads the raw capture files so an nfdump filter can be applied, which takes time and does not auto-refresh." placement="top"></nfsen-tooltip>
         </p>
-        <div class="btn-group" role="group">
-            {# el.checked, not data-attr:checked: Bootstrap lights the label through
+        <div class="segmented"  role="group">
+            {# el.checked, not data-attr:checked: the segmented control lights the label through
                `.btn-check:checked + .btn`, which reads the *property*. The attribute only
                seeds defaultChecked, so neither button ever showed as active — the mode was
                readable solely from whether the filter panel below had appeared. Same
                pattern as the Protocols buttons above. #}
-            <input type="radio" class="btn-check" name="graphMode" value="stored"
+            <input type="radio"  name="graphMode" value="stored"
                    id="graphModeRrd" checked
                    data-effect="el.checked = ${{ graph_mode.id() }} === 'stored'"
                    data-on:change__stop="${{ graph_mode.id() }} = 'stored'; @post('{{ refreshGraphs.url() }}')">
-            <label class="btn btn-outline-primary btn-sm" for="graphModeRrd">Stored</label>
-            <input type="radio" class="btn-check" name="graphMode" value="filtered"
+            <label data-size="sm" for="graphModeRrd">Stored</label>
+            <input type="radio"  name="graphMode" value="filtered"
                    id="graphModeFiltered"
                    data-effect="el.checked = ${{ graph_mode.id() }} === 'filtered'"
                    data-on:change__stop="${{ graph_mode.id() }} = 'filtered'; ${{ graph_display.id() }} === 'ports' && (${{ graph_display.id() }} = 'protocols'); @post('{{ refreshGraphs.url() }}')">
-            <label class="btn btn-outline-primary btn-sm" for="graphModeFiltered">Filtered</label>
+            <label data-size="sm" for="graphModeFiltered">Filtered</label>
         </div>
         </div>
     </div>
@@ -199,7 +199,7 @@
         <p class="filter-label">NFDUMP filter
             <nfsen-tooltip data-ignore-morph text="Same syntax as the Flows tab, e.g. 'src ip 10.0.0.1 and dst port 443'. An empty filter graphs all traffic — useful for comparing against the stored series." placement="right"></nfsen-tooltip>
         </p>
-        <textarea class="form-control" id="graphNfdumpTextarea"
+        <textarea  id="graphNfdumpTextarea"
                   {{ bind(graph_filter) }} rows="2" autocomplete="on"></textarea>
         <nfsen-filter-manager
             data-ignore-morph
@@ -207,7 +207,7 @@
             data-default-filters="{{ filters|json_encode }}">
         </nfsen-filter-manager>
 
-        <div class="mt-3">
+        <div>
             {% include 'partials/progress-button.html.twig' with {
                 id: 'graphFilterRun',
                 label: 'Apply filter',
@@ -228,12 +228,12 @@
             real numbers — the count-files action maintains them — so state them and let the
             user decide before committing to a build.
         #}
-        <p class="small text-muted mt-2 mb-0">
+        <p class="muted">
             {% if filteredCost %}
                 {% if filteredCost.clamped %}
                     {# The file count covers the range in the picker, not the shorter one a
                        clamped build reads, so it is left out rather than overstated. #}
-                    <span class="text-warning-emphasis">Window shortened to the most recent
+                    <span class="text-warning">Window shortened to the most recent
                     {{ filteredCost.window }} (NFSEN_MAX_STATS_WINDOW).</span>
                     Will read that range in <strong>{{ filteredCost.intervals|number_format }}</strong>
                     nfdump run{{ filteredCost.intervals == 1 ? '' : 's' }}.
@@ -255,15 +255,15 @@
         <p class="filter-label">Unit
             <nfsen-tooltip data-ignore-morph text="Bits/s (base-2) or Bytes/s (base-10)." placement="top"></nfsen-tooltip>
         </p>
-        <div class="btn-group" role="group">
-            <input type="radio" class="btn-check" name="trafficUnit" value="bits" checked
+        <div class="segmented"  role="group">
+            <input type="radio"  name="trafficUnit" value="bits" checked
                    id="trafficUnitBits" {{ bind(graph_trafficUnit) }}
                    data-on:change="$graph._widget.updateOptions({ylabel: 'Bits/s', labelsKMG2: true})">
-            <label class="btn btn-outline-primary btn-sm" for="trafficUnitBits">Bits</label>
-            <input type="radio" class="btn-check" name="trafficUnit" value="bytes"
+            <label data-size="sm" for="trafficUnitBits">Bits</label>
+            <input type="radio"  name="trafficUnit" value="bytes"
                    id="trafficUnitBytes" {{ bind(graph_trafficUnit) }}
                    data-on:change="$graph._widget.updateOptions({ylabel: 'Bytes/s', labelsKMG2: false})">
-            <label class="btn btn-outline-primary btn-sm" for="trafficUnitBytes">Bytes</label>
+            <label data-size="sm" for="trafficUnitBytes">Bytes</label>
         </div>
         </div>
     </div>

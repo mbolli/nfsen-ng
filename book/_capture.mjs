@@ -669,7 +669,7 @@ async function main() {
     await go(`_currentView = 'graphs'`);
     await selectRange(FILTER_RANGE);
 
-    // Source data: Stored -> Filtered. Click the Bootstrap btn-check's <label>,
+    // Source data: Stored -> Filtered. Click the segmented control's <label>,
     // which is what a user actually hits -- the <input type=radio> itself is
     // visually hidden (see graph-filters.html.twig).
     if (!await evaluate(`__clickText('Filtered', 'label')`)) throw new Error('"Filtered" source-data button not found');

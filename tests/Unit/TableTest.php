@@ -50,16 +50,14 @@ describe('Table', function (): void {
             ;
         });
 
-        test('applies custom CSS class', function (): void {
-            $data = [
-                ['col' => 'val'],
-            ];
+        // The table is styled as a table, by element. There is no class to pass and
+        // nothing that could want a different one.
+        test('emits a plain table element', function (): void {
+            $result = Table::generate([['col' => 'val']], 'testTable');
 
-            $result = Table::generate($data, 'testTable', [
-                'cssClass' => 'custom-table-class',
-            ]);
-
-            expect($result)->toContain('custom-table-class');
+            expect($result)->toContain('<table>')
+                ->and($result)->not->toContain('<table class=')
+            ;
         });
 
         test('handles string data rows as preformatted text', function (): void {

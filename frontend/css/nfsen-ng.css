@@ -1,79 +1,6 @@
-/* Header: full-width bottom border; nav-tabs border is suppressed to avoid a partial line */
+/* Header: the tab strip sits on this line, so it must not draw its own. */
 header {
-    border-bottom: 1px solid var(--bs-border-color);
-}
-
-header .nav-tabs {
-    border-bottom: none;
-}
-
-header .nav-tabs .nav-link.active {
-    border-bottom-color: transparent;
-}
-
-/* Nav links: use body colour (adapts to both themes) */
-.nav {
-    --bs-nav-link-color: var(--bs-body-color);
-    --bs-link-color-rgb: var(--bs-body-color-rgb);
-}
-
-/* ── Light-mode-only Bootstrap token overrides ─────────────────────────── */
-[data-bs-theme='light'] {
-    --bs-primary: #ccc;
-
-    .btn-outline-primary {
-        --bs-btn-bg: #fff;
-        --bs-btn-color: #000;
-        --bs-btn-border-color: #ccc;
-        --bs-btn-hover-bg: #ccc;
-        --bs-btn-hover-border-color: #ccc;
-        --bs-btn-active-bg: #ccc;
-        --bs-btn-active-border-color: #ccc;
-        --bs-btn-active-color: #000;
-        --bs-gradient: linear-gradient(#000 0%, #fff 100%);
-        --bs-btn-disabled-color: #000;
-        --bs-btn-disabled-border-color: #000;
-    }
-
-    /* light grey background for active nav links */
-    .nav-tabs .nav-link.active {
-        --bs-nav-tabs-link-active-bg: var(--bs-tertiary-bg);
-        font-weight: bold;
-    }
-}
-
-.btn.disabled,
-.btn:disabled,
-fieldset:disabled .btn {
-    opacity: 0.3;
-}
-
-textarea {
-    resize: none;
-}
-
-/* Range input thumb — neutral across both themes */
-input[type='range'] {
-    accent-color: var(--bs-secondary-color);
-}
-input[type='range']::-webkit-slider-thumb {
-    background: var(--bs-secondary-color);
-}
-input[type='range']::-moz-range-thumb {
-    background: var(--bs-secondary-color);
-    border: none;
-}
-
-code,
-pre,
-.code {
-    font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
-}
-
-.h5,
-.h6 {
-    text-transform: uppercase;
-    font-weight: bold;
+    border-block-end: 1px solid var(--border);
 }
 
 /* graph */
@@ -120,7 +47,7 @@ main.tab-content {
 }
 
 #legend span.highlight {
-    background-color: var(--bs-secondary-bg);
+    background-color: var(--surface-4);
 }
 
 #series label {
@@ -129,30 +56,6 @@ main.tab-content {
 
 #viewList li h4 {
     margin-left: 10px;
-}
-
-/* graph options */
-
-.accordion h4:after {
-    content: '\25B2';
-    float: right;
-}
-
-.accordion h4.collapsed:after {
-    content: '\25BC';
-}
-
-/* flows */
-.subnet-input:before {
-    content: '/';
-    width: auto;
-    position: absolute;
-    font-size: 115%;
-    padding-left: 0.4rem;
-    line-height: 2rem;
-}
-.subnet-input input {
-    padding-left: 1rem;
 }
 
 /* column selector */
@@ -172,20 +75,11 @@ main.tab-content {
 }
 
 .column-selector-menu label:hover {
-    background-color: var(--bs-tertiary-bg);
+    background-color: var(--surface-3);
 }
 
 .column-selector-menu input[type='checkbox'] {
     cursor: pointer;
-}
-
-.column-selector-menu .fw-bold {
-    font-weight: 600;
-}
-
-.column-selector-menu .border-bottom {
-    margin-bottom: 0.25rem;
-    padding-bottom: 0.5rem;
 }
 
 /* LIVE badge — subtle breathing animation while live data is displayed */
@@ -212,13 +106,42 @@ main.tab-content {
         opacity: 0.35;
     }
 }
+/* A dot on the Settings tab while an import runs. Positioned by its list item rather
+   than by utilities, so nothing else has to know it is there. */
+.tabs li.has-indicator {
+    position: relative;
+}
+
 .import-indicator-dot {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-end: 0;
+    inline-size: 0.55rem;
+    block-size: 0.55rem;
+    border-radius: 50%;
+    background: var(--warning);
     animation: import-dot-pulse 1.2s ease-in-out infinite;
-    width: 0.55rem !important;
-    height: 0.55rem !important;
-    min-width: 0 !important;
-    padding: 0 !important;
-    font-size: 0 !important;
+}
+
+/* The tab strip's own bits: a home icon and the theme toggle read as icons, not links. */
+.tabs a.reload,
+.tabs a[title='Toggle dark mode'] {
+    color: inherit;
+}
+
+.brand {
+    flex-shrink: 0;
+    color: var(--text-2);
+    text-decoration: none;
+}
+
+.profile-select {
+    inline-size: auto;
+    flex-shrink: 0;
+}
+
+.spinner.reconnecting {
+    color: var(--warning);
 }
 
 /* sortable tables */
@@ -230,7 +153,7 @@ th.sortable {
 }
 
 th.sortable:hover {
-    background-color: rgba(var(--bs-emphasis-color-rgb), 0.06);
+    background-color: color-mix(in oklab, var(--text-1) 6%, transparent);
 }
 
 th.sortable .sort-icon {
@@ -242,16 +165,12 @@ th.sortable .sort-icon {
 
 th.sortable.sort-asc,
 th.sortable.sort-desc {
-    background-color: rgba(var(--bs-emphasis-color-rgb), 0.1);
+    background-color: color-mix(in oklab, var(--text-1) 10%, transparent);
     font-weight: 600;
 }
 
-.table-responsive.invert {
-    transform: rotateX(180deg);
-    overflow-x: scroll;
-}
-.table-responsive.invert > .table-responsive {
-    transform: rotateX(-180deg);
+.filter-bar .card-body {
+    --stack-gap: var(--size-2);
 }
 
 .card.loading .card-body {
@@ -265,6 +184,15 @@ th.sortable.sort-desc {
     to {
         filter: blur(5px);
     }
+}
+
+/* The slider needs room for its pip labels below and its handle tooltips above. */
+.daterange-wrap {
+    margin-block-end: var(--size-4);
+}
+
+.date-range-controls {
+    margin-block-end: var(--size-4);
 }
 
 /* ── noUiSlider skin (replaces ion.rangeSlider / sprite-skin-nice) ─────────
@@ -290,8 +218,8 @@ nfsen-daterange .daterange-slider {
 .noUi-target {
     height: 8px;
     border-radius: 4px;
-    background: var(--bs-secondary-bg);
-    border: 1px solid var(--bs-border-color);
+    background: var(--surface-4);
+    border: 1px solid var(--border);
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
@@ -312,8 +240,8 @@ nfsen-daterange .daterange-slider {
     right: -11px !important;
     top: -8px !important;
     border-radius: 50%;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
+    background: var(--surface-1);
+    border: 1px solid var(--border);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     cursor: default;
 }
@@ -323,7 +251,7 @@ nfsen-daterange .daterange-slider {
     display: none;
 }
 .noUi-handle:hover {
-    border-color: var(--bs-emphasis-color);
+    border-color: var(--text-1);
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
 }
 .noUi-handle:focus {
@@ -333,8 +261,8 @@ nfsen-daterange .daterange-slider {
 
 /* Floating tooltips above handles */
 .noUi-tooltip {
-    background: var(--bs-tooltip-bg);
-    color: var(--bs-tooltip-color);
+    background: var(--text-1);
+    color: var(--text-on-accent);
     border: none;
     border-radius: 3px;
     font-size: 10px;
@@ -352,7 +280,7 @@ nfsen-daterange .daterange-slider {
 }
 .noUi-marker-horizontal.noUi-marker {
     height: 8px;
-    background: var(--bs-secondary-color);
+    background: var(--text-2);
     width: 1px;
 }
 .noUi-marker-horizontal.noUi-marker-large,
@@ -363,16 +291,16 @@ nfsen-daterange .daterange-slider {
     height: 6px;
 }
 .noUi-value {
-    color: var(--bs-secondary-color);
+    color: var(--text-2);
     font-size: 9px;
     line-height: 1;
     padding: 0 3px;
 }
 
-/* ── Tooltip component (no-library replacement for bootstrap.Tooltip) ────── */
+/* ── Tooltip component (paired with nfsen-tooltip.js) ────────────────────── */
 .nfsen-tip-popup {
-    background: var(--bs-tooltip-bg);
-    color: var(--bs-tooltip-color);
+    background: var(--text-1);
+    color: var(--text-on-accent);
     padding: 3px 8px;
     border-radius: 3px;
     font-size: 11px;
@@ -389,14 +317,183 @@ nfsen-daterange .daterange-slider {
     display: none;
 }
 
+/* The /24 beside an IP aggregation select: wide enough for three digits, no wider. */
+.prefix-input {
+    inline-size: 4rem;
+    margin-block-start: var(--size-1);
+}
+
+/* The progress readout beside a submit button: takes the rest of the row, but not so
+   little that the status text wraps every few characters. */
+.query-progress {
+    flex: 1 1 12rem;
+    min-inline-size: 12rem;
+}
+
+.query-progress progress {
+    block-size: 6px;
+}
+
+.query-progress-line {
+    flex-wrap: nowrap;
+    gap: var(--size-2);
+    margin-block-start: var(--size-1);
+}
+
+.kill {
+    color: var(--danger);
+    border-color: color-mix(in oklab, var(--danger) 45%, var(--border));
+}
+
+.kill:hover {
+    background: var(--danger-subtle);
+    border-color: var(--danger);
+}
+
+/* Settings: a column of sections beside the section that is open. Collapses to one
+   column when there is no room for both, which is also when the section list is short
+   enough to sit above the content without costing much. */
+.settings-layout {
+    display: grid;
+    grid-template-columns: minmax(9rem, 11rem) minmax(0, 1fr);
+    gap: var(--size-5);
+    align-items: start;
+}
+
+@media (max-width: 47.98em) {
+    .settings-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* A form field stretched to 1100px is harder to read, not easier: cap it near the
+   measure a value actually needs. */
+.settings-layout :is(select, input[type='text'], input[type='number'], textarea) {
+    max-inline-size: 34rem;
+}
+
+.settings-nav {
+    position: sticky;
+    inset-block-start: var(--size-2);
+}
+
+/* The import strip under the header, and the same bar inside Settings. */
+.import-strip {
+    cursor: pointer;
+    border-block-end: 1px solid var(--border);
+    margin-block-end: var(--size-2);
+}
+
+.import-strip progress {
+    block-size: 4px;
+    border-radius: 0;
+}
+
+.import-strip-line {
+    flex-wrap: nowrap;
+    padding: var(--size-1) var(--size-2);
+}
+
+.import-progress {
+    block-size: var(--size-4);
+}
+
+/* A block that reads as an inset panel rather than page background. */
+.surface {
+    background: var(--surface-3);
+    border-radius: var(--radius-2);
+    padding: var(--size-3);
+}
+
+/* The chart fills its panel; the component sets the height it needs. */
+.chart-container {
+    position: relative;
+    inline-size: 100%;
+}
+
+.chart-canvas {
+    inline-size: 100%;
+}
+
+/* The filter bar: one surface under the header holding the date range and the panel
+   for whichever view is open. */
+.filter-bar {
+    background: var(--surface-3);
+    border-block-end: 1px solid var(--border);
+    padding-block: var(--size-4);
+    margin-block-end: var(--size-4);
+}
+
+/* The saved-filter picker under the nfdump filter box. */
+.filter-manager {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--size-1);
+    margin-block-start: var(--size-2);
+}
+
+.filter-manager > div {
+    display: flex;
+}
+
+.filter-manager button {
+    flex: 1;
+}
+
+/* The toolbar above a result table, and its export controls. */
+.table-toolbar {
+    margin-block-end: var(--size-2);
+}
+
+.export-buttons .choice {
+    margin-inline-start: var(--size-2);
+}
+
+/* Raw nfdump text, shown when a result cannot be read into columns. */
+.nfsen-raw-output,
+.original pre {
+    max-block-size: 60vh;
+    overflow: auto;
+    font-size: var(--font-size-00);
+    line-height: 1.35;
+}
+
+.ip-link {
+    text-decoration: none;
+}
+
+.ip-link:hover {
+    text-decoration: underline;
+}
+
+/* The column menu's own rows. */
+.column-checkbox-item,
+.menu-head {
+    display: flex;
+    align-items: center;
+    gap: var(--size-2);
+    padding: var(--size-1) var(--size-2);
+    border-radius: var(--radius-1);
+    font-size: var(--font-size-0);
+}
+
+.menu-head {
+    border-block-end: 1px solid var(--border);
+    margin-block-end: var(--size-1);
+    padding-block-end: var(--size-2);
+}
+
+.column-checkbox-item:hover {
+    background: var(--surface-3);
+}
+
 /* ── Filter panel UX ─────────────────────────────────────────────────────── */
 
-/* One auto-fit grid per panel, instead of per-control Bootstrap columns.
-   Those were a guess at how much room a control would have at some breakpoint,
-   and the guess was wrong in both directions: at 1100px the Sankey "Top pairs"
-   select rendered 50px wide showing nothing but its chevron, while "Min bytes"
-   kept a full column to hold four characters. Here the track count follows the
-   width that is actually there, and nothing drops below a readable minimum. */
+/* One auto-fit grid per panel, rather than a column width picked per control at
+   some breakpoint. That guess was wrong in both directions: at 1100px the Sankey
+   "Top pairs" select rendered 50px wide showing nothing but its chevron, while
+   "Min bytes" kept a full column to hold four characters. Here the track count
+   follows the width that is there, and nothing drops below a readable minimum. */
 .filter-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
@@ -434,8 +531,6 @@ nfsen-daterange .daterange-slider {
 
 /* Controls fill their card. A select left at its intrinsic width is what
    clipped Sources to "Sou..." whenever its column came out narrow. */
-.filter-group .form-control,
-.filter-group .form-select,
 .filter-group select,
 .filter-group input[type='text'] {
     width: 100%;
@@ -467,10 +562,8 @@ nfsen-daterange .daterange-slider {
     }
 }
 
-
-/* Allow btn-groups inside narrow filter-group boxes to wrap onto a new line
-   instead of overflowing / clipping (e.g. Data Type in col-md-2). */
-.filter-group .btn-group {
+/* A segmented control in a narrow filter card wraps rather than overflowing it. */
+.filter-group .segmented {
     flex-wrap: wrap;
 }
 
@@ -480,10 +573,10 @@ nfsen-daterange .daterange-slider {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    color: var(--bs-secondary-color);
+    color: var(--text-2);
     margin-bottom: 0.5rem;
     padding-bottom: 0.3rem;
-    border-bottom: 1px solid rgba(var(--bs-body-color-rgb), 0.15);
+    border-block-end: 1px solid color-mix(in oklab, var(--text-1) 15%, transparent);
     display: flex;
     align-items: center;
     gap: 0.25rem;
@@ -492,8 +585,8 @@ nfsen-daterange .daterange-slider {
 
 /* Card-like visual group for each filter section */
 .filter-group {
-    background: var(--bs-tertiary-bg);
-    border: 1px solid var(--bs-border-color);
+    background: var(--surface-3);
+    border: 1px solid var(--border);
     border-radius: 0.375rem;
     padding: 0.75rem 0.875rem;
 }
@@ -512,7 +605,7 @@ nfsen-daterange .daterange-slider {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.09em;
-    color: var(--bs-secondary-color);
+    color: var(--text-2);
     margin-bottom: 0.375rem;
     display: block;
 }
@@ -529,14 +622,14 @@ nfsen-daterange .daterange-slider {
 
 /* Graph options row below the chart — contained panel look */
 #graphOptions {
-    background: var(--bs-tertiary-bg);
-    border: 1px solid var(--bs-border-color);
+    background: var(--surface-3);
+    border: 1px solid var(--border);
     border-radius: 0.375rem;
     padding: 0.875rem 0.75rem;
     margin-top: 1rem !important;
 }
 
-/* ── Native <dialog> modal (ip-info-modal, replaces Bootstrap JS Modal) ──── */
+/* ── Native <dialog> modal (ip-info-modal) ───────────────────────────────── */
 dialog#ip-modal-inner {
     border: none;
     border-radius: 8px;
@@ -546,8 +639,8 @@ dialog#ip-modal-inner {
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-    background-color: var(--bs-body-bg);
-    color: var(--bs-body-color);
+    background-color: var(--surface-1);
+    color: var(--text-1);
 }
 dialog#ip-modal-inner::backdrop {
     background: rgba(0, 0, 0, 0.5);
@@ -569,7 +662,7 @@ dialog#ip-modal-inner::backdrop {
 #alerts-toast-container nfsen-toast {
     pointer-events: auto;
 }
-#alerts-toast-container .alert {
+#alerts-toast-container .notice {
     margin-bottom: 0;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
     overflow: hidden; /* contain the progress bar */
@@ -591,41 +684,6 @@ dialog#ip-modal-inner::backdrop {
     }
     to {
         transform: scaleX(0);
-    }
-}
-
-/* ── Dark mode: neutral btn-outline-primary (match light-mode grey intent) ── */
-[data-bs-theme='dark'] {
-    .btn-outline-primary {
-        --bs-btn-bg: transparent;
-        --bs-btn-color: var(--bs-body-color);
-        --bs-btn-border-color: var(--bs-border-color);
-        --bs-btn-hover-bg: var(--bs-secondary-bg);
-        --bs-btn-hover-border-color: var(--bs-border-color);
-        --bs-btn-active-bg: var(--bs-secondary-bg);
-        --bs-btn-active-border-color: var(--bs-border-color);
-        --bs-btn-active-color: var(--bs-body-color);
-        --bs-gradient: none;
-        --bs-btn-disabled-color: var(--bs-secondary-color);
-        --bs-btn-disabled-border-color: var(--bs-border-color);
-    }
-
-    /* Active nav tab: use tertiary bg to match filter area */
-    .nav-tabs .nav-link.active {
-        --bs-nav-tabs-link-active-bg: var(--bs-tertiary-bg);
-        font-weight: bold;
-    }
-
-    /* Health table: mute warning/danger row backgrounds so they don't glare */
-    .table > tbody > tr.table-warning {
-        --bs-table-bg: color-mix(in srgb, var(--bs-warning) 12%, var(--bs-body-bg));
-        --bs-table-color: var(--bs-body-color);
-        --bs-table-striped-bg: color-mix(in srgb, var(--bs-warning) 15%, var(--bs-body-bg));
-    }
-    .table > tbody > tr.table-danger {
-        --bs-table-bg: color-mix(in srgb, var(--bs-danger) 14%, var(--bs-body-bg));
-        --bs-table-color: var(--bs-body-color);
-        --bs-table-striped-bg: color-mix(in srgb, var(--bs-danger) 17%, var(--bs-body-bg));
     }
 }
 

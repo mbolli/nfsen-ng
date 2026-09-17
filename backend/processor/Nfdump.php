@@ -163,6 +163,19 @@ class Nfdump implements Processor {
 
                 break;
 
+            case '-B': // bidirectional aggregation
+            case '-b':
+                $this->cfg['option'][$option] = $value;
+                // nfdump prints the biflow table in its own fixed-width format whatever -o
+                // says, and scales the counters ("14.8 M") unless asked not to. That table is
+                // read back by column, so ask for plain numbers and let this app format them.
+                $this->cfg['option']['-N'] = null;
+                if (!isset($this->cfg['option']['-o'])) {
+                    $this->cfg['option']['-o'] = 'csv';
+                }
+
+                break;
+
             default:
                 $this->cfg['option'][$option] = $value;
                 // Set default output format to csv if not already set
@@ -427,10 +440,18 @@ class Nfdump implements Processor {
         if ($isBidirectional || $isAggregationWithoutCsv) {
             $this->d->log('Aggregation detected (-B=' . (isset($this->cfg['option']['-B']) ? 'yes' : 'no') . ', -a flag=' . ($this->cfg['option']['-a'] ?? 'null') . ') producing fixed-width format (bidirectional=' . ($isBidirectional ? 'yes' : 'no') . ', format=' . ($this->cfg['format'] ?? 'null') . '), returning enhanced raw output', LOG_DEBUG);
 
+            // The biflow table has a known shape, so it can be read into rows. The raw text
+            // still travels with it: a row the parser does not recognise means an empty list,
+            // and the caller renders the output as it came instead of losing it.
+            $decoded = $isBidirectional ? self::parseBidirectionalOutput($output) : [];
+
             $result = [
                 'command' => $command,
-                'rawOutput' => $this->beautifyAggregatedOutput($output),
-                'decoded' => [], // No structured data for aggregated output
+                // Beautifying is for when the text *is* the view. Once there are rows, the
+                // text moves to "Original View", which escapes what it is given, so the
+                // markup would be shown as literal tags.
+                'rawOutput' => $decoded === [] ? $this->beautifyAggregatedOutput($output) : $rawOutput,
+                'decoded' => $decoded,
             ];
 
             // Add stderr if present and not benign
@@ -829,6 +850,62 @@ class Nfdump implements Processor {
     }
 
     /**
+     * nfdump's merged-flow table, parsed into rows.
+     *
+     * Bi-directional aggregation is the one query whose output format cannot be chosen:
+     * nfdump prints its own fixed-width biflow table whatever `-o` is given, csv and json
+     * included. It used to be shown as preformatted text, which meant no IP lookups, no byte
+     * formatting and no sortable columns for the one query that merges both directions.
+     *
+     * Read relative to the `<->` that separates the two endpoints rather than by column
+     * offset, so a long IPv6 address shifting the layout does not silently misread a row.
+     * Anything unexpected returns [] and the caller falls back to the raw text.
+     *
+     * @param list<string> $output
+     *
+     * @return array<array<string, mixed>>
+     */
+    public static function parseBidirectionalOutput(array $output): array {
+        $rows = [];
+
+        foreach ($output as $line) {
+            $line = trim($line);
+            // Only the data rows start with a date; the header, the "Top N flows ordered by"
+            // title and the summary block all do not.
+            if ($line === '' || preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:/', $line) !== 1) {
+                continue;
+            }
+
+            $tokens = preg_split('/\s+/', $line) ?: [];
+            $arrow = array_search('<->', $tokens, true);
+            // date, time, duration, proto, src <-> dst, then five counters.
+            if ($arrow === false || $arrow < 4 || \count($tokens) !== $arrow + 7) {
+                return [];
+            }
+
+            [$srcAddr, $srcPort] = self::splitEndpoint($tokens[$arrow - 1]);
+            [$dstAddr, $dstPort] = self::splitEndpoint($tokens[$arrow + 1]);
+
+            $rows[] = [
+                'firstSeen' => implode(' ', \array_slice($tokens, 0, $arrow - 3)),
+                'duration' => $tokens[$arrow - 3],
+                'proto' => $tokens[$arrow - 2],
+                'srcAddr' => $srcAddr,
+                'srcPort' => $srcPort,
+                'dstAddr' => $dstAddr,
+                'dstPort' => $dstPort,
+                'outPackets' => $tokens[$arrow + 2],
+                'inPackets' => $tokens[$arrow + 3],
+                'outBytes' => $tokens[$arrow + 4],
+                'inBytes' => $tokens[$arrow + 5],
+                'flows' => $tokens[$arrow + 6],
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
      * nfdump messages that say nothing about this query's result.
      *
      * Two of them are unavoidable rather than exceptional: a partially written capture file
@@ -872,6 +949,37 @@ class Nfdump implements Processor {
         }
 
         return $output;
+    }
+
+    /**
+     * "10.0.0.1:443" or "2001:62..e0:fed5.443" into address and port.
+     *
+     * nfdump separates the two with ':' for IPv4 and '.' for IPv6 (output_fmt.c,
+     * String_SrcAddrPort), so the families are told apart by colon count: an IPv6 address
+     * always holds at least two, an IPv4 endpoint exactly the one that is the separator.
+     * The IPv6 address may be condensed to "2001:62..e0:fed5", which is why the port is
+     * looked for after the last colon rather than at the first dot.
+     *
+     * An ICMP row carries type.code where the port goes, so the port is not always a number.
+     *
+     * @return array{string, string}
+     */
+    private static function splitEndpoint(string $endpoint): array {
+        if (substr_count($endpoint, ':') >= 2) {
+            $lastColon = strrpos($endpoint, ':');
+            \assert($lastColon !== false);
+            $dot = strpos($endpoint, '.', $lastColon);
+
+            return $dot === false
+                ? [$endpoint, '']
+                : [substr($endpoint, 0, $dot), substr($endpoint, $dot + 1)];
+        }
+
+        $at = strrpos($endpoint, ':');
+
+        return $at === false
+            ? [$endpoint, '']
+            : [substr($endpoint, 0, $at), substr($endpoint, $at + 1)];
     }
 
     /**

@@ -137,6 +137,11 @@ class Table {
         'mplsLabel10' => 'MPLS Label 10',
         'bps' => 'Bits/s',
         'bpp' => 'Bytes/Packet',
+        // Merged-flow columns, which exist only for a bi-directional query.
+        'outPackets' => 'Out Packets',
+        'inPackets' => 'In Packets',
+        'outBytes' => 'Out Bytes',
+        'inBytes' => 'In Bytes',
     ];
 
     /**

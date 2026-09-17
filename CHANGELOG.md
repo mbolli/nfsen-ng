@@ -11,6 +11,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A bi-directional query is now a table like any other.** nfdump prints its merged-flow output as fixed-width text whatever output format it is asked for, csv and json included, so it used to be shown as preformatted text: no IP lookups, no formatted byte counts, no CSV/JSON export, for the one query that merges both directions of a conversation. That table is now read back into rows, with nfdump's own text, and the summary it ends with, still under **Original View**.
+
 - **An aggregated table named its columns after nfdump's internal fields.** Aggregating forces csv output, whose field names differ from the json ones, so the same column read `SrcAddr` and `DstPort` where an unaggregated query said Source IP and Destination Port. The Statistics tab's aggregation controls also no longer stretch across the full page width.
 
 - **A query that worked no longer reports an nfdump warning.** nfdump prints `Command line switch -s overwrites -a` for every aggregated statistic while honouring the aggregation, and that went to the panel as a yellow warning beside a correct result. Messages nfdump always prints are filtered out of what the panels show, and still logged at debug level.

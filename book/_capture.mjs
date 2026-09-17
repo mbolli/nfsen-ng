@@ -554,6 +554,20 @@ async function main() {
   await go(`_currentView = 'statistics'`);
   await processData();
   await shot('02-page-statistics');
+  await shot('guide-statistics-aggregation', '#filterStatsAggregation');
+
+  // The one query whose output format nfdump chooses for itself: -B prints a fixed-width
+  // biflow table whatever -o asks for, so this shot is what says the app reads it back into
+  // real columns rather than showing the text (#174).
+  console.log('shot 02b statistics bidirectional');
+  if (!(await evaluate(`__clickText('Bi-directional', 'label')`))) {
+    throw new Error('Bi-directional aggregation button not found');
+  }
+  await processData();
+  await shot('guide-statistics-bidirectional', '#statsTable');
+  if (!(await evaluate(`__clickText('Bi-directional', 'label')`))) {
+    throw new Error('Bi-directional aggregation button not found');
+  }
 
   // ---- 03: Sankey -- flow-volume diagram (in development, see #152) ----
   console.log('shot 03 sankey');

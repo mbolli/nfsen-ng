@@ -120,6 +120,89 @@ describe('Nfdump', function (): void {
         });
     });
 
+    describe('parseBidirectionalOutput', function (): void {
+        // Real nfdump 1.7.8 output for `-s record/bytes -B -N`.
+        $output = [
+            'Top 2 flows ordered by bytes:',
+            'Date first seen         Duration         Proto      Src IP Addr:Port           Dst IP Addr:Port   Out Pkt   In Pkt Out Byte  In Byte Flows',
+            '2026-08-29 05:17:53.000            1.000 6            10.0.37.1:10037 <->        10.1.37.2:443          0     2880        0   288000   288',
+            '2026-08-29 05:17:53.000            1.000 1            10.0.69.1:0     <->        10.1.69.2:85.39        0       88        0     4400    44',
+            'Summary: total flows: 21600, total bytes: 14774400, total packets: 151200, avg bps: 118195200, avg pps: 151200, avg bpp: 97',
+            'Time window: 2026-08-29 05:17:53.000 - 2026-09-17 18:25:00.000, Duration:19d 13:07:07.000',
+            'Total records processed: 21600, passed: 21600, Blocks skipped: 0, Bytes read: 2264832',
+        ];
+
+        test('reads the merged-flow rows and skips the header and summary', function () use ($output): void {
+            $rows = Nfdump::parseBidirectionalOutput($output);
+
+            expect($rows)->toHaveCount(2)
+                ->and($rows[0])->toBe([
+                    'firstSeen' => '2026-08-29 05:17:53.000',
+                    'duration' => '1.000',
+                    'proto' => '6',
+                    'srcAddr' => '10.0.37.1',
+                    'srcPort' => '10037',
+                    'dstAddr' => '10.1.37.2',
+                    'dstPort' => '443',
+                    'outPackets' => '0',
+                    'inPackets' => '2880',
+                    'outBytes' => '0',
+                    'inBytes' => '288000',
+                    'flows' => '288',
+                ])
+            ;
+        });
+
+        // ICMP puts type.code where the port goes, which must not be mistaken for a column.
+        test('keeps an ICMP type.code in the port field', function () use ($output): void {
+            $rows = Nfdump::parseBidirectionalOutput($output);
+
+            expect($rows[1]['dstPort'])->toBe('85.39')
+                ->and($rows[1]['dstAddr'])->toBe('10.1.69.2')
+            ;
+        });
+
+        // nfdump writes an IPv6 endpoint as address.port, not address:port (output_fmt.c,
+        // String_SrcAddrPort), so splitting on the last colon would eat part of the address.
+        test('splits an IPv6 endpoint on the dot, not the colon', function (): void {
+            $rows = Nfdump::parseBidirectionalOutput([
+                '2026-08-29 05:17:53.000            1.000 6      2001:db8::1.10037 <->     2001:db8::2.443          0     2880        0   288000   288',
+            ]);
+
+            expect($rows[0]['srcAddr'])->toBe('2001:db8::1')
+                ->and($rows[0]['srcPort'])->toBe('10037')
+                ->and($rows[0]['dstAddr'])->toBe('2001:db8::2')
+                ->and($rows[0]['dstPort'])->toBe('443')
+            ;
+        });
+
+        // Anything longer than 16 characters is printed condensed, middle replaced by '..',
+        // and the tail still contains colons.
+        test('splits a condensed IPv6 endpoint', function (): void {
+            $rows = Nfdump::parseBidirectionalOutput([
+                '2026-08-29 05:17:53.000            1.000 6      2001:62..e0:fed5.10037 <->     2001:62..e0:fed6.443          0     2880        0   288000   288',
+            ]);
+
+            expect($rows[0]['srcAddr'])->toBe('2001:62..e0:fed5')
+                ->and($rows[0]['srcPort'])->toBe('10037')
+                ->and($rows[0]['dstAddr'])->toBe('2001:62..e0:fed6')
+                ->and($rows[0]['dstPort'])->toBe('443')
+            ;
+        });
+
+        // The caller renders the raw text when this returns nothing, so an output shape the
+        // parser does not recognise has to be reported rather than half-read.
+        test('gives up on a row it cannot account for', function (): void {
+            expect(Nfdump::parseBidirectionalOutput([
+                '2026-08-29 05:17:53.000            1.000 6            10.0.37.1:10037 <->        10.1.37.2:443    288',
+            ]))->toBe([]);
+        });
+
+        test('has nothing to say about output with no rows', function (): void {
+            expect(Nfdump::parseBidirectionalOutput(['No matching flows', '']))->toBe([]);
+        });
+    });
+
     describe('withoutBenignStderr', function (): void {
         function benignFiltered(string $stderr): string {
             $m = (new ReflectionClass(Nfdump::class))->getMethod('withoutBenignStderr');

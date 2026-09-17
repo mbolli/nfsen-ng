@@ -38,6 +38,11 @@ Two consequences are visible in the result:
 - **The columns change with the aggregation.** Aggregating by destination port yields a table
   of ports, not of 5-tuples, because the fields you did not aggregate on no longer identify a
   row. nfdump chooses the column set, not nfsen-ng.
-- **Bi-directional output is a text block rather than a table.** nfdump prints its
-  merged-flow format as fixed-width text whatever output format it is asked for, so it is
-  shown as-is instead of being parsed into columns — the same as on the Flows tab.
+![Aggregation controls](../images/guide-statistics-aggregation.png)
+
+**Bi-directional** is the one query whose output format nfdump chooses for itself: it prints
+its merged-flow table as fixed-width text whatever `-o` it is given. nfsen-ng reads that table
+back into columns, so it behaves like any other result — IP lookups, formatted byte counts,
+CSV/JSON export — with the text still one click away under **Original View**.
+
+![A bi-directional statistic](../images/guide-statistics-bidirectional.png)

@@ -10,6 +10,8 @@ use mbolli\nfsen_ng\vendor\ProgressBar;
 use OpenSwoole\Coroutine;
 
 class Import {
+    /** Ports named individually before the message says "and N more". */
+    private const SILENT_PORTS_LISTED = 8;
     private readonly Debug $d;
     private readonly bool $cli;
     private bool $verbose = false;
@@ -471,6 +473,10 @@ class Import {
      * Only when some other port did have traffic: if nothing at all came through, the problem
      * is the capture files or the filter, not the ports, and a list of every port would be
      * noise on top of an already obvious failure.
+     *
+     * Counted first, listed second, and only a handful of them. A monitored service-port list
+     * runs to seventy entries, and naming all of them turned a hint into a wall of text that
+     * buries the sentence explaining what it means.
      */
     private function reportPortsWithoutData(): void {
         if ($this->portsWithoutData === [] || $this->portsWithData === []) {
@@ -480,11 +486,25 @@ class Import {
         $silent = array_keys($this->portsWithoutData);
         sort($silent);
 
+        $total = \count($silent);
+        // One over the cap is listed rather than hidden: "and 1 more" is longer than the port
+        // it stands for.
+        $listed = $total <= self::SILENT_PORTS_LISTED + 1
+            ? $silent
+            : \array_slice($silent, 0, self::SILENT_PORTS_LISTED);
+        $rest = $total - \count($listed);
+
+        if ($total === 1) {
+            $subject = 'Port ' . $listed[0] . ' saw no traffic in this run, so its graph stays flat.';
+        } else {
+            $subject = $total . ' of the configured ports saw no traffic in this run ('
+                . implode(', ', $listed) . ($rest > 0 ? ' and ' . $rest . ' more' : '')
+                . '), so their graphs stay flat.';
+        }
+
         $this->d->log(
-            'No traffic seen for port' . (\count($silent) === 1 ? ' ' : 's ') . implode(', ', $silent)
-            . ' in this run, so their graphs stay flat. Other ports did report traffic, so the '
-            . 'capture files are being read — either nothing used these ports, or they are not '
-            . 'in the exported flows.',
+            $subject . ' Other ports did report traffic, so the capture files are being read: '
+            . 'either nothing used these ports, or they are not in the exported flows.',
             LOG_WARNING,
         );
     }

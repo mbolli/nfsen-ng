@@ -29,6 +29,6 @@ exactly one of geolocation or Netbox — a private (RFC 1918) address is never
 sent to the public geolocation API, and a public address never triggers a
 Netbox lookup.
 
-The modal is a native `<dialog>` element (no Bootstrap JS/Popper dependency)
+The modal is a native `<dialog>` element
 pushed by the server as a Datastar patch — the same pattern as any other
 action, just targeting a fragment instead of the whole page.

@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Bootstrap is gone.** It was a CSS-only dependency: no JavaScript, no icon font, and 171 of its 2031 class selectors were ever used, so roughly two thirds of the 227 KB it shipped were rules for classes this app never writes. What replaces it is a token layer (`tokens.css`) and a semantic stylesheet (`ui.css`) of about 50 KB together. Colours are `oklch()` with `light-dark()`, and the theme sets a real `color-scheme`, so native controls, scrollbars and form widgets follow the theme instead of being restyled. The markup now says what things are: a button is a `button`, progress is `<progress>`, and which option is selected is `:checked` or `aria-pressed` rather than a class the server has to keep in sync. The shipped CSS drops from 250 KB to 50 KB and the rendered page from 205 KB to 187 KB.
+
+- **`data-bs-theme` is now `data-theme`.** Only relevant if you styled nfsen-ng from outside.
+
 - **The filter panels lay themselves out instead of guessing at breakpoints.** Every control used to carry hand-picked Bootstrap column classes, which were wrong in both directions: at 1100px the Sankey "Top pairs" select rendered 50px wide showing nothing but a chevron and the byte inputs read `e.`, while a single "Min bytes" field kept a whole column on a wide screen, and the cards ended at 3 to 6 different heights per row. Each panel is now one auto-fit grid, so the column count follows the width that is there and no control drops below a readable size. Min and Max bytes share one card, and below 768px the controls collapse behind **Show filters**: the Statistics panel measured 1448px tall on a phone, which put **Process data** three screens below the filters.
 
 - **The date-range slider no longer draws both times on top of each other** when the selection is short against a long range, which on a year-wide slider was every 24-hour view. The left one moves up a line.

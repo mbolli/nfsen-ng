@@ -25,8 +25,8 @@ composer before-commit  # fix + phpstan
 **Always run `composer before-commit` after a set of PHP changes and fix any reported errors before committing.**
 
 pnpm install            # Install JS deps (copies datastar.js to frontend/js/)
-pnpm run lint           # Biome lint frontend/js/components + frontend/css/nfsen-ng.css
-pnpm run format         # Biome format (write) frontend/js/components + frontend/css/nfsen-ng.css
+pnpm run lint           # Biome lint frontend/js/components + the three frontend/css sheets
+pnpm run format         # Biome format (write) frontend/js/components + the three frontend/css sheets
 ```
 
 ## Architecture
@@ -44,6 +44,23 @@ Key files:
 - [backend/datasources/Rrd.php](backend/datasources/Rrd.php) — primary datasource (default)
 - [backend/templates/](backend/templates/) — Twig templates (layout + partials)
 - [frontend/js/components/](frontend/js/components/) — Web Components (nfsen-chart, nfsen-table, etc.)
+- [frontend/css/](frontend/css/) — `tokens.css` (design tokens), `ui.css` (elements + components),
+  `nfsen-ng.css` (this app's own pieces: filter panel, charts, slider skin)
+
+## CSS
+
+No framework. Style elements, not utility classes: a `button` is styled as a button, a table
+as a table. Where a class is needed it names a component (`.segmented`, `.notice`, `.card`),
+never a declaration — there is no `.mb-3` to reach for, and adding one is the wrong move.
+
+- **Layout** uses three primitives: `.stack` (vertical rhythm), `.cluster` (a wrapping row),
+  `.grid` (auto-fit columns). Prefer them over new one-off flex rules.
+- **Colours** come from the semantic tokens (`--surface-2`, `--text-2`, `--border`, `--danger`),
+  never from a literal. Variants are mixed with `color-mix()` from the same hue.
+- **Themes** are `light-dark()` plus a real `color-scheme` set by `:root[data-theme]`, so a
+  new rule usually needs no dark-mode counterpart at all.
+- **State** belongs in the DOM: `:checked`, `aria-pressed`, `aria-current`, `[data-open]`,
+  `[data-level]`. A class the server has to keep in sync is what the old markup got wrong.
 
 ## Signal Conventions (CRITICAL)
 

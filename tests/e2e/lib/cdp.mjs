@@ -274,7 +274,7 @@ class Page {
      */
     async processData({ timeout = 20000 } = {}) {
         await this.clickByText('Process data', 'button');
-        const isVisible = `(function(){var s=document.querySelector('.spinner-grow');return !!s&&s.offsetParent!==null;})()`;
+        const isVisible = `(function(){return [...document.querySelectorAll('.spinner')].some(s => s.offsetParent !== null);})()`;
         await this.waitFor(isVisible, { timeout: 5000, label: 'query to start' }).catch(() => {});
         await this.waitFor(`!(${isVisible})`, { timeout, label: 'query to finish' });
     }

@@ -13,7 +13,7 @@
 //
 // Every shot is captured twice -- once with prefers-color-scheme forced to
 // light, once to dark (Emulation.setEmulatedMedia; nfsen-ng's Bootstrap
-// data-bs-theme + CSS variables respond to this directly) -- then stitched
+// data-theme + CSS variables respond to this directly) -- then stitched
 // side by side into a single PNG via ImageMagick's `convert` (`+append`; must
 // be on PATH).
 //
@@ -286,14 +286,14 @@ window.__groupRect = function(groupLabel){
 };`;
 
 // nfsen-ng's dark mode is an application-level Datastar signal ($_darkMode,
-// persisted to localStorage and reflected onto <html data-bs-theme>), toggled
+// persisted to localStorage and reflected onto <html data-theme>), toggled
 // by clicking the moon/sun nav icon -- see layout.html.twig's data-init/
-// data-attr:data-bs-theme and nav.html.twig's data-on:click__prevent="$_darkMode
+// data-attr:data-theme and nav.html.twig's data-on:click__prevent="$_darkMode
 // = !$_darkMode". Unlike a CSS light-dark()-token app, forcing the OS-level
 // prefers-color-scheme media feature (Emulation.setEmulatedMedia) does nothing
 // here -- so toggle the real control instead, exactly as a user would.
 async function setDarkMode(on) {
-  const isDark = await evaluate(`document.documentElement.getAttribute('data-bs-theme') === 'dark'`);
+  const isDark = await evaluate(`document.documentElement.getAttribute('data-theme') === 'dark'`);
   if (isDark !== on) {
     const clicked = await evaluate(`__clickAttr("_darkMode = !")`);
     if (!clicked) throw new Error('dark-mode toggle not found');
@@ -424,7 +424,7 @@ function printSummary() {
 // shot captures name/clipSel once with light forced, once with dark forced,
 // and stitches the pair side by side (light left, dark right) via `convert
 // +append`. The 300ms settle after each dark-mode toggle gives Bootstrap's
-// data-bs-theme + ECharts theme listeners a beat to repaint before
+// data-theme + ECharts theme listeners a beat to repaint before
 // the capture. The stitched result is written to a temp file and handed to
 // commitShot, which only overwrites the committed name.png when it actually
 // differs (see the DIFF_THRESHOLD/FUZZ notes up top).
@@ -495,12 +495,12 @@ async function processData({ timeout = 20000 } = {}) {
   // indicator that hasn't flipped yet) can otherwise look indistinguishable
   // from "already done", letting the shot fire mid-query.
   // Ask whether ANY spinner is visible rather than looking at the first match:
-  // since #166 every panel's submit button carries its own .spinner-grow (see
+  // since #166 every panel's submit button carries its own .spinner (see
   // progress-button.html.twig) and the graph filter panel's comes first in
   // document order, so querySelector would keep returning that one -- hidden
   // whenever the graph isn't in filtered mode, which reads as "already done"
   // and lets every shot below fire mid-query.
-  const isVisible = `[...document.querySelectorAll('.spinner-grow')].some(s => s.offsetParent !== null)`;
+  const isVisible = `[...document.querySelectorAll('.spinner')].some(s => s.offsetParent !== null)`;
   await waitJs(isVisible, { timeout: 5000, label: 'Process data query to start' }).catch(() => {});
   await waitJs(`!(${isVisible})`, { timeout, label: 'Process data query to finish' });
   await sleep(300);
@@ -524,6 +524,16 @@ async function main() {
   // which makes every data-bearing shot below (tables, IP links, charts)
   // show something real instead of an empty state. Harmless if there's
   // truly nothing to find; the tabs just render their empty state instead.
+  // The bundle is a module at the end of <body>, so the filter bar's controls exist in the
+  // DOM before Datastar has wired them and before the persisted view has been restored.
+  // Clicking then does nothing and the run dies four lines later with a confusing message.
+  await waitJs(`!!document.querySelector('.tabs a.active')`, { label: 'Datastar to boot' });
+  await go(`_currentView = 'graphs'`);
+  await waitJs(
+    `[...document.querySelectorAll('.date-range-controls button')].some(b => b.offsetParent !== null)`,
+    { label: 'date range controls' }
+  );
+
   console.log('selecting Year date range');
   await selectRange('Year');
 
@@ -534,7 +544,7 @@ async function main() {
   // ---- guide: the shared control bar (date range + the active tab's filter
   //      panel), cropped -- a detail shot for the user guide, not the full page.
   console.log('shot guide-controls-bar');
-  await shot('guide-controls-bar', '.filter.row .card');
+  await shot('guide-controls-bar', '.filter-bar .card');
 
   // ---- 01: Flows -- the flow table browser ----
   console.log('shot 01 flows');
@@ -560,14 +570,13 @@ async function main() {
   // biflow table whatever -o asks for, so this shot is what says the app reads it back into
   // real columns rather than showing the text (#174).
   console.log('shot 02b statistics bidirectional');
-  if (!(await evaluate(`__clickText('Bi-directional', 'label')`))) {
-    throw new Error('Bi-directional aggregation button not found');
-  }
+  // By id, not by label text: the Flows tab carries the same control, and which of the
+  // two a text search lands on depends on which panel happens to be rendered.
+  const bidir = `(function(){var i=document.getElementById('filterStatsAggBi');if(!i)return false;i.click();return true;})()`;
+  if (!(await evaluate(bidir))) throw new Error('Bi-directional aggregation input not found');
   await processData();
   await shot('guide-statistics-bidirectional', '#statsTable');
-  if (!(await evaluate(`__clickText('Bi-directional', 'label')`))) {
-    throw new Error('Bi-directional aggregation button not found');
-  }
+  await evaluate(bidir);
 
   // ---- 03: Sankey -- flow-volume diagram (in development, see #152) ----
   console.log('shot 03 sankey');

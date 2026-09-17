@@ -79,11 +79,15 @@ Three things keep that readable:
 
 - **Hovering a line lifts it and fades the rest**, which is the only reliable way to identify
   one: the colour palette cycles long before sixty series, so two lines can share a colour.
+
+![The tooltip on a graph with forty series](../images/guide-graphs-series-tooltip.png)
 - **The tooltip and the Legend panel show the largest series first**, capped, with a count of
   the rest. Listing every port in source order, most of them at zero, buried whichever line you
   were pointing at.
 - **Series Visibility carries a colour swatch per entry** and scrolls rather than growing, so
   the panel cannot push the chart off the top of the screen.
+
+![Series Visibility and Legend with many series](../images/guide-graphs-series-panels.png)
 
 ## Resolution & display controls
 

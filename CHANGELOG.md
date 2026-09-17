@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A graph with many series was hard to read, which the **Ports** display makes routine: one line per configured port, and a real port list runs to dozens ([#173](https://github.com/mbolli/nfsen-ng/issues/173)). Hovering a line now lifts it and fades the rest, since the palette cycles long before sixty series and colour alone cannot identify one. The tooltip and the Legend panel show the largest series first, capped, with a count of the rest, instead of listing every port in source order with most of them at zero. Series Visibility gained a colour swatch per entry and scrolls instead of growing: with sixty ports it measured 1500px and pushed the chart off the top of the screen.
+
 ---
 
 ## [1.0.0-beta.5] — 2026-09-16

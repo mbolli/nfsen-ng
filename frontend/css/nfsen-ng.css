@@ -546,11 +546,64 @@ dialog#ip-modal-inner::backdrop {
    has no flag glyphs at all outside Firefox and shows the letters — still
    readable, and the country name is a row below. */
 .flag-emoji {
-    font-family: "Twemoji Mozilla", "Apple Color Emoji", "Segoe UI Emoji",
-        "Noto Color Emoji", "Android Emoji", sans-serif;
+    font-family: 'Twemoji Mozilla', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', sans-serif;
     font-size: 2rem;
     line-height: 1;
     vertical-align: -0.15em;
     margin-left: 0.35rem;
 }
 
+/* ── Graph series controls with many series ──────────────────────────────── */
+
+/* A per-port graph carries one series per configured port, and a real port list runs to
+   sixty. One column of sixty checkboxes measured ~1500px and pushed the graph off the top of
+   the screen, and the hover legend did the same beside it. Both scroll instead, at a height
+   that leaves the chart visible. */
+/* Attribute selectors only, so the scoped ids a second chart uses (flowsGraph-series) are
+   covered by the same rules, and so specificity stays flat: mixing #id and [attr] forms put a
+   lower-specificity rule after a higher one, which the linter flags and which breaks the
+   moment someone reorders the file. */
+[id='series'],
+[id='legend'],
+[id$='-series'],
+[id$='-legend'] {
+    max-height: 13rem;
+    overflow-y: auto;
+}
+
+/* One line per series, ellipsised rather than wrapped. Two columns were tried first and
+   truncated the names to nothing: the panel is a narrow grid column, so half of it cannot
+   hold "27017_bits_any". The list scrolls instead. */
+[id='series'] .form-check,
+[id$='-series'] .form-check {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.1rem;
+    min-height: auto;
+    padding-left: 0;
+}
+
+[id='series'] .form-check-input,
+[id$='-series'] .form-check-input {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+[id='series'] .form-check-label,
+[id$='-series'] .form-check-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The colour ECharts drew this series in. Without it a legend of sixty names says nothing
+   about which line is which. */
+.series-swatch {
+    display: inline-block;
+    width: 0.65rem;
+    height: 0.65rem;
+    margin-right: 0.35rem;
+    border-radius: 2px;
+    vertical-align: baseline;
+}

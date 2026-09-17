@@ -72,6 +72,19 @@ than something that keeps up with the capture:
 The Flows tab carries the same machinery in its own **Traffic over time** panel, so a filter
 typed there can be read as a timeline without repeating it here (see [Flow Browser](flows.md)).
 
+## Reading a graph with many series
+
+The **Ports** display draws one line per configured port, and a real port list runs to dozens.
+Three things keep that readable:
+
+- **Hovering a line lifts it and fades the rest**, which is the only reliable way to identify
+  one: the colour palette cycles long before sixty series, so two lines can share a colour.
+- **The tooltip and the Legend panel show the largest series first**, capped, with a count of
+  the rest. Listing every port in source order, most of them at zero, buried whichever line you
+  were pointing at.
+- **Series Visibility carries a colour swatch per entry** and scrolls rather than growing, so
+  the panel cannot push the chart off the top of the screen.
+
 ## Resolution & display controls
 
 Below the chart: a data-points slider (points to render, trading resolution

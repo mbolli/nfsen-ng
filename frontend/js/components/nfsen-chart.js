@@ -429,6 +429,10 @@ export class NfsenChart extends HTMLElement {
                 borderColor: theme.tooltipBorder,
                 textStyle: { color: theme.textColor },
                 valueFormatter: formatY,
+                // Biggest first, capped, for the same reason the external legend is: an axis
+                // tooltip listing sixty ports in source order is taller than the window and
+                // buries the series being pointed at.
+                formatter: (params) => this.tooltipRows(params, formatY),
             },
             xAxis: {
                 type: 'time',
@@ -463,6 +467,10 @@ export class NfsenChart extends HTMLElement {
                 step: this._stepPlot ? 'end' : false,
                 stack: this._stacked ? 'total' : undefined,
                 areaStyle: this._stacked ? {} : undefined,
+                // Hovering a line lifts it and fades the rest, which is the only way to answer
+                // "which one is this?" on a per-port graph carrying sixty of them: the palette
+                // cycles long before that, so colour alone cannot identify a line.
+                emphasis: { focus: 'series' },
                 encode: { x: 0, y: i + 1 },
             })),
         };
@@ -522,6 +530,38 @@ export class NfsenChart extends HTMLElement {
     }
 
     /**
+     * Axis tooltip contents: the largest series at this point, biggest first.
+     *
+     * ECharts' default lists every series in source order, which is unreadable once a graph
+     * carries one line per configured port. The marker markup is ECharts' own, so the colours
+     * still match the lines.
+     *
+     * @param {Array} params - one entry per series at the hovered x
+     * @param {Function} formatY - the axis value formatter
+     * @returns {string}
+     */
+    tooltipRows(params, formatY) {
+        const MAX_ROWS = 12;
+        const entries = (Array.isArray(params) ? params : [params]).filter((p) => p.value != null);
+        if (entries.length === 0) return '';
+
+        const seriesValue = (p) => (Array.isArray(p.value) ? p.value[p.encode?.y?.[0] ?? 1] : p.value);
+        const ranked = entries
+            .map((p) => ({ marker: p.marker, name: p.seriesName, value: seriesValue(p) }))
+            .filter((row) => row.value != null)
+            .sort((a, b) => b.value - a.value);
+
+        const head = `<div>${escapeHtml(this.dateFmt(entries[0].axisValue))}</div>`;
+        const rows = ranked
+            .slice(0, MAX_ROWS)
+            .map((row) => `<div>${row.marker}${escapeHtml(row.name)}: <b>${formatY(row.value)}</b></div>`)
+            .join('');
+        const hidden = ranked.length - Math.min(ranked.length, MAX_ROWS);
+
+        return head + rows + (hidden > 0 ? `<div style="opacity:.6">+${hidden} more</div>` : '');
+    }
+
+    /**
      * Resolve one of this chart's external control elements (#legend, #series).
      *
      * A page can hold more than one chart -- Graphs and the flows-side traffic panel -- and a
@@ -558,8 +598,20 @@ export class NfsenChart extends HTMLElement {
         const formatY = this.valueFormatter();
         const seriesNames = (this.currentLabels || []).slice(1);
 
-        const rows = seriesNames.map((name, i) => `<div>${escapeHtml(name)}: <b>${formatY(values[i])}</b></div>`).join('');
-        legendEl.innerHTML = `<div class="fw-semibold">${escapeHtml(this.dateFmt(tsMs))}</div>${rows}`;
+        // Biggest first and capped. Sixty ports produced sixty rows in source order, most of
+        // them zero, which ran past the bottom of the screen and buried whichever series the
+        // reader was pointing at.
+        const MAX_ROWS = 12;
+        const ranked = seriesNames
+            .map((name, i) => ({ name, value: values[i] }))
+            .filter((row) => row.value != null)
+            .sort((a, b) => b.value - a.value);
+        const shown = ranked.slice(0, MAX_ROWS);
+        const hidden = ranked.length - shown.length;
+
+        const rows = shown.map((row) => `<div>${escapeHtml(row.name)}: <b>${formatY(row.value)}</b></div>`).join('');
+        const more = hidden > 0 ? `<div class="text-muted">+${hidden} more</div>` : '';
+        legendEl.innerHTML = `<div class="fw-semibold">${escapeHtml(this.dateFmt(tsMs))}</div>${rows}${more}`;
     }
 
     // Method to update chart data (can be called from Datastar)
@@ -583,6 +635,7 @@ export class NfsenChart extends HTMLElement {
         if (!seriesContainer) return;
 
         seriesContainer.innerHTML = '';
+        const palette = this.getThemeColors().palette;
         seriesLabels.forEach((label, index) => {
             const id = `series_${index}`;
             const wrapper = document.createElement('label');
@@ -598,7 +651,16 @@ export class NfsenChart extends HTMLElement {
             const labelEl = document.createElement('label');
             labelEl.className = 'form-check-label';
             labelEl.htmlFor = id;
-            labelEl.textContent = label;
+            labelEl.title = label;
+
+            // The colour ECharts gave this series, so a line can be matched to its name. With
+            // a long port list the palette cycles, which is unavoidable, but a swatch at least
+            // narrows it to the few series sharing a colour instead of leaving you to guess.
+            const swatch = document.createElement('span');
+            swatch.className = 'series-swatch';
+            swatch.style.backgroundColor = palette[index % palette.length];
+            labelEl.appendChild(swatch);
+            labelEl.appendChild(document.createTextNode(label));
 
             wrapper.appendChild(checkbox);
             wrapper.appendChild(labelEl);

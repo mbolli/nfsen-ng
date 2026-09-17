@@ -8,7 +8,7 @@
        rendering as a step plot. #}
     {# _darkMode is seeded from the head script's already-painted value, so signal and
        attribute cannot disagree. Not persisted — only the explicit choice is (#167). #}
-    data-signals__ifmissing="{_darkMode: window.__nfsenTheme.dark, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences', _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _autoSyncGraph: false}"
+    data-signals__ifmissing="{_darkMode: window.__nfsenTheme.dark, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences', _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _autoSyncGraph: false, _filtersOpen: false}"
     data-persist="{_currentView: $_currentView, _settingsSection: $_settingsSection, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _autoSyncGraph: $_autoSyncGraph}"
     {# Fallback for JS off entirely; the head script overrides it (#156, #167). #}
     {% if defaults.theme|default('auto') == 'dark' %}data-bs-theme="dark"{% elseif defaults.theme|default('auto') == 'light' %}data-bs-theme="light"{% endif %}
@@ -204,20 +204,32 @@
 
                         {% include 'partials/date-range.html.twig' %}
 
+                        {#
+                            One toggle for every panel, since only one is ever on screen. It
+                            shows up below the width where the controls stop fitting; the
+                            submit row is deliberately left outside what collapses, so a
+                            query can still be run without opening the filters first.
+                        #}
+                        <button type="button" class="btn btn-sm btn-outline-secondary filter-toggle align-items-center gap-1 mb-3"
+                                data-on:click="$_filtersOpen = !$_filtersOpen"
+                                data-text="$_filtersOpen ? 'Hide filters' : 'Show filters'"></button>
+
                         {# View-specific filter panels — all rendered, visibility via data-show. #}
-                        <div>
-                            <div data-show="$_currentView == 'graphs'" class="col-12">
-                                {% include 'partials/graph-filters.html.twig' %}
+                        <div data-class:filter-collapsed="!$_filtersOpen">
+                            <div>
+                                <div data-show="$_currentView == 'graphs'" class="col-12">
+                                    {% include 'partials/graph-filters.html.twig' %}
+                                </div>
+                                <div data-show="$_currentView == 'flows'" class="col-12" style="display: none;">
+                                    {% include 'partials/flow-filters.html.twig' %}
+                                </div>
                             </div>
-                            <div data-show="$_currentView == 'flows'" class="col-12" style="display: none;">
-                                {% include 'partials/flow-filters.html.twig' %}
+                            <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
+                                {% include 'partials/stats-filters.html.twig' %}
                             </div>
-                        </div>
-                        <div data-show="$_currentView == 'statistics'" class="col-12" style="display: none;">
-                            {% include 'partials/stats-filters.html.twig' %}
-                        </div>
-                        <div data-show="$_currentView == 'sankey'" class="col-12" style="display: none;">
-                            {% include 'partials/sankey-filters.html.twig' %}
+                            <div data-show="$_currentView == 'sankey'" class="col-12" style="display: none;">
+                                {% include 'partials/sankey-filters.html.twig' %}
+                            </div>
                         </div>
 
                     </div>

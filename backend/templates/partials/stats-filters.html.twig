@@ -1,9 +1,9 @@
 {#
     Statistics filter controls.
 #}
-<div class="row g-3">
+<div class="filter-grid">
     {# Top N #}
-    <div id="filterStatisticsTop" class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
+    <div id="filterStatisticsTop" class="filter-cell">
         <div class="filter-group">
         <p class="filter-label">Top records
             <nfsen-tooltip data-ignore-morph text="Number of top N statistics to display (-n option)." placement="top"></nfsen-tooltip>
@@ -18,7 +18,7 @@
     </div>
 
     {# Sources #}
-    <div id="filterStatsSources" class="col-xs-6 col-sm-3 col-md-2">
+    <div id="filterStatsSources" class="filter-cell">
         <div class="filter-group">
         <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
@@ -33,7 +33,7 @@
     </div>
 
     {# NFDUMP filter #}
-    <div class="col-xs-12 col-sm-7 col-md-5">
+    <div class="filter-cell filter-cell--wide">
         <div class="filter-group">
         <p class="filter-label">NFDUMP filter
             <nfsen-tooltip data-ignore-morph text="Filter syntax like tcpdump. Examples: 'dst port 80', 'bytes > 10M'" placement="right"></nfsen-tooltip>
@@ -48,26 +48,31 @@
         </div>
     </div>
 
-    {# Byte thresholds — prepended to the nfdump filter expression #}
-    <div class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
+    {# Byte thresholds, prepended to the nfdump filter expression. One card rather than
+       two: a single narrow input each left them stranded in half-empty cards, and they
+       are one setting with two ends. #}
+    <div class="filter-cell">
         <div class="filter-group">
-        <p class="filter-label">Min bytes
-            <nfsen-tooltip data-ignore-morph text="Only aggregate flows with at least this many bytes. Prepended as 'bytes &gt; value' filter. Accepts SI suffixes: k, M, G. E.g. '1M'." placement="top"></nfsen-tooltip>
+        <p class="filter-label">Bytes per flow
+            <nfsen-tooltip data-ignore-morph text="Keep only flows within this byte range. Prepended to the filter as 'bytes &gt; min' / 'bytes &lt; max'. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
         </p>
-        <input type="text" {{ bind(stats_lower_limit) }} class="form-control" placeholder="e.g. 1M">
+        <div class="filter-subgrid filter-subgrid--tight">
+            <div>
+                <label class="filter-sublabel" for="stats_lower_limitInput">Min</label>
+                <input type="text" id="stats_lower_limitInput" {{ bind(stats_lower_limit) }} class="form-control" placeholder="e.g. 1M"
+                       title="Only aggregate flows with at least this many bytes. Prepended as 'bytes &gt; value' filter. Accepts SI suffixes: k, M, G. E.g. '1M'.">
+            </div>
+            <div>
+                <label class="filter-sublabel" for="stats_upper_limitInput">Max</label>
+                <input type="text" id="stats_upper_limitInput" {{ bind(stats_upper_limit) }} class="form-control" placeholder="e.g. 100M"
+                       title="Only aggregate flows with at most this many bytes. Prepended as 'bytes &lt; value' filter. Accepts SI suffixes: k, M, G.">
+            </div>
         </div>
-    </div>
-    <div class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
-        <div class="filter-group">
-        <p class="filter-label">Max bytes
-            <nfsen-tooltip data-ignore-morph text="Only aggregate flows with at most this many bytes. Prepended as 'bytes &lt; value' filter. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
-        </p>
-        <input type="text" {{ bind(stats_upper_limit) }} class="form-control" placeholder="e.g. 100M">
         </div>
     </div>
 
     {# Statistic properties #}
-    <div id="filterStatsProperties" class="col-xs-6 col-sm-6 col-md-4 col-lg-2">
+    <div id="filterStatsProperties" class="filter-cell">
         <div class="filter-group">
         <p class="filter-label">Statistic properties
             <nfsen-tooltip data-ignore-morph text="Choose what to aggregate (-s option) and how to sort." placement="top"></nfsen-tooltip>
@@ -149,17 +154,17 @@
 
     {# Aggregation, for the Flow Records statistic only (#174).
 
-       The wrapper carries no display utility of its own: Bootstrap's are !important and beat
-       the inline display:none that data-show sets. nfdump answers "Aggregation ignored for
-       element statistics" for every other -s, so offering the controls there would promise
-       something the query cannot do. #}
-    <div data-show="${{ stats_for.id() }} == 'record'">
-    <div id="filterStatsAggregation" class="col-12 col-xl">
+       filter-cell sets no display of its own, so the inline display:none that data-show
+       writes still wins. nfdump answers "Aggregation ignored for element statistics" for
+       every other -s, so offering the controls there would promise something the query
+       cannot do. #}
+    <div id="filterStatsAggregation" class="filter-cell filter-cell--wide"
+         data-show="${{ stats_for.id() }} == 'record'">
         <div class="filter-group">
         <p class="filter-label mb-2">Aggregation
             <nfsen-tooltip data-ignore-morph text="How to aggregate the flow records before ranking them (-A): bi-directional (-B), protocol, port, or IP with an optional prefix length." placement="top"></nfsen-tooltip>
         </p>
-        <div class="row g-2 aggregation-wide">
+        <div class="filter-subgrid">
 
             {% include 'partials/aggregation-controls.html.twig' with {
                 idPrefix: 'filterStats',
@@ -176,10 +181,9 @@
         </div>
         </div>
     </div>
-    </div>
 
     {# Submit #}
-    <div class="col-12 border-top mt-3 pt-3">
+    <div class="filter-submit border-top mt-2 pt-3">
         <div class="d-flex align-items-center gap-3 flex-wrap">
         {#
             The query runs in a coroutine now, so query_running (server-owned) is what says

@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **The filter panels lay themselves out instead of guessing at breakpoints.** Every control used to carry hand-picked Bootstrap column classes, which were wrong in both directions: at 1100px the Sankey "Top pairs" select rendered 50px wide showing nothing but a chevron and the byte inputs read `e.`, while a single "Min bytes" field kept a whole column on a wide screen, and the cards ended at 3 to 6 different heights per row. Each panel is now one auto-fit grid, so the column count follows the width that is there and no control drops below a readable size. Min and Max bytes share one card, and below 768px the controls collapse behind **Show filters**: the Statistics panel measured 1448px tall on a phone, which put **Process data** three screens below the filters.
+
+- **The date-range slider no longer draws both times on top of each other** when the selection is short against a long range, which on a year-wide slider was every 24-hour view. The left one moves up a line.
+
 - **The Flow Records statistic can be aggregated** ([#174](https://github.com/mbolli/nfsen-ng/issues/174), reported by [@bbaugnies](https://github.com/bbaugnies)). `nfdump -s record` ranks whole flows, so what counts as one flow decides what the ranking means, and the option was not reachable from nfsen-ng at all. The Statistics tab now carries the same aggregation controls as the Flows tab, shown for **Flow Records** only: nfdump applies an aggregation to that statistic alone and answers every other one with `Aggregation ignored for element statistics`.
 
 ### Fixed

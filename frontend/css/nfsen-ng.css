@@ -382,7 +382,91 @@ nfsen-daterange .daterange-slider {
     pointer-events: none;
 }
 
+/* With the handles close together one label carries both ends (see
+   nfsen-daterange.js) and the other formats to nothing; an empty tooltip would
+   otherwise still draw its box and border. */
+.noUi-tooltip:empty {
+    display: none;
+}
+
 /* ── Filter panel UX ─────────────────────────────────────────────────────── */
+
+/* One auto-fit grid per panel, instead of per-control Bootstrap columns.
+   Those were a guess at how much room a control would have at some breakpoint,
+   and the guess was wrong in both directions: at 1100px the Sankey "Top pairs"
+   select rendered 50px wide showing nothing but its chevron, while "Min bytes"
+   kept a full column to hold four characters. Here the track count follows the
+   width that is actually there, and nothing drops below a readable minimum. */
+.filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
+    gap: 0.75rem;
+    align-items: start;
+}
+
+/* Groups holding several controls side by side (the nfdump filter, aggregation)
+   take two tracks once the grid has two to give. Spanning is what needs a width
+   test, not the individual controls, so this is the only breakpoint left. */
+@media (min-width: 48em) {
+    .filter-grid > .filter-cell--wide {
+        grid-column: span 2;
+    }
+}
+
+/* Submit and its file count sit below the controls across the whole width. */
+.filter-grid > .filter-submit {
+    grid-column: 1 / -1;
+}
+
+/* Groups that hold several labelled sub-sections (aggregation) lay them out the
+   same way one level down, so a sub-section is never squeezed either: the two IP
+   selects used to render as bare chevrons with the option text cut off. */
+.filter-subgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 0.5rem;
+}
+
+.filter-subgrid--tight {
+    grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+    gap: 0.25rem;
+}
+
+/* Controls fill their card. A select left at its intrinsic width is what
+   clipped Sources to "Sou..." whenever its column came out narrow. */
+.filter-group .form-control,
+.filter-group .form-select,
+.filter-group select,
+.filter-group input[type='text'] {
+    width: 100%;
+    min-width: 0;
+}
+
+/* A multi-select grows one row per source, so a deployment with twenty of them
+   pushed everything else off the screen. */
+.filter-group select[multiple] {
+    max-height: 7.5rem;
+    overflow-y: auto;
+}
+
+/* Below this width the panel is taller than the screen (the Statistics one
+   measured 1448px at 414px wide), so the controls collapse behind a toggle and
+   the submit row stays put. The class is inert above it, which leaves resizing
+   to CSS rather than to a measured signal that has to be kept in sync. */
+.filter-toggle {
+    display: none;
+}
+
+@media (max-width: 47.98em) {
+    .filter-toggle {
+        display: inline-flex;
+    }
+
+    .filter-collapsed .filter-grid > .filter-cell {
+        display: none;
+    }
+}
+
 
 /* Allow btn-groups inside narrow filter-group boxes to wrap onto a new line
    instead of overflowing / clipping (e.g. Data Type in col-md-2). */
@@ -414,12 +498,12 @@ nfsen-daterange .daterange-slider {
     padding: 0.75rem 0.875rem;
 }
 
-/* The Statistics tab gives the aggregation controls a row to themselves, where the two
-   groups would otherwise split the full page width and stretch every button to ~20rem. The
-   Flows tab shares the partial but sits in a narrow column, so the cap lives here, not in the
-   partial. */
-.aggregation-wide {
-    max-width: 46rem;
+/* Cards sit at a common minimum height rather than being stretched to the
+   tallest in the row: stretching aligned them but left a single select floating
+   in 250px of empty card next to the nfdump filter. The minimum is what makes a
+   row of one-control groups line up, which is the case that looked ragged. */
+.filter-cell > .filter-group {
+    min-height: 6.25rem;
 }
 
 /* Nested sub-section labels (e.g. Global / Port / IP Aggregation) */

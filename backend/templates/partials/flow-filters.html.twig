@@ -6,10 +6,10 @@
     (hardcoded to JSON); it is kept as a client-local signal initialised here so the UI state
     is preserved across re-renders.
 #}
-<div class="row g-3">
+<div class="filter-grid">
 
     {# Limit #}
-    <div id="filterFlowsLimit" class="col-2">
+    <div id="filterFlowsLimit" class="filter-cell">
         <div class="filter-group">
         <p class="filter-label">Limit Flows
             <nfsen-tooltip data-ignore-morph text="Maximum number of flow records to display (-c option)." placement="top"></nfsen-tooltip>
@@ -23,7 +23,7 @@
         </div>
     </div>
 
-    <div id="filterFlowSources" class="col-2">
+    <div id="filterFlowSources" class="filter-cell">
         <div class="filter-group">
         <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
@@ -37,7 +37,7 @@
         </div>
     </div>
 
-    <div class="col">
+    <div class="filter-cell filter-cell--wide">
         <div class="filter-group">
         <p class="filter-label">NFDUMP filter
             <nfsen-tooltip data-ignore-morph text="Filter syntax similar to tcpdump/pcap. Example: dst port 80" placement="right"></nfsen-tooltip>
@@ -52,31 +52,36 @@
         </div>
     </div>
 
-    {# Byte thresholds — prepended to the nfdump filter expression #}
-    <div class="col-auto">
+    {# Byte thresholds, prepended to the nfdump filter expression. One card rather than
+       two: a single narrow input each left them stranded in half-empty cards, and they
+       are one setting with two ends. #}
+    <div class="filter-cell">
         <div class="filter-group">
-        <p class="filter-label">Min bytes
-            <nfsen-tooltip data-ignore-morph text="Only show flows with at least this many bytes. Prepended as 'bytes &gt; value'. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
+        <p class="filter-label">Bytes per flow
+            <nfsen-tooltip data-ignore-morph text="Keep only flows within this byte range. Prepended to the filter as 'bytes &gt; min' / 'bytes &lt; max'. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
         </p>
-        <input type="text" {{ bind(flows_lower_limit) }} class="form-control" style="width:7rem" placeholder="e.g. 1M">
+        <div class="filter-subgrid filter-subgrid--tight">
+            <div>
+                <label class="filter-sublabel" for="flows_lower_limitInput">Min</label>
+                <input type="text" id="flows_lower_limitInput" {{ bind(flows_lower_limit) }} class="form-control" placeholder="e.g. 1M"
+                       title="Only show flows with at least this many bytes. Prepended as 'bytes &gt; value'. Accepts SI suffixes: k, M, G.">
+            </div>
+            <div>
+                <label class="filter-sublabel" for="flows_upper_limitInput">Max</label>
+                <input type="text" id="flows_upper_limitInput" {{ bind(flows_upper_limit) }} class="form-control" placeholder="e.g. 100M"
+                       title="Only show flows with at most this many bytes. Prepended as 'bytes &lt; value'. Accepts SI suffixes: k, M, G.">
+            </div>
         </div>
-    </div>
-    <div class="col-auto">
-        <div class="filter-group">
-        <p class="filter-label">Max bytes
-            <nfsen-tooltip data-ignore-morph text="Only show flows with at most this many bytes. Prepended as 'bytes &lt; value'. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
-        </p>
-        <input type="text" {{ bind(flows_upper_limit) }} class="form-control" style="width:7rem" placeholder="e.g. 100M">
         </div>
     </div>
 
     {# Aggregation & output #}
-    <div id="filterFlowAggregation" class="col-12 col-xl">
+    <div id="filterFlowAggregation" class="filter-cell filter-cell--wide">
         <div class="filter-group">
         <p class="filter-label mb-2">Aggregation &amp; Output
             <nfsen-tooltip data-ignore-morph text="Aggregate flows: Bi-directional (-b), Protocol, Port, IP/prefix, or sort by tstart." placement="top"></nfsen-tooltip>
         </p>
-        <div class="row g-2">
+        <div class="filter-subgrid">
 
             {% include 'partials/aggregation-controls.html.twig' with {
                 idPrefix: 'filterFlow',
@@ -106,7 +111,7 @@
 
     {# Submit. Flex, because the progress button's own root is a block-level flex container:
        left to itself it drops below any sibling control on this row. #}
-    <div class="col-12 border-top mt-3 pt-3 d-flex align-items-center gap-2 flex-wrap">
+    <div class="filter-submit border-top mt-2 pt-3 d-flex align-items-center gap-2 flex-wrap">
         {#
             The query runs in a coroutine now, so query_running (server-owned) is what says
             whether it is still going — not Datastar's request indicator, which clears the

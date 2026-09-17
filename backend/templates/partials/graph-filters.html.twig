@@ -39,7 +39,7 @@
     Datastar reaches every bind with the signal already set to the server's value and
     the right type.
 #}
-<div class="row g-3"
+<div class="filter-grid"
      data-signals__ifmissing='{"_sourcesDefault": {{ sources|json_encode }}, "{{ graph_ports.id() }}": {{ ports|json_encode }}, "{{ graph_sources.id() }}": {{ graph_sources.array()|json_encode }}}'
      data-computed:graph._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ${{ graph_protocols.id() }}, ports: ${{ graph_ports.id() }}, display: ${{ graph_display.id() }}, type: ${{ graph_datatype.id() }}, trafficUnit: ${{ graph_trafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}"
      data-indicator:graph._connecting
@@ -47,7 +47,7 @@
      data-on:change__window__throttle.250ms="window.mayUpdateGraph(evt, el) && @post('{{ refreshGraphs.url() }}')">
 
     {# Display type #}
-    <div class="col-md-2">
+    <div class="filter-cell">
         <div class="filter-group">
         <p class="filter-label">Display
             <nfsen-tooltip data-ignore-morph text="Choose what to visualize: individual sources, protocol breakdown, or port statistics." placement="top"></nfsen-tooltip>
@@ -86,7 +86,7 @@
         first paint is already correct, before Datastar boots.
     #}
     {% set selectedSources = graph_sources.array() %}
-    <div class="col-md-2" id="filterSources">
+    <div class="filter-cell" id="filterSources">
         <div class="filter-group">
         <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="Select NetFlow sources to include in the graph." placement="top"></nfsen-tooltip>
@@ -105,7 +105,7 @@
     </div>
 
     {# Ports — only visible when display = ports #}
-    <div class="col-md-2" id="filterPorts" data-show="${{ graph_display.id() }} === 'ports'">
+    <div class="filter-cell" id="filterPorts" data-show="${{ graph_display.id() }} === 'ports'">
         <div class="filter-group">
         <p class="filter-label">Ports
             <nfsen-tooltip data-ignore-morph text="Select ports to track. Each port shows as a separate series." placement="top"></nfsen-tooltip>
@@ -119,7 +119,7 @@
     </div>
 
     {# Protocols #}
-    <div class="col-md-4" id="filterProtocols" data-signals='{ {{ graph_protocols.id() }}: ["any"]}'>
+    <div class="filter-cell filter-cell--wide" id="filterProtocols" data-signals='{ {{ graph_protocols.id() }}: ["any"]}'>
         <div class="filter-group">
         <p class="filter-label">Protocols
             <nfsen-tooltip data-ignore-morph text="Filter by protocol. 'Any' shows all traffic." placement="top"></nfsen-tooltip>
@@ -146,7 +146,7 @@
     </div>
 
     {# Data type #}
-    <div class="col-md-2" id="filterTypes">
+    <div class="filter-cell" id="filterTypes">
         <div class="filter-group">
         <p class="filter-label">Data Type
             <nfsen-tooltip data-ignore-morph text="Traffic (bits/bytes per second), Packets, or Flows per second." placement="top"></nfsen-tooltip>
@@ -167,7 +167,7 @@
        datasource being RRD or VictoriaMetrics, hence 'stored' rather than 'rrd'.
        'filtered' re-reads the capture files through an nfdump filter (explicit, slow).
     #}
-    <div class="col-md-2" id="filterGraphMode">
+    <div class="filter-cell" id="filterGraphMode">
         <div class="filter-group">
         <p class="filter-label">Source data
             <nfsen-tooltip data-ignore-morph text="Stored: the pre-aggregated database series — instant and live. Filtered: re-reads the raw capture files so an nfdump filter can be applied, which takes time and does not auto-refresh." placement="top"></nfsen-tooltip>
@@ -193,7 +193,7 @@
     </div>
 
     {# nfdump filter + Apply — filtered mode only #}
-    <div class="col-12" id="filterGraphNfdump" style="display:none"
+    <div class="filter-cell filter-cell--wide" id="filterGraphNfdump" style="display:none"
          data-show="${{ graph_mode.id() }} === 'filtered'">
         <div class="filter-group">
         <p class="filter-label">NFDUMP filter
@@ -250,7 +250,7 @@
     </div>
 
     {# Traffic unit — visible only when datatype = traffic #}
-    <div class="col-md-1" id="trafficUnit" data-show="${{ graph_datatype.id() }} === 'traffic'">
+    <div class="filter-cell" id="trafficUnit" data-show="${{ graph_datatype.id() }} === 'traffic'">
         <div class="filter-group">
         <p class="filter-label">Unit
             <nfsen-tooltip data-ignore-morph text="Bits/s (base-2) or Bytes/s (base-10)." placement="top"></nfsen-tooltip>

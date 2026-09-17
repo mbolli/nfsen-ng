@@ -6,7 +6,7 @@
     shows the whole block only while "Flow Records" is the selected statistic, which is the
     only statistic nfdump applies an aggregation to.
 #}
-<div class="col">
+<div>
     <label class="filter-sublabel">Global</label>
     <div class="btn-group btn-group-sm d-flex mb-2" id="{{ idPrefix }}AggregationGlobal">
         <input type="checkbox" class="btn-check" name="bidirectional"
@@ -27,10 +27,10 @@
     </div>
 </div>
 
-<div class="col">
+<div>
     <label class="filter-sublabel">IP Aggregation</label>
-    <div class="row g-1">
-        <div class="col-6">
+    <div class="filter-subgrid filter-subgrid--tight">
+        <div>
             <select data-attr:disabled="${{ aggBidirectional.id() }}"
                     class="form-select form-select-sm"
                     {{ bind(aggSrcIp) }}>
@@ -44,7 +44,7 @@
                    class="form-control form-control-sm mt-1" style="width:3.5rem"
                    {{ bind(aggSrcIpPrefix) }}>
         </div>
-        <div class="col-6">
+        <div>
             <select data-attr:disabled="${{ aggBidirectional.id() }}"
                     class="form-select form-select-sm"
                     {{ bind(aggDstIp) }}>

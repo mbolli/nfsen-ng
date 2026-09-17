@@ -1,9 +1,9 @@
 {#
     Sankey diagram filter controls.
 #}
-<div class="row g-3">
+<div class="filter-grid">
     {# Top N pairs #}
-    <div id="filterSankeyTopN" class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
+    <div id="filterSankeyTopN" class="filter-cell">
         <div class="filter-group">
         <p class="filter-label">Top pairs
             <nfsen-tooltip data-ignore-morph text="Number of top N src -> dst pairs to display (-n option)." placement="top"></nfsen-tooltip>
@@ -18,7 +18,7 @@
     </div>
 
     {# Sources #}
-    <div id="filterSankeySources" class="col-xs-6 col-sm-3 col-md-2">
+    <div id="filterSankeySources" class="filter-cell">
         <div class="filter-group">
         <p class="filter-label">Sources
             <nfsen-tooltip data-ignore-morph text="NetFlow sources to query. Multiple sources merged with -M." placement="top"></nfsen-tooltip>
@@ -33,7 +33,7 @@
     </div>
 
     {# NFDUMP filter #}
-    <div class="col-xs-12 col-sm-7 col-md-4">
+    <div class="filter-cell filter-cell--wide">
         <div class="filter-group">
         <p class="filter-label">NFDUMP filter
             <nfsen-tooltip data-ignore-morph text="Filter syntax like tcpdump. Examples: 'dst port 80', 'bytes > 10M'" placement="right"></nfsen-tooltip>
@@ -48,26 +48,31 @@
         </div>
     </div>
 
-    {# Byte thresholds — prepended to the nfdump filter expression #}
-    <div class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
+    {# Byte thresholds, prepended to the nfdump filter expression. One card rather than
+       two: a single narrow input each left them stranded in half-empty cards, and they
+       are one setting with two ends. #}
+    <div class="filter-cell">
         <div class="filter-group">
-        <p class="filter-label">Min bytes
-            <nfsen-tooltip data-ignore-morph text="Only aggregate flows with at least this many bytes. Prepended as 'bytes &gt; value' filter. Accepts SI suffixes: k, M, G. E.g. '1M'." placement="top"></nfsen-tooltip>
+        <p class="filter-label">Bytes per flow
+            <nfsen-tooltip data-ignore-morph text="Keep only flows within this byte range. Prepended to the filter as 'bytes &gt; min' / 'bytes &lt; max'. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
         </p>
-        <input type="text" {{ bind(sankey_lower_limit) }} class="form-control" placeholder="e.g. 1M">
+        <div class="filter-subgrid filter-subgrid--tight">
+            <div>
+                <label class="filter-sublabel" for="sankey_lower_limitInput">Min</label>
+                <input type="text" id="sankey_lower_limitInput" {{ bind(sankey_lower_limit) }} class="form-control" placeholder="e.g. 1M"
+                       title="Only aggregate flows with at least this many bytes. Prepended as 'bytes &gt; value' filter. Accepts SI suffixes: k, M, G. E.g. '1M'.">
+            </div>
+            <div>
+                <label class="filter-sublabel" for="sankey_upper_limitInput">Max</label>
+                <input type="text" id="sankey_upper_limitInput" {{ bind(sankey_upper_limit) }} class="form-control" placeholder="e.g. 100M"
+                       title="Only aggregate flows with at most this many bytes. Prepended as 'bytes &lt; value' filter. Accepts SI suffixes: k, M, G.">
+            </div>
         </div>
-    </div>
-    <div class="col-xs-6 col-sm-2 col-md-2 col-lg-1">
-        <div class="filter-group">
-        <p class="filter-label">Max bytes
-            <nfsen-tooltip data-ignore-morph text="Only aggregate flows with at most this many bytes. Prepended as 'bytes &lt; value' filter. Accepts SI suffixes: k, M, G." placement="top"></nfsen-tooltip>
-        </p>
-        <input type="text" {{ bind(sankey_upper_limit) }} class="form-control" placeholder="e.g. 100M">
         </div>
     </div>
 
     {# Metric — which volume ranks/sizes the top-N pairs and links #}
-    <div id="filterSankeyMetric" class="col-xs-6 col-sm-3 col-md-2">
+    <div id="filterSankeyMetric" class="filter-cell">
         <div class="filter-group">
         <p class="filter-label">Rank / size by
             <nfsen-tooltip data-ignore-morph text="Which metric selects the top N pairs (-O option) and sizes the link ribbons." placement="top"></nfsen-tooltip>
@@ -85,7 +90,7 @@
     </div>
 
     {# Ports — optional middle column (src IP -> dst port -> dst IP) #}
-    <div id="filterSankeyPorts" class="col-xs-6 col-sm-3 col-md-2">
+    <div id="filterSankeyPorts" class="filter-cell">
         <div class="filter-group">
         <p class="filter-label">Ports
             <nfsen-tooltip data-ignore-morph text="Add the destination L4 port as a middle column: src IP &rarr; dst port &rarr; dst IP. Aggregates on the port too, so the top-N covers src/port/dst tuples." placement="top"></nfsen-tooltip>
@@ -99,7 +104,7 @@
     </div>
 
     {# Submit #}
-    <div class="col-12 border-top mt-3 pt-3">
+    <div class="filter-submit border-top mt-2 pt-3">
         <div class="d-flex align-items-center gap-3 flex-wrap">
         <nfsen-tooltip data-ignore-morph text="Generate the Sankey diagram using nfdump -a with current filters" placement="top" no-icon>
             <button type="button"

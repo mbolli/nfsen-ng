@@ -79,10 +79,33 @@ function buildPipsConfig(minMs, maxMs, el) {
     };
 }
 
-/** Build tooltip formatters for the two handles. */
+/** How close the two handles may get, in pixels, before one label can hold both. */
+const TOOLTIP_MERGE_PX = 90;
+
+/**
+ * Build tooltip formatters for the two handles.
+ *
+ * A short selection on a long range puts the handles within a few pixels of each other, which
+ * on a year-wide slider is every 24-hour view: the two labels then drew on top of each other.
+ * Close enough, and the upper handle's label carries both ends while the lower one renders
+ * empty (hidden in CSS). Deciding it here rather than by moving the elements afterwards is
+ * what makes it stick, since noUiSlider rewrites a tooltip's contents on every update.
+ */
 function buildTooltips(from, to, el) {
     const span = to - from;
-    return [{ to: (v) => formatTooltip(v, span, el) }, { to: (v) => formatTooltip(v, span, el) }];
+    const plain = (v) => formatTooltip(v, span, el);
+
+    const minMs = parseInt(el.getAttribute('data-min') || 0, 10);
+    const maxMs = parseInt(el.getAttribute('data-max') || 0, 10);
+    const width = el.slider?.offsetWidth ?? 0;
+    const range = maxMs - minMs;
+    const apart = range > 0 ? (span / range) * width : Number.POSITIVE_INFINITY;
+
+    if (apart >= TOOLTIP_MERGE_PX) {
+        return [{ to: plain }, { to: plain }];
+    }
+
+    return [{ to: () => '' }, { to: (v) => `${plain(from)} – ${plain(v)}` }];
 }
 
 // ── Web Component ───────────────────────────────────────────────────────────

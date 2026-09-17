@@ -253,6 +253,17 @@ $app->page('/', function (Context $c) use ($app): void {
     // nfdump -l/-L flags are only valid for line/packed output, not for -s statistics mode.
     $statsLowerLimit = $c->signal('', 'stats_lower_limit', clientWritable: true);
     $statsUpperLimit = $c->signal('', 'stats_upper_limit', clientWritable: true);
+    // Aggregation for the Flow Records statistic (#174). Separate from the Flows tab's own
+    // set: the two panels are configured independently and one is often left alone for a
+    // while, so sharing the signals would silently re-shape the other tab's next query.
+    $statsAggBidirectional = $c->signal(false, 'stats_agg_bidirectional', clientWritable: true);
+    $statsAggProto = $c->signal(false, 'stats_agg_proto', clientWritable: true);
+    $statsAggSrcPort = $c->signal(false, 'stats_agg_srcport', clientWritable: true);
+    $statsAggDstPort = $c->signal(false, 'stats_agg_dstport', clientWritable: true);
+    $statsAggSrcIp = $c->signal('none', 'stats_agg_srcip', clientWritable: true);
+    $statsAggSrcIpPrefix = $c->signal('', 'stats_agg_srcip_prefix', clientWritable: true);
+    $statsAggDstIp = $c->signal('none', 'stats_agg_dstip', clientWritable: true);
+    $statsAggDstIpPrefix = $c->signal('', 'stats_agg_dstip_prefix', clientWritable: true);
     // nfcapd file count — updated by count-files action and on initial render
     $nfcapdFileCount = $c->signal(0, 'nfcapd_file_count');
     // Bytes behind that file count, so the filtered graph can say what a build will cost

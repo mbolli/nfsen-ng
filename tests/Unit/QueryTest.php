@@ -165,6 +165,7 @@ function makeStatsQuery(array $overrides = []): StatsQuery {
         filter: $overrides['filter'] ?? '',
         lowerLimit: $overrides['lowerLimit'] ?? '',
         upperLimit: $overrides['upperLimit'] ?? '',
+        aggregation: $overrides['aggregation'] ?? [],
     );
 }
 
@@ -192,6 +193,56 @@ describe('StatsQuery::effectiveFilter()', function (): void {
         expect($filter)->not->toBe('')
             ->and($filter)->not->toContain('and')
         ;
+    });
+});
+
+describe('StatsQuery aggregation (#174)', function (): void {
+    /** @return array<string, mixed> the options a query of this shape hands the processor */
+    function statsOptions(array $overrides): array {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        return makeStatsQuery($overrides)->processor()->options;
+    }
+
+    // nfdump ranks aggregated records for -s record, and the aggregation decides what a
+    // record is. Verified against nfdump 1.7.8: -A dstport collapses every flow to that port.
+    test('passes the spec for the flow-records statistic', function (): void {
+        $options = statsOptions(['for' => 'record', 'aggregation' => ['proto' => true, 'dstport' => true]]);
+
+        expect($options['-a'])->toBe('-Aproto,dstport');
+    });
+
+    // "Warning: Aggregation ignored for element statistics" — nfdump aggregates these by their
+    // own element, so a spec would be dropped by nfdump anyway, silently changing nothing.
+    test('drops the spec for an element statistic', function (): void {
+        $options = statsOptions(['for' => 'srcip', 'aggregation' => ['proto' => true]]);
+
+        expect($options)->not->toHaveKey('-a')
+            ->and(makeStatsQuery(['for' => 'srcip', 'aggregation' => ['proto' => true]])->aggregationString())->toBe('')
+        ;
+    });
+
+    test('bidirectional is its own flag, not a spec', function (): void {
+        $options = statsOptions(['for' => 'record', 'aggregation' => ['bidirectional' => true]]);
+
+        expect($options)->toHaveKey('-B')
+            ->and($options)->not->toHaveKey('-a')
+        ;
+    });
+
+    test('an empty aggregation leaves the query alone', function (): void {
+        $options = statsOptions(['for' => 'record']);
+
+        expect($options)->not->toHaveKey('-a')
+            ->and($options)->not->toHaveKey('-B')
+        ;
+    });
+
+    test('carries an IP prefix length into the spec', function (): void {
+        $options = statsOptions(['for' => 'record', 'aggregation' => ['srcip' => 'srcip4', 'srcipPrefix' => '24']]);
+
+        expect($options['-a'])->toBe('-Asrcip4/24');
     });
 });
 

@@ -147,6 +147,37 @@
         </div>
     </div>
 
+    {# Aggregation, for the Flow Records statistic only (#174).
+
+       The wrapper carries no display utility of its own: Bootstrap's are !important and beat
+       the inline display:none that data-show sets. nfdump answers "Aggregation ignored for
+       element statistics" for every other -s, so offering the controls there would promise
+       something the query cannot do. #}
+    <div data-show="${{ stats_for.id() }} == 'record'">
+    <div id="filterStatsAggregation" class="col-12 col-xl">
+        <div class="filter-group">
+        <p class="filter-label mb-2">Aggregation
+            <nfsen-tooltip data-ignore-morph text="How to aggregate the flow records before ranking them (-A): bi-directional (-B), protocol, port, or IP with an optional prefix length." placement="top"></nfsen-tooltip>
+        </p>
+        <div class="row g-2">
+
+            {% include 'partials/aggregation-controls.html.twig' with {
+                idPrefix: 'filterStats',
+                aggBidirectional: stats_agg_bidirectional,
+                aggProto: stats_agg_proto,
+                aggSrcPort: stats_agg_srcport,
+                aggDstPort: stats_agg_dstport,
+                aggSrcIp: stats_agg_srcip,
+                aggSrcIpPrefix: stats_agg_srcip_prefix,
+                aggDstIp: stats_agg_dstip,
+                aggDstIpPrefix: stats_agg_dstip_prefix
+            } only %}
+
+        </div>
+        </div>
+    </div>
+    </div>
+
     {# Submit #}
     <div class="col-12 border-top mt-3 pt-3">
         <div class="d-flex align-items-center gap-3 flex-wrap">

@@ -37,6 +37,7 @@ final class StatsActions {
             $statsLowerLimit = $c->getSignal('stats_lower_limit');
             $statsUpperLimit = $c->getSignal('stats_upper_limit');
             $graphSources = $c->getSignal('graph_sources');
+            $aggregation = Helpers::aggregationFromSignals($c, 'stats_agg_');
             $ipInfoAction = $c->getAction('ip-info');
             \assert(
                 $datestart !== null
@@ -65,6 +66,7 @@ final class StatsActions {
                     filter: $statsFilter->string(),
                     lowerLimit: $statsLowerLimit->string(),
                     upperLimit: $statsUpperLimit->string(),
+                    aggregation: $aggregation,
                     handle: $c->getId(),
                 );
 

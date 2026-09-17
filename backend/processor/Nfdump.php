@@ -262,14 +262,16 @@ class Nfdump implements Processor {
             NfdumpSlots::release();
         }
 
-        // Log stderr if present (but don't fail on benign messages)
+        // Log stderr if present (but don't fail on benign messages). What survives the filter
+        // is what every later `$result['stderr']` reports, and the panels show that to the
+        // user, so a message nfdump always prints must not reach it.
         if (!empty($stderr)) {
             $stderrTrimmed = trim($stderr);
-            // Only log as warning if it's not the benign "read() error ... Success" message
-            if (stripos($stderrTrimmed, 'read() error') !== false && stripos($stderrTrimmed, 'Success') !== false) {
+            $stderr = self::withoutBenignStderr($stderrTrimmed);
+            if ($stderr === '') {
                 $this->d->log('NfDump benign stderr message: ' . $stderrTrimmed, LOG_DEBUG);
             } else {
-                $this->d->log('NfDump stderr: ' . $stderrTrimmed, LOG_WARNING);
+                $this->d->log('NfDump stderr: ' . $stderr, LOG_WARNING);
             }
         }
 
@@ -824,6 +826,33 @@ class Nfdump implements Processor {
             'full' => ['ts', 'te', 'td', 'sa', 'da', 'sp', 'dp', 'pr', 'flg', 'fwd', 'stos', 'ipkt', 'ibyt', 'opkt', 'obyt', 'in', 'out', 'sas', 'das', 'smk', 'dmk', 'dtos', 'dir', 'nh', 'nhb', 'svln', 'dvln', 'ismc', 'odmc', 'idmc', 'osmc', 'mpls1', 'mpls2', 'mpls3', 'mpls4', 'mpls5', 'mpls6', 'mpls7', 'mpls8', 'mpls9', 'mpls10', 'cl', 'sl', 'al', 'ra', 'eng', 'exid', 'tr'],
             default => explode(' ', str_replace(['fmt:', '%'], '', (string) $format)),
         };
+    }
+
+    /**
+     * nfdump messages that say nothing about this query's result.
+     *
+     * Two of them are unavoidable rather than exceptional: a partially written capture file
+     * being read while nfcapd still has it open, and the note that `-s` takes precedence over
+     * the `-a` flag, which nfdump prints for every aggregated statistic even though it honours
+     * the `-A` spec (#174).
+     */
+    private static function withoutBenignStderr(string $stderr): string {
+        $kept = array_filter(
+            explode("\n", $stderr),
+            static function (string $line): bool {
+                $line = trim($line);
+                if ($line === '') {
+                    return false;
+                }
+                if (stripos($line, 'read() error') !== false && stripos($line, 'Success') !== false) {
+                    return false;
+                }
+
+                return stripos($line, 'switch -s overwrites -a') === false;
+            }
+        );
+
+        return trim(implode("\n", $kept));
     }
 
     /**

@@ -120,6 +120,38 @@ describe('Nfdump', function (): void {
         });
     });
 
+    describe('withoutBenignStderr', function (): void {
+        function benignFiltered(string $stderr): string {
+            $m = (new ReflectionClass(Nfdump::class))->getMethod('withoutBenignStderr');
+            $m->setAccessible(true);
+
+            return $m->invoke(null, $stderr);
+        }
+
+        // nfdump prints this for every aggregated statistic and honours the -A spec anyway,
+        // so surfacing it would put a warning on a query that worked (#174).
+        test('drops the note that -s takes precedence over -a', function (): void {
+            expect(benignFiltered('Command line switch -s overwrites -a'))->toBe('');
+        });
+
+        // A capture file still open in nfcapd.
+        test('drops the read() error that reports Success', function (): void {
+            expect(benignFiltered('read() error: Success'))->toBe('');
+        });
+
+        test('keeps a message that says something about the result', function (): void {
+            expect(benignFiltered('Unknown filter token'))->toBe('Unknown filter token');
+        });
+
+        // The panels show what survives, so one real problem must not be hidden by the
+        // benign line nfdump printed beside it.
+        test('keeps the real message out of a mixed block', function (): void {
+            $filtered = benignFiltered("Command line switch -s overwrites -a\nUnknown filter token\n");
+
+            expect($filtered)->toBe('Unknown filter token');
+        });
+    });
+
     describe('needsAggregatedCsv', function (): void {
         // 1.7.5 is the only release that refuses a custom fmt: format with -A aggregation:
         // 1.7.2-1.7.4 accept it, and 1.7.6 added user formats for custom aggregation. See #159.

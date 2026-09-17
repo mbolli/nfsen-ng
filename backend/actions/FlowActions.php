@@ -28,14 +28,7 @@ final class FlowActions {
             $flowLowerLimit = $c->getSignal('flows_lower_limit');
             $flowUpperLimit = $c->getSignal('flows_upper_limit');
             $flowLimit = $c->getSignal('flows_limit');
-            $flowAggBidirectional = $c->getSignal('flows_agg_bidirectional');
-            $flowAggProto = $c->getSignal('flows_agg_proto');
-            $flowAggSrcPort = $c->getSignal('flows_agg_srcport');
-            $flowAggDstPort = $c->getSignal('flows_agg_dstport');
-            $flowAggSrcIp = $c->getSignal('flows_agg_srcip');
-            $flowAggSrcIpPrefix = $c->getSignal('flows_agg_srcip_prefix');
-            $flowAggDstIp = $c->getSignal('flows_agg_dstip');
-            $flowAggDstIpPrefix = $c->getSignal('flows_agg_dstip_prefix');
+            $aggregation = Helpers::aggregationFromSignals($c, 'flows_agg_');
             $flowOrderByTstart = $c->getSignal('flows_orderByTstart');
             $flowCount = $c->getSignal('flows_count');
             $graphSources = $c->getSignal('graph_sources');
@@ -48,14 +41,6 @@ final class FlowActions {
                 && $flowLowerLimit !== null
                 && $flowUpperLimit !== null
                 && $flowLimit !== null
-                && $flowAggBidirectional !== null
-                && $flowAggProto !== null
-                && $flowAggSrcPort !== null
-                && $flowAggDstPort !== null
-                && $flowAggSrcIp !== null
-                && $flowAggSrcIpPrefix !== null
-                && $flowAggDstIp !== null
-                && $flowAggDstIpPrefix !== null
                 && $flowOrderByTstart !== null
                 && $flowCount !== null
                 && $graphSources !== null
@@ -72,16 +57,7 @@ final class FlowActions {
                     filter: $flowFilter->string(),
                     lowerLimit: $flowLowerLimit->string(),
                     upperLimit: $flowUpperLimit->string(),
-                    aggregation: [
-                        'bidirectional' => $flowAggBidirectional->bool(),
-                        'proto' => $flowAggProto->bool(),
-                        'srcport' => $flowAggSrcPort->bool(),
-                        'dstport' => $flowAggDstPort->bool(),
-                        'srcip' => $flowAggSrcIp->string(),
-                        'srcipPrefix' => $flowAggSrcIpPrefix->string(),
-                        'dstip' => $flowAggDstIp->string(),
-                        'dstipPrefix' => $flowAggDstIpPrefix->string(),
-                    ],
+                    aggregation: $aggregation,
                     orderByStart: $flowOrderByTstart->bool(),
                     handle: $c->getId(),
                 );

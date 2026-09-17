@@ -1,10 +1,10 @@
 {#
     Flow query filter controls.
 
-    flowAggregation is initialised server-side with the full nested structure so
-    sub-property bindings like {{ bind(flowAggregation) }}.bidirectional work.
-    The server never reads flows_outputFormat (hardcoded to JSON); it is kept as a
-    client-local signal initialised here so the UI state is preserved across re-renders.
+    The aggregation controls live in their own partial, because the Flow Records statistic
+    takes the same eight settings (#174). The server never reads flows_outputFormat
+    (hardcoded to JSON); it is kept as a client-local signal initialised here so the UI state
+    is preserved across re-renders.
 #}
 <div class="row g-3">
 
@@ -78,62 +78,17 @@
         </p>
         <div class="row g-2">
 
-            {# Global & port aggregation #}
-            <div class="col">
-                <label class="filter-sublabel">Global</label>
-                <div class="btn-group btn-group-sm d-flex mb-2" id="filterFlowAggregationGlobal">
-                    <input type="checkbox" class="btn-check" name="bidirectional"
-                           id="filterFlowAggBi" {{ bind(flows_agg_bidirectional) }}>
-                    <label class="btn btn-outline-primary" for="filterFlowAggBi">Bi-directional</label>
-                    <input type="checkbox" class="btn-check" name="proto"
-                           id="filterFlowAggProto" {{ bind(flows_agg_proto) }}>
-                    <label class="btn btn-outline-primary" for="filterFlowAggProto">Protocol</label>
-                </div>
-                <label class="filter-sublabel">Port</label>
-                <div class="btn-group btn-group-sm d-flex" id="filterFlowAggregationPort">
-                    <input type="checkbox" class="btn-check" name="srcport"
-                           id="filterFlowAggPortSrc" {{ bind(flows_agg_srcport) }}>
-                    <label class="btn btn-outline-primary" for="filterFlowAggPortSrc">Source</label>
-                    <input type="checkbox" class="btn-check" name="dstport"
-                           id="filterFlowAggPortDst" {{ bind(flows_agg_dstport) }}>
-                    <label class="btn btn-outline-primary" for="filterFlowAggPortDst">Destination</label>
-                </div>
-            </div>
-
-            {# IP aggregation #}
-            <div class="col">
-                <label class="filter-sublabel">IP Aggregation</label>
-                <div class="row g-1">
-                    <div class="col-6">
-                        <select data-attr:disabled="${{ flows_agg_bidirectional.id() }}"
-                                class="form-select form-select-sm"
-                                {{ bind(flows_agg_srcip) }}>
-                            <option value="none">Src: None</option>
-                            <option value="srcip">Src: IP</option>
-                            <option value="srcip4">Src: IPv4 /</option>
-                            <option value="srcip6">Src: IPv6 /</option>
-                        </select>
-                        <input data-attr:disabled="${{ flows_agg_srcip.id() }} == 'srcip' || ${{ flows_agg_srcip.id() }} == 'none'"
-                               placeholder="24" type="text"
-                               class="form-control form-control-sm mt-1" style="width:3.5rem"
-                               {{ bind(flows_agg_srcip_prefix) }}>
-                    </div>
-                    <div class="col-6">
-                        <select data-attr:disabled="${{ flows_agg_bidirectional.id() }}"
-                                class="form-select form-select-sm"
-                                {{ bind(flows_agg_dstip) }}>
-                            <option value="none">Dst: None</option>
-                            <option value="dstip">Dst: IP</option>
-                            <option value="dstip4">Dst: IPv4 /</option>
-                            <option value="dstip6">Dst: IPv6 /</option>
-                        </select>
-                        <input data-attr:disabled="${{ flows_agg_dstip.id() }} == 'dstip' || ${{ flows_agg_dstip.id() }} == 'none'"
-                               placeholder="24" type="text"
-                               class="form-control form-control-sm mt-1" style="width:3.5rem"
-                               {{ bind(flows_agg_dstip_prefix) }}>
-                    </div>
-                </div>
-            </div>
+            {% include 'partials/aggregation-controls.html.twig' with {
+                idPrefix: 'filterFlow',
+                aggBidirectional: flows_agg_bidirectional,
+                aggProto: flows_agg_proto,
+                aggSrcPort: flows_agg_srcport,
+                aggDstPort: flows_agg_dstport,
+                aggSrcIp: flows_agg_srcip,
+                aggSrcIpPrefix: flows_agg_srcip_prefix,
+                aggDstIp: flows_agg_dstip,
+                aggDstIpPrefix: flows_agg_dstip_prefix
+            } only %}
 
             {# Output options #}
             <div class="col" id="filterOutput">

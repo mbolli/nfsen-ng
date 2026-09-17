@@ -5,7 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **The Flow Records statistic can be aggregated** ([#174](https://github.com/mbolli/nfsen-ng/issues/174), reported by [@bbaugnies](https://github.com/bbaugnies)). `nfdump -s record` ranks whole flows, so what counts as one flow decides what the ranking means, and the option was not reachable from nfsen-ng at all. The Statistics tab now carries the same aggregation controls as the Flows tab, shown for **Flow Records** only: nfdump applies an aggregation to that statistic alone and answers every other one with `Aggregation ignored for element statistics`.
+
 ### Fixed
+
+- **A query that worked no longer reports an nfdump warning.** nfdump prints `Command line switch -s overwrites -a` for every aggregated statistic while honouring the aggregation, and that went to the panel as a yellow warning beside a correct result. Messages nfdump always prints are filtered out of what the panels show, and still logged at debug level.
 
 - The import's "no traffic" notice named every silent port ([#173](https://github.com/mbolli/nfsen-ng/issues/173)). A configured port list runs to dozens, so the line grew to a wall of port numbers that buried the sentence explaining what it meant. It now leads with the count and names at most nine of them.
 

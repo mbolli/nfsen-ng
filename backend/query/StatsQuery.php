@@ -17,9 +17,10 @@ use mbolli\nfsen_ng\processor\Processor;
  */
 final readonly class StatsQuery {
     /**
-     * @param list<string> $sources
-     * @param string       $for     what to aggregate by, e.g. 'srcip', 'dstport'
-     * @param string       $orderBy which counter to sort on, e.g. 'bytes', 'flows'
+     * @param list<string>         $sources
+     * @param string               $for         what to aggregate by, e.g. 'srcip', 'dstport'
+     * @param string               $orderBy     which counter to sort on, e.g. 'bytes', 'flows'
+     * @param array<string, mixed> $aggregation keys accepted by Nfdump::buildAggregationString()
      */
     public function __construct(
         public TimeWindow $window,
@@ -31,9 +32,21 @@ final readonly class StatsQuery {
         public string $filter = '',
         public string $lowerLimit = '',
         public string $upperLimit = '',
+        public array $aggregation = [],
         /** Names this query's nfdump runs, so a kill can target it. */
         public string $handle = 'default',
     ) {}
+
+    /**
+     * The -A spec, empty when this statistic cannot use one.
+     *
+     * nfdump applies an aggregation to `-s record` only. Every other statistic aggregates by
+     * its own element already and answers "Warning: Aggregation ignored for element
+     * statistics", so the spec is dropped here rather than passed on to be ignored.
+     */
+    public function aggregationString(): string {
+        return $this->for === 'record' ? Nfdump::buildAggregationString($this->aggregation) : '';
+    }
 
     /**
      * The filter nfdump actually receives: byte thresholds are prepended to the user's
@@ -69,6 +82,18 @@ final readonly class StatsQuery {
         $processor->setOption('-n', $this->limit);
         $processor->setOption('-o', 'json');
         $processor->setOption('-s', $this->for . '/' . $this->orderBy);
+
+        // Same shape as the Flows panel: bidirectional is its own flag, everything else is a
+        // spec. Setting -a is also what makes the processor swap json for csv, which nfdump
+        // requires: it rejects `-o json` outright once records are aggregated.
+        $aggregate = $this->aggregationString();
+        if ($aggregate !== '') {
+            $processor->setOption(
+                $aggregate === 'bidirectional' ? '-B' : '-a',
+                $aggregate === 'bidirectional' ? '' : '-A' . $aggregate
+            );
+        }
+
         $processor->setFilter($this->effectiveFilter());
 
         return $processor;

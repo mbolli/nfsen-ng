@@ -1,0 +1,62 @@
+{#
+    nfdump's -A aggregation, shared by the Flows panel and the Flow Records statistic (#174).
+
+    The caller supplies its own signals under its own prefix and wraps this in a row, because
+    the two panels put different things beside it: Flows adds its output options, Statistics
+    shows the whole block only while "Flow Records" is the selected statistic, which is the
+    only statistic nfdump applies an aggregation to.
+#}
+<div class="col">
+    <label class="filter-sublabel">Global</label>
+    <div class="btn-group btn-group-sm d-flex mb-2" id="{{ idPrefix }}AggregationGlobal">
+        <input type="checkbox" class="btn-check" name="bidirectional"
+               id="{{ idPrefix }}AggBi" {{ bind(aggBidirectional) }}>
+        <label class="btn btn-outline-primary" for="{{ idPrefix }}AggBi">Bi-directional</label>
+        <input type="checkbox" class="btn-check" name="proto"
+               id="{{ idPrefix }}AggProto" {{ bind(aggProto) }}>
+        <label class="btn btn-outline-primary" for="{{ idPrefix }}AggProto">Protocol</label>
+    </div>
+    <label class="filter-sublabel">Port</label>
+    <div class="btn-group btn-group-sm d-flex" id="{{ idPrefix }}AggregationPort">
+        <input type="checkbox" class="btn-check" name="srcport"
+               id="{{ idPrefix }}AggPortSrc" {{ bind(aggSrcPort) }}>
+        <label class="btn btn-outline-primary" for="{{ idPrefix }}AggPortSrc">Source</label>
+        <input type="checkbox" class="btn-check" name="dstport"
+               id="{{ idPrefix }}AggPortDst" {{ bind(aggDstPort) }}>
+        <label class="btn btn-outline-primary" for="{{ idPrefix }}AggPortDst">Destination</label>
+    </div>
+</div>
+
+<div class="col">
+    <label class="filter-sublabel">IP Aggregation</label>
+    <div class="row g-1">
+        <div class="col-6">
+            <select data-attr:disabled="${{ aggBidirectional.id() }}"
+                    class="form-select form-select-sm"
+                    {{ bind(aggSrcIp) }}>
+                <option value="none">Src: None</option>
+                <option value="srcip">Src: IP</option>
+                <option value="srcip4">Src: IPv4 /</option>
+                <option value="srcip6">Src: IPv6 /</option>
+            </select>
+            <input data-attr:disabled="${{ aggSrcIp.id() }} == 'srcip' || ${{ aggSrcIp.id() }} == 'none'"
+                   placeholder="24" type="text"
+                   class="form-control form-control-sm mt-1" style="width:3.5rem"
+                   {{ bind(aggSrcIpPrefix) }}>
+        </div>
+        <div class="col-6">
+            <select data-attr:disabled="${{ aggBidirectional.id() }}"
+                    class="form-select form-select-sm"
+                    {{ bind(aggDstIp) }}>
+                <option value="none">Dst: None</option>
+                <option value="dstip">Dst: IP</option>
+                <option value="dstip4">Dst: IPv4 /</option>
+                <option value="dstip6">Dst: IPv6 /</option>
+            </select>
+            <input data-attr:disabled="${{ aggDstIp.id() }} == 'dstip' || ${{ aggDstIp.id() }} == 'none'"
+                   placeholder="24" type="text"
+                   class="form-control form-control-sm mt-1" style="width:3.5rem"
+                   {{ bind(aggDstIpPrefix) }}>
+        </div>
+    </div>
+</div>

@@ -27,3 +27,6 @@ book/.capture-diffs/
 
 # FUSE leaves these behind when a file is deleted while still open (bind-mounted dev setups)
 .fuse_hidden*
+
+# Host-local compose overrides (ports, restart policy, data paths)
+deploy/docker-compose.local.yml

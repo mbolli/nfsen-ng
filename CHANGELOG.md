@@ -11,6 +11,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **An aggregated table named its columns after nfdump's internal fields.** Aggregating forces csv output, whose field names differ from the json ones, so the same column read `SrcAddr` and `DstPort` where an unaggregated query said Source IP and Destination Port. The Statistics tab's aggregation controls also no longer stretch across the full page width.
+
 - **A query that worked no longer reports an nfdump warning.** nfdump prints `Command line switch -s overwrites -a` for every aggregated statistic while honouring the aggregation, and that went to the panel as a yellow warning beside a correct result. Messages nfdump always prints are filtered out of what the panels show, and still logged at debug level.
 
 - The import's "no traffic" notice named every silent port ([#173](https://github.com/mbolli/nfsen-ng/issues/173)). A configured port list runs to dozens, so the line grew to a wall of port numbers that buried the sentence explaining what it meant. It now leads with the count and names at most nine of them.

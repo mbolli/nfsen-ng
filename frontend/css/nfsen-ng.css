@@ -414,6 +414,14 @@ nfsen-daterange .daterange-slider {
     padding: 0.75rem 0.875rem;
 }
 
+/* The Statistics tab gives the aggregation controls a row to themselves, where the two
+   groups would otherwise split the full page width and stretch every button to ~20rem. The
+   Flows tab shares the partial but sits in a narrow column, so the cap lives here, not in the
+   partial. */
+.aggregation-wide {
+    max-width: 46rem;
+}
+
 /* Nested sub-section labels (e.g. Global / Port / IP Aggregation) */
 .filter-sublabel {
     font-size: 0.625rem;

@@ -36,12 +36,18 @@ export default async function statisticsAggregationTest() {
         const columns = await page.evaluate(columnsOf);
         assert.ok(columns.length > 0, 'expected the statistics table to have columns');
         assert.ok(
-            columns.some((c) => /dstport/i.test(c.replace(/\s/g, ''))),
+            columns.includes('Destination Port'),
             `expected a destination port column, got: ${columns.join(', ')}`
         );
         assert.ok(
-            !columns.some((c) => /srcaddr|source ip/i.test(c.replace(/\s/g, ''))),
+            !columns.some((c) => /source/i.test(c)),
             `expected the source address column to be aggregated away, got: ${columns.join(', ')}`
+        );
+        // nfdump answers an aggregated query in csv, whose field names differ from the json
+        // ones the unaggregated query returns, so the titles have to cover both (#174).
+        assert.ok(
+            !columns.some((c) => /^(srcAddr|dstPort|firstSeen|bpp|bps)$/.test(c.replace(/\s/g, ''))),
+            `expected column titles, not raw nfdump field names, got: ${columns.join(', ')}`
         );
 
         const errors = page.realErrors();

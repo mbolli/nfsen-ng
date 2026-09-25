@@ -23,7 +23,7 @@ class Import {
      *
      * A configured port with no traffic draws a flat line, which is indistinguishable on
      * screen from a port whose data is not being collected at all. Naming them once at the
-     * end of a run costs nothing — the answer is already in hand — and turns a silent empty
+     * end of a run costs nothing (the answer is already in hand) and turns a silent empty
      * graph into a sentence (#173).
      *
      * @var array<int, true>
@@ -39,6 +39,14 @@ class Import {
 
     /** Profile override for multi-profile setups; null = use Config::$settings->nfdumpProfile. */
     private ?string $profile = null;
+
+    /**
+     * The `-I` totals of the file writeSourceData() wrote last, handed to the top-N collector
+     * so it does not run `-I` again.
+     *
+     * @var array{flows: int, packets: int, bytes: int}
+     */
+    private array $lastTotals = ['flows' => 0, 'packets' => 0, 'bytes' => 0];
 
     public function __construct() {
         $this->d = Debug::getInstance();
@@ -270,8 +278,8 @@ class Import {
                         continue;
                     }
 
-                    // compare file name date with last update
-                    if ($fileDatetime <= $lastUpdate) {
+                    // A backfill revisits the files the cursor has already passed.
+                    if ($this->rescan === false && $fileDatetime <= $lastUpdate) {
                         continue;
                     }
 
@@ -279,6 +287,8 @@ class Import {
                     $statsPath = implode(\DIRECTORY_SEPARATOR, \array_slice($scan, 2, 5)) . \DIRECTORY_SEPARATOR . $file;
 
                     try {
+                        $fileStarted = hrtime(true);
+
                         // fill source.rrd; skip port processing if file is unreadable
                         if ($this->writeSourceData($source, $statsPath) === false) {
                             if ($onTick !== null) {
@@ -287,6 +297,7 @@ class Import {
 
                             continue;
                         }
+                        $this->recordTopN($source, $statsPath, $this->lastTotals);
 
                         // write general port data (queries data for all sources, should only be executed when data for all sources exists...)
                         if ($this->processPorts === true && $nr === \count($sources) - 1) {
@@ -298,7 +309,9 @@ class Import {
                             $this->writePortsData($statsPath, $source);
                         }
 
-                        // Progress callback — invoked after each successfully written file
+                        ImportStats::record($this->profile ?? Config::$settings->nfdumpProfile, $source, $statsPath, intdiv(hrtime(true) - $fileStarted, 1_000_000));
+
+                        // Progress callback, invoked after each successfully written file
                         if ($onProgress !== null) {
                             ++$processed;
                             if ($startTime === null) {
@@ -343,31 +356,37 @@ class Import {
     }
 
     /**
-     * Import a single nfcapd file.
+     * Import a single nfcapd file. False when it was not written (unreadable, already imported
+     * or an error).
      */
-    public function importFile(string $file, string $source, bool $last): void {
+    public function importFile(string $file, string $source, bool $last): bool {
         try {
             $this->d->log('Importing file ' . $file . ' (' . $source . '), last=' . (int) $last, LOG_INFO);
 
             // fill source.rrd; bail early if the file is unreadable (avoids 6 redundant port nfdump calls)
             if ($this->writeSourceData($source, $file) === false) {
-                return;
+                return false;
             }
+            $this->recordTopN($source, $file, $this->lastTotals);
 
             // write general port data (queries data for all sources at once, so it may
-            // only run once all sources have delivered the file — i.e. on the last one)
+            // only run once all sources have delivered the file, i.e. on the last one)
             if ($this->processPorts === true && $last === true) {
                 $this->writePortsData($file);
             }
 
             // if enabled, process ports per source as well (source_80.rrd).
-            // Gated on processPortsBySource, exactly as in start() — gating it on
+            // Gated on processPortsBySource, exactly as in start(): gating it on
             // processPorts meant the per-source port RRDs were never written (#173).
             if ($this->processPortsBySource === true) {
                 $this->writePortsData($file, $source);
             }
+
+            return true;
         } catch (\Exception $e) {
             $this->d->log('Caught exception: ' . $e->getMessage(), LOG_WARNING);
+
+            return false;
         }
     }
 
@@ -450,7 +469,7 @@ class Import {
     /**
      * Maps a protocol name as nfdump prints it to one of the RRD's per-protocol data
      * sources. Those are tcp/udp/icmp/other, mirroring the buckets of nfdump's own `-I`
-     * summary that source.rrd is filled from — so everything else (GRE, ESP, SCTP, …)
+     * summary that source.rrd is filled from, so everything else (GRE, ESP, SCTP, …)
      * belongs in 'other'. Writing the raw name instead made RRDUpdater throw
      * "unknown DS name 'flows_gre'" and cost the whole capture file its port data (#173).
      *
@@ -509,6 +528,21 @@ class Import {
         );
     }
 
+    /**
+     * Hands an imported file to the top-N collector with the `-I` totals the import already
+     * read. The collector ignores it when it was not booted (CLI, MCP) or has the interval.
+     *
+     * @param array{flows: int, packets: int, bytes: int} $totals
+     */
+    private function recordTopN(string $source, string $statsPath, array $totals): void {
+        try {
+            $ts = (new \DateTime(substr($statsPath, -12), Config::nfcapdTimezone()))->getTimestamp();
+            TopNCollector::enqueue($this->profile ?? Config::$settings->nfdumpProfile, $source, $statsPath, $ts, $totals);
+        } catch (\Throwable $e) {
+            $this->d->log('TopN: not queued ' . $statsPath . ': ' . $e->getMessage(), LOG_DEBUG);
+        }
+    }
+
     private function formatEta(int $seconds): string {
         return QueryProgress::formatEta($seconds);
     }
@@ -564,10 +598,15 @@ class Import {
             }
         }
 
-        // No usable data decoded (e.g. nfdump could not read the file) — skip write.
+        // No usable data decoded (e.g. nfdump could not read the file): skip write.
         if (empty($data['fields'])) {
             return false;
         }
+        $this->lastTotals = [
+            'flows' => $data['fields']['flows'] ?? 0,
+            'packets' => $data['fields']['packets'] ?? 0,
+            'bytes' => $data['fields']['bytes'] ?? 0,
+        ];
 
         // write to database
         if (Config::$db->write($data) === false) {
@@ -625,7 +664,7 @@ class Import {
             if (\count($available) !== \count($sources)) {
                 $this->d->log(
                     'Aggregating ' . $statsPath . ' over ' . implode(',', $available)
-                    . ' only — no capture (yet) for ' . implode(',', array_diff($sources, $available)),
+                    . ' only, no capture (yet) for ' . implode(',', array_diff($sources, $available)),
                     LOG_DEBUG,
                 );
             }
@@ -646,7 +685,7 @@ class Import {
         //
         // NFSEN_PORT_DIRECTION=any counts the port in either direction, which is the honest
         // reading of "traffic for port N" and the fix for an exporter that reports one
-        // direction of each flow — ingress-only or egress-only sampling, which is ordinary,
+        // direction of each flow (ingress-only or egress-only sampling, which is ordinary),
         // and which leaves these graphs empty while the per-source graphs work (#173).
         $direction = Config::$settings->portDirection;
         $prefix = $direction === 'any' ? '' : $direction . ' ';

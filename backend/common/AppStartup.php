@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\common;
 
+use mbolli\nfsen_ng\store\Database;
+use mbolli\nfsen_ng\store\StoreUnavailableException;
 use Mbolli\PhpVia\Via;
 use OpenSwoole\Coroutine;
 
 /**
  * Encapsulates the server-startup logic that runs once in the onStart coroutine:
- * Config/DB initialisation, AlertManager, ImportDaemon setup, gap-fill import, and the
- * inotify poll interval.
+ * Config/DB initialisation, the SQLite store, AlertManager, ImportDaemon setup, gap-fill
+ * import, the inotify poll interval and the top-N collector.
  */
 class AppStartup {
     /**
@@ -30,7 +32,13 @@ class AppStartup {
         $debug = Debug::getInstance();
         $debug->log('nfsen-ng started (php-via)', LOG_INFO);
 
-        // Instantiate AlertManager — persists across all requests for the lifetime of the worker.
+        // Only the server worker migrates. shared() logs a broken store; every consumer degrades.
+        try {
+            Database::shared();
+        } catch (StoreUnavailableException) {
+        }
+
+        // Instantiate AlertManager: persists across all requests for the lifetime of the worker.
         $alertManager = new AlertManager(
             Config::$db,
             Config::$stateDir . \DIRECTORY_SEPARATOR . 'alerts-state.json',
@@ -59,7 +67,7 @@ class AppStartup {
         $app->setGlobalState('daemon', $primaryDaemon);
         $app->setGlobalState('import_active_profile', array_key_first($daemons) ?? Config::$settings->nfdumpProfile);
 
-        // Shared import progress — written by the import coroutine, read by every admin tab.
+        // Shared import progress, written by the import coroutine, read by every admin tab.
         $app->setGlobalState('import_progress', 0);
         $app->setGlobalState('import_current_file', '');
         $app->setGlobalState('import_status_text', '');
@@ -67,7 +75,13 @@ class AppStartup {
         $app->setGlobalState('import_log', []);
         $app->setGlobalState('import_cancel', false);
 
-        // Startup import logic — only runs a gap fill when the database already has
+        try {
+            TopNCollector::boot($app);
+        } catch (\Throwable $e) {
+            $debug->log('TopN collector off: ' . $e->getMessage(), LOG_ERR);
+        }
+
+        // Startup import logic: only runs a gap fill when the database already has
         // data. A fresh install skips the import entirely so the user can configure
         // and trigger "Initial Import" manually from the Admin panel.
         //
@@ -95,7 +109,7 @@ class AppStartup {
                 return;
             }
 
-            // Detect which profiles already have data — profiles with no data are skipped
+            // Detect which profiles already have data; profiles with no data are skipped
             // (fresh install for that profile; user triggers Initial Import manually).
             $daemonsToRun = [];
             foreach ($daemons as $profile => $daemon) {
@@ -110,7 +124,7 @@ class AppStartup {
                 if ($hasData) {
                     $daemonsToRun[$profile] = $daemon;
                 } else {
-                    $debug->log("ImportDaemon [{$profile}]: no existing data — startup gap-fill skipped; use Admin panel to run Initial Import", LOG_INFO);
+                    $debug->log("ImportDaemon [{$profile}]: no existing data, startup gap-fill skipped; use Admin panel to run Initial Import", LOG_INFO);
                     $daemon->setupWatchesOnly();
                 }
             }
@@ -157,7 +171,7 @@ class AppStartup {
             }
         });
 
-        // Ongoing inotify poll every 1 s — setInterval runs in the event loop, not
+        // Ongoing inotify poll every 1 s: setInterval runs in the event loop, not
         // in a child coroutine, which is safe per Import class restrictions.
         $app->setInterval(function () use ($app, $daemons, $debug): void {
             /** @var array<string, ImportDaemon> $daemons */

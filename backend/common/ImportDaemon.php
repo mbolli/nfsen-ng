@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\common;
 
 /**
- * ImportDaemon — extracted from listen.php for embedding in app.php.
+ * ImportDaemon, extracted from listen.php for embedding in app.php.
  *
  * Usage in app.php:
  *   $daemon = new ImportDaemon();
@@ -13,7 +13,7 @@ namespace mbolli\nfsen_ng\common;
  *   // Long-running bulk catch-up (run in a coroutine)
  *   \OpenSwoole\Coroutine::create(fn() => $daemon->initialImport());
  *
- *   // Ongoing inotify poll — call every second via $app->setInterval()
+ *   // Ongoing inotify poll: call every second via $app->setInterval()
  *   $app->setInterval(fn() => $daemon->pollOnce(fn() => $app->broadcast('rrd:live')), 1000);
  */
 class ImportDaemon {
@@ -42,6 +42,9 @@ class ImportDaemon {
 
     /** Unix timestamp of the last inotify-triggered import, 0 if none yet. */
     private int $lastAutoImportTime = 0;
+
+    /** Timer ticks overlap while an import yields, so a tick that finds one running returns. */
+    private bool $polling = false;
 
     private readonly string $profile;
 
@@ -156,6 +159,25 @@ class ImportDaemon {
             return;
         }
 
+        if ($this->polling) {
+            return;
+        }
+        $this->polling = true;
+
+        try {
+            $this->poll($onImportDone);
+        } finally {
+            $this->polling = false;
+        }
+    }
+
+    // ─── Internals ───────────────────────────────────────────────────────────
+
+    private function poll(callable $onImportDone): void {
+        if ($this->inotify === false) {
+            return;
+        }
+
         $events = @inotify_read($this->inotify);
 
         if ($events) {
@@ -181,8 +203,6 @@ class ImportDaemon {
             }
         }
     }
-
-    // ─── Internals ───────────────────────────────────────────────────────────
 
     /**
      * Scan a directory for nfcapd files that already exist on disk and import
@@ -216,8 +236,7 @@ class ImportDaemon {
             );
 
             try {
-                $this->importer ??= $this->newOngoingImporter();
-                $this->importer->importFile($relativePath, $source, $isLastSource);
+                $this->importTimed($relativePath, $source, $isLastSource);
                 $this->debug->log("ImportDaemon: catch-up imported {$filename} (source: {$source})", LOG_INFO);
                 $this->lastAutoImportTime = time();
                 $onImportDone();
@@ -228,12 +247,24 @@ class ImportDaemon {
     }
 
     /**
+     * Imports one file with the ongoing importer (created lazily when initialImport() has not
+     * run) and records the import rate when the file was written.
+     */
+    private function importTimed(string $relativePath, string $source, bool $isLastSource): void {
+        $this->importer ??= $this->newOngoingImporter();
+        $started = hrtime(true);
+        if ($this->importer->importFile($relativePath, $source, $isLastSource)) {
+            ImportStats::record($this->profile, $source, $relativePath, intdiv(hrtime(true) - $started, 1_000_000));
+        }
+    }
+
+    /**
      * Importer used for every ongoing (inotify-driven) import.
      *
      * Port processing must be enabled here exactly as it is for the bulk import in
      * initialImport(): without it importFile() writes source.rrd and the all-sources
-     * port.rrd but never source_port.rrd, so the per-source port graphs — which is
-     * what the ports view reads — stop at the last bulk import and stay empty (#173).
+     * port.rrd but never source_port.rrd, so the per-source port graphs (which is
+     * what the ports view reads) stop at the last bulk import and stay empty (#173).
      */
     private function newOngoingImporter(): Import {
         $importer = new Import();
@@ -365,10 +396,7 @@ class ImportDaemon {
         $isLastSource = $eventSource === end($sources);
 
         try {
-            // Lazy-init importer if initialImport() hasn't run yet (edge case)
-            $this->importer ??= $this->newOngoingImporter();
-
-            $this->importer->importFile($relativePath, $eventSource, $isLastSource);
+            $this->importTimed($relativePath, $eventSource, $isLastSource);
             $this->debug->log("ImportDaemon: processed {$filename}", LOG_INFO);
             $this->lastAutoImportTime = time();
             $onImportDone();

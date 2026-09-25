@@ -41,8 +41,9 @@ ADD --chmod=0755 https://github.com/mlocati/docker-php-extension-installer/relea
 # brotli is required for php-via's ->withBrotli() compression support
 RUN install-php-extensions openswoole inotify brotli
 
-# Install PHP RRD extension
-RUN pecl install rrd \
+# Install PHP RRD extension. rrd 2.0.4 passes char ** where librrd 1.9.0 wants
+# const char **, an error since GCC 14; trixie has 1.7.2, Debian testing 1.9.0.
+RUN CFLAGS="-g -O2 -Wno-error=incompatible-pointer-types" pecl install rrd \
     && docker-php-ext-enable rrd
 
 # Install composer

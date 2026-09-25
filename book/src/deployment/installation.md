@@ -184,12 +184,11 @@ The ready-to-use `deploy/systemd/nfcapd.service` unit already uses
 
 ### Install the stack
 
-> **Not `ppa:ondrej/php` on Ubuntu 26.04.** That PPA is being merged into
-> `packages.sury.org` and now builds only for Jammy (22.04) and Noble (24.04) —
-> there is no Resolute (26.04) build. Sury serves `jammy`, `noble`, `resolute`,
-> `bullseye`, `bookworm` and `trixie`, so the `lsb_release -sc` line below is the
-> one path for both distributions. On 22.04/24.04 the PPA still works if you
-> already use it.
+> **The PHP repository.** Sury serves `jammy`, `noble`, `resolute`, `bullseye`,
+> `bookworm` and `trixie`, so the `lsb_release -sc` line below covers Debian and
+> Ubuntu alike. `ppa:ondrej/php` is being merged into `packages.sury.org` and
+> builds only for Jammy (22.04) and Noble (24.04); Ubuntu 26.04 has no PPA
+> build, and on 22.04/24.04 the PPA still works if you already use it.
 
 ```bash
 # As root.
@@ -203,8 +202,7 @@ apt update
 # --- Packages ---
 apt install -y git pkg-config brotli \
     php8.4 php8.4-dev php8.4-xml php8.4-mbstring php8.4-curl \
-    rrdtool librrd-dev \
-    libssl-dev libcurl4-openssl-dev libnghttp2-dev \
+    rrdtool \
     flex bison libbz2-dev zlib1g-dev build-essential autoconf automake libtool unzip wget
 
 # --- nfdump 1.7.8 from source (matches the Docker image) ---
@@ -215,18 +213,12 @@ cd ..
 # binary is now /usr/local/nfdump/bin/nfdump
 
 # --- PHP extensions ---
-# openswoole + inotify + brotli via PECL. openswoole asks six build questions —
-# -D answers them with the options the Docker image uses (see the note below):
-pecl install -D 'enable-sockets="no" enable-openssl="yes" enable-http2="yes"
-    enable-mysqlnd="no" enable-hook-curl="yes" with-postgres="no"' openswoole
-pecl install inotify
-echo "extension=openswoole.so" > /etc/php/8.4/mods-available/openswoole.ini
-echo "extension=inotify.so"    > /etc/php/8.4/mods-available/inotify.ini
-pecl install rrd
-echo "extension=rrd.so"        > /etc/php/8.4/mods-available/rrd.ini
-# brotli: install ext-brotli (https://github.com/kjdev/php-ext-brotli), then:
-echo "extension=brotli.so"     > /etc/php/8.4/mods-available/brotli.ini
-phpenmod openswoole inotify rrd brotli mbstring curl xml
+# Sury packages three of the four, and enables them on install:
+apt install -y php8.4-openswoole php8.4-inotify php8.4-rrd
+# brotli has no Sury package: build ext-brotli
+# (https://github.com/kjdev/php-ext-brotli), then:
+echo "extension=brotli.so" > /etc/php/8.4/mods-available/brotli.ini
+phpenmod brotli mbstring curl xml
 
 # --- nfsen-ng ---
 cd /var/www
@@ -246,15 +238,15 @@ $EDITOR backend/settings/settings.php   # set sources, ports, nfdump.binary, pro
 sudo -u www-data php backend/app.php
 ```
 
-> **Why the `-D` flags.** Plain `pecl install openswoole` stops at six build
-> prompts (`enable coroutine sockets?`, `enable openssl support?`, …) and a
-> copy-pasted script just hangs there; `-D` answers them up front with the same
-> options the Docker image builds through `install-php-extensions`.
-> `enable-openssl="yes"` is not optional — alert webhooks to `https://` URLs use
-> OpenSwoole's coroutine HTTP client, which cannot do TLS without it. Keep the
-> inner quotes and don't fold the list with a `\` continuation: PEAR parses it as
-> XML attributes, and either mistake drops every option without a word — the
-> prompts come straight back.
+> **Where the extensions come from.** Sury builds `php8.4-openswoole` from the
+> same 26.2.0 release the Docker image uses, with openssl, c-ares, curl and
+> mysqlnd support compiled in, so there is nothing to build by hand and none of
+> `pecl`'s six configure prompts to answer. `pecl install rrd` fails outright on
+> Ubuntu 26.04: rrdtool 1.9.0 changed `rrd_fetch()` and its siblings to
+> take `const char **`, pecl's rrd 2.0.4 still passes `char **`, and since GCC 14
+> that mismatch is an error rather than a warning. Sury's `php8.4-rrd` is that
+> same 2.0.4 built against 1.9.0. Ubuntu 24.04 and Debian 13 ship rrdtool 1.7.2,
+> where the PECL build still succeeds.
 
 On a bare-metal install point `nfdump.binary` (or `NFSEN_NFDUMP_BINARY`) at
 `/usr/local/nfdump/bin/nfdump` if you compiled it as above. On first start the

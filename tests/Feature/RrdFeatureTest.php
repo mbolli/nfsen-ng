@@ -18,15 +18,17 @@ if (!function_exists('rrd_version')) {
 /**
  * Bootstrap Config for RRD feature tests using a temporary directory.
  *
+ * @param list<string> $sources
+ *
  * @return string the temp directory path (caller must clean up)
  */
-function makeRrdFeatureSettings(int $importYears = 3): string {
+function makeRrdFeatureSettings(int $importYears = 3, array $sources = ['gw']): string {
     $dir = sys_get_temp_dir() . '/rrd_feat_' . uniqid();
     mkdir($dir, 0o755, true);
 
     Config::$settings = Settings::fromArray([
         'general' => [
-            'sources' => ['gw'],
+            'sources' => $sources,
             'ports' => [80],
             'db' => 'RRD',
             'processor' => 'Nfdump',
@@ -71,6 +73,65 @@ function cleanRrdDir(string $dir): void {
         }
         @rmdir($dir);
     }
+}
+
+/**
+ * One slot at 10 flows/s (tcp 6, udp 2, icmp 1, other 1), packets x50, bytes x10000, all
+ * times $m, written as rate x 300 so stored rates and value x step stay whole numbers.
+ *
+ * @return array<string, int>
+ */
+function rrdSlotFields(int $m): array {
+    $fields = [];
+    foreach (['flows' => 1, 'packets' => 50, 'bytes' => 10000] as $metric => $factor) {
+        foreach (['' => 10, '_tcp' => 6, '_udp' => 2, '_icmp' => 1, '_other' => 1] as $suffix => $rate) {
+            $fields[$metric . $suffix] = $rate * $factor * $m * 300;
+        }
+    }
+
+    return $fields;
+}
+
+/**
+ * Writes slots $from, $from + 300, ...; the first write into a fresh RRD stays unknown.
+ *
+ * @param list<int> $multipliers
+ */
+function rrdWriteSlots(Rrd $rrd, string $source, int $from, array $multipliers, int $port = 0): void {
+    foreach ($multipliers as $i => $m) {
+        $rrd->write([
+            'source' => $source,
+            'port' => $port,
+            'profile' => '',
+            'date_iso' => '',
+            'date_timestamp' => $from + $i * 300,
+            'fields' => rrdSlotFields($m),
+        ]);
+    }
+}
+
+/**
+ * What the given slots hold for one data source, summed.
+ *
+ * @param list<int> $multipliers
+ */
+function rrdSlotVolume(array $multipliers, string $ds): float {
+    return (float) array_sum(array_map(static fn (int $m): int => rrdSlotFields($m)[$ds], $multipliers));
+}
+
+/**
+ * @param list<int> $multipliers
+ *
+ * @return array{flows: float, packets: float, bytes: float}
+ */
+function rrdSlotTotals(array $multipliers, string $protocol = 'any'): array {
+    $suffix = $protocol === 'any' ? '' : '_' . $protocol;
+
+    return [
+        'flows' => rrdSlotVolume($multipliers, 'flows' . $suffix),
+        'packets' => rrdSlotVolume($multipliers, 'packets' . $suffix),
+        'bytes' => rrdSlotVolume($multipliers, 'bytes' . $suffix),
+    ];
 }
 
 // ── create / validateStructure ────────────────────────────────────────────────
@@ -118,7 +179,7 @@ describe('Rrd file creation and structure validation', function (): void {
 
         // Re-configure with different import_years (without recreating)
         makeRrdFeatureSettings(5);
-        // Point at same dir (makeRrdFeatureSettings creates a new dir — override)
+        // Point at same dir (makeRrdFeatureSettings creates a new dir, so override)
         Config::$settings = Settings::fromArray([
             'general' => ['sources' => ['gw'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump'],
             'nfdump' => ['binary' => '/usr/bin/nfdump', 'profiles-data' => '/x', 'profile' => 'live', 'max-processes' => 1],
@@ -340,5 +401,215 @@ describe('Rrd::get_graph_data() with missing databases', function (): void {
 
         expect($result)->toBeArray();
         expect($result['data'])->toBe([]);
+    });
+});
+
+// ── Stored totals (TotalsProvider) ────────────────────────────────────────────
+
+describe('Rrd::fetchTotals() and fetchProtocolTotals() over [start, end)', function (): void {
+    beforeEach(function (): void {
+        $this->dir = makeRrdFeatureSettings(3, ['gw', 'srv']);
+        $this->rrd = new Rrd();
+
+        $ts = strtotime('-2 hours');
+        $this->base = $ts - ($ts % 300);
+        // Slot i holds multiplier i + 1; slot 0 is the unknown first write.
+        rrdWriteSlots($this->rrd, 'gw', $this->base, range(1, 10));
+        $this->slot = fn (int $i): int => $this->base + $i * 300;
+    });
+
+    afterEach(function (): void {
+        cleanRrdDir($this->dir);
+    });
+
+    // Slots 1 and 6 carry data right outside both edges, so an off-by-one on either side shows.
+    test('sums value x step over the slots in [start, end), the slot on end excluded', function (): void {
+        $totals = $this->rrd->fetchTotals(['gw'], '', ($this->slot)(2), ($this->slot)(6));
+
+        expect($totals)->toBe(rrdSlotTotals([3, 4, 5, 6]));
+    });
+
+    test('a one-slot window holds exactly the slot starting at start', function (): void {
+        expect($this->rrd->fetchTotals(['gw'], '', ($this->slot)(4), ($this->slot)(5)))->toBe(rrdSlotTotals([5]));
+    });
+
+    test('an unaligned window counts the slots whose start lies inside it', function (): void {
+        $totals = $this->rrd->fetchTotals(['gw'], '', ($this->slot)(2) + 1, ($this->slot)(6) + 1);
+
+        expect($totals)->toBe(rrdSlotTotals([4, 5, 6, 7]));
+    });
+
+    test('the protocol variant reads the protocol data sources', function (): void {
+        expect($this->rrd->fetchTotals(['gw'], '', ($this->slot)(2), ($this->slot)(6), 'tcp'))
+            ->toBe(rrdSlotTotals([3, 4, 5, 6], 'tcp'))
+        ;
+        expect($this->rrd->fetchTotals(['gw'], '', ($this->slot)(2), ($this->slot)(6), 'other'))
+            ->toBe(rrdSlotTotals([3, 4, 5, 6], 'other'))
+        ;
+    });
+
+    test('fetchProtocolTotals() answers every protocol and agrees with fetchTotals()', function (): void {
+        $start = ($this->slot)(2);
+        $end = ($this->slot)(6);
+        $all = $this->rrd->fetchProtocolTotals(['gw'], '', $start, $end);
+
+        expect(array_keys($all))->toBe(['any', 'tcp', 'udp', 'icmp', 'other']);
+        foreach ($all as $protocol => $totals) {
+            expect($totals)->toBe(rrdSlotTotals([3, 4, 5, 6], $protocol));
+            expect($this->rrd->fetchTotals(['gw'], '', $start, $end, $protocol))->toBe($totals);
+        }
+        expect($all['tcp']['bytes'] + $all['udp']['bytes'] + $all['icmp']['bytes'] + $all['other']['bytes'])
+            ->toBe($all['any']['bytes'])
+        ;
+    });
+
+    test('reads each source database once, for one protocol or all of them', function (): void {
+        rrdWriteSlots($this->rrd, 'srv', $this->base, range(1, 10));
+        $rrd = new class extends Rrd {
+            /** @var list<string> */
+            public array $reads = [];
+
+            protected function rrdFetch(string $file, array $options): array|false {
+                $this->reads[] = basename($file);
+
+                return parent::rrdFetch($file, $options);
+            }
+        };
+
+        $rrd->fetchProtocolTotals(['gw', 'srv'], '', ($this->slot)(2), ($this->slot)(6));
+        expect($rrd->reads)->toBe(['gw.rrd', 'srv.rrd']);
+
+        $rrd->reads = [];
+        $rrd->fetchTotals(['gw', 'srv'], '', ($this->slot)(2), ($this->slot)(6), 'udp');
+        expect($rrd->reads)->toBe(['gw.rrd', 'srv.rrd']);
+    });
+
+    test('sums over sources, and an empty list or any means every configured source', function (): void {
+        rrdWriteSlots($this->rrd, 'srv', $this->base, array_map(static fn (int $m): int => 2 * $m, range(1, 10)));
+        $expected = rrdSlotTotals([3, 4, 5, 6, 6, 8, 10, 12]);
+
+        foreach ([['gw', 'srv'], [], ['any']] as $sources) {
+            expect($this->rrd->fetchTotals($sources, '', ($this->slot)(2), ($this->slot)(6)))->toBe($expected);
+        }
+    });
+
+    test('a source without a database adds nothing', function (): void {
+        expect($this->rrd->fetchTotals(['gw', 'nosuch'], '', ($this->slot)(2), ($this->slot)(6)))
+            ->toBe(rrdSlotTotals([3, 4, 5, 6]))
+        ;
+    });
+
+    test('a consolidated row counts pro rata for the slots inside the window', function (): void {
+        // Only a 30-minute archive, so rrd_fetch answers with 1800 s rows.
+        $file = $this->rrd->get_data_path('srv');
+        $start = intdiv((int) strtotime('-1 day'), 1800) * 1800;
+        $creator = new RRDCreator($file, (string) $start, 300);
+        $creator->addDataSource('flows:ABSOLUTE:600:U:U');
+        $creator->addArchive('AVERAGE:0.5:6:100');
+        $creator->save();
+        $updater = new RRDUpdater($file);
+        for ($i = 1; $i <= 12; ++$i) {
+            $updater->update(['flows' => 3000], (string) ($start + $i * 300));
+        }
+
+        // Nine slots: the whole first row and half of the second.
+        $totals = $this->rrd->fetchTotals(['srv'], '', $start + 300, $start + 3000);
+
+        expect($totals['flows'])->toBe(27000.0);
+        expect($totals['bytes'])->toBe(0.0);
+    });
+});
+
+// ── Multi-source series ───────────────────────────────────────────────────────
+
+describe('Rrd::get_graph_data() protocols display across sources', function (): void {
+    beforeEach(function (): void {
+        $this->dir = makeRrdFeatureSettings(3, ['gw', 'srv']);
+        $this->rrd = new Rrd();
+
+        $ts = strtotime('-2 hours');
+        $this->base = $ts - ($ts % 300);
+        rrdWriteSlots($this->rrd, 'gw', $this->base, [1, 2, 3, 4, 5, 6]);
+        // srv stops after slot 3.
+        rrdWriteSlots($this->rrd, 'srv', $this->base, [2, 4, 6, 8]);
+    });
+
+    afterEach(function (): void {
+        cleanRrdDir($this->dir);
+    });
+
+    test('one series per protocol, summed over the sources', function (): void {
+        $result = $this->rrd->get_graph_data($this->base, $this->base + 6 * 300, ['gw', 'srv'], [], [], 'flows', 'protocols');
+
+        expect($result['legend'])->toBe(['tcp_flows', 'udp_flows', 'icmp_flows', 'other_flows']);
+        // Slot 3: gw 4, srv 8 times the per-protocol rate.
+        expect($result['data'][$this->base + 3 * 300])->toBe([72.0, 24.0, 12.0, 12.0]);
+    });
+
+    test('a slot one source has no data for still shows the others (ADDNAN)', function (): void {
+        $result = $this->rrd->get_graph_data($this->base, $this->base + 6 * 300, ['gw', 'srv'], ['tcp', 'any'], [], 'flows', 'protocols');
+
+        expect($result['legend'])->toBe(['tcp_flows', 'any_flows']);
+        expect($result['data'][$this->base + 5 * 300])->toBe([36.0, 60.0]);
+    });
+
+    test('the all-sources selection sums every configured source', function (): void {
+        $result = $this->rrd->get_graph_data($this->base, $this->base + 6 * 300, ['any'], ['any'], [], 'flows', 'protocols');
+
+        expect($result['legend'])->toBe(['any_flows']);
+        expect($result['data'][$this->base + 3 * 300])->toBe([120.0]);
+    });
+
+    test('the sources display still draws one series per source', function (): void {
+        $result = $this->rrd->get_graph_data($this->base, $this->base + 6 * 300, ['gw', 'srv'], ['tcp'], [], 'flows', 'sources');
+
+        expect($result['legend'])->toBe(['gw_flows_tcp', 'srv_flows_tcp']);
+        expect($result['data'][$this->base + 3 * 300])->toBe([24.0, 48.0]);
+    });
+});
+
+describe('Rrd::get_graph_data() ports display over a source subset', function (): void {
+    beforeEach(function (): void {
+        $this->dir = makeRrdFeatureSettings(3, ['gw', 'srv', 'edge']);
+        $this->rrd = new Rrd();
+
+        $ts = strtotime('-2 hours');
+        $this->base = $ts - ($ts % 300);
+        rrdWriteSlots($this->rrd, 'gw', $this->base, [1, 2, 3, 4], 80);
+        rrdWriteSlots($this->rrd, 'srv', $this->base, [2, 4, 6, 8], 80);
+        // The cross-source database, deliberately not the sum of the two above.
+        rrdWriteSlots($this->rrd, '', $this->base, [5, 10, 15, 20], 80);
+        $this->graph = fn (array $sources): array => $this->rrd->get_graph_data($this->base, $this->base + 4 * 300, $sources, ['any'], [80], 'flows', 'ports');
+    });
+
+    afterEach(function (): void {
+        cleanRrdDir($this->dir);
+    });
+
+    test('a subset sums the per-source port databases', function (): void {
+        $result = ($this->graph)(['gw', 'srv']);
+
+        expect($result['legend'])->toBe(['80_flows_any']);
+        expect($result['data'][$this->base + 3 * 300])->toBe([120.0]);
+    });
+
+    test('a single source reads its own port database', function (): void {
+        $result = ($this->graph)(['gw']);
+
+        expect($result['legend'])->toBe(['80_flows_gw_any']);
+        expect($result['data'][$this->base + 3 * 300])->toBe([40.0]);
+    });
+
+    test('a per-source port database that does not exist adds nothing', function (): void {
+        expect(($this->graph)(['gw', 'edge'])['data'][$this->base + 3 * 300])->toBe([40.0]);
+    });
+
+    test('every configured source, or any, reads the cross-source port database', function (): void {
+        foreach ([['gw', 'srv', 'edge'], ['any'], []] as $sources) {
+            $result = ($this->graph)($sources);
+
+            expect($result['legend'])->toBe(['80_flows_any']);
+            expect($result['data'][$this->base + 3 * 300])->toBe([200.0]);
+        }
     });
 });

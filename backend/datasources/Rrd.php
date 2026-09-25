@@ -12,8 +12,10 @@ use mbolli\nfsen_ng\common\HealthChecker;
 /**
  * @phpstan-import-type DatasourceRecord from Datasource
  * @phpstan-import-type GraphData from Datasource
+ * @phpstan-import-type Totals from TotalsProvider
+ * @phpstan-import-type ProtocolTotals from TotalsProvider
  */
-class Rrd implements Datasource {
+class Rrd implements Datasource, TotalsProvider {
     private readonly Debug $d;
     private readonly int $importYears;
 
@@ -68,7 +70,7 @@ class Rrd implements Datasource {
     public function date_boundaries(string $source, string $profile = ''): array {
         $rrdFile = $this->get_data_path($source, 0, $profile);
 
-        // Use sidecar .first file for the lower bound — rrd_first() returns the
+        // Use sidecar .first file for the lower bound: rrd_first() returns the
         // RRD creation start (now - importYears), not the first actual data point.
         $sidecar = $rrdFile . '.first';
         $first = file_exists($sidecar) ? (int) trim((string) file_get_contents($sidecar)) : 0;
@@ -266,13 +268,13 @@ WARNING;
         } else {
             $lastTs = rrd_last($rrdFile);
             if ($lastTs > time() + 86400 * 365) {
-                // Corrupted far-future timestamp — recreate the file.
+                // Corrupted far-future timestamp: recreate the file.
                 $this->d->log('Recreating RRD with corrupted timestamp (' . $lastTs . '): ' . $rrdFile, LOG_WARNING);
                 $this->create($data['source'], $data['port'], true, $profile);
             } else {
                 $nearest = (int) $data['date_timestamp'] - ($data['date_timestamp'] % 300);
                 if ($nearest <= $lastTs) {
-                    // Timestamp already covered — silently skip to avoid "illegal attempt to update" noise
+                    // Timestamp already covered: silently skip to avoid "illegal attempt to update" noise
                     // when the import restarts mid-way and port RRDs are already ahead.
                     return true;
                 }
@@ -355,16 +357,17 @@ WARNING;
 
         switch ($display) {
             case 'protocols':
-                foreach ($protocols as $protocol) {
-                    $rrdFile = $this->get_data_path($sources[0], 0, $profile);
-                    if (!file_exists($rrdFile)) {
-                        continue;
-                    }
+                $sourceFiles = array_values(array_filter(
+                    array_map(fn (string $source): string => $this->get_data_path($source, 0, $profile), self::resolveSources($sources)),
+                    'file_exists'
+                ));
+                if ($sourceFiles === []) {
+                    break;
+                }
+                foreach (array_values($protocols) as $p => $protocol) {
+                    $ds = $type . (($protocol === 'any') ? '' : '_' . $protocol);
                     ++$exports;
-                    $proto = ($protocol === 'any') ? '' : '_' . $protocol;
-                    $legend = array_filter([$protocol, $type, $sources[0]]);
-                    $options[] = 'DEF:data' . $sources[0] . $protocol . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
-                    $options[] = 'XPORT:data' . $sources[0] . $protocol . ':' . implode('_', $legend);
+                    array_push($options, ...self::summedExport("p{$p}", $sourceFiles, $ds, $protocol . '_' . $type));
                 }
 
                 break;
@@ -385,17 +388,21 @@ WARNING;
                 break;
 
             case 'ports':
-                foreach ($ports as $port) {
-                    $source = ($sources[0] === 'any') ? '' : $sources[0];
-                    $proto = ($protocols[0] === 'any') ? '' : '_' . $protocols[0];
-                    $legend = array_filter([$port, $type, $source, $protocols[0]]);
-                    $rrdFile = $this->get_data_path($source, $port, $profile);
-                    if (!file_exists($rrdFile)) {
+                $ds = $type . (($protocols[0] === 'any') ? '' : '_' . $protocols[0]);
+                // null: every configured source, which the cross-source port databases already sum.
+                $subset = self::sourceSubset($sources);
+                $legendSource = ($subset !== null && \count($subset) === 1) ? $subset[0] : '';
+                foreach (array_values($ports) as $q => $port) {
+                    $portFiles = array_values(array_filter(
+                        array_map(fn (string $source): string => $this->get_data_path($source, $port, $profile), $subset ?? ['']),
+                        'file_exists'
+                    ));
+                    if ($portFiles === []) {
                         continue;
                     }
                     ++$exports;
-                    $options[] = 'DEF:data' . $source . $port . '=' . $rrdFile . ':' . $type . $proto . ':AVERAGE';
-                    $options[] = 'XPORT:data' . $source . $port . ':' . implode('_', $legend);
+                    $legend = implode('_', array_filter([(string) $port, $type, $legendSource, $protocols[0]], static fn (string $part): bool => $part !== ''));
+                    array_push($options, ...self::summedExport("q{$q}", $portFiles, $ds, $legend));
                 }
         }
 
@@ -430,7 +437,7 @@ WARNING;
         foreach ($data['data'] as $source) {
             $output['legend'][] = $source['legend'];
             foreach ($source['data'] as $date => $measure) {
-                // Keep anything unusable as null — it must not fall through to the bits
+                // Keep anything unusable as null: it must not fall through to the bits
                 // conversion below, where PHP evaluates `null * 8` to 0 and turns an empty
                 // slot (e.g. the trailing NaN row RRD always returns past rrd_last) into a
                 // real 0, making the traffic graph drop to zero (#154). Alongside NaN that
@@ -492,7 +499,7 @@ WARNING;
 
     /**
      * RRDTool refuses an update at or before the file's last update, so history can only be
-     * filled by recreating the file — which is what reset() does.
+     * filled by recreating the file, which is what reset() does.
      */
     public function acceptsHistoricWrites(): bool {
         return false;
@@ -612,7 +619,7 @@ WARNING;
                     $status = $age > 3600 ? 'warning' : 'ok';
                     $ageStr = HealthChecker::ageStr($age);
                     $detail = $age <= 0 ? 'Just imported'
-                        : ($age > 3600 ? "Last import {$ageStr} ago — may be stalled"
+                        : ($age > 3600 ? "Last import {$ageStr} ago, may be stalled"
                                        : "Last import {$ageStr} ago");
                     $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
                         'status' => $status, 'detail' => $detail,
@@ -640,7 +647,7 @@ WARNING;
             ?? Config::$path . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data';
 
         $p = $profile !== '' ? $profile : Config::$settings->nfdumpProfile;
-        // Support nested profiles like 'group/sub' — convert to OS path separator
+        // Support nested profiles like 'group/sub': convert to OS path separator
         $p = str_replace('/', \DIRECTORY_SEPARATOR, $p);
 
         $path = $rrdPath . \DIRECTORY_SEPARATOR . $p . \DIRECTORY_SEPARATOR . $source . $port . '.rrd';
@@ -742,6 +749,84 @@ WARNING;
     }
 
     /**
+     * @param list<string> $sources
+     *
+     * @return Totals
+     */
+    public function fetchTotals(array $sources, string $profile, int $start, int $end, string $protocol = 'any'): array {
+        if (!\in_array($protocol, self::PROTOCOLS, true)) {
+            throw new \InvalidArgumentException("Unknown protocol '{$protocol}', expected one of " . implode(', ', self::PROTOCOLS));
+        }
+
+        // rrd_fetch returns every data source anyway, so one protocol costs the same as all.
+        return $this->fetchProtocolTotals($sources, $profile, $start, $end)[$protocol];
+    }
+
+    /**
+     * One fetch per source; a consolidated row (step above 300 s) counts pro rata for its slots in the window.
+     *
+     * @param list<string> $sources
+     *
+     * @return ProtocolTotals
+     */
+    public function fetchProtocolTotals(array $sources, string $profile, int $start, int $end): array {
+        $zero = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+        $totals = ['any' => $zero, 'tcp' => $zero, 'udp' => $zero, 'icmp' => $zero, 'other' => $zero];
+
+        // Slot timestamps are multiples of 300: the first at or after start, the last before end.
+        $firstSlot = (int) ceil($start / 300) * 300;
+        $lastSlot = (int) ceil($end / 300) * 300 - 300;
+        if ($lastSlot < $firstSlot) {
+            return $totals;
+        }
+
+        foreach (self::resolveSources($sources) as $source) {
+            $file = $this->get_data_path($source, 0, $profile);
+            if (!file_exists($file)) {
+                continue;
+            }
+
+            // Rows are keyed by the update (capture file) they hold; the first ends one step after --start.
+            $fetched = $this->rrdFetch($file, ['AVERAGE', '--resolution', '300', '--start', (string) ($firstSlot - 300), '--end', (string) $lastSlot]);
+            if (!\is_array($fetched['data'] ?? null) || !is_numeric($fetched['step'] ?? null)) {
+                $this->d->log('Could not read totals from ' . $file . ': ' . rrd_error(), LOG_WARNING);
+
+                continue;
+            }
+            $step = max(300, (int) $fetched['step']);
+
+            foreach ($fetched['data'] as $dsName => $rows) {
+                [$metric, $protocol] = array_pad(explode('_', (string) $dsName, 2), 2, 'any');
+                if (!isset($totals[$protocol][$metric]) || !\is_array($rows)) {
+                    continue;
+                }
+                foreach ($rows as $ts => $value) {
+                    if (!\is_float($value) || is_nan($value) || is_infinite($value)) {
+                        continue;
+                    }
+                    $slots = self::slotsInWindow((int) $ts, $step, $firstSlot, $lastSlot);
+                    if ($slots > 0) {
+                        $totals[$protocol][$metric] += $value * 300 * $slots;
+                    }
+                }
+            }
+        }
+
+        return $totals;
+    }
+
+    /**
+     * Overridable so a test can count the reads.
+     *
+     * @param list<string> $options
+     *
+     * @return array<string, mixed>|false
+     */
+    protected function rrdFetch(string $file, array $options): array|false {
+        return @rrd_fetch($file, $options);
+    }
+
+    /**
      * One-time startup migration: moves any flat *.rrd files directly inside
      * {data_path}/ into the {data_path}/{nfdumpProfile}/ subdirectory.
      * This handles upgrading from the old single-profile layout to per-profile subdirs.
@@ -774,5 +859,61 @@ WARNING;
                 $this->d->log('RRD migration: failed to move ' . $file . ' → ' . $profileDir, LOG_ERR);
             }
         }
+    }
+
+    /**
+     * An empty selection or `any` means every configured source.
+     *
+     * @param list<string> $sources
+     *
+     * @return list<string>
+     */
+    private static function resolveSources(array $sources): array {
+        $named = array_values(array_unique(array_filter($sources, static fn (string $s): bool => $s !== '' && $s !== 'any')));
+
+        return ($named === [] || \in_array('any', $sources, true)) ? Config::$settings->sources : $named;
+    }
+
+    /**
+     * The selected sources, or null when they cover every configured source.
+     *
+     * @param list<string> $sources
+     *
+     * @return null|list<string>
+     */
+    private static function sourceSubset(array $sources): ?array {
+        $resolved = self::resolveSources($sources);
+
+        return array_diff(Config::$settings->sources, $resolved) === [] ? null : $resolved;
+    }
+
+    /**
+     * One DEF per file, summed with ADDNAN so a gap in one file does not blank the others.
+     *
+     * @param non-empty-list<string> $files
+     *
+     * @return list<string>
+     */
+    private static function summedExport(string $name, array $files, string $ds, string $legend): array {
+        $options = [];
+        $rpn = [];
+        foreach ($files as $i => $file) {
+            $options[] = "DEF:{$name}s{$i}={$file}:{$ds}:AVERAGE";
+            $rpn[] = $i === 0 ? "{$name}s{$i}" : "{$name}s{$i},ADDNAN";
+        }
+        $options[] = "CDEF:{$name}=" . implode(',', $rpn);
+        $options[] = "XPORT:{$name}:{$legend}";
+
+        return $options;
+    }
+
+    /**
+     * How many 5-minute slots of the row ending at $rowEnd lie in [$firstSlot, $lastSlot].
+     */
+    private static function slotsInWindow(int $rowEnd, int $step, int $firstSlot, int $lastSlot): int {
+        $from = max($rowEnd - $step + 300, $firstSlot);
+        $to = min($rowEnd, $lastSlot);
+
+        return $to < $from ? 0 : intdiv($to - $from, 300) + 1;
     }
 }

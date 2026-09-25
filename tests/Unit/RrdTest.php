@@ -5,6 +5,7 @@ declare(strict_types=1);
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Rrd;
+use mbolli\nfsen_ng\datasources\TotalsProvider;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ describe('Rrd::get_data_path()', function (): void {
     });
 })->skip(!function_exists('rrd_version'), 'rrd PECL extension not available');
 
-// ── validateStructure — no rrd file ──────────────────────────────────────────
+// ── validateStructure: no rrd file ───────────────────────────────────────────
 
 describe('Rrd::validateStructure() without existing file', function (): void {
     beforeEach(function (): void {
@@ -97,7 +98,7 @@ describe('Rrd::validateStructure() without existing file', function (): void {
     });
 })->skip(!function_exists('rrd_version'), 'rrd PECL extension not available');
 
-// ── healthChecks — filesystem logic only ─────────────────────────────────────
+// ── healthChecks: filesystem logic only ──────────────────────────────────────
 
 describe('Rrd::healthChecks() filesystem checks', function (): void {
     beforeEach(function (): void {
@@ -153,5 +154,47 @@ describe('Rrd::healthChecks() filesystem checks', function (): void {
         $iy = $checks[array_search('import_years', $ids, true)];
         expect($iy['status'])->toBe('ok');
         expect($iy['detail'])->toBe('3'); // fromArray import_years = 3
+    });
+})->skip(!function_exists('rrd_version'), 'rrd PECL extension not available');
+
+// ── TotalsProvider: contract without data ────────────────────────────────────
+
+describe('Rrd as TotalsProvider', function (): void {
+    beforeEach(function (): void {
+        if (!function_exists('rrd_version')) {
+            test()->markTestSkipped('rrd PECL extension not available');
+        }
+        $this->dir = sys_get_temp_dir() . '/rrd_totals_' . uniqid();
+        mkdir($this->dir . '/live', 0o755, true);
+        makeRrdSettings($this->dir);
+        $this->rrd = new Rrd();
+        $this->zero = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+    });
+
+    afterEach(function (): void {
+        rmdir($this->dir . '/live');
+        rmdir($this->dir);
+    });
+
+    test('implements TotalsProvider', function (): void {
+        expect($this->rrd)->toBeInstanceOf(TotalsProvider::class);
+    });
+
+    test('rejects a protocol outside any|tcp|udp|icmp|other', function (): void {
+        $this->rrd->fetchTotals(['gateway'], '', 1_700_000_100, 1_700_003_700, 'sctp');
+    })->throws(InvalidArgumentException::class, 'sctp');
+
+    test('an empty, inverted or sub-slot window is zero for every protocol', function (): void {
+        foreach ([[1_700_000_100, 1_700_000_100], [1_700_003_700, 1_700_000_100], [1_700_000_101, 1_700_000_200]] as [$start, $end]) {
+            expect($this->rrd->fetchTotals(['gateway'], '', $start, $end))->toBe($this->zero);
+            expect($this->rrd->fetchProtocolTotals(['gateway'], '', $start, $end))
+                ->toBe(array_fill_keys(TotalsProvider::PROTOCOLS, $this->zero))
+            ;
+        }
+    });
+
+    test('sources without a database are zero, not an error', function (): void {
+        expect($this->rrd->fetchTotals([], '', 1_700_000_100, 1_700_003_700, 'udp'))->toBe($this->zero);
+        expect($this->rrd->fetchTotals(['any'], '', 1_700_000_100, 1_700_003_700))->toBe($this->zero);
     });
 })->skip(!function_exists('rrd_version'), 'rrd PECL extension not available');

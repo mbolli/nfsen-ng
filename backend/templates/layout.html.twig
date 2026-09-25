@@ -2,12 +2,12 @@
 <html lang="en"
     {# Every signal named in data-persist below must be seeded *here*, not further down the
        page: data-persist reads them once on apply, and a path that doesn't exist yet reads
-       back as '' — which it then writes to localStorage and restores unconditionally on
+       back as '', which it then writes to localStorage and restores unconditionally on
        every later load, beating the seed that was supposed to own the default. That is how
        _graph_stepplot (default true) ended up permanently '' and the graph silently stopped
        rendering as a step plot. #}
     {# _darkMode is seeded from the head script's already-painted value, so signal and
-       attribute cannot disagree. Not persisted — only the explicit choice is (#167). #}
+       attribute cannot disagree. Not persisted: only the explicit choice is (#167). #}
     data-signals__ifmissing="{_darkMode: window.__nfsenTheme.dark, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences', _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _autoSyncGraph: false, _filtersOpen: false}"
     data-persist="{_currentView: $_currentView, _settingsSection: $_settingsSection, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _autoSyncGraph: $_autoSyncGraph}"
     {# Fallback for JS off entirely; the head script overrides it (#156, #167). #}
@@ -25,7 +25,7 @@
     {#
         The Investigate view was removed once the Flows tab grew its own traffic graph (#166).
         Anyone who was on it has 'investigate' persisted, and Datastar would restore a view
-        that no longer renders anything — a blank page on their next visit. Rewritten here,
+        that no longer renders anything, a blank page on their next visit. Rewritten here,
         before the bundle boots, to the tab that now answers the same question.
     #}
     <script>
@@ -89,7 +89,7 @@
     <link rel="apple-touch-icon" href="{{ basePath }}apple-touch-icon.png?v={{ assetVersion }}">
 
     {#
-        php-via SSE bootstrap — mirrors the pattern in php-via's shell.html.
+        php-via SSE bootstrap: mirrors the pattern in php-via's shell.html.
         contextId and basePath are auto-injected by Context::render().
         _connecting is a Datastar-managed indicator (no server signal needed).
         _disconnected is local-only (underscore prefix = never sent to server).
@@ -109,7 +109,7 @@
 
 {#
     _currentView: purely browser-local navigation signal (underscore prefix).
-    The server never reads it — in immediate mode every tab's content is always
+    The server never reads it: in immediate mode every tab's content is always
     rendered and Datastar data-show handles visibility client-side. Persisted
     via data-persist (see html tag above) so a forced reload (e.g. after the
     SSE context's cleanup grace period expires while the tab is backgrounded)
@@ -132,7 +132,7 @@
         <a class="brand" href="https://github.com/mbolli/nfsen-ng" target="_blank">
             nfsen-ng <span id="version">{{ version }}</span>
         </a>
-        {# Profile selector — only shown when multiple profiles are detected #}
+        {# Profile selector: only shown when multiple profiles are detected #}
         {% set availableProfilesList = available_profiles.getValue() %}
         {% if availableProfilesList|length > 1 %}
             <select class="profile-select" {{ bind(selected_profile) }}
@@ -159,13 +159,13 @@
         {% include 'partials/nav.html.twig' %}
     </header>
 
-    {# ── Global import status strip — visible on every tab while import runs ── #}
+    {# ── Global import status strip, visible on every tab while import runs ── #}
     <div id="importStatusStrip"
          data-show="${{ import_running.id() }}"
          style="display:none; cursor:pointer;"
          class="import-strip"
          data-on:click="$_currentView = 'settings'; $_settingsSection = 'import'"
-         title="Import in progress — click to view details">
+         title="Import in progress: click to view details">
         <progress data-indeterminate max="100" value="{{ importProgress }}"></progress>
         <div class="cluster cluster-between import-strip-line">
             <small class="muted">
@@ -208,7 +208,7 @@
                                 data-on:click="$_filtersOpen = !$_filtersOpen"
                                 data-text="$_filtersOpen ? 'Hide filters' : 'Show filters'"></button>
 
-                        {# View-specific filter panels — all rendered, visibility via data-show. #}
+                        {# View-specific filter panels: all rendered, visibility via data-show. #}
                         <div data-class:filter-collapsed="!$_filtersOpen">
                             <div>
                                 <div data-show="$_currentView == 'graphs'">
@@ -278,18 +278,18 @@
         to the exact same module instance as the main datastar.js script tag
         below. A relative import (`../datastar.js`) would resolve to a URL
         without the `?v=` cache-busting query string, which the module loader
-        treats as a DIFFERENT module — loading the whole engine a second time
+        treats as a DIFFERENT module, loading the whole engine a second time
         with its own MutationObserver, signal store, etc. Mirrors
         mbolli/datastar-attribute-prop's own approach.
 
-        MUST be the first `type="module"`-adjacent tag in the document — including
+        MUST be the first `type="module"`-adjacent tag in the document, including
         before inline `<script type="module">` blocks, not just external ones.
         Per the import maps spec, an import map is only honoured if no module
         script has been "prepared" yet, and that step runs the moment the parser
-        reaches ANY module script's tag (inline scripts included — no fetch
+        reaches ANY module script's tag (inline scripts included, no fetch
         needed, so it happens immediately), not when it executes. Putting this
         after any earlier `type="module"` tag silently disables the whole import
-        map — the bare `from 'datastar'` specifier in datastar-persist.js then
+        map: the bare `from 'datastar'` specifier in datastar-persist.js then
         fails to resolve, so that module (and every signal it was supposed to
         persist) never loads, in every browser, regardless of cache state. The
         two `defer` classic scripts above are fine to precede it: only module
@@ -341,13 +341,14 @@
     <script type="module" src="{{ basePath }}js/components/nfsen-table.js?v={{ assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/nfsen-daterange.js?v={{ assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/nfsen-toast.js?v={{ assetVersion }}"></script>
-    {# Tooltip popup container — data-ignore-morph prevents Datastar SSE from removing JS-appended tooltips #}
+    {# Tooltip popup container: data-ignore-morph prevents Datastar SSE from removing JS-appended tooltips #}
     <div id="nfsen-tip-container" data-ignore-morph></div>
     {# Placeholder for the server-rendered IP info modal fragment #}
     <div id="ip-modal-placeholder"></div>
 
     <script type="module" src="{{ basePath }}js/components/nfsen-filter-manager.js?v={{ assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/nfsen-tooltip.js?v={{ assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/nfsen-controls.js?v={{ assetVersion }}"></script>
 
     {# ── Alert-fired toast container ──────────────────────────────────────── #}
     {# Fixed overlay (bottom-right). New toasts injected here when alerts fire  #}

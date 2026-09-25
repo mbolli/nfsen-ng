@@ -1,5 +1,5 @@
-/* Header: the tab strip sits on this line, so it must not draw its own. */
-header {
+/* The pre-shell page header: the tab strip sits on this line, so it must not draw its own. */
+body > header {
     border-block-end: 1px solid var(--border);
 }
 
@@ -42,19 +42,19 @@ main.tab-content {
     animation: 200ms ease-out both fade-in;
 }
 
-#legend span {
+[id='legend'] span {
     padding: 0.2rem;
 }
 
-#legend span.highlight {
+[id='legend'] span.highlight {
     background-color: var(--surface-4);
 }
 
-#series label {
+[id='series'] label {
     display: block;
 }
 
-#viewList li h4 {
+[id='viewList'] li h4 {
     margin-left: 10px;
 }
 
@@ -82,7 +82,7 @@ main.tab-content {
     cursor: pointer;
 }
 
-/* LIVE badge — subtle breathing animation while live data is displayed */
+/* LIVE badge: a subtle breathing animation while live data is displayed */
 @keyframes live-pulse {
     0%,
     100% {
@@ -96,7 +96,7 @@ main.tab-content {
     animation: live-pulse 2s ease-in-out infinite;
 }
 
-/* Import dot on Admin nav tab — pulses while import is running */
+/* Import dot on the Settings nav tab: pulses while an import runs */
 @keyframes import-dot-pulse {
     0%,
     100% {
@@ -119,7 +119,7 @@ main.tab-content {
     inline-size: 0.55rem;
     block-size: 0.55rem;
     border-radius: 50%;
-    background: var(--warning);
+    background: var(--text-2);
     animation: import-dot-pulse 1.2s ease-in-out infinite;
 }
 
@@ -173,17 +173,10 @@ th.sortable.sort-desc {
     --stack-gap: var(--size-2);
 }
 
+/* The old loading class dims like [aria-busy] in ui.css, rather than blurring. */
 .card.loading .card-body {
-    animation: blur-in 0.3s ease-out forwards;
-}
-
-@keyframes blur-in {
-    from {
-        filter: blur(0px);
-    }
-    to {
-        filter: blur(5px);
-    }
+    opacity: 0.5;
+    transition: opacity var(--duration-normal) var(--ease-out);
 }
 
 /* The slider needs room for its pip labels below and its handle tooltips above. */
@@ -198,7 +191,7 @@ th.sortable.sort-desc {
 /* ── noUiSlider skin (replaces ion.rangeSlider / sprite-skin-nice) ─────────
    Targets to match the previous "Nice" skin look-and-feel:
    - Horizontal grey track, 8px tall
-   - Blue-grey filled bar between handles
+   - A neutral filled bar between handles
    - Circular white handles (22×22 px) with subtle shadow
    - Small grid/pip labels below the track
    - Floating tooltips above handles, styled like the old irs-from/irs-to bubbles
@@ -220,7 +213,7 @@ nfsen-daterange .daterange-slider {
     border-radius: 4px;
     background: var(--surface-4);
     border: 1px solid var(--border);
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+    box-shadow: inset 0 1px 2px color-mix(in oklab, var(--text-1) 12%, transparent);
 }
 
 .noUi-connects {
@@ -230,7 +223,7 @@ nfsen-daterange .daterange-slider {
 
 /* Filled bar between the two handles */
 .noUi-connect {
-    background: #8ca4b0; /* muted blue-grey, close to ion-slider bar colour */
+    background: var(--text-2);
 }
 
 /* Handles */
@@ -240,9 +233,9 @@ nfsen-daterange .daterange-slider {
     right: -11px !important;
     top: -8px !important;
     border-radius: 50%;
-    background: var(--surface-1);
-    border: 1px solid var(--border);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    background: var(--surface-2);
+    border: 1px solid var(--control-border);
+    box-shadow: var(--shadow-1);
     cursor: default;
 }
 /* Remove the default inner cross-hair lines */
@@ -252,17 +245,17 @@ nfsen-daterange .daterange-slider {
 }
 .noUi-handle:hover {
     border-color: var(--text-1);
-    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-2);
 }
-.noUi-handle:focus {
-    outline: 2px solid #86b7fe;
+.noUi-handle:focus-visible {
+    outline: 2px solid var(--focus-color);
     outline-offset: 1px;
 }
 
 /* Floating tooltips above handles */
 .noUi-tooltip {
-    background: var(--text-1);
-    color: var(--text-on-accent);
+    background: var(--surface-inverse);
+    color: var(--text-on-inverse);
     border: none;
     border-radius: 3px;
     font-size: 10px;
@@ -299,8 +292,9 @@ nfsen-daterange .daterange-slider {
 
 /* ── Tooltip component (paired with nfsen-tooltip.js) ────────────────────── */
 .nfsen-tip-popup {
-    background: var(--text-1);
-    color: var(--text-on-accent);
+    z-index: var(--layer-tooltip);
+    background: var(--surface-inverse);
+    color: var(--text-on-inverse);
     padding: 3px 8px;
     border-radius: 3px;
     font-size: 11px;
@@ -342,12 +336,12 @@ nfsen-daterange .daterange-slider {
 
 .kill {
     color: var(--danger);
-    border-color: color-mix(in oklab, var(--danger) 45%, var(--border));
+    border-color: var(--danger);
 }
 
-.kill:hover {
+.kill:hover:not(:disabled) {
     background: var(--danger-subtle);
-    border-color: var(--danger);
+    color: var(--danger-emphasis);
 }
 
 /* Settings: a column of sections beside the section that is open. Collapses to one
@@ -407,6 +401,31 @@ nfsen-daterange .daterange-slider {
 .settings-nav {
     position: sticky;
     inset-block-start: var(--size-2);
+}
+
+/* The section list is vertical without saying so (no aria-orientation), so it borrows the
+   vertical tab look here: a bar at the start of the current section. */
+.settings-nav .tabs:has(> [role='tab']) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--size-1);
+    box-shadow: none;
+}
+
+.settings-nav .tabs a {
+    justify-content: flex-start;
+    border-block-end: none;
+    border-inline-start: 3px solid transparent;
+    border-radius: 0 var(--radius-2) var(--radius-2) 0;
+}
+
+.settings-nav .tabs [role='tab']:not(.active):hover {
+    background: var(--surface-3);
+}
+
+.settings-nav .tabs a.active {
+    border-inline-start-color: var(--text-1);
+    background: var(--surface-4);
 }
 
 /* The import strip under the header, and the same bar inside Settings. */
@@ -488,11 +507,11 @@ nfsen-daterange .daterange-slider {
 }
 
 .ip-link {
-    text-decoration: none;
+    text-decoration-style: dotted;
 }
 
 .ip-link:hover {
-    text-decoration: underline;
+    text-decoration-style: solid;
 }
 
 /* The column menu's own rows. */
@@ -598,7 +617,7 @@ nfsen-daterange .daterange-slider {
 
 /* Refined section header labels inside filter panels */
 .filter-label {
-    font-size: 0.6875rem; /* 11px — smaller than body, clearly subordinate */
+    font-size: 0.6875rem; /* 11px: smaller than body, clearly subordinate */
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.07em;
@@ -642,7 +661,7 @@ nfsen-daterange .daterange-slider {
 /* sankey */
 
 /* nfsen-sankey.js grows .sankey-canvas taller than its 500px default when a query
-   returns many nodes (see computeCanvasHeight) — scroll the card instead of letting
+   returns many nodes (see computeCanvasHeight): scroll the card instead of letting
    the page grow unbounded. */
 .sankey-container {
     max-height: 80vh;
@@ -669,12 +688,12 @@ dialog#ip-modal-inner {
     max-width: 92vw;
     max-height: 90vh;
     overflow-y: auto;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-    background-color: var(--surface-1);
+    box-shadow: var(--shadow-2);
+    background-color: var(--surface-2);
     color: var(--text-1);
 }
 dialog#ip-modal-inner::backdrop {
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--backdrop);
 }
 
 /* ── Toast notification overlay ──────────────────────────────────────────── */
@@ -682,7 +701,7 @@ dialog#ip-modal-inner::backdrop {
     position: fixed;
     bottom: 1.25rem;
     right: 1.25rem;
-    z-index: 1090;
+    z-index: var(--layer-toast);
     display: flex;
     flex-direction: column-reverse;
     gap: 0.5rem;
@@ -695,7 +714,7 @@ dialog#ip-modal-inner::backdrop {
 }
 #alerts-toast-container .notice {
     margin-bottom: 0;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    box-shadow: var(--shadow-2);
     overflow: hidden; /* contain the progress bar */
 }
 .toast-progress {
@@ -724,7 +743,7 @@ dialog#ip-modal-inner::backdrop {
    image from a CDN. Name the colour emoji fonts explicitly: without them the
    glyphs fall back to the body font, which on some Linux setups draws the two
    letters in a monochrome box even where a colour font is installed. Windows
-   has no flag glyphs at all outside Firefox and shows the letters — still
+   has no flag glyphs at all outside Firefox and shows the letters, still
    readable, and the country name is a row below. */
 .flag-emoji {
     font-family: 'Twemoji Mozilla', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', sans-serif;
@@ -778,13 +797,9 @@ dialog#ip-modal-inner::backdrop {
     white-space: nowrap;
 }
 
-/* The colour ECharts drew this series in. Without it a legend of sixty names says nothing
-   about which line is which. */
-.series-swatch {
-    display: inline-block;
-    width: 0.65rem;
-    height: 0.65rem;
-    margin-right: 0.35rem;
-    border-radius: 2px;
-    vertical-align: baseline;
+/* The swatch itself is the generic .series-swatch in ui.css; in this list it sits inside
+   the label text, so it needs its own gap. */
+[id='series'] .series-swatch,
+[id$='-series'] .series-swatch {
+    margin-inline-end: 0.35rem;
 }

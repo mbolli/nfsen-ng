@@ -20,8 +20,7 @@ window.buildAlertPreviewVars = (form) => {
     const metric = form.metric || 'bytes';
     const operator = form.operator || '>';
     const thresholdValue = Number(form.thresholdValue) || 0;
-    const thresholdDisplay =
-        form.thresholdType === 'percent_of_avg' ? `${fmt(thresholdValue)}% of avg` : fmt(thresholdValue);
+    const thresholdDisplay = form.thresholdType === 'percent_of_avg' ? `${fmt(thresholdValue)}% of avg` : fmt(thresholdValue);
     const sourcesArr = Array.isArray(form.sources) ? form.sources : [];
     const sources = sourcesArr.length ? sourcesArr.join(', ') : 'gw1, gw2';
 

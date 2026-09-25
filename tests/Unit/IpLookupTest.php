@@ -2,17 +2,116 @@
 
 declare(strict_types=1);
 
+use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\GeoIpDatabase;
 use mbolli\nfsen_ng\common\IpLookup;
+use mbolli\nfsen_ng\common\Settings;
+use mbolli\nfsen_ng\mcp\Tool\LookupAddressTool;
+
+/**
+ * Stands in for the geolocation web service: registered as the geotest:// wrapper, it serves
+ * $body and keeps every requested URL in $requests. Anonymous, so the fixer leaves its name alone.
+ */
+function ipLookupTestWebService(): object {
+    return new class {
+        /** @var list<string> */
+        public static array $requests = [];
+
+        public static string $body = '{}';
+
+        /** @var null|resource */
+        public $context;
+
+        private int $position = 0;
+
+        public function stream_open(string $path, string $mode, int $options, ?string &$openedPath): bool {
+            self::$requests[] = $path;
+            $this->position = 0;
+
+            return true;
+        }
+
+        public function stream_read(int $count): string {
+            $chunk = substr(self::$body, $this->position, $count);
+            $this->position += strlen($chunk);
+
+            return $chunk;
+        }
+
+        public function stream_eof(): bool {
+            return $this->position >= strlen(self::$body);
+        }
+
+        /** @return array<string, int> */
+        public function stream_stat(): array {
+            return ['size' => strlen(self::$body)];
+        }
+    };
+}
+
+/** ipapi.co's answer for a London address (a subset of its fields). */
+const IP_LOOKUP_TEST_IPAPI = [
+    'ip' => '81.2.69.160',
+    'network' => '81.2.64.0/19',
+    'version' => 'IPv4',
+    'city' => 'London',
+    'region' => 'England',
+    'region_code' => 'ENG',
+    'country' => 'GB',
+    'country_name' => 'United Kingdom',
+    'country_code' => 'GB',
+    'country_code_iso3' => 'GBR',
+    'continent_code' => 'EU',
+    'in_eu' => false,
+    'postal' => 'EC2V',
+    'latitude' => 51.5142,
+    'longitude' => -0.0931,
+    'timezone' => 'Europe/London',
+    'asn' => 'AS20712',
+    'org' => 'Andrews & Arnold Ltd',
+];
+
+/** A GeoIP2 Enterprise record for the same address. */
+const IP_LOOKUP_TEST_RECORD = [
+    'city' => ['geoname_id' => 2643743, 'names' => ['en' => 'London']],
+    'continent' => ['code' => 'EU', 'names' => ['en' => 'Europe']],
+    'country' => ['iso_code' => 'GB', 'names' => ['en' => 'United Kingdom']],
+    'location' => ['accuracy_radius' => 10, 'latitude' => 51.5142, 'longitude' => -0.0931, 'time_zone' => 'Europe/London'],
+    'postal' => ['code' => 'EC2V'],
+    'subdivisions' => [['iso_code' => 'ENG', 'names' => ['en' => 'England']]],
+    'traits' => ['autonomous_system_number' => 20712, 'autonomous_system_organization' => 'Andrews & Arnold Ltd', 'isp' => 'Andrews & Arnold'],
+];
+
+/**
+ * A GeoIpDatabase over a fake reader that answers $record for every address and counts the calls.
+ *
+ * @param mixed $record returned as the reader's record, or thrown when it is a Throwable
+ */
+function ipLookupTestDatabase(mixed $record, int &$calls = 0): GeoIpDatabase {
+    return new GeoIpDatabase('/fake/GeoIP2-Enterprise.mmdb', static function (string $ip) use ($record, &$calls): mixed {
+        ++$calls;
+        if ($record instanceof Throwable) {
+            throw $record;
+        }
+
+        return $record;
+    }, ['type' => 'GeoIP2-Enterprise', 'buildEpoch' => 1758585600, 'ipVersion' => 6]);
+}
 
 beforeEach(function (): void {
     putenv('NFSEN_IPINFO_URL');
     putenv('NFSEN_IPINFO_TOKEN');
+    // The web path unless a test injects a database.
+    GeoIpDatabase::useShared(null);
+});
+
+afterEach(function (): void {
+    GeoIpDatabase::resetShared();
 });
 
 /**
- * IpLookup::normalizeGeo() is private — it's an implementation detail of geo(),
- * which can't be called without a network round-trip. Reach it directly rather
- * than losing coverage of the provider-compat logic that is the point of #163.
+ * IpLookup::normalizeGeo() is private, an implementation detail of geo(). Reaching it
+ * directly covers every provider shape (the point of #163) without a service per shape.
  *
  * @param array<string, mixed> $data
  * @param list<string>         $headers
@@ -148,7 +247,7 @@ describe('IpLookup geo response normalization', function (): void {
         $out = normalizeGeo(['error' => ['title' => 'Rate limit', 'message' => 'try later']]);
 
         expect($out['error'])->toBeTrue()
-            ->and($out['reason'])->toBe('Rate limit — try later')
+            ->and($out['reason'])->toBe('Rate limit: try later')
         ;
     });
 
@@ -209,10 +308,136 @@ describe('IpLookup::geo() failure reporting', function (): void {
         restore_error_handler();
 
         // Empty would be indistinguishable from "no lookup attempted" (a private IP), which
-        // the modal renders as nothing at all — the failure has to be visible instead (#168).
+        // the modal renders as nothing at all, so the failure has to be visible instead (#168).
         expect($result)->not->toBeEmpty()
             ->and($result['error'])->toBeTrue()
             ->and($result['reason'])->toBeString()->not->toBeEmpty()
+        ;
+    });
+});
+
+describe('IpLookup::geo() and the local GeoIP database', function (): void {
+    beforeEach(function (): void {
+        $this->settingsBefore = isset(Config::$settings) ? Config::$settings : null;
+        Config::$settings = Settings::fromArray(mockSettings())->withGeoipDb('');
+        $this->web = ipLookupTestWebService();
+        $this->web::$requests = [];
+        $this->web::$body = json_encode(IP_LOOKUP_TEST_IPAPI, JSON_THROW_ON_ERROR);
+        stream_wrapper_register('geotest', $this->web::class);
+        putenv('NFSEN_IPINFO_URL=geotest://{ip}');
+    });
+
+    afterEach(function (): void {
+        stream_wrapper_unregister('geotest');
+        if ($this->settingsBefore !== null) {
+            Config::$settings = $this->settingsBefore;
+        }
+    });
+
+    test('with NFSEN_GEOIP_DB unset it asks the web service as before', function (): void {
+        GeoIpDatabase::resetShared();
+
+        $out = IpLookup::geo('81.2.69.160');
+
+        expect($this->web::$requests)->toBe(['geotest://81.2.69.160'])
+            ->and($out)->toBe(IP_LOOKUP_TEST_IPAPI + ['country_flag' => IpLookup::countryFlag('GB')])
+        ;
+    });
+
+    test('with a database file that cannot be opened it still asks the web service', function (): void {
+        GeoIpDatabase::resetShared();
+        Config::$settings = Config::$settings->withGeoipDb(sys_get_temp_dir() . '/nfsen-missing-' . bin2hex(random_bytes(4)) . '.mmdb');
+
+        $out = IpLookup::geo('81.2.69.160');
+
+        expect($this->web::$requests)->toHaveCount(1)
+            ->and($out)->not->toHaveKey('source')
+        ;
+    });
+
+    test('answers from the database without a request', function (): void {
+        $calls = 0;
+        GeoIpDatabase::useShared(ipLookupTestDatabase(IP_LOOKUP_TEST_RECORD, $calls));
+
+        $out = IpLookup::geo('81.2.69.160');
+
+        expect($this->web::$requests)->toBe([])
+            ->and($calls)->toBe(1)
+            ->and($out)->toBe([
+                'ip' => '81.2.69.160',
+                'city' => 'London',
+                'region' => 'England',
+                'country_name' => 'United Kingdom',
+                'country_code' => 'GB',
+                'latitude' => 51.5142,
+                'longitude' => -0.0931,
+                'asn' => 'AS20712',
+                'org' => 'Andrews & Arnold Ltd',
+                'country_flag' => IpLookup::countryFlag('GB'),
+                'source' => IpLookup::SOURCE_MAXMIND,
+            ])
+        ;
+    });
+
+    test('names every field the way the normalised web answer does', function (): void {
+        $web = IpLookup::geo('81.2.69.160');
+        GeoIpDatabase::useShared(ipLookupTestDatabase(IP_LOOKUP_TEST_RECORD));
+        $local = IpLookup::geo('81.2.69.160');
+        unset($local['source']);
+
+        $shared = array_intersect_key($web, $local);
+        ksort($shared);
+        ksort($local);
+
+        expect($local)->toBe($shared)
+            ->and(array_keys($local))->toContain('country_code', 'country_name', 'country_flag')
+        ;
+    });
+
+    test('leaves out what a Country database does not know', function (): void {
+        GeoIpDatabase::useShared(ipLookupTestDatabase(['country' => ['iso_code' => 'DE', 'names' => ['en' => 'Germany']]]));
+
+        expect(IpLookup::geo('5.9.0.1'))->toBe([
+            'ip' => '5.9.0.1',
+            'country_name' => 'Germany',
+            'country_code' => 'DE',
+            'country_flag' => IpLookup::countryFlag('DE'),
+            'source' => IpLookup::SOURCE_MAXMIND,
+        ]);
+    });
+
+    test('says so when the database has no entry, still without a request', function (): void {
+        GeoIpDatabase::useShared(ipLookupTestDatabase(null));
+
+        $out = IpLookup::geo('81.2.69.160');
+
+        expect($this->web::$requests)->toBe([])
+            ->and($out['error'])->toBeTrue()
+            ->and($out['reason'])->toBe('The local GeoIP database has no entry for this address.')
+            ->and($out['source'])->toBe(IpLookup::SOURCE_MAXMIND)
+        ;
+    });
+
+    test('reports a database read failure instead of asking the web service', function (): void {
+        GeoIpDatabase::useShared(ipLookupTestDatabase(new RuntimeException('The MaxMind DB file is corrupt')));
+
+        $out = IpLookup::geo('81.2.69.160');
+
+        expect($this->web::$requests)->toBe([])
+            ->and($out['error'])->toBeTrue()
+            ->and($out['reason'])->toBe('The local GeoIP database could not be read: The MaxMind DB file is corrupt')
+        ;
+    });
+
+    test('never looks up a private address, locally or on the web', function (): void {
+        $calls = 0;
+        GeoIpDatabase::useShared(ipLookupTestDatabase(IP_LOOKUP_TEST_RECORD, $calls));
+
+        $out = (new LookupAddressTool())('192.168.1.10');
+
+        expect($out['geo'])->toBeNull()
+            ->and($calls)->toBe(0)
+            ->and($this->web::$requests)->toBe([])
         ;
     });
 });

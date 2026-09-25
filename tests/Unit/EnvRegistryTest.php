@@ -96,13 +96,21 @@ describe('EnvRegistry::issues()', function (): void {
     test('flags an invalid value', function (): void {
         putenv('NFSEN_DEFAULT_THEME=neon');
         $messages = array_column(EnvRegistry::issues(), 'message');
-        expect($messages)->toContain("NFSEN_DEFAULT_THEME: invalid value 'neon' (expected one of auto, dark, light) — falling back to default 'auto'");
+        $theme = array_values(array_filter($messages, fn (string $m) => str_starts_with($m, 'NFSEN_DEFAULT_THEME: ')));
+
+        expect($theme)->toHaveCount(1)
+            ->and($theme[0])->toContain("invalid value 'neon' (expected one of auto, dark, light)")
+            ->and($theme[0])->toContain("falling back to default 'auto'")
+        ;
     });
 
     test('flags a deprecated alias in use', function (): void {
         putenv('VM_HOST=legacy.example');
-        $names = array_column(EnvRegistry::issues(), 'name');
-        expect($names)->toContain('VM_HOST');
+        $issues = array_values(array_filter(EnvRegistry::issues(), fn (array $i) => $i['name'] === 'VM_HOST'));
+
+        expect($issues)->toHaveCount(1)
+            ->and($issues[0]['message'])->toBe('VM_HOST is deprecated. Rename it to NFSEN_VM_HOST (still honoured for now).')
+        ;
     });
 
     test('flags an unknown NFSEN_ variable as a typo but ignores other namespaces', function (): void {
@@ -113,5 +121,69 @@ describe('EnvRegistry::issues()', function (): void {
             ->and($names)->not->toContain('SOME_OTHER_VAR')
         ;
         putenv('SOME_OTHER_VAR');
+    });
+
+    test('an out-of-range retention is clamped silently, a non-number is flagged', function (): void {
+        putenv('NFSEN_TOPN_RETENTION_DAYS=-3');
+        expect(EnvRegistry::value('NFSEN_TOPN_RETENTION_DAYS'))->toBe(0)
+            ->and(array_column(EnvRegistry::issues(), 'name'))->not->toContain('NFSEN_TOPN_RETENTION_DAYS')
+        ;
+
+        putenv('NFSEN_TOPN_RETENTION_DAYS=a month');
+        expect(EnvRegistry::value('NFSEN_TOPN_RETENTION_DAYS'))->toBe(31)
+            ->and(array_column(EnvRegistry::issues(), 'name'))->toContain('NFSEN_TOPN_RETENTION_DAYS')
+        ;
+    });
+});
+
+describe('redesign variables', function (): void {
+    test('NFSEN_TOPN_RETENTION_DAYS is a daemon int, min 0, default 31', function (): void {
+        $var = EnvRegistry::table()['NFSEN_TOPN_RETENTION_DAYS'];
+
+        expect($var->group)->toBe('daemon')
+            ->and($var->type)->toBe('int')
+            ->and($var->min)->toBe(0)
+            ->and($var->default)->toBe(31)
+            ->and($var->doc)->toContain('0 disables collection')
+            ->and(EnvRegistry::value('NFSEN_TOPN_RETENTION_DAYS'))->toBe(31)
+        ;
+
+        putenv('NFSEN_TOPN_RETENTION_DAYS=90');
+        expect(EnvRegistry::value('NFSEN_TOPN_RETENTION_DAYS'))->toBe(90);
+    });
+
+    test('NFSEN_GEOIP_DB is an integrations path, empty by default', function (): void {
+        $var = EnvRegistry::table()['NFSEN_GEOIP_DB'];
+
+        expect($var->group)->toBe('integrations')
+            ->and($var->type)->toBe('string')
+            ->and($var->format)->toBe('path')
+            ->and($var->default)->toBe('')
+            ->and($var->doc)->toContain('.mmdb')
+            ->and(EnvRegistry::value('NFSEN_GEOIP_DB'))->toBe('')
+        ;
+
+        putenv('NFSEN_GEOIP_DB=/data/GeoLite2-Country.mmdb');
+        expect(EnvRegistry::value('NFSEN_GEOIP_DB'))->toBe('/data/GeoLite2-Country.mmdb');
+    });
+
+    test('the NFSEN_STATE_DIR description mentions the SQLite store', function (): void {
+        expect(EnvRegistry::table()['NFSEN_STATE_DIR']->doc)
+            ->toContain('nfsen-ng.sqlite')
+            ->toContain('preferences.json')
+        ;
+    });
+
+    test('no registered description or registry message uses a long dash', function (): void {
+        putenv('VM_HOST=legacy.example');
+        putenv('NFSEN_TYPOED=1');
+        $texts = [
+            ...array_map(fn ($var) => $var->doc, array_values(EnvRegistry::table())),
+            ...array_column(EnvRegistry::issues(), 'message'),
+        ];
+        putenv('NFSEN_TYPOED');
+        putenv('VM_HOST');
+
+        expect(preg_grep('/[\x{2013}\x{2014}]/u', $texts))->toBe([]);
     });
 });

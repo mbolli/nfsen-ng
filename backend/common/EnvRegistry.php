@@ -8,8 +8,8 @@ namespace mbolli\nfsen_ng\common;
  * The single source of truth for every environment variable nfsen-ng reads.
  *
  * Each variable is one {@see EnvVar} record describing its type, default,
- * validation, deprecation alias, and documentation. All consumers —
- * {@see Settings}, the bootstrap in app.php, {@see Config}, {@see AppStartup} —
+ * validation, deprecation alias, and documentation. All consumers
+ * ({@see Settings}, the bootstrap in app.php, {@see Config}, {@see AppStartup})
  * resolve values through {@see value()} instead of calling getenv() directly,
  * which removes the duplicate reads and the per-code-path default drift that
  * accumulated while these vars were scattered across the codebase.
@@ -65,13 +65,15 @@ final class EnvRegistry {
             new EnvVar('NFSEN_ALERT_EMAIL_FROM', 'integrations', 'string', '', 'From address for alert emails.', format: 'email'),
             new EnvVar('NFSEN_IPINFO_URL', 'integrations', 'string', IpLookup::DEFAULT_GEO_URL, 'Geolocation API endpoint for public IPs. {ip} is replaced with the address, {token} with NFSEN_IPINFO_TOKEN.', format: 'url'),
             new EnvVar('NFSEN_IPINFO_TOKEN', 'integrations', 'string', '', 'API key for the geolocation service, substituted for {token} in NFSEN_IPINFO_URL.', secret: true),
+            new EnvVar('NFSEN_GEOIP_DB', 'integrations', 'string', '', 'Path to a MaxMind GeoLite2/GeoIP2 City or Country .mmdb. When set, IP lookups use it locally instead of the web service.', format: 'path'),
 
             // ── Import daemon ─────────────────────────────────────────────────
             new EnvVar('NFSEN_SKIP_DAEMON', 'daemon', 'bool', false, 'Disable the embedded import daemon.'),
             new EnvVar('NFSEN_SKIP_INITIAL_IMPORT', 'daemon', 'bool', false, 'Skip startup catch-up import; only set up inotify watches.'),
+            new EnvVar('NFSEN_TOPN_RETENTION_DAYS', 'daemon', 'int', 31, 'Days of per-interval top-N data kept in SQLite for the Overview tables. 0 disables collection.', min: 0),
 
             // ── State & config file paths ─────────────────────────────────────
-            new EnvVar('NFSEN_STATE_DIR', 'files', 'string', '', 'Directory for mutable runtime state (preferences.json + alert rules/state/log). Empty = backend/settings. Mount a volume here in Docker so it survives upgrades.', format: 'path'),
+            new EnvVar('NFSEN_STATE_DIR', 'files', 'string', '', 'Directory for mutable runtime state: preferences.json, alert rule state and the SQLite store nfsen-ng.sqlite (saved filters, alert history, top-N data). Empty = backend/settings. Mount a volume here in Docker so it survives upgrades.', format: 'path'),
             new EnvVar('NFSEN_SETTINGS_FILE', 'files', 'string', '', 'Override path to settings.php (deprecated file-based config).', format: 'path'),
             new EnvVar('NFSEN_PREFERENCES_FILE', 'files', 'string', '', 'Override path to preferences.json (default: <state dir>/preferences.json).', format: 'path'),
 
@@ -99,7 +101,7 @@ final class EnvRegistry {
      * @throws \InvalidArgumentException if $name is not a registered variable (a programming error)
      */
     public static function value(string $name): mixed {
-        $var = self::table()[$name] ?? throw new \InvalidArgumentException("Unknown env var '{$name}' — not in EnvRegistry.");
+        $var = self::table()[$name] ?? throw new \InvalidArgumentException("Unknown env var '{$name}': not in EnvRegistry.");
 
         return $var->parse(self::raw($var)[0]);
     }
@@ -107,12 +109,12 @@ final class EnvRegistry {
     /**
      * Whether the variable (or its deprecated alias) is set to a non-empty value.
      * Lets callers distinguish "explicitly configured" from "using the default"
-     * — e.g. to let an env override win over a settings.php value.
+     * (e.g. to let an env override win over a settings.php value).
      *
      * @throws \InvalidArgumentException if $name is not a registered variable (a programming error)
      */
     public static function isSet(string $name): bool {
-        $var = self::table()[$name] ?? throw new \InvalidArgumentException("Unknown env var '{$name}' — not in EnvRegistry.");
+        $var = self::table()[$name] ?? throw new \InvalidArgumentException("Unknown env var '{$name}': not in EnvRegistry.");
 
         return self::raw($var)[0] !== null;
     }
@@ -151,7 +153,7 @@ final class EnvRegistry {
                 $issues[] = [
                     'name' => $var->alias ?? '',
                     'level' => 'warning',
-                    'message' => "{$var->alias} is deprecated — rename it to {$var->name} (still honoured for now).",
+                    'message' => "{$var->alias} is deprecated. Rename it to {$var->name} (still honoured for now).",
                 ];
             }
 
@@ -169,7 +171,7 @@ final class EnvRegistry {
                 $issues[] = [
                     'name' => $key,
                     'level' => 'warning',
-                    'message' => "{$key} is not a recognised nfsen-ng variable — possible typo; it has no effect.",
+                    'message' => "{$key} is not a recognised nfsen-ng variable, possibly a typo; it has no effect.",
                 ];
             }
         }

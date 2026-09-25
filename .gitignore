@@ -4,6 +4,7 @@ backend/settings/settings.php
 backend/settings/preferences.json
 backend/settings/alerts-state.json
 backend/settings/alerts-log.json
+backend/settings/nfsen-ng.sqlite*
 backend/datasources/data/
 backend/cli/nfsen-ng.log
 backend/cli/nfsen-ng.pid

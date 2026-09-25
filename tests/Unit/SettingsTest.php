@@ -99,6 +99,12 @@ describe('Settings::fromArray()', function (): void {
             ->and($s->defaultEmailBodyTemplate)->toBe('')
             ->and($s->defaultWebhookTitleTemplate)->toBe('')
             ->and($s->defaultWebhookMessageTemplate)->toBe('')
+            ->and($s->defaultRange)->toBe('24h')
+            ->and($s->defaultUnit)->toBe('bits')
+            ->and($s->compactTables)->toBeFalse()
+            ->and($s->rdnsEnabled)->toBeTrue()
+            ->and($s->topnRetentionDays)->toBe(31)
+            ->and($s->geoipDb)->toBe('')
         ;
     });
 
@@ -162,12 +168,25 @@ describe('default theme (NFSEN_DEFAULT_THEME, issue #156)', function (): void {
             ->and(Settings::fromArray([])->withDefaultTheme('bogus')->defaultTheme)->toBe('auto')
         ;
     });
+
+    test('deploymentTheme keeps the configured theme through withDefaultTheme', function (): void {
+        putenv('NFSEN_DEFAULT_THEME=light');
+        $fromEnv = Settings::fromEnv();
+        $fromArray = Settings::fromArray(['frontend' => ['defaults' => ['theme' => 'dark']]]);
+        putenv('NFSEN_DEFAULT_THEME');
+
+        expect($fromEnv->deploymentTheme)->toBe('light')
+            ->and($fromEnv->withDefaultTheme('dark')->deploymentTheme)->toBe('light')
+            ->and($fromArray->deploymentTheme)->toBe('dark')
+            ->and($fromArray->withDefaultTheme('auto')->deploymentTheme)->toBe('dark')
+        ;
+    });
 });
 
 describe('Settings::fromEnv()', function (): void {
     test('returns instance with defaults when no env vars set', function (): void {
         // The ambient environment (e.g. this app's own docker-compose.dev.yml)
-        // may already export NFSEN_SOURCES/NFSEN_PORTS for the running app —
+        // may already export NFSEN_SOURCES/NFSEN_PORTS for the running app, so
         // clear them so this test genuinely exercises the "unset" defaults.
         putenv('NFSEN_SOURCES');
         putenv('NFSEN_PORTS');
@@ -180,6 +199,14 @@ describe('Settings::fromEnv()', function (): void {
             ->and($s->nfdumpMaxProcesses)->toBeGreaterThanOrEqual(1)
             ->and($s->sources)->toBe([])
             ->and($s->ports)->toBe([])
+            ->and($s->defaultView)->toBe('graphs')
+            ->and($s->defaultGraphDatatype)->toBe('traffic')
+            ->and($s->defaultRange)->toBe('24h')
+            ->and($s->defaultUnit)->toBe('bits')
+            ->and($s->compactTables)->toBeFalse()
+            ->and($s->rdnsEnabled)->toBeTrue()
+            ->and($s->topnRetentionDays)->toBe(31)
+            ->and($s->geoipDb)->toBe('')
         ;
     });
 
@@ -302,6 +329,89 @@ describe('Settings with…() fluent mutators', function (): void {
             ->and($s->filters)->toBe(['proto tcp'])
             ->and($s->logPriority)->toBe(LOG_WARNING)
             ->and($s->nfdumpProfile)->toBe('live2')
+        ;
+    });
+});
+
+describe('redesign settings (preferences and environment)', function (): void {
+    test('both factories read NFSEN_TOPN_RETENTION_DAYS and NFSEN_GEOIP_DB', function (): void {
+        putenv('NFSEN_TOPN_RETENTION_DAYS=7');
+        putenv('NFSEN_GEOIP_DB=/data/GeoLite2-City.mmdb');
+        $fromEnv = Settings::fromEnv();
+        $fromArray = Settings::fromArray(['general' => ['sources' => ['gw1']]]);
+        putenv('NFSEN_TOPN_RETENTION_DAYS');
+        putenv('NFSEN_GEOIP_DB');
+
+        expect($fromEnv->topnRetentionDays)->toBe(7)
+            ->and($fromEnv->geoipDb)->toBe('/data/GeoLite2-City.mmdb')
+            ->and($fromArray->topnRetentionDays)->toBe(7)
+            ->and($fromArray->geoipDb)->toBe('/data/GeoLite2-City.mmdb')
+        ;
+    });
+
+    test('a retention of 0 disables collection and a negative one clamps to 0', function (): void {
+        putenv('NFSEN_TOPN_RETENTION_DAYS=0');
+        $off = Settings::fromEnv();
+        putenv('NFSEN_TOPN_RETENTION_DAYS=-5');
+        $negative = Settings::fromEnv();
+        putenv('NFSEN_TOPN_RETENTION_DAYS');
+
+        expect($off->topnRetentionDays)->toBe(0)
+            ->and($negative->topnRetentionDays)->toBe(0)
+            ->and(Settings::fromEnv()->withTopnRetentionDays(-1)->topnRetentionDays)->toBe(0)
+        ;
+    });
+
+    test('with...() mutators set and normalise the new fields', function (): void {
+        $original = Settings::fromEnv();
+        $s = $original
+            ->withDefaultRange('7D')
+            ->withDefaultUnit('Bytes')
+            ->withCompactTables(true)
+            ->withRdnsEnabled(false)
+            ->withTopnRetentionDays(14)
+            ->withGeoipDb('/geo.mmdb')
+        ;
+
+        expect($s->defaultRange)->toBe('7d')
+            ->and($s->defaultUnit)->toBe('bytes')
+            ->and($s->compactTables)->toBeTrue()
+            ->and($s->rdnsEnabled)->toBeFalse()
+            ->and($s->topnRetentionDays)->toBe(14)
+            ->and($s->geoipDb)->toBe('/geo.mmdb')
+            ->and($original->defaultRange)->toBe('24h')
+            ->and($original->rdnsEnabled)->toBeTrue()
+            ->and($original->withDefaultRange('2w')->defaultRange)->toBe('24h')
+            ->and($original->withDefaultUnit('nibbles')->defaultUnit)->toBe('bits')
+        ;
+    });
+
+    test('the enum normalisers', function (): void {
+        expect(array_map(Settings::normalizeRange(...), ['1h', '24h', '7d', '30d', '1y', ' 1Y ', '2h', '', null]))
+            ->toBe(['1h', '24h', '7d', '30d', '1y', '1y', '24h', '24h', '24h'])
+            ->and(array_map(Settings::normalizeUnit(...), ['bits', 'bytes', 'BYTES', 'octets', 42]))
+            ->toBe(['bits', 'bytes', 'bytes', 'bits', 'bits'])
+            ->and(array_map(Settings::normalizeGraphDatatype(...), ['traffic', 'packets', 'flows', 'bytes', 'Packets', 'nonsense']))
+            ->toBe(['traffic', 'packets', 'flows', 'traffic', 'packets', 'traffic'])
+            ->and(Settings::legacyUnit('bytes'))->toBe('bytes')
+            ->and(Settings::legacyUnit('traffic'))->toBe('bits')
+            ->and(Settings::legacyUnit(null))->toBe('bits')
+        ;
+    });
+
+    test("the legacy 'bytes' datatype in settings.php becomes traffic in bytes", function (): void {
+        $s = Settings::fromArray(['frontend' => ['defaults' => ['graphs' => ['datatype' => 'bytes']]]]);
+
+        expect($s->defaultGraphDatatype)->toBe('traffic')
+            ->and($s->defaultUnit)->toBe('bytes')
+            ->and(Settings::fromEnv()->withDefaultGraphDatatype('bytes')->defaultGraphDatatype)->toBe('traffic')
+            ->and(Settings::fromEnv()->withDefaultGraphDatatype('flows')->defaultGraphDatatype)->toBe('flows')
+        ;
+    });
+
+    test('defaultView keeps the legacy view ids for now', function (): void {
+        expect(Settings::fromArray(['frontend' => ['defaults' => ['view' => 'statistics']]])->defaultView)->toBe('statistics')
+            ->and(Settings::fromEnv()->withDefaultView('sankey')->defaultView)->toBe('sankey')
         ;
     });
 });

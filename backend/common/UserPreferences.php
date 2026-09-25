@@ -11,9 +11,12 @@ namespace mbolli\nfsen_ng\common;
  * users to change UI defaults and filters without touching env vars or settings.php.
  *
  * On save: write atomically (tmp + rename) to avoid corrupt reads.
- * On load: silently return null if the file doesn't exist yet — Config falls back to Settings defaults.
+ * On load: silently return null if the file doesn't exist yet; Config falls back to Settings defaults.
  */
 final class UserPreferences {
+    /** Instance theme: '' is the deployment default (NFSEN_DEFAULT_THEME). */
+    private const THEMES = ['', 'system', 'light', 'dark'];
+
     /**
      * @param list<string>    $defaultGraphProtocols
      * @param list<string>    $filters
@@ -35,11 +38,16 @@ final class UserPreferences {
         public readonly string $defaultEmailBodyTemplate = '',
         public readonly string $defaultWebhookTitleTemplate = '',
         public readonly string $defaultWebhookMessageTemplate = '',
+        public readonly string $theme = '',
+        public readonly string $defaultRange = '24h',
+        public readonly string $defaultUnit = 'bits',
+        public readonly bool $compactTables = false,
+        public readonly bool $rdnsEnabled = true,
     ) {}
 
     /**
      * Load from a JSON file.
-     * Returns null when the file doesn't exist or is unreadable — caller uses Settings defaults.
+     * Returns null when the file doesn't exist or is unreadable; the caller uses Settings defaults.
      */
     public static function load(string $path): ?self {
         if (!file_exists($path)) {
@@ -66,7 +74,7 @@ final class UserPreferences {
         return new self(
             defaultView: (string) ($data['defaultView'] ?? 'graphs'),
             defaultGraphDisplay: (string) ($data['defaultGraphDisplay'] ?? 'sources'),
-            defaultGraphDatatype: (string) ($data['defaultGraphDatatype'] ?? 'traffic'),
+            defaultGraphDatatype: Settings::normalizeGraphDatatype($data['defaultGraphDatatype'] ?? 'traffic'),
             defaultGraphProtocols: array_values(array_map('strval', array_filter((array) ($data['defaultGraphProtocols'] ?? ['any']), 'is_scalar'))),
             defaultFlowLimit: (int) ($data['defaultFlowLimit'] ?? 50),
             defaultStatsOrderBy: (string) ($data['defaultStatsOrderBy'] ?? 'bytes'),
@@ -81,7 +89,24 @@ final class UserPreferences {
             defaultEmailBodyTemplate: (string) ($data['defaultEmailBodyTemplate'] ?? ''),
             defaultWebhookTitleTemplate: (string) ($data['defaultWebhookTitleTemplate'] ?? ''),
             defaultWebhookMessageTemplate: (string) ($data['defaultWebhookMessageTemplate'] ?? ''),
+            theme: self::normalizeTheme($data['theme'] ?? ''),
+            defaultRange: Settings::normalizeRange($data['defaultRange'] ?? '24h'),
+            defaultUnit: isset($data['defaultUnit'])
+                ? Settings::normalizeUnit($data['defaultUnit'])
+                : Settings::legacyUnit($data['defaultGraphDatatype'] ?? null),
+            compactTables: self::bool($data['compactTables'] ?? null, false),
+            rdnsEnabled: self::bool($data['rdnsEnabled'] ?? null, true),
         );
+    }
+
+    /** ''|'system'|'light'|'dark'; the Settings spelling 'auto' is read as 'system', anything else as ''. */
+    public static function normalizeTheme(mixed $theme): string {
+        $t = \is_string($theme) ? strtolower(trim($theme)) : '';
+        if ($t === 'auto') {
+            return 'system';
+        }
+
+        return \in_array($t, self::THEMES, true) ? $t : '';
     }
 
     /**
@@ -89,7 +114,14 @@ final class UserPreferences {
      * Returns a new Settings object with user preferences overlaid.
      */
     public function applyTo(Settings $settings): Settings {
+        $theme = match ($this->theme) {
+            '' => $settings->deploymentTheme,
+            'system' => 'auto',
+            default => $this->theme,
+        };
+
         return $settings
+            ->withDefaultTheme($theme)
             ->withDefaultView($this->defaultView)
             ->withDefaultGraphDisplay($this->defaultGraphDisplay)
             ->withDefaultGraphDatatype($this->defaultGraphDatatype)
@@ -104,6 +136,10 @@ final class UserPreferences {
             ->withDefaultEmailBodyTemplate($this->defaultEmailBodyTemplate)
             ->withDefaultWebhookTitleTemplate($this->defaultWebhookTitleTemplate)
             ->withDefaultWebhookMessageTemplate($this->defaultWebhookMessageTemplate)
+            ->withDefaultRange($this->defaultRange)
+            ->withDefaultUnit($this->defaultUnit)
+            ->withCompactTables($this->compactTables)
+            ->withRdnsEnabled($this->rdnsEnabled)
         ;
     }
 
@@ -151,6 +187,11 @@ final class UserPreferences {
             'defaultEmailBodyTemplate' => $this->defaultEmailBodyTemplate,
             'defaultWebhookTitleTemplate' => $this->defaultWebhookTitleTemplate,
             'defaultWebhookMessageTemplate' => $this->defaultWebhookMessageTemplate,
+            'theme' => $this->theme,
+            'defaultRange' => $this->defaultRange,
+            'defaultUnit' => $this->defaultUnit,
+            'compactTables' => $this->compactTables,
+            'rdnsEnabled' => $this->rdnsEnabled,
         ];
     }
 
@@ -160,5 +201,17 @@ final class UserPreferences {
         $arr['selectedProfile'] = $profile;
 
         return self::fromArray($arr);
+    }
+
+    /** preferences.json is hand-editable, so accept "true"/"0"/"on" as well as JSON booleans. */
+    private static function bool(mixed $value, bool $default): bool {
+        if (\is_bool($value)) {
+            return $value;
+        }
+        if (!\is_scalar($value)) {
+            return $default;
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default;
     }
 }

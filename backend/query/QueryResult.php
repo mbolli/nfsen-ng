@@ -15,6 +15,11 @@ final readonly class QueryResult {
      * @param list<array<string, mixed>> $rows
      * @param mixed                      $rawOutput nfdump's untouched output, for the table's
      *                                              "original data" view
+     * @param list<string>               $notes     what nfdump printed beside the data: limit and
+     *                                              error lines, "No matching flows", the
+     *                                              execution time
+     * @param int                        $exitCode  nfdump's exit code; non-zero with rows means
+     *                                              the rows may be incomplete
      */
     public function __construct(
         public array $rows,
@@ -23,6 +28,8 @@ final readonly class QueryResult {
         public float $elapsed,
         public TimeWindow $window,
         public mixed $rawOutput = null,
+        public array $notes = [],
+        public int $exitCode = 0,
     ) {}
 
     public function isEmpty(): bool {

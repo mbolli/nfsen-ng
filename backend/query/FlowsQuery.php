@@ -107,6 +107,8 @@ final readonly class FlowsQuery {
             elapsed: round(microtime(true) - $start, 3),
             window: $this->window,
             rawOutput: $result['rawOutput'] ?? null,
+            notes: $result['notes'] ?? [],
+            exitCode: $result['exitCode'] ?? 0,
         );
     }
 }

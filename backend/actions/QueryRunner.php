@@ -5,36 +5,42 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\Misc;
 use mbolli\nfsen_ng\common\NfdumpProgressWatcher;
 use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\common\QueryProgress;
+use mbolli\nfsen_ng\processor\NfdumpException;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
+use mbolli\nfsen_ng\query\Estimate;
+use mbolli\nfsen_ng\store\Database;
+use mbolli\nfsen_ng\store\QueryRunRepository;
 use Mbolli\PhpVia\Context;
 use OpenSwoole\Coroutine;
 
 /**
  * Runs a single-shot nfdump query off the request path, reporting estimated progress.
  *
- * The Flows and Statistics tabs used to block their action until nfdump returned, which
- * left the button on an indeterminate spinner for the whole query with no way to tell a
- * slow window from a stuck one. Here the action returns immediately and the work runs in
- * a coroutine (the trigger-import shape), while a second coroutine samples how far nfdump
- * has read and pushes per-mille updates as signal-only patches.
- *
- * Progress is an *estimate* — bytes read against bytes to read — so the UI marks it as
- * such. The filtered-graph build knows its bin count up front and reports exactly.
+ * The action returns immediately and the work runs in a coroutine, while a second coroutine
+ * samples how far nfdump has read and pushes per-mille updates as signal-only patches.
+ * Progress is an estimate (bytes read against bytes to read), so the UI marks it as such.
+ * Every finished run that was not cancelled is recorded for the query estimates.
  */
 final class QueryRunner {
     /** How often to sample nfdump's read position. */
     public const POLL_INTERVAL_US = 250_000;
 
+    public const string CANCELLED_STATUS = 'Query cancelled.';
+
+    /** Kinds whose nfdump stops reading at its record limit (-c), so the window size overstates a run. */
+    public const array EARLY_STOP_KINDS = ['flows'];
+
     /**
-     * @param string          $kind       which panel owns this query ('flows'|'stats'), so only
-     *                                    that panel's button renders the progress
+     * @param string          $kind       the query_kind (flows, stats, ...): the panel whose button
+     *                                    renders the progress, and the kind the run is recorded as
      * @param \Closure(): int $totalBytes size of the nfcapd files the query will read; 0 =
      *                                    unknown, which degrades to an indeterminate indicator.
-     *                                    A closure, not a value: sizing walks the window and
-     *                                    stat()s every file, which belongs in the coroutine
-     *                                    rather than in front of the action's response.
+     *                                    A closure because sizing walks the window, which belongs
+     *                                    in the coroutine rather than in front of the response.
      * @param \Closure        $work       performs the query and writes its own result/notifications
      */
     public static function run(Context $c, string $kind, \Closure $totalBytes, string $startStatus, \Closure $work): void {
@@ -72,6 +78,7 @@ final class QueryRunner {
 
         Coroutine::create(static function () use (
             $c,
+            $kind,
             $work,
             $totalBytes,
             $contextId,
@@ -92,20 +99,40 @@ final class QueryRunner {
                 $c->syncSignals();
             });
 
-            $finalStatus = '';
             $sizeInBytes = 0;
+            $workStartedAt = microtime(true);
+            $workSeconds = 0.0;
+            $error = null;
+            $lastRead = new class {
+                /** @var null|array{bytes: int, at: float} nfdump's last sampled read position */
+                public ?array $sample = null;
 
+                /** The first nfdump sampled; a graph run in the same tab registers under the same handle. */
+                public ?int $pid = null;
+            };
+
+            // Everything in here is caught: a throw out of a coroutine takes the whole worker down,
+            // and sizing touches the filesystem, so it belongs inside too.
             try {
-                // Sized here rather than before the action returned: walking the window and
-                // stat()-ing every file is thousands of syscalls at a wide range. Inside the
-                // try because it touches the filesystem: a throw out here used to leave
-                // query_running true forever, with every button disabled and nothing to
-                // clear it, and an uncaught throw in a coroutine takes the worker with it.
                 $sizeInBytes = $totalBytes();
-                $watcher = NfdumpProgressWatcher::forRunningNfdump($progress, $sizeInBytes, $c->getId());
+                // forRunningNfdump()'s wiring, plus keeping the last sample for recordedRead().
+                $watcher = new NfdumpProgressWatcher(
+                    $progress,
+                    $sizeInBytes,
+                    static fn (): ?int => NfdumpSlots::pidFor($contextId),
+                    static function (int $pid) use ($lastRead): ?int {
+                        $read = Misc::processReadBytes($pid);
+                        $lastRead->pid ??= $pid;
+                        if ($read !== null && $pid === $lastRead->pid) {
+                            $lastRead->sample = ['bytes' => $read, 'at' => microtime(true)];
+                        }
 
-                // Sampler runs alongside the query. It stops once the work is finished, or
-                // permanently the first time the platform cannot report bytes read.
+                        return $read;
+                    },
+                );
+
+                // Stops once the work is finished, or for good the first time the platform
+                // cannot report bytes read.
                 Coroutine::create(static function () use ($progress, $watcher): void {
                     while (!$progress->isFinished() && $watcher->isTrackable()) {
                         Coroutine::usleep(self::POLL_INTERVAL_US);
@@ -115,17 +142,27 @@ final class QueryRunner {
                     }
                 });
 
-                $work();
-                $finalStatus = 'Done in ' . round($progress->elapsed(), 1) . 's.';
+                $workStartedAt = microtime(true);
+
+                try {
+                    $work();
+                } finally {
+                    $workSeconds = microtime(true) - $workStartedAt;
+                }
             } catch (\Throwable $e) {
-                // An uncaught throw inside a coroutine takes the whole worker down, not
-                // just this request — this catch is load-bearing, not decoration.
-                Debug::getInstance()->log('Query failed: ' . $e->getMessage(), LOG_ERR);
-                $finalStatus = 'Failed: ' . $e->getMessage();
+                $error = $e;
             } finally {
                 // finish() emits a last tick that rewrites the status from the counts, so it
-                // has to run before the outcome message rather than after it.
+                // has to run before the outcome is written.
                 $progress->finish($sizeInBytes);
+                $sample = $lastRead->sample;
+                $read = self::recordedRead(
+                    $kind,
+                    $sizeInBytes,
+                    $workSeconds,
+                    $sample === null ? null : ['bytes' => $sample['bytes'], 'seconds' => $sample['at'] - $workStartedAt],
+                );
+                $finalStatus = self::finish($kind, $read['bytes'], $read['seconds'], $progress->elapsed(), $error, QueryCancel::isRequested($contextId));
                 $status->setValue($finalStatus, broadcast: false);
                 $running->setValue(false, broadcast: false);
                 QueryCancel::clear($contextId);
@@ -134,21 +171,67 @@ final class QueryRunner {
         });
     }
 
+    /**
+     * What a finished run records: the window's size over the work time, except for the
+     * EARLY_STOP_KINDS, which record what nfdump had read at the last sample and when.
+     * Without a sample those record 0 bytes, which medianThroughput() never counts.
+     *
+     * @param null|array{bytes: int, seconds: float} $lastRead seconds since the work started
+     *
+     * @return array{bytes: int, seconds: float}
+     */
+    public static function recordedRead(string $kind, int $windowBytes, float $workSeconds, ?array $lastRead): array {
+        if (!\in_array($kind, self::EARLY_STOP_KINDS, true)) {
+            return ['bytes' => $windowBytes, 'seconds' => $workSeconds];
+        }
+        if ($lastRead === null) {
+            return ['bytes' => 0, 'seconds' => $workSeconds];
+        }
+
+        // rchar also counts reads outside the capture files.
+        return ['bytes' => min($lastRead['bytes'], $windowBytes), 'seconds' => $lastRead['seconds']];
+    }
+
+    /**
+     * The status line for a finished run. Records the run for the estimates unless it was
+     * cancelled, whose timing says nothing about throughput. Never throws.
+     *
+     * @param int   $bytes        capture bytes the run read, from recordedRead()
+     * @param float $readSeconds  the time those bytes took, from recordedRead()
+     * @param float $totalSeconds time since the run started, for the status line
+     */
+    public static function finish(string $kind, int $bytes, float $readSeconds, float $totalSeconds, ?\Throwable $error, bool $cancelRequested): string {
+        if (self::wasCancelled($error, $cancelRequested)) {
+            Debug::getInstance()->log('Query cancelled (' . $kind . ').', LOG_INFO);
+
+            return self::CANCELLED_STATUS;
+        }
+
+        if ($error !== null) {
+            Debug::getInstance()->log('Query failed: ' . $error->getMessage(), LOG_ERR);
+        }
+
+        try {
+            new QueryRunRepository(Database::shared())->record($kind, $bytes, 0, (int) round($readSeconds * 1000), $error === null);
+        } catch (\Throwable $e) {
+            Debug::getInstance()->log('Query run not recorded: ' . $e->getMessage(), LOG_WARNING);
+        }
+
+        return $error === null
+            ? 'Done in ' . round($totalSeconds, 1) . 's.'
+            : 'Failed: ' . $error->getMessage();
+    }
+
+    /**
+     * True when the tab pressed Kill, or nfdump was stopped by a signal. Pages use it to skip
+     * the error notice for a run the user cancelled.
+     */
+    public static function wasCancelled(?\Throwable $error, bool $cancelRequested): bool {
+        return $cancelRequested || ($error instanceof NfdumpException && $error->wasStopped());
+    }
+
     /** Compact binary size for the progress line, e.g. "1.4 GiB". */
     public static function formatBytes(int $bytes): string {
-        if ($bytes < 1024) {
-            return $bytes . ' B';
-        }
-
-        $units = ['KiB', 'MiB', 'GiB', 'TiB'];
-        $value = $bytes / 1024;
-        $unit = 0;
-
-        while ($value >= 1024 && $unit < \count($units) - 1) {
-            $value /= 1024;
-            ++$unit;
-        }
-
-        return round($value, $value < 10 ? 1 : 0) . ' ' . $units[$unit];
+        return Estimate::humanBytes($bytes);
     }
 }

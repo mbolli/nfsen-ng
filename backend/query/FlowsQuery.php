@@ -32,24 +32,28 @@ final readonly class FlowsQuery {
         public bool $orderByStart = false,
         /** Names this query's nfdump runs, so a kill can target it. */
         public string $handle = 'default',
-    ) {}
+        /** The global protocol, one of ProtocolFilter::PROTOCOLS. */
+        public string $protocol = 'any',
+    ) {
+        ProtocolFilter::assertValid($protocol);
+    }
 
     public function aggregationString(): string {
         return Nfdump::buildAggregationString($this->aggregation);
     }
 
     /**
-     * Byte thresholds prepend the user's expression, the same rule the statistics query uses.
+     * Byte thresholds, the global protocol and the user's expression, each parenthesised so
+     * an `or` in one cannot swallow the others.
+     *
+     * @throws \InvalidArgumentException for a user filter with unbalanced parentheses
      */
     public function effectiveFilter(): string {
-        $threshold = Nfdump::buildThresholdFilter(trim($this->lowerLimit), trim($this->upperLimit));
-        $filter = trim($this->filter);
-
-        if ($threshold === '') {
-            return $filter;
-        }
-
-        return $threshold . ($filter !== '' ? ' and ' . $filter : '');
+        return FilterComposer::and(
+            Nfdump::buildThresholdFilter(trim($this->lowerLimit), trim($this->upperLimit)),
+            ProtocolFilter::term($this->protocol),
+            $this->filter,
+        );
     }
 
     /**

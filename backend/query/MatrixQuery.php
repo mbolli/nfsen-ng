@@ -33,7 +33,11 @@ final readonly class MatrixQuery {
         public string $upperLimit = '',
         /** Names this query's nfdump runs, so a kill can target it. */
         public string $handle = 'default',
-    ) {}
+        /** The global protocol, one of ProtocolFilter::PROTOCOLS. */
+        public string $protocol = 'any',
+    ) {
+        ProtocolFilter::assertValid($protocol);
+    }
 
     public function metric(): string {
         return $this->metric === 'packets' ? 'packets' : 'bytes';
@@ -48,15 +52,17 @@ final readonly class MatrixQuery {
             : ['srcip' => 'srcip', 'dstip' => 'dstip'];
     }
 
+    /**
+     * Byte thresholds, the global protocol and the user's expression, each parenthesised.
+     *
+     * @throws \InvalidArgumentException for a user filter with unbalanced parentheses
+     */
     public function effectiveFilter(): string {
-        $threshold = Nfdump::buildThresholdFilter(trim($this->lowerLimit), trim($this->upperLimit));
-        $filter = trim($this->filter);
-
-        if ($threshold === '') {
-            return $filter;
-        }
-
-        return $threshold . ($filter !== '' ? ' and ' . $filter : '');
+        return FilterComposer::and(
+            Nfdump::buildThresholdFilter(trim($this->lowerLimit), trim($this->upperLimit)),
+            ProtocolFilter::term($this->protocol),
+            $this->filter,
+        );
     }
 
     /**
@@ -96,7 +102,7 @@ final readonly class MatrixQuery {
         $version = Nfdump::version();
         $format = $this->outputFormat($version);
         if ($format === 'csv') {
-            Debug::getInstance()->log('nfdump ' . $version . ' cannot combine a custom fmt: format with aggregation — using -o csv for the Sankey', LOG_DEBUG);
+            Debug::getInstance()->log('nfdump ' . $version . ' cannot combine a custom fmt: format with aggregation, using -o csv for the Sankey', LOG_DEBUG);
         }
         $processor->setOption('-o', $format);
         $processor->setFilter($this->effectiveFilter());

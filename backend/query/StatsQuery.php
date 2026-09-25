@@ -18,8 +18,8 @@ use mbolli\nfsen_ng\processor\Processor;
 final readonly class StatsQuery {
     /**
      * @param list<string>         $sources
-     * @param string               $for         what to aggregate by, e.g. 'srcip', 'dstport'
-     * @param string               $orderBy     which counter to sort on, e.g. 'bytes', 'flows'
+     * @param string               $for         what to aggregate by, a StatisticCatalog element such as 'srcip'
+     * @param string               $orderBy     which counter to sort on, one of StatisticCatalog::ORDER_BY
      * @param array<string, mixed> $aggregation keys accepted by Nfdump::buildAggregationString()
      */
     public function __construct(
@@ -35,7 +35,19 @@ final readonly class StatsQuery {
         public array $aggregation = [],
         /** Names this query's nfdump runs, so a kill can target it. */
         public string $handle = 'default',
-    ) {}
+        /** The global protocol, one of ProtocolFilter::PROTOCOLS. */
+        public string $protocol = 'any',
+    ) {
+        // These reach nfdump's options, and the messages leave the value out because the
+        // panels render them as markup.
+        if (!StatisticCatalog::isValid($for)) {
+            throw new \InvalidArgumentException('Unknown statistic.');
+        }
+        if (!\in_array($orderBy, StatisticCatalog::ORDER_BY, true)) {
+            throw new \InvalidArgumentException('Unknown order, expected one of ' . implode(', ', StatisticCatalog::ORDER_BY) . '.');
+        }
+        ProtocolFilter::assertValid($protocol);
+    }
 
     /**
      * The -A spec, empty when this statistic cannot use one.
@@ -49,18 +61,17 @@ final readonly class StatsQuery {
     }
 
     /**
-     * The filter nfdump actually receives: byte thresholds are prepended to the user's
-     * expression, because -l/-L apply to line output and not to -s statistics mode.
+     * The filter nfdump actually receives: byte thresholds (-l/-L apply to line output, not to
+     * -s statistics mode), the global protocol and the user's expression, each parenthesised.
+     *
+     * @throws \InvalidArgumentException for a user filter with unbalanced parentheses
      */
     public function effectiveFilter(): string {
-        $threshold = Nfdump::buildThresholdFilter(trim($this->lowerLimit), trim($this->upperLimit));
-        $filter = trim($this->filter);
-
-        if ($threshold === '') {
-            return $filter;
-        }
-
-        return $threshold . ($filter !== '' ? ' and ' . $filter : '');
+        return FilterComposer::and(
+            Nfdump::buildThresholdFilter(trim($this->lowerLimit), trim($this->upperLimit)),
+            ProtocolFilter::term($this->protocol),
+            $this->filter,
+        );
     }
 
     /**

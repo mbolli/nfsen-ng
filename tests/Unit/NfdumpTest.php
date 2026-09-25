@@ -5,10 +5,11 @@ declare(strict_types=1);
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\processor\NfdumpException;
+use mbolli\nfsen_ng\processor\NfdumpSummary;
 
-// Nfdump requires Config to be initialized, so we set up minimal config
-beforeAll(function (): void {
-    // Set up minimal config for Nfdump to work
+/** Minimal config for Nfdump, with the binary it should run. */
+function nfdumpTestSettings(string $binary = '/usr/bin/nfdump'): void {
     Config::$settings = Settings::fromArray([
         'general' => [
             'ports' => [80, 443],
@@ -17,7 +18,7 @@ beforeAll(function (): void {
             'processor' => 'Nfdump',
         ],
         'nfdump' => [
-            'binary' => '/usr/bin/nfdump',
+            'binary' => $binary,
             'profiles-data' => '/tmp/test-profiles-data',
             'profile' => 'live',
             'max-processes' => 4,
@@ -26,6 +27,32 @@ beforeAll(function (): void {
             'priority' => LOG_WARNING,
         ],
     ]);
+}
+
+/**
+ * Runs Nfdump::execute() against tests/Support/bin/nfdump-canned, which prints the given
+ * stdout and stderr and exits with the given code.
+ *
+ * @param array<string, mixed> $options
+ *
+ * @return array<string, mixed>
+ */
+function runCannedNfdump(string $stdout, string $stderr = '', int $exit = 0, array $options = ['-o' => 'csv'], string $filter = ''): array {
+    putenv('NFDUMP_STUB_STDOUT=' . $stdout);
+    putenv('NFDUMP_STUB_STDERR=' . $stderr);
+    putenv('NFDUMP_STUB_EXIT=' . $exit);
+
+    $nfdump = new Nfdump();
+    foreach ($options as $option => $value) {
+        $nfdump->setOption($option, $value);
+    }
+    $nfdump->setFilter($filter);
+
+    return $nfdump->execute();
+}
+
+beforeAll(function (): void {
+    nfdumpTestSettings();
 });
 
 describe('Nfdump', function (): void {
@@ -330,7 +357,7 @@ describe('Nfdump', function (): void {
     });
 
     describe('normalizeAddressFamilyKeys', function (): void {
-        // Record shapes captured from a real `nfdump -r <file> -o json` run (1.7.3) — an IPv4
+        // Record shapes captured from a real `nfdump -r <file> -o json` run (1.7.3): an IPv4
         // TCP record and an IPv6 ICMP record, which nfdump emits with different key names.
         $v4 = [
             'type' => 'FLOW',
@@ -554,9 +581,9 @@ describe('Nfdump', function (): void {
         });
 
         test('ignores files outside the requested time window', function () use ($base, $mkfile, $rmdir): void {
-            // Only file on this day is BEFORE datestart — should skip forward to next day
-            $mkfile($base, '202407010000'); // 00:00 — before the 12:00 start
-            $nextFile = $mkfile($base, '202407021200'); // next day — first valid file
+            // Only file on this day is BEFORE datestart, so it should skip forward to next day
+            $mkfile($base, '202407010000'); // 00:00, before the 12:00 start
+            $nextFile = $mkfile($base, '202407021200'); // next day, first valid file
 
             $nfdump = new Nfdump();
             $nfdump->setOption('-M', 'gateway');
@@ -577,7 +604,7 @@ describe('Nfdump', function (): void {
         test('setOption(-R) finds no files when called before setOption(-M), even if matching files exist', function () use ($base, $mkfile, $rmdir): void {
             // setOption('-R', ...) calls convert_date_to_path() immediately, which reads
             // sources recorded by the '-M' handler. If '-R' is set first, sources are still
-            // empty and no files are found — this is the trap AlertManager::fetchFilteredSlot()
+            // empty and no files are found. This is the trap AlertManager::fetchFilteredSlot()
             // hit (it set -R before -M, so filtered alert checks always evaluated to zero).
             $mkfile($base, '202306010000');
             $mkfile($base, '202306011000');
@@ -630,5 +657,330 @@ describe('Nfdump', function (): void {
 
             expect($instance1)->toBe($instance2);
         });
+    });
+});
+
+describe('Nfdump::flatten()', function (): void {
+    function flattenOptions(array $options): string {
+        $m = (new ReflectionClass(Nfdump::class))->getMethod('flatten');
+
+        return $m->invoke(new Nfdump(), $options);
+    }
+
+    // The collector asks for eight statistics in one run, which is one -s per statistic.
+    test('emits a list value as the flag once per element, in order', function (): void {
+        expect(flattenOptions(['-s' => ['srcip/bytes', 'dstip/bytes', 'proto/bytes']]))
+            ->toBe("-s 'srcip/bytes' -s 'dstip/bytes' -s 'proto/bytes'")
+        ;
+    });
+
+    test('keeps flag order across scalar, bare and list values', function (): void {
+        expect(flattenOptions(['-o' => 'csv', '-N' => null, '-s' => ['a', 'b'], '-n' => 50]))
+            ->toBe("-o 'csv' -N -s 'a' -s 'b' -n '50'")
+        ;
+    });
+
+    test('writes an empty value as a bare flag', function (): void {
+        expect(flattenOptions(['-B' => '']))->toBe('-B');
+    });
+
+    test('an empty list emits nothing', function (): void {
+        expect(flattenOptions(['-s' => []]))->toBe('');
+    });
+
+    test('quotes every value for the shell', function (): void {
+        expect(flattenOptions(['-M' => "/data/it's here"]))->toBe("-M '/data/it'\\''s here'");
+    });
+});
+
+describe('Nfdump::commandLine()', function (): void {
+    test('ends the options before the filter', function (): void {
+        $nfdump = new Nfdump();
+        $nfdump->setOption('-o', 'csv');
+        $nfdump->setOption('-s', ['srcip/bytes', 'dstip/bytes']);
+        $nfdump->setFilter('proto tcp');
+
+        expect($nfdump->commandLine())->toBe("/usr/bin/nfdump -o 'csv' -s 'srcip/bytes' -s 'dstip/bytes' -- 'proto tcp'");
+    });
+
+    test('has no end-of-options marker without a filter', function (): void {
+        $nfdump = new Nfdump();
+        $nfdump->setOption('-I', null);
+
+        expect($nfdump->commandLine())->toBe("/usr/bin/nfdump -I -o 'csv'");
+    });
+});
+
+describe('Nfdump::exitCodeFrom()', function (): void {
+    // With OpenSwoole's process hook proc_close() returns the wait status: exit 254 is 65024.
+    test('unpacks the wait status of a normal exit', function (): void {
+        expect(Nfdump::exitCodeFrom(65024))->toBe(254)
+            ->and(Nfdump::exitCodeFrom(256))->toBe(1)
+            ->and(Nfdump::exitCodeFrom(31744))->toBe(124)
+        ;
+    });
+
+    test('leaves a plain exit code and a signal alone', function (): void {
+        expect(Nfdump::exitCodeFrom(0))->toBe(0)
+            ->and(Nfdump::exitCodeFrom(254))->toBe(254)
+            ->and(Nfdump::exitCodeFrom(15))->toBe(15)
+            ->and(Nfdump::exitCodeFrom(-1))->toBe(-1)
+        ;
+    });
+});
+
+describe('Nfdump::execute()', function (): void {
+    $stub = dirname(__DIR__) . '/Support/bin/nfdump-canned';
+
+    beforeEach(function () use ($stub): void {
+        nfdumpTestSettings($stub);
+    });
+
+    afterEach(function (): void {
+        foreach (['NFDUMP_STUB_STDOUT', 'NFDUMP_STUB_STDERR', 'NFDUMP_STUB_EXIT', 'NFDUMP_STUB_ARGS'] as $name) {
+            putenv($name);
+        }
+        nfdumpTestSettings();
+    });
+
+    test('returns the command as plain text and what nfdump said beside the data as notes', function () use ($stub): void {
+        // 1.7.8 for a statistic with no rows.
+        $stdout = "No matching flows\nts,te,td,pr,val,fl,flP,pkt,pktP,byt,bytP,pps,bps,bpp\n";
+        $result = runCannedNfdump($stdout, options: ['-o' => 'csv', '-s' => 'srcip/bytes'], filter: 'proto tcp');
+
+        expect($result['command'])->toBe($stub . " -o 'csv' -s 'srcip/bytes' -- 'proto tcp'")
+            ->and($result['command'])->not->toContain('<')
+            ->and($result['decoded'])->toBe([])
+            ->and($result['rawOutput'])->toBe($stdout)
+            ->and($result['exitCode'])->toBe(0)
+            ->and($result['notes'][0])->toBe('No matching flows')
+            ->and($result['notes'][1])->toStartWith('Execution time: ')
+            ->and($result['notes'])->toHaveCount(2)
+        ;
+    });
+
+    // The delimiter used to be read off the first line, which made the header a note here.
+    test('reads the header after a leading "No matching flows"', function (): void {
+        $result = runCannedNfdump("No matching flows\nts,te,td,pr,val,fl\n");
+
+        expect($result['notes'])->not->toContain('ts,te,td,pr,val,fl');
+    });
+
+    test('decodes CSV rows', function (): void {
+        $result = runCannedNfdump("firstSeen,duration,proto,flows\n2026-08-29 05:17:53.000,1.000,6,1\n2026-08-29 05:17:53.000,1.000,17,2\n");
+
+        expect($result['decoded'])->toBe([
+            ['firstSeen' => '2026-08-29 05:17:53.000', 'duration' => '1.000', 'proto' => '6', 'flows' => '1'],
+            ['firstSeen' => '2026-08-29 05:17:53.000', 'duration' => '1.000', 'proto' => '17', 'flows' => '2'],
+        ]);
+    });
+
+    test('decodes a JSON listing into one address schema', function (): void {
+        $stdout = "[\n{\"src4_addr\" : \"10.0.0.1\", \"proto\" : 6},\n{\"src6_addr\" : \"2001:db8::1\", \"proto\" : 17}\n]\n";
+        $result = runCannedNfdump($stdout, options: ['-o' => 'json']);
+
+        expect($result['decoded'])->toBe([
+            ['src_addr' => '10.0.0.1', 'proto' => 6],
+            ['src_addr' => '2001:db8::1', 'proto' => 17],
+        ])->and($result['notes'][0])->toStartWith('Execution time: ');
+    });
+
+    test('an empty JSON listing is an empty result with a note', function (): void {
+        $result = runCannedNfdump("[\nNo matching flows\n\n]\n", options: ['-o' => 'json']);
+
+        expect($result['decoded'])->toBe([])
+            ->and($result['notes'])->toContain('No matching flows')
+        ;
+    });
+
+    // Import::writeSourceData() and the top-N collector read these rows.
+    test('decodes the -I statistics into metric rows', function (): void {
+        $result = runCannedNfdump("Ident: none\nFlows: 75\nFlows_tcp: 40\nBytes: 51300\nFirst: 1787980673\nSequence failures: 0\n", options: ['-I' => null]);
+
+        expect($result['decoded'][1])->toBe(['metric' => 'Flows', 'value' => '75'])
+            ->and(NfdumpSummary::fromStatDump($result['decoded'])['bytes'])->toBe(51300)
+        ;
+    });
+
+    test('a CSV header alone is an empty result, not an error', function (): void {
+        expect(runCannedNfdump("ts,te,td,pr,val,fl,flP,pkt,pktP,byt,bytP,pps,bps,bpp\n")['decoded'])->toBe([])
+            ->and(runCannedNfdump("firstSeen,duration,proto,srcAddr,srcPort,dstAddr,dstPort,packets,bytes,flows\n")['decoded'])->toBe([])
+        ;
+    });
+
+    test('a lone line that is not data is an error, with no markup added', function (): void {
+        try {
+            runCannedNfdump("Error: something went wrong\n");
+            $this->fail('expected an NfdumpException');
+        } catch (NfdumpException $e) {
+            expect($e->getMessage())->toBe('Error: something went wrong')
+                ->and($e->getMessage())->not->toContain('<')
+                ->and($e->command)->toContain('nfdump-canned')
+            ;
+        }
+    });
+
+    // nfdump could not open the file, say: nothing on stdout, the reason on stderr.
+    test('a non-zero exit with empty stdout throws with the first stderr line', function (): void {
+        try {
+            runCannedNfdump('', "\nstat() error '/data/gw/nfcapd.202608290800': No such file or directory\nmore\n", 1);
+            $this->fail('expected an NfdumpException');
+        } catch (NfdumpException $e) {
+            expect($e->getMessage())->toBe("stat() error '/data/gw/nfcapd.202608290800': No such file or directory")
+                ->and($e->exitCode)->toBe(1)
+                ->and($e->stderr)->toContain('more')
+                ->and($e)->toBeInstanceOf(RuntimeException::class)
+            ;
+        }
+    });
+
+    // The Kill button sends SIGTERM; a statistic that had printed nothing yet leaves no output.
+    test('a killed run says it was stopped', function (): void {
+        foreach ([15, 9] as $signal) {
+            try {
+                runCannedNfdump('', '', $signal);
+                $this->fail('expected an NfdumpException');
+            } catch (NfdumpException $e) {
+                expect($e->getMessage())->toBe('nfdump was stopped (signal ' . $signal . ')')
+                    ->and($e->wasStopped())->toBeTrue()
+                ;
+            }
+        }
+    });
+
+    test('only a killed run counts as stopped', function (): void {
+        expect((new NfdumpException('x', exitCode: 254))->wasStopped())->toBeFalse()
+            ->and((new NfdumpException('x', exitCode: 1))->wasStopped())->toBeFalse()
+            ->and((new NfdumpException('x'))->wasStopped())->toBeFalse()
+        ;
+    });
+
+    test('a non-zero exit with no explanation says so', function (): void {
+        expect(fn () => runCannedNfdump('', '', 3))->toThrow(NfdumpException::class, 'nfdump exited with code 3');
+    });
+
+    // 1.7.8 prints a filter error on stdout and exits 254.
+    test('a filter syntax error names nfdump\'s explanation', function (): void {
+        try {
+            runCannedNfdump("Line 1: syntax error at ''\n", '', 254, filter: 'proto tcp and');
+            $this->fail('expected an NfdumpException');
+        } catch (NfdumpException $e) {
+            expect($e->getMessage())->toBe("Filter syntax error: syntax error at ''")
+                ->and($e->exitCode)->toBe(254)
+                ->and($e->command)->toEndWith("-- 'proto tcp and'")
+            ;
+        }
+    });
+
+    test('a comment closed on its own line by the composer adds no line number', function (): void {
+        expect(fn () => runCannedNfdump("Line 1: Unknown protocol: foo at 'foo'\n", '', 254, filter: "(proto foo # my note\n) and (bytes > 1)"))
+            ->toThrow(NfdumpException::class, "Filter syntax error: Unknown protocol: foo at 'foo'")
+        ;
+    });
+
+    test('a multi-line filter keeps the line number', function (): void {
+        expect(fn () => runCannedNfdump("Line 2: syntax error at 'x'\n", '', 254, filter: "proto tcp\nand x"))
+            ->toThrow(NfdumpException::class, "Filter syntax error: Line 2: syntax error at 'x'")
+        ;
+    });
+
+    // nfdump quotes a quoted filter string whole (1.7.8 output), so the message is only safe escaped.
+    test('keeps nfdump\'s text verbatim, markup from the filter included', function (): void {
+        $cases = [
+            'proto "<b>x</b>"' => [
+                "Line 1: Unknown protocol: <b>x</b> at '\"<b>x</b>\"'\nValid protocols:\n  0: 0\n  1: ICMP\n",
+                '',
+                "Filter syntax error: Unknown protocol: <b>x</b> at '\"<b>x</b>\"'",
+            ],
+            'host "<img src=x onerror=alert(1)>"' => [
+                "Resolving <img src=x onerror=alert(1)> ...\nLine 1: Can not parse/lookup <img src=x onerror=alert(1)> to an IP address at '\"<img src=x onerror=alert(1)>\"'\n",
+                "Failed to resolve IP address for <img src=x onerror=alert(1)>: Success\n",
+                "Filter syntax error: Can not parse/lookup <img src=x onerror=alert(1)> to an IP address at '\"<img src=x onerror=alert(1)>\"'",
+            ],
+        ];
+
+        foreach ($cases as $filter => [$stdout, $stderr, $message]) {
+            try {
+                runCannedNfdump($stdout, $stderr, 254, filter: $filter);
+                $this->fail('expected an NfdumpException');
+            } catch (NfdumpException $e) {
+                expect($e->getMessage())->toBe($message);
+            }
+        }
+    });
+
+    test('keeps the line number of an error in a multi-line filter', function (): void {
+        expect(fn () => runCannedNfdump("Line 2: syntax error at ''\n", '', 254, filter: "proto tcp\nand"))
+            ->toThrow(NfdumpException::class, "Filter syntax error: Line 2: syntax error at ''")
+        ;
+    });
+
+    test('a filter error reported on stderr only still reads as one', function (): void {
+        expect(fn () => runCannedNfdump('', "Failed to resolve IP address for nonexistent.invalid: Unknown error\n", 254, filter: 'host nonexistent.invalid'))
+            ->toThrow(NfdumpException::class, 'Filter syntax error: Failed to resolve IP address for nonexistent.invalid: Unknown error')
+        ;
+    });
+
+    test('a binary that cannot be run says where it was looked for', function () use ($stub): void {
+        expect(fn () => runCannedNfdump('', "sh: 1: nfdump: not found\n", 127))
+            ->toThrow(NfdumpException::class, 'nfdump could not be started: sh: 1: nfdump: not found. Is it installed at ' . $stub . '?')
+        ;
+    });
+
+    // 1.7.8 answers an unknown statistic or order with exit 1 and its option table on stdout.
+    test('a rejected statistic throws with nfdump\'s reason, not an empty result', function (): void {
+        $listing = "Available element statistics:\n record     srcip      dstip      ip         srcgeo\n"
+            . " natip      natsrcport  natdstport  natport    iacl\n evrf       minttl     maxttl    \n See also nfdump(1)\n";
+
+        foreach (['csv', 'json'] as $format) {
+            try {
+                runCannedNfdump($listing, "Unknown statistic: nevent\nFailed to parse element stat option: nevent/bytes\n", 1, ['-o' => $format, '-s' => 'nevent/bytes']);
+                $this->fail('expected an NfdumpException');
+            } catch (NfdumpException $e) {
+                expect($e->getMessage())->toBe('Unknown statistic: nevent')
+                    ->and($e->exitCode)->toBe(1)
+                ;
+            }
+        }
+    });
+
+    test('a rejected stat order throws with nfdump\'s reason', function (): void {
+        $listing = "Available stat print order:\n flows     packets   ipkg      opkg      bytes\n"
+            . "Optionally add direction - :a for ascending or :d for descending values\n See also nfdump(1)\n";
+
+        expect(fn () => runCannedNfdump($listing, "Unknown order option /bogus\nFailed to parse element stat option: srcip/bogus\n", 1, ['-o' => 'json', '-s' => 'srcip/bogus']))
+            ->toThrow(NfdumpException::class, 'Unknown order option /bogus')
+        ;
+    });
+
+    test('a non-zero exit with only a header throws', function (): void {
+        expect(fn () => runCannedNfdump("firstSeen,proto\n", "nfdump gave up\n", 1))->toThrow(NfdumpException::class, 'nfdump gave up');
+    });
+
+    test('keeps the data of a run that exited non-zero, and notes the code', function (): void {
+        $result = runCannedNfdump("firstSeen,proto\n2026-08-29 05:17:53.000,6\n", '', 1);
+
+        expect($result['decoded'])->toHaveCount(1)
+            ->and($result['exitCode'])->toBe(1)
+            ->and($result['notes'])->toContain('nfdump exited with code 1')
+        ;
+    });
+
+    test('drops benign stderr and reports the rest', function (): void {
+        $result = runCannedNfdump("firstSeen,proto\n2026-08-29 05:17:53.000,6\n", "read() error: Success\nsomething real\n");
+
+        expect($result['stderr'])->toBe('something real');
+    });
+
+    // A filter such as `-w/tmp/x` used to reach nfdump's option parser and write a file.
+    test('passes a filter that starts with a dash as the filter', function (): void {
+        $argsFile = tempnam(sys_get_temp_dir(), 'nfdump-args');
+        putenv('NFDUMP_STUB_ARGS=' . $argsFile);
+
+        runCannedNfdump("firstSeen,proto\n2026-08-29 05:17:53.000,6\n", options: ['-o' => 'csv', '-s' => ['srcip/bytes', 'dstip/bytes']], filter: '-w/tmp/x');
+        $args = file((string) $argsFile, FILE_IGNORE_NEW_LINES);
+        unlink((string) $argsFile);
+
+        expect($args)->toBe(['-o', 'csv', '-s', 'srcip/bytes', '-s', 'dstip/bytes', '--', '-w/tmp/x']);
     });
 });

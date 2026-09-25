@@ -1,0 +1,9 @@
+#!/bin/sh
+# `nfdump -Z 'proto foobar'` on 1.7.8: the error, then the table of every known protocol.
+echo "Line 1: Unknown protocol: foobar at 'foobar'"
+echo "Valid protocols:"
+echo "  0: 0"
+echo "  1: ICMP"
+echo "  2: IGMP"
+echo "  6: TCP"
+exit 254

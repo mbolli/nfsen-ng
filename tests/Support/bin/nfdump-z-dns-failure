@@ -1,0 +1,4 @@
+#!/bin/sh
+# A host name that does not resolve, reported on stderr only.
+echo "Failed to resolve IP address for nonexistent.invalid: Unknown error" >&2
+exit 254

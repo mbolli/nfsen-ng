@@ -13,6 +13,8 @@ use mbolli\nfsen_ng\common\QueryProgress;
 use mbolli\nfsen_ng\processor\FilteredSeries;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\query\CostEstimate;
+use mbolli\nfsen_ng\query\FilterComposer;
+use mbolli\nfsen_ng\query\ProtocolFilter;
 use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
 use OpenSwoole\Coroutine;
@@ -33,7 +35,7 @@ final class FlowGraphActions {
     /**
      * Everything that defines the series, read from the Flows tab's own signals.
      *
-     * @return array{start: int, end: int, clamped: bool, sources: list<string>, filter: string, unit: string, display: string, points: int, profile: string}
+     * @return array{start: int, end: int, clamped: bool, sources: list<string>, filter: string, invalid: string, unit: string, display: string, points: int, profile: string}
      */
     public static function params(Context $c): array {
         $datestart = $c->getSignal('datestart');
@@ -44,6 +46,8 @@ final class FlowGraphActions {
         $flowUpper = $c->getSignal('flows_upper_limit');
         $graphSources = $c->getSignal('graph_sources');
         $unit = $c->getSignal('flows_graph_unit');
+        // The global protocol; until the controls bar declares it, every query is 'any'.
+        $protocol = $c->getSignal('protocol');
         \assert(
             $datestart !== null
             && $dateend !== null
@@ -58,15 +62,29 @@ final class FlowGraphActions {
         $window = TimeWindow::clamped($datestart->int(), $dateend->int());
         $sources = Helpers::resolveSources($graphSources->array());
 
+        // The table's thresholds and protocol belong to the graph's query too, or the graph
+        // would plot more traffic than the table lists.
+        try {
+            $filter = self::effectiveFilter(
+                $flowFilter->string(),
+                $flowLower->string(),
+                $flowUpper->string(),
+                ProtocolFilter::normalize($protocol?->string() ?? 'any'),
+            );
+            $invalid = '';
+        } catch (\InvalidArgumentException $e) {
+            // Every render reads this, so a half-typed filter is refused by the build instead.
+            $filter = trim($flowFilter->string());
+            $invalid = $e->getMessage();
+        }
+
         return [
             'start' => $window->start,
             'end' => $window->end,
             'clamped' => $window->clamped,
             'sources' => $sources,
-            // The thresholds are part of the query the table runs, so they are part of the
-            // query the graph plots. Leaving them out would draw more traffic than the table
-            // lists and look like a bug in one of the two.
-            'filter' => self::effectiveFilter($flowFilter->string(), $flowLower->string(), $flowUpper->string()),
+            'filter' => $filter,
+            'invalid' => $invalid,
             'unit' => $unit->string() !== '' ? $unit->string() : 'bytes',
             // One line per source when several are selected, otherwise the protocol split.
             // A filtered series cannot break down by port: the filter *is* the port selection.
@@ -76,15 +94,17 @@ final class FlowGraphActions {
         ];
     }
 
-    public static function effectiveFilter(string $filter, string $lower, string $upper): string {
-        $threshold = Nfdump::buildThresholdFilter(trim($lower), trim($upper));
-        $filter = trim($filter);
-
-        if ($threshold === '') {
-            return $filter;
-        }
-
-        return $threshold . ($filter !== '' ? ' and ' . $filter : '');
+    /**
+     * The same composition FlowsQuery::effectiveFilter() applies.
+     *
+     * @throws \InvalidArgumentException for a filter with unbalanced parentheses
+     */
+    public static function effectiveFilter(string $filter, string $lower, string $upper, string $protocol = 'any'): string {
+        return FilterComposer::and(
+            Nfdump::buildThresholdFilter(trim($lower), trim($upper)),
+            ProtocolFilter::term(ProtocolFilter::normalize($protocol)),
+            $filter,
+        );
     }
 
     public static function cacheKey(Context $c): string {
@@ -219,6 +239,15 @@ final class FlowGraphActions {
             }
 
             $params = self::params($c);
+            if ($params['invalid'] !== '') {
+                $queryKind->setValue('flowsgraph', broadcast: false);
+                $queryStatus->setValue('Failed: ' . $params['invalid'], broadcast: false);
+                $error->setValue('Traffic graph: ' . $params['invalid'], broadcast: false);
+                $c->sync();
+
+                return;
+            }
+
             $key = self::cacheKey($c);
             $builtKey = $c->getSignal('flows_graph_key');
             $builtPrint = $c->getSignal('flows_graph_fingerprint');
@@ -297,7 +326,7 @@ final class FlowGraphActions {
                     $builtKey->setValue($key, broadcast: false);
                     $builtPrint->setValue(self::fingerprintOf($params), broadcast: false);
                     $finalStatus = $cancelled
-                        ? 'Cancelled — showing partial results. Build again to finish.'
+                        ? 'Cancelled: showing partial results. Build again to finish.'
                         : 'Done in ' . round($progress->elapsed(), 1) . 's.';
                 } catch (\Throwable $e) {
                     // An uncaught error inside a coroutine takes the whole worker down, not
@@ -316,7 +345,7 @@ final class FlowGraphActions {
         }, 'build-flows-graph');
 
         // A re-render and nothing else. The unit buttons change what the graph would plot, but
-        // building reads capture files, so a change must never trigger one — it only needs the
+        // building reads capture files, so a change must never trigger one; it only needs the
         // server to notice, so the panel can say the series no longer matches the query.
         $c->action(static function (Context $c): void {
             $c->sync();

@@ -55,7 +55,7 @@ class Nfdump implements Processor {
     /**
      * First line of `nfdump -V`, e.g. "/usr/bin/nfdump: Version: 1.7.8-release options: ...",
      * or '' if the binary could not be executed. Cached per binary path for the lifetime of
-     * the worker process — swapping the binary requires a restart to take effect anyway.
+     * the worker process; swapping the binary requires a restart to take effect anyway.
      */
     public static function versionString(?string $binary = null): string {
         $binary ??= Config::$settings->nfdumpBinary;
@@ -89,7 +89,7 @@ class Nfdump implements Processor {
      *
      * True for 1.7.5 only. User-selected formats with custom aggregation arrived in 1.7.6
      * (nfdump #597), and 1.7.2-1.7.4 accept `fmt:` but answer `-o csv` with the wide legacy
-     * per-record schema that has no `flows` column — so for them `fmt:` is the only option
+     * per-record schema that has no `flows` column, so for them `fmt:` is the only option
      * that yields flow counts. An empty/unparseable version keeps the `fmt:` default. See #159.
      */
     public static function needsAggregatedCsv(string $version): bool {
@@ -131,7 +131,7 @@ class Nfdump implements Processor {
 
             case '-R': // set path
                 // A string is an already-resolved `first[:last]` file pair, relative to the
-                // -M source dirs — FilteredSeries has enumerated the bin's files itself and
+                // -M source dirs: FilteredSeries has enumerated the bin's files itself and
                 // must not have them re-derived (and re-scanned) from timestamps here.
                 $this->cfg['option'][$option] = \is_array($value)
                     ? $this->convert_date_to_path($value[0], $value[1])
@@ -195,19 +195,17 @@ class Nfdump implements Processor {
     }
 
     /**
-     * Executes the nfdump command, tries to throw an exception based on the return code.
+     * Runs nfdump and decodes its output. `notes` holds what nfdump printed beside the data
+     * (limit and error lines, "No matching flows") and the execution time.
      *
-     * @return array{command: string, rawOutput: string, decoded: array<array<string, mixed>>, stderr?: string}
+     * @return array{command: string, rawOutput: string, decoded: array<array<string, mixed>>, stderr?: string, notes: list<string>, exitCode: int}
      *
-     * @throws \Exception
+     * @throws NfdumpException when nfdump fails or answers with something that is not data
+     * @throws \Exception      when the process cannot be started
      */
     public function execute(): array {
-        $output = [];
-        $processes = [];
-        $return = '';
         $timer = microtime(true);
-        $filter = ($this->cfg['filter'] === '') ? '' : ' ' . escapeshellarg($this->cfg['filter']);
-        $command = $this->cfg['env']['bin'] . ' ' . $this->flatten($this->cfg['option']) . $filter;
+        $command = $this->commandLine();
         $this->d->log('Trying to execute ' . $command, LOG_DEBUG);
 
         // Wait for a slot rather than counting nfdump processes on the machine. That count
@@ -215,25 +213,24 @@ class Nfdump implements Processor {
         // "busy" an error instead of a short wait.
         NfdumpSlots::acquire();
 
-        // execute nfdump using proc_open to separate stdout and stderr
         $descriptorspec = [
-            0 => ['pipe', 'r'],  // stdin
-            1 => ['pipe', 'w'],  // stdout
-            2 => ['pipe', 'w'],   // stderr
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
         ];
-
-        // Remove 2>&1 from command since we're handling stderr separately
-        $command = str_replace(' 2>&1', '', $command);
 
         // Prefix with 'exec' so the shell replaces itself with nfdump directly.
         // Without this, proc_open spawns /bin/sh -c "...", and proc_get_status()['pid']
-        // returns the shell's PID — killing the shell leaves nfdump running and completing normally.
+        // returns the shell's PID; killing the shell leaves nfdump running and completing normally.
         // try/finally around everything the slot covers: a failed proc_open used to throw
         // straight past release(), and a worker that leaked both slots wedged every later
         // nfdump call behind the acquire timeout until it was restarted.
         $pid = null;
         $process = null;
         $closed = false;
+        $stdout = '';
+        $stderr = '';
+        $status = 0;
 
         try {
             $process = proc_open('exec ' . $command, $descriptorspec, $pipes);
@@ -242,7 +239,6 @@ class Nfdump implements Processor {
                 throw new \Exception('Failed to start nfdump process');
             }
 
-            // Close stdin as we don't need it
             fclose($pipes[0]);
 
             // Track the running PID so a kill can reach it, both by handle and through the
@@ -251,15 +247,13 @@ class Nfdump implements Processor {
             self::$runningPid = $pid;
             NfdumpSlots::register($this->queryHandle, $pid);
 
-            // Read stdout and stderr
             $stdout = (string) stream_get_contents($pipes[1]);
             $stderr = (string) stream_get_contents($pipes[2]);
 
             fclose($pipes[1]);
             fclose($pipes[2]);
 
-            // Get return code
-            $return = proc_close($process);
+            $status = proc_close($process);
             $closed = true;
         } finally {
             // A throw while reading the pipes would otherwise leave the child unreaped and
@@ -275,277 +269,37 @@ class Nfdump implements Processor {
             NfdumpSlots::release();
         }
 
-        // Log stderr if present (but don't fail on benign messages). What survives the filter
-        // is what every later `$result['stderr']` reports, and the panels show that to the
-        // user, so a message nfdump always prints must not reach it.
-        if (!empty($stderr)) {
-            $stderrTrimmed = trim($stderr);
-            $stderr = self::withoutBenignStderr($stderrTrimmed);
-            if ($stderr === '') {
-                $this->d->log('NfDump benign stderr message: ' . $stderrTrimmed, LOG_DEBUG);
-            } else {
-                $this->d->log('NfDump stderr: ' . $stderr, LOG_WARNING);
-            }
+        return $this->interpret($command, $stdout, $stderr, self::exitCodeFrom($status), $timer);
+    }
+
+    /**
+     * The command line execute() runs, as shown to the user. `--` keeps a filter that starts
+     * with a dash from being read as an nfdump option such as `-w <file>`.
+     */
+    public function commandLine(): string {
+        $parts = [$this->cfg['env']['bin']];
+        $options = $this->flatten($this->cfg['option']);
+        if ($options !== '') {
+            $parts[] = $options;
+        }
+        if ($this->cfg['filter'] !== '') {
+            $parts[] = '--';
+            $parts[] = escapeshellarg($this->cfg['filter']);
         }
 
-        // Split stdout into lines for processing
-        $output = explode("\n", $stdout);
-        // Remove empty last line if present
-        if (end($output) === '') {
-            array_pop($output);
+        return implode(' ', $parts);
+    }
+
+    /**
+     * Under OpenSwoole's process hook proc_close() returns the raw wait status (exit 254
+     * arrives as 65024), so the wait status of a normal exit is unpacked here.
+     */
+    public static function exitCodeFrom(int $status): int {
+        if ($status > 255 && ($status & 0x7F) === 0) {
+            return ($status >> 8) & 0xFF;
         }
 
-        // Store raw output
-        $rawOutput = $stdout;
-
-        // prevent logging the command usage description
-        if (isset($output[0]) && stripos($output[0], 'usage') === 0) {
-            $output = [];
-        }
-
-        // No output at all — nfdump likely failed to open the file (stderr already logged above).
-        // Return empty decoded result so Import::start() can move on to the next file.
-        if (\count($output) === 0) {
-            $result = ['command' => $command, 'rawOutput' => '', 'decoded' => []];
-            if (!empty($stderr)) {
-                $result['stderr'] = trim($stderr);
-            }
-
-            return $result;
-        }
-
-        // If we only have 1 line of output, it's likely an error message
-        // BUT: single-line JSON output is valid (e.g., from -s statistics with -n 1)
-        // "No matching flows" is a normal nfdump output, not a fatal error — return empty decoded.
-        if (\count($output) === 1) {
-            if (trim($output[0]) === 'No matching flows') {
-                return ['command' => $command, 'rawOutput' => '', 'decoded' => []];
-            }
-
-            // Check if it looks like JSON - if so, let it through
-            $firstChar = $output[0][0] ?? '';
-            if ($firstChar !== '{' && $firstChar !== '[') {
-                throw new \Exception('NfDump error: ' . $output[0] . '<br><b>Command: </b><code>' . $command . '</code>');
-            }
-        }
-
-        switch ($return) {
-            case 127:
-                throw new \Exception('NfDump: Failed to start process. Is nfdump installed? <br><b>Output:</b> ' . implode(' ', $output));
-
-            case 255:
-                throw new \Exception('NfDump: Initialization failed. ' . $command . '<br><b>Output:</b> ' . implode(' ', $output));
-
-            case 254:
-                throw new \Exception('NfDump: Error in filter syntax. <br><b>Output:</b> ' . implode(' ', $output));
-
-            case 250:
-                throw new \Exception('NfDump: Internal error. <br><b>Output:</b> ' . implode(' ', $output));
-        }
-
-        // if output format is JSON, decode and return structured data
-        if (isset($this->cfg['format']) && $this->cfg['format'] === 'json' && preg_match('/^[\{|\[]/', $output[0])) {
-            // Check for "No matching flows" — return empty decoded rather than throwing.
-            foreach ($output as $line) {
-                if (trim($line) === 'No matching flows') {
-                    return ['command' => $command, 'rawOutput' => '', 'decoded' => []];
-                }
-            }
-
-            // Check if this is NDJSON (newline-delimited JSON) - each line is a separate JSON object
-            // This happens with statistics queries (-s flag)
-            if (str_starts_with($output[0], '{')) {
-                $decodedData = [];
-                foreach ($output as $line) {
-                    $trimmed = trim($line);
-                    if (empty($trimmed)) {
-                        continue;
-                    }
-                    $decoded = json_decode($trimmed, true);
-                    if (!\is_array($decoded)) {
-                        throw new \Exception('Invalid NDJSON line from nfdump: ' . json_last_error_msg() . '<br><b>Line: </b><code>' . $trimmed . '</code><br><b>nfdump command: </b><code>' . $command . '</code>');
-                    }
-                    $decodedData[] = $decoded;
-                }
-
-                $result = [
-                    'command' => $command,
-                    'rawOutput' => $rawOutput,
-                    'decoded' => self::normalizeAddressFamilyKeys($decodedData),
-                ];
-
-                // Add stderr if present and not benign
-                if (!empty($stderr)) {
-                    $result['stderr'] = trim($stderr);
-                }
-
-                return $result;
-            }
-
-            // Handle regular JSON array or object format
-            // Join all output lines into single JSON string
-            $jsonOutput = implode("\n", $output);
-
-            // fix common JSON output issue: missing ] at the end
-            if (str_starts_with($jsonOutput, '[') && !str_ends_with(trim($jsonOutput), ']')) {
-                $jsonOutput .= ']';
-            }
-
-            // Decode JSON data
-            $decodedData = json_decode($jsonOutput, true);
-            if (!\is_array($decodedData)) {
-                throw new \Exception('Invalid JSON data from nfdump: ' . json_last_error_msg() . '<br><b>Data: </b><code>' . $jsonOutput . '</code><br><b>nfdump command: </b><code>' . $command . '</code>');
-            }
-
-            $result = [
-                'command' => $command,
-                'rawOutput' => $rawOutput,
-                'decoded' => self::normalizeAddressFamilyKeys($decodedData),
-            ];
-
-            // Add stderr if present and not benign
-            if (!empty($stderr)) {
-                $result['stderr'] = trim($stderr);
-            }
-
-            return $result;
-        }
-
-        // Check if aggregation produces fixed-width format (not parseable CSV)
-        // - Bidirectional aggregation (-B) ALWAYS produces fixed-width format, even with -o csv
-        // - Other aggregations (-A*) without -o csv produce fixed-width format
-        // - Other aggregations (-A*) WITH -o csv produce proper parseable CSV
-        // Note: setOption() method automatically forces csv when json+aggregation is requested
-        $isBidirectional = isset($this->cfg['option']['-B']) || (isset($this->cfg['option']['-a']) && str_contains($this->cfg['option']['-a'], 'B'));
-
-        // Custom whitespace-delimited aggregation format (e.g. 'fmt:%sa %da %ibyt %ipkt %fl') —
-        // used by SankeyActions to get per-pair flow counts, which the fixed -o csv aggregation
-        // schema below doesn't include. Structurally parseable, unlike the raw fixed-width branch.
-        if (isset($this->cfg['option']['-a']) && !$isBidirectional && str_starts_with((string) $this->cfg['format'], 'fmt:')) {
-            $result = [
-                'command' => $command,
-                'rawOutput' => $rawOutput,
-                'decoded' => self::parseWhitespaceDelimitedAggregation($output, $this->get_output_format($this->cfg['format'])),
-            ];
-
-            if (!empty($stderr)) {
-                $result['stderr'] = trim($stderr);
-            }
-
-            return $result;
-        }
-
-        $isAggregationWithoutCsv = isset($this->cfg['option']['-a']) && $this->cfg['format'] !== 'csv';
-
-        if ($isBidirectional || $isAggregationWithoutCsv) {
-            $this->d->log('Aggregation detected (-B=' . (isset($this->cfg['option']['-B']) ? 'yes' : 'no') . ', -a flag=' . ($this->cfg['option']['-a'] ?? 'null') . ') producing fixed-width format (bidirectional=' . ($isBidirectional ? 'yes' : 'no') . ', format=' . ($this->cfg['format'] ?? 'null') . '), returning enhanced raw output', LOG_DEBUG);
-
-            // The biflow table has a known shape, so it can be read into rows. The raw text
-            // still travels with it: a row the parser does not recognise means an empty list,
-            // and the caller renders the output as it came instead of losing it.
-            $decoded = $isBidirectional ? self::parseBidirectionalOutput($output) : [];
-
-            $result = [
-                'command' => $command,
-                // Beautifying is for when the text *is* the view. Once there are rows, the
-                // text moves to "Original View", which escapes what it is given, so the
-                // markup would be shown as literal tags.
-                'rawOutput' => $decoded === [] ? $this->beautifyAggregatedOutput($output) : $rawOutput,
-                'decoded' => $decoded,
-            ];
-
-            // Add stderr if present and not benign
-            if (!empty($stderr)) {
-                $result['stderr'] = trim($stderr);
-            }
-
-            return $result;
-        }
-
-        // if last element contains a colon AND no comma, it's not a csv (it's a summary like flows/packets/bytes)
-        $lastLine = $output[\count($output) - 1] ?? '';
-        if (str_contains($lastLine, ':') && !str_contains($lastLine, ',')) {
-            // Parse summary format
-            /** @var array<array<string, mixed>> $decoded */
-            $decoded = [];
-            foreach ($output as $line) {
-                if (str_contains($line, ':')) {
-                    [$key, $value] = explode(':', $line, 2);
-                    $decoded[] = ['metric' => trim($key), 'value' => trim($value)];
-                }
-            }
-            $result = [
-                'command' => $command,
-                'rawOutput' => $rawOutput,
-                'decoded' => $decoded,
-            ];
-
-            // Add stderr if present and not benign
-            if (!empty($stderr)) {
-                $result['stderr'] = trim($stderr);
-            }
-
-            return $result;
-        }
-
-        // Parse CSV into array of associative arrays (similar to JSON structure)
-        /** @var array<array<string, mixed>> $csvData */
-        $csvData = [];
-
-        /** @var array<string> $headers */
-        $headers = [];
-
-        // Detect delimiter once: use comma if first line contains commas, otherwise tab
-        $delimiter = str_contains($output[0], ',') ? ',' : "\t";
-        $aggregationNote = isset($this->cfg['option']['-a']) ? ' (with aggregation -a=' . $this->cfg['option']['-a'] . ')' : '';
-        $this->d->log('CSV delimiter detected: ' . ($delimiter === ',' ? 'comma' : 'tab') . $aggregationNote, LOG_DEBUG);
-
-        foreach ($output as $i => $line) {
-            $fields = str_getcsv($line, $delimiter, '"', '');
-
-            if (\count($fields) === 1 || str_contains((string) $fields[0], 'limit') || str_contains((string) $fields[0], 'error')) {
-                // probably an error message or warning. add to command
-                $command .= ' <br><b>' . $fields[0] . '</b>';
-
-                continue;
-            }
-
-            // First valid line is the header
-            if (empty($headers)) {
-                $headers = $fields;
-
-                continue;
-            }
-
-            // Convert CSV row to associative array
-            $row = [];
-            foreach ($fields as $field_id => $value) {
-                if (isset($headers[$field_id])) {
-                    $row[$headers[$field_id]] = $value;
-                }
-            }
-
-            $csvData[] = $row;
-        }
-
-        $this->d->log('CSV parsing complete. Headers: ' . implode(', ', $headers) . '. Rows: ' . \count($csvData), LOG_DEBUG);
-
-        // add execution time to command
-        $executionMsg = '<br><b>Execution time:</b> ' . round(microtime(true) - $timer, 3) . ' seconds';
-        $command .= $executionMsg;
-
-        $result = [
-            'command' => $command,
-            'rawOutput' => $rawOutput,
-            'decoded' => $csvData,
-        ];
-
-        // Add stderr if present and not benign
-        if (!empty($stderr)) {
-            $result['stderr'] = trim($stderr);
-        }
-
-        return $result;
+        return $status;
     }
 
     /**
@@ -567,10 +321,6 @@ class Nfdump implements Processor {
     }
 
     /**
-     * Override the nfdump profile used for path construction.
-     * Must be called before setOption('-M', ...) to take effect.
-     */
-    /**
      * Names this processor's runs, so concurrent callers can kill their own query rather than
      * whichever one started last. Defaults to a shared handle for the single-query case.
      */
@@ -582,6 +332,10 @@ class Nfdump implements Processor {
         return $this->queryHandle;
     }
 
+    /**
+     * Override the nfdump profile used for path construction.
+     * Must be called before setOption('-M', ...) to take effect.
+     */
     public function setProfile(string $profile): void {
         $this->cfg['env']['profile'] = $profile;
     }
@@ -759,7 +513,7 @@ class Nfdump implements Processor {
     /**
      * Collapse nfdump's address-family-specific JSON keys onto family-agnostic ones.
      *
-     * nfdump's `-o json` names every address field after the record's address family —
+     * nfdump's `-o json` names every address field after the record's address family:
      * an IPv4 record carries `src4_addr`/`dst4_addr`, an IPv6 record `src6_addr`/`dst6_addr`
      * (likewise `ip4_next_hop`, `bgp6_next_hop`, `src4_tun_ip`, `dst6_xlt_ip`, `ip4_router`, …).
      * A result set holding both families therefore has two different record schemas, so any
@@ -802,7 +556,7 @@ class Nfdump implements Processor {
     /**
      * Parse whitespace-delimited aggregated nfdump output (custom 'fmt:' format strings) into
      * structured rows. Skips nfdump's own header/summary/footer lines by requiring an exact
-     * column-count match against $headers — those lines never happen to match by construction
+     * column-count match against $headers; those lines never happen to match by construction
      * (the human-readable header row has multi-word column labels, and summary/footer lines are
      * comma/colon-laden with a different token count).
      *
@@ -933,22 +687,324 @@ class Nfdump implements Processor {
     }
 
     /**
-     * Concatenates key and value of supplied array.
+     * The options as command-line arguments. A null or empty value is a bare flag, a list
+     * repeats the flag once per element, in order (`-s 'a' -s 'b'`).
      *
-     * @param array<string, mixed> $array
+     * @param array<string, mixed> $options
      */
-    private function flatten(array $array): string {
-        $output = '';
+    private function flatten(array $options): string {
+        $parts = [];
 
-        foreach ($array as $key => $value) {
-            if ($value === null) {
-                $output .= $key . ' ';
-            } else {
-                $output .= \is_int($key) ?: $key . ' ' . escapeshellarg((string) $value) . ' ';
+        foreach ($options as $flag => $value) {
+            foreach (\is_array($value) ? $value : [$value] as $item) {
+                $item = self::scalarString($item);
+                $parts[] = $item === '' ? $flag : $flag . ' ' . escapeshellarg($item);
             }
         }
 
-        return $output;
+        return implode(' ', $parts);
+    }
+
+    /**
+     * Turns what nfdump printed into the execute() result, or the exception it amounts to.
+     *
+     * @return array{command: string, rawOutput: string, decoded: array<array<string, mixed>>, stderr?: string, notes: list<string>, exitCode: int}
+     *
+     * @throws NfdumpException
+     */
+    private function interpret(string $command, string $stdout, string $stderrRaw, int $exitCode, float $timer): array {
+        // What survives the benign filter is what every later `$result['stderr']` reports, and
+        // the panels show that to the user, so a message nfdump always prints must not reach it.
+        $stderrRaw = trim($stderrRaw);
+        $stderr = '';
+        if ($stderrRaw !== '') {
+            $stderr = self::withoutBenignStderr($stderrRaw);
+            if ($stderr === '') {
+                $this->d->log('NfDump benign stderr message: ' . $stderrRaw, LOG_DEBUG);
+            } else {
+                $this->d->log('NfDump stderr: ' . $stderr, LOG_WARNING);
+            }
+        }
+
+        $output = explode("\n", $stdout);
+        if (end($output) === '') {
+            array_pop($output);
+        }
+
+        // The usage text is not a result, whatever the exit code says.
+        if (isset($output[0]) && stripos($output[0], 'usage') === 0) {
+            $output = [];
+        }
+
+        $blank = trim(implode("\n", $output)) === '';
+        if ($exitCode !== 0 && ($blank || \in_array($exitCode, [127, 250, 254, 255], true))) {
+            throw $this->failure($command, $output, $stderr, $stderrRaw, $exitCode);
+        }
+
+        $result = $this->decode($command, $stdout, $output, $stderr, $stderrRaw, $exitCode, $timer);
+
+        // A rejected option (`-s nevent`, `-s srcip/foo`) exits 1 with its option table on stdout.
+        if ($exitCode !== 0 && $result['decoded'] === []) {
+            throw $this->failure($command, $output, $stderr, $stderrRaw, $exitCode);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param list<string> $output stdout split into lines
+     *
+     * @return array{command: string, rawOutput: string, decoded: array<array<string, mixed>>, stderr?: string, notes: list<string>, exitCode: int}
+     *
+     * @throws NfdumpException
+     */
+    private function decode(string $command, string $stdout, array $output, string $stderr, string $stderrRaw, int $exitCode, float $timer): array {
+        /** @var list<string> $notes */
+        $notes = [];
+        if ($exitCode !== 0) {
+            $notes[] = 'nfdump exited with code ' . $exitCode;
+        }
+
+        // Nothing printed and no failure: an empty result. Import::start() moves on to the
+        // next file on one.
+        if (trim(implode("\n", $output)) === '') {
+            return $this->result($command, '', [], $stderr, $notes, $exitCode, $timer);
+        }
+
+        if (\count($output) === 1) {
+            $line = trim($output[0]);
+
+            if ($line === 'No matching flows') {
+                $notes[] = $line;
+
+                return $this->result($command, '', [], $stderr, $notes, $exitCode, $timer);
+            }
+
+            // A CSV header alone is a statistic or listing with no rows.
+            if (str_starts_with($line, 'ts,') || str_starts_with($line, 'firstSeen,')) {
+                return $this->result($command, $stdout, [], $stderr, $notes, $exitCode, $timer);
+            }
+
+            // Single-line JSON is valid (e.g. -s statistics with -n 1); any other lone line
+            // is nfdump explaining why it has no data.
+            $firstChar = $line[0] ?? '';
+            if ($firstChar !== '{' && $firstChar !== '[') {
+                throw new NfdumpException($line, $command, $stderr !== '' ? $stderr : $stderrRaw, $exitCode);
+            }
+        }
+
+        if (isset($this->cfg['format']) && $this->cfg['format'] === 'json' && preg_match('/^[\{|\[]/', $output[0])) {
+            foreach ($output as $line) {
+                if (trim($line) === 'No matching flows') {
+                    $notes[] = 'No matching flows';
+
+                    return $this->result($command, '', [], $stderr, $notes, $exitCode, $timer);
+                }
+            }
+
+            // NDJSON, one object per line: what statistics queries (-s) print.
+            if (str_starts_with($output[0], '{')) {
+                $decodedData = [];
+                foreach ($output as $line) {
+                    $trimmed = trim($line);
+                    if ($trimmed === '') {
+                        continue;
+                    }
+                    $decoded = json_decode($trimmed, true);
+                    if (!\is_array($decoded)) {
+                        throw new NfdumpException('Invalid JSON line from nfdump (' . json_last_error_msg() . '): ' . self::excerpt($trimmed), $command, $stderr, $exitCode);
+                    }
+                    $decodedData[] = $decoded;
+                }
+
+                return $this->result($command, $stdout, self::normalizeAddressFamilyKeys($decodedData), $stderr, $notes, $exitCode, $timer);
+            }
+
+            $jsonOutput = implode("\n", $output);
+
+            // nfdump can end a JSON array without its closing bracket.
+            if (str_starts_with($jsonOutput, '[') && !str_ends_with(trim($jsonOutput), ']')) {
+                $jsonOutput .= ']';
+            }
+
+            $decodedData = json_decode($jsonOutput, true);
+            if (!\is_array($decodedData)) {
+                throw new NfdumpException('Invalid JSON from nfdump (' . json_last_error_msg() . '): ' . self::excerpt($jsonOutput), $command, $stderr, $exitCode);
+            }
+
+            return $this->result($command, $stdout, self::normalizeAddressFamilyKeys($decodedData), $stderr, $notes, $exitCode, $timer);
+        }
+
+        // -B prints nfdump's fixed-width table even with -o csv; other aggregations are CSV
+        // only with -o csv, which setOption() already forces once -a is set.
+        $isBidirectional = isset($this->cfg['option']['-B']) || (isset($this->cfg['option']['-a']) && str_contains((string) $this->cfg['option']['-a'], 'B'));
+
+        // Custom whitespace-delimited aggregation format (e.g. 'fmt:%sa %da %ibyt %ipkt %fl'),
+        // used by the Sankey to get per-pair flow counts, which the fixed -o csv aggregation
+        // schema does not include.
+        if (isset($this->cfg['option']['-a']) && !$isBidirectional && str_starts_with((string) $this->cfg['format'], 'fmt:')) {
+            $decoded = self::parseWhitespaceDelimitedAggregation($output, $this->get_output_format($this->cfg['format']));
+
+            return $this->result($command, $stdout, $decoded, $stderr, $notes, $exitCode, $timer);
+        }
+
+        $isAggregationWithoutCsv = isset($this->cfg['option']['-a']) && $this->cfg['format'] !== 'csv';
+
+        if ($isBidirectional || $isAggregationWithoutCsv) {
+            $this->d->log('Aggregation detected (-B=' . (isset($this->cfg['option']['-B']) ? 'yes' : 'no') . ', -a flag=' . self::scalarString($this->cfg['option']['-a'] ?? 'null') . ') producing fixed-width format (bidirectional=' . ($isBidirectional ? 'yes' : 'no') . ', format=' . ($this->cfg['format'] ?? 'null') . '), returning enhanced raw output', LOG_DEBUG);
+
+            // The biflow table has a known shape, so it can be read into rows. The raw text
+            // still travels with it: a row the parser does not recognise means an empty list,
+            // and the caller renders the output as it came instead of losing it.
+            $decoded = $isBidirectional ? self::parseBidirectionalOutput($output) : [];
+
+            // Beautifying is for when the text *is* the view. Once there are rows, the text
+            // moves to "Original View", which escapes what it is given.
+            $rawOutput = $decoded === [] ? $this->beautifyAggregatedOutput($output) : $stdout;
+
+            return $this->result($command, $rawOutput, $decoded, $stderr, $notes, $exitCode, $timer);
+        }
+
+        // A last line with a colon and no comma is a key: value summary such as `-I`.
+        $lastLine = $output[\count($output) - 1];
+        if (str_contains($lastLine, ':') && !str_contains($lastLine, ',')) {
+            /** @var array<array<string, mixed>> $decoded */
+            $decoded = [];
+            foreach ($output as $line) {
+                if (str_contains($line, ':')) {
+                    [$key, $value] = explode(':', $line, 2);
+                    $decoded[] = ['metric' => trim($key), 'value' => trim($value)];
+                }
+            }
+
+            return $this->result($command, $stdout, $decoded, $stderr, $notes, $exitCode, $timer);
+        }
+
+        /** @var array<array<string, mixed>> $csvData */
+        $csvData = [];
+
+        /** @var array<string> $headers */
+        $headers = [];
+
+        // From the first line that has a delimiter: nfdump can lead with "No matching flows".
+        $delimiter = "\t";
+        foreach ($output as $line) {
+            if (str_contains($line, ',') || str_contains($line, "\t")) {
+                $delimiter = str_contains($line, ',') ? ',' : "\t";
+
+                break;
+            }
+        }
+        $aggregationNote = isset($this->cfg['option']['-a']) ? ' (with aggregation -a=' . self::scalarString($this->cfg['option']['-a']) . ')' : '';
+        $this->d->log('CSV delimiter detected: ' . ($delimiter === ',' ? 'comma' : 'tab') . $aggregationNote, LOG_DEBUG);
+
+        foreach ($output as $line) {
+            $fields = str_getcsv($line, $delimiter, '"', '');
+
+            // A lone field or a limit/error line is nfdump talking, not a row.
+            if (\count($fields) === 1 || str_contains((string) $fields[0], 'limit') || str_contains((string) $fields[0], 'error')) {
+                $note = trim((string) $fields[0]);
+                if ($note !== '') {
+                    $notes[] = $note;
+                }
+
+                continue;
+            }
+
+            if ($headers === []) {
+                $headers = array_map(static fn (?string $h): string => (string) $h, $fields);
+
+                continue;
+            }
+
+            $row = [];
+            foreach ($fields as $fieldId => $value) {
+                if (isset($headers[$fieldId])) {
+                    $row[$headers[$fieldId]] = $value;
+                }
+            }
+
+            $csvData[] = $row;
+        }
+
+        $this->d->log('CSV parsing complete. Headers: ' . implode(', ', $headers) . '. Rows: ' . \count($csvData), LOG_DEBUG);
+
+        return $this->result($command, $stdout, $csvData, $stderr, $notes, $exitCode, $timer);
+    }
+
+    /**
+     * @param array<array<string, mixed>> $decoded
+     * @param list<string>                $notes
+     *
+     * @return array{command: string, rawOutput: string, decoded: array<array<string, mixed>>, stderr?: string, notes: list<string>, exitCode: int}
+     */
+    private function result(string $command, string $rawOutput, array $decoded, string $stderr, array $notes, int $exitCode, float $timer): array {
+        $notes[] = 'Execution time: ' . round(microtime(true) - $timer, 3) . ' seconds';
+
+        $result = [
+            'command' => $command,
+            'rawOutput' => $rawOutput,
+            'decoded' => $decoded,
+            'notes' => $notes,
+            'exitCode' => $exitCode,
+        ];
+        if ($stderr !== '') {
+            $result['stderr'] = $stderr;
+        }
+
+        return $result;
+    }
+
+    /**
+     * The exception for a run that failed, worded from nfdump's own explanation: the `Line N:`
+     * message a filter error prints on stdout, else the first stderr line.
+     *
+     * @param list<string> $output
+     */
+    private function failure(string $command, array $output, string $stderr, string $stderrRaw, int $exitCode): NfdumpException {
+        $text = '';
+        foreach ($output as $line) {
+            if (preg_match('/^Line \d+: /', $line) === 1) {
+                // The line number only helps for a multi-line filter; FilterComposer's "\n)" after a comment adds none.
+                $multiLine = str_contains(str_replace("\n)", ')', $this->cfg['filter']), "\n");
+                $text = $multiLine ? trim($line) : trim((string) preg_replace('/^Line 1: /', '', $line));
+
+                break;
+            }
+        }
+        $text = $text !== '' ? $text : self::firstLine($stderr);
+        $text = $text !== '' ? $text : self::firstLine($stderrRaw);
+        $text = $text !== '' ? $text : self::firstLine(implode("\n", $output));
+
+        $message = match ($exitCode) {
+            254 => 'Filter syntax error: ' . ($text !== '' ? $text : 'nfdump rejected the filter'),
+            127 => 'nfdump could not be started' . ($text !== '' ? ': ' . $text : '') . '. Is it installed at ' . $this->cfg['env']['bin'] . '?',
+            255 => 'nfdump initialisation failed' . ($text !== '' ? ': ' . $text : ''),
+            250 => 'nfdump internal error' . ($text !== '' ? ': ' . $text : ''),
+            // nfdump never exits with these itself: this is a Kill (SIGTERM) or SIGKILL.
+            9, 15 => 'nfdump was stopped (signal ' . $exitCode . ')' . ($text !== '' ? ': ' . $text : ''),
+            default => $text !== '' ? $text : 'nfdump exited with code ' . $exitCode,
+        };
+
+        return new NfdumpException($message, $command, $stderrRaw, $exitCode);
+    }
+
+    private static function firstLine(string $text): string {
+        foreach (explode("\n", $text) as $line) {
+            if (trim($line) !== '') {
+                return trim($line);
+            }
+        }
+
+        return '';
+    }
+
+    private static function excerpt(string $text): string {
+        return \strlen($text) > 200 ? substr($text, 0, 200) . '...' : $text;
+    }
+
+    private static function scalarString(mixed $value): string {
+        return \is_scalar($value) ? (string) $value : '';
     }
 
     /**
@@ -1022,7 +1078,7 @@ class Nfdump implements Processor {
                 continue;
             }
 
-            // Flow data rows start with a timestamp like "2026-04-22 10:43:..." — don't split on colon
+            // Flow data rows start with a timestamp like "2026-04-22 10:43:...", so don't split on colon
             if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:/', $trim)) {
                 $enhancedLines[] = $line;
 

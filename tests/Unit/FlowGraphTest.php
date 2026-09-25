@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 use mbolli\nfsen_ng\actions\FlowGraphActions;
+use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Settings;
+use mbolli\nfsen_ng\query\FlowsQuery;
+use mbolli\nfsen_ng\query\TimeWindow;
 
 describe('FlowGraphActions::effectiveFilter()', function (): void {
     test('passes a plain filter through', function (): void {
@@ -14,21 +18,11 @@ describe('FlowGraphActions::effectiveFilter()', function (): void {
     // The table prepends its byte thresholds to the query it runs, so the graph has to plot
     // the same expression or it draws more traffic than the table lists.
     test('includes the byte thresholds the table applies', function (): void {
-        $filter = FlowGraphActions::effectiveFilter('dst port 22', '1M', '');
-
-        expect($filter)->toContain('dst port 22')
-            ->and($filter)->toContain('bytes > 1M')
-            ->and($filter)->toContain('and')
-        ;
+        expect(FlowGraphActions::effectiveFilter('dst port 22', '1M', ''))->toBe('(bytes > 1M) and (dst port 22)');
     });
 
     test('uses the thresholds alone when there is no filter text', function (): void {
-        $filter = FlowGraphActions::effectiveFilter('', '1M', '100M');
-
-        expect($filter)->toContain('bytes > 1M')
-            ->and($filter)->toContain('bytes < 100M')
-            ->and($filter)->not->toStartWith('and')
-        ;
+        expect(FlowGraphActions::effectiveFilter('', '1M', '100M'))->toBe('bytes > 1M and bytes < 100M');
     });
 
     test('ignores a malformed threshold rather than passing it to nfdump', function (): void {
@@ -37,5 +31,51 @@ describe('FlowGraphActions::effectiveFilter()', function (): void {
 
     test('trims stray whitespace from the filter box', function (): void {
         expect(FlowGraphActions::effectiveFilter('   host 10.0.0.1   ', '', ''))->toBe('host 10.0.0.1');
+    });
+
+    // `bytes > 1M and dst port 80 or dst port 443` plotted every flow to 443, whatever its size.
+    test('keeps an or in the filter from escaping the threshold', function (): void {
+        expect(FlowGraphActions::effectiveFilter('dst port 80 or dst port 443', '1M', ''))
+            ->toBe('(bytes > 1M) and (dst port 80 or dst port 443)')
+        ;
+    });
+
+    test('adds the global protocol', function (): void {
+        expect(FlowGraphActions::effectiveFilter('port 53', '', '', 'udp'))->toBe('(proto udp) and (port 53)')
+            ->and(FlowGraphActions::effectiveFilter('', '', '', 'icmp'))->toBe('proto icmp or proto icmp6')
+        ;
+    });
+
+    // The value comes from a client-writable signal and this runs on every render.
+    test('reads an unknown protocol as any instead of failing', function (): void {
+        expect(FlowGraphActions::effectiveFilter('port 53', '', '', 'bogus'))->toBe('port 53');
+    });
+
+    // params() catches this on render and the build refuses the filter.
+    test('refuses a filter whose parenthesis would close the wrapper', function (): void {
+        expect(fn () => FlowGraphActions::effectiveFilter('port 53) or (port 80', '1M', '', 'udp'))
+            ->toThrow(InvalidArgumentException::class, 'Unbalanced parentheses in the filter.')
+        ;
+    });
+
+    test('plots exactly the filter the flow table runs', function (): void {
+        Config::$settings = Settings::fromArray(mockSettings());
+
+        foreach (['any', 'tcp', 'other'] as $protocol) {
+            $query = new FlowsQuery(
+                window: TimeWindow::raw(0, 300),
+                sources: ['gateway'],
+                profile: 'live',
+                limit: 10,
+                filter: 'dst port 80 or dst port 443',
+                lowerLimit: '1k',
+                upperLimit: '1G',
+                protocol: $protocol,
+            );
+
+            expect(FlowGraphActions::effectiveFilter('dst port 80 or dst port 443', '1k', '1G', $protocol))
+                ->toBe($query->effectiveFilter())
+            ;
+        }
     });
 });

@@ -1,0 +1,9 @@
+#!/bin/sh
+# nfdump for Nfdump::execute() tests: prints $NFDUMP_STUB_STDOUT/STDERR, exits $NFDUMP_STUB_EXIT
+# and, when $NFDUMP_STUB_ARGS is set, writes its arguments there one per line.
+if [ -n "${NFDUMP_STUB_ARGS:-}" ]; then
+    printf '%s\n' "$@" > "$NFDUMP_STUB_ARGS"
+fi
+printf '%s' "${NFDUMP_STUB_STDOUT:-}"
+printf '%s' "${NFDUMP_STUB_STDERR:-}" >&2
+exit "${NFDUMP_STUB_EXIT:-0}"

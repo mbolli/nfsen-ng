@@ -13,9 +13,11 @@ use mbolli\nfsen_ng\query\FlowsQuery;
 use mbolli\nfsen_ng\query\LoadQuery;
 use mbolli\nfsen_ng\query\MatrixQuery;
 use mbolli\nfsen_ng\query\QueryResult;
+use mbolli\nfsen_ng\query\StatisticCatalog;
 use mbolli\nfsen_ng\query\StatsQuery;
 use mbolli\nfsen_ng\query\TimelineQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
+use Tests\Support\FakeProcessor;
 
 /**
  * Records what a query asks for instead of running nfdump, so option building can be
@@ -166,6 +168,7 @@ function makeStatsQuery(array $overrides = []): StatsQuery {
         lowerLimit: $overrides['lowerLimit'] ?? '',
         upperLimit: $overrides['upperLimit'] ?? '',
         aggregation: $overrides['aggregation'] ?? [],
+        protocol: $overrides['protocol'] ?? 'any',
     );
 }
 
@@ -180,19 +183,103 @@ describe('StatsQuery::effectiveFilter()', function (): void {
 
     // Thresholds cannot use nfdump -l/-L in statistics mode, so they join the expression.
     test('combines a byte threshold with the user filter', function (): void {
-        $filter = makeStatsQuery(['filter' => 'proto tcp', 'lowerLimit' => '1M'])->effectiveFilter();
-
-        expect($filter)->toContain('proto tcp')
-            ->and($filter)->toContain('and')
+        expect(makeStatsQuery(['filter' => 'proto tcp', 'lowerLimit' => '1M'])->effectiveFilter())
+            ->toBe('(bytes > 1M) and (proto tcp)')
         ;
     });
 
     test('uses the threshold alone when there is no user filter', function (): void {
-        $filter = makeStatsQuery(['lowerLimit' => '1M'])->effectiveFilter();
-
-        expect($filter)->not->toBe('')
-            ->and($filter)->not->toContain('and')
+        expect(makeStatsQuery(['lowerLimit' => '1M', 'upperLimit' => '10M'])->effectiveFilter())
+            ->toBe('bytes > 1M and bytes < 10M')
         ;
+    });
+
+    // `bytes > 1M and src port 53 or dst port 53` applied the threshold to one side only.
+    test('keeps an or in the user filter from escaping the threshold', function (): void {
+        expect(makeStatsQuery(['filter' => 'src port 53 or dst port 53', 'lowerLimit' => '1M'])->effectiveFilter())
+            ->toBe('(bytes > 1M) and (src port 53 or dst port 53)')
+        ;
+    });
+
+    test('adds the global protocol between the thresholds and the user filter', function (): void {
+        expect(makeStatsQuery(['filter' => 'port 53', 'lowerLimit' => '1k', 'protocol' => 'udp'])->effectiveFilter())
+            ->toBe('(bytes > 1k) and (proto udp) and (port 53)')
+            ->and(makeStatsQuery(['filter' => 'port 443', 'protocol' => 'icmp'])->effectiveFilter())
+            ->toBe('(proto icmp or proto icmp6) and (port 443)')
+        ;
+    });
+
+    test('uses the protocol alone when nothing else is set', function (): void {
+        expect(makeStatsQuery(['protocol' => 'other'])->effectiveFilter())
+            ->toBe('not (proto tcp or proto udp or proto icmp or proto icmp6)')
+        ;
+    });
+
+    test('hands the composed filter to the processor', function (): void {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        $query = makeStatsQuery(['filter' => 'port 53', 'protocol' => 'tcp']);
+
+        expect($query->processor()->filter)->toBe('(proto tcp) and (port 53)');
+    });
+
+    // The actions report this like any other failure to build the command.
+    test('refuses a user filter that would close its parenthesis early', function (): void {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        $query = makeStatsQuery(['filter' => 'port 53) or (port 80', 'lowerLimit' => '1M', 'protocol' => 'udp']);
+
+        expect(fn () => $query->processor())->toThrow(InvalidArgumentException::class, 'Unbalanced parentheses in the filter.');
+    });
+});
+
+describe('StatsQuery validation', function (): void {
+    // stats_for is client-writable and reaches nfdump's -s option.
+    test('rejects a statistic that is not in the catalog', function (): void {
+        expect(fn () => makeStatsQuery(['for' => 'srcport:p']))->toThrow(InvalidArgumentException::class, 'Unknown statistic.')
+            ->and(fn () => makeStatsQuery(['for' => 'bogus']))->toThrow(InvalidArgumentException::class)
+            ->and(fn () => makeStatsQuery(['for' => '']))->toThrow(InvalidArgumentException::class)
+        ;
+    });
+
+    // The panels render the message as markup, so a crafted value must not come back in it.
+    test('leaves the rejected value out of the message', function (): void {
+        foreach (['for', 'orderBy', 'protocol'] as $key) {
+            try {
+                makeStatsQuery([$key => '<img src=x onerror=alert(1)>']);
+                $message = '';
+            } catch (InvalidArgumentException $e) {
+                $message = $e->getMessage();
+            }
+
+            expect($message)->not->toBe('')->not->toContain('<');
+        }
+    });
+
+    // stats_orderBy is client-writable too and reaches `-s <for>/<orderBy>`.
+    test('rejects an order nfdump does not rank by', function (): void {
+        expect(fn () => makeStatsQuery(['orderBy' => 'bogus']))->toThrow(InvalidArgumentException::class, 'Unknown order, expected one of flows, packets, bytes, pps, bps, bpp.')
+            ->and(fn () => makeStatsQuery(['orderBy' => 'bytes/flows']))->toThrow(InvalidArgumentException::class)
+            ->and(fn () => makeStatsQuery(['orderBy' => '']))->toThrow(InvalidArgumentException::class)
+        ;
+    });
+
+    test('accepts every order the picker offers', function (): void {
+        foreach (StatisticCatalog::ORDER_BY as $order) {
+            expect(makeStatsQuery(['orderBy' => $order])->orderBy)->toBe($order);
+        }
+    });
+
+    test('accepts every statistic in the catalog', function (): void {
+        foreach (StatisticCatalog::all() as $entry) {
+            expect(makeStatsQuery(['for' => $entry['value']])->for)->toBe($entry['value']);
+        }
+    });
+
+    test('rejects an unknown protocol', function (): void {
+        expect(fn () => makeStatsQuery(['protocol' => 'sctp']))->toThrow(InvalidArgumentException::class, 'Unknown protocol, expected one of any, tcp, udp, icmp, other.');
     });
 });
 
@@ -213,7 +300,7 @@ describe('StatsQuery aggregation (#174)', function (): void {
         expect($options['-a'])->toBe('-Aproto,dstport');
     });
 
-    // "Warning: Aggregation ignored for element statistics" — nfdump aggregates these by their
+    // "Warning: Aggregation ignored for element statistics": nfdump aggregates these by their
     // own element, so a spec would be dropped by nfdump anyway, silently changing nothing.
     test('drops the spec for an element statistic', function (): void {
         $options = statsOptions(['for' => 'srcip', 'aggregation' => ['proto' => true]]);
@@ -377,8 +464,52 @@ describe('FlowsQuery', function (): void {
             upperLimit: '10M',
         );
 
-        expect($query->effectiveFilter())->toContain('proto udp')
-            ->and($query->effectiveFilter())->toContain('and')
+        expect($query->effectiveFilter())->toBe('(bytes < 10M) and (proto udp)');
+    });
+
+    test('parenthesises thresholds, protocol and user filter', function (): void {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        $query = new FlowsQuery(
+            window: TimeWindow::raw(10, 20),
+            sources: ['gw'],
+            profile: 'live',
+            limit: 10,
+            filter: 'dst port 80 or dst port 443',
+            lowerLimit: '100',
+            protocol: 'tcp',
+        );
+
+        expect($query->effectiveFilter())->toBe('(bytes > 100) and (proto tcp) and (dst port 80 or dst port 443)')
+            ->and($query->processor()->filter)->toBe($query->effectiveFilter())
+        ;
+    });
+
+    test('refuses a user filter that would close its parenthesis early', function (): void {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        $query = new FlowsQuery(window: TimeWindow::raw(10, 20), sources: ['gw'], profile: 'live', limit: 10, filter: 'host 10.0.0.1) or (host 10.0.0.2', protocol: 'tcp');
+
+        expect(fn () => $query->processor())->toThrow(InvalidArgumentException::class, 'Unbalanced parentheses in the filter.');
+    });
+
+    test('defaults to any protocol, which adds nothing', function (): void {
+        statsQuerySettings();
+
+        $query = new FlowsQuery(window: TimeWindow::raw(10, 20), sources: ['gw'], profile: 'live', limit: 10, filter: 'host 10.0.0.1');
+
+        expect($query->protocol)->toBe('any')
+            ->and($query->effectiveFilter())->toBe('host 10.0.0.1')
+        ;
+    });
+
+    test('rejects an unknown protocol', function (): void {
+        statsQuerySettings();
+
+        expect(fn () => new FlowsQuery(window: TimeWindow::raw(10, 20), sources: ['gw'], profile: 'live', limit: 10, protocol: 'TCP '))
+            ->toThrow(InvalidArgumentException::class)
         ;
     });
 });
@@ -426,6 +557,43 @@ describe('MatrixQuery', function (): void {
         expect($with)->toContain('%dp')
             ->and($without)->not->toContain('%dp')
         ;
+    });
+
+    test('parenthesises thresholds, protocol and user filter', function (): void {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        $query = new MatrixQuery(
+            TimeWindow::raw(0, 10),
+            ['gw'],
+            'live',
+            'bytes',
+            10,
+            filter: 'net 10.0.0.0/8 or net 192.168.0.0/16',
+            upperLimit: '1G',
+            protocol: 'udp',
+        );
+
+        expect($query->effectiveFilter())->toBe('(bytes < 1G) and (proto udp) and (net 10.0.0.0/8 or net 192.168.0.0/16)')
+            ->and($query->processor()->filter)->toBe($query->effectiveFilter())
+        ;
+    });
+
+    test('rejects an unknown protocol', function (): void {
+        statsQuerySettings();
+
+        expect(fn () => new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, protocol: 'gre'))
+            ->toThrow(InvalidArgumentException::class)
+        ;
+    });
+
+    test('refuses a user filter that would close its parenthesis early', function (): void {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        $query = new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, filter: 'net 10.0.0.0/8) or (net 192.168.0.0/16', protocol: 'udp');
+
+        expect(fn () => $query->processor())->toThrow(InvalidArgumentException::class, 'Unbalanced parentheses in the filter.');
     });
 
     test('rejects a processor answer that is not a table', function (): void {
@@ -647,6 +815,24 @@ describe('FilteredSeries protocol bucketing', function (): void {
             ->and(Import::protocolBucket('icmp'))->toBe('icmp')
             ->and(Import::protocolBucket('GRE'))->toBe('other')
             ->and(Import::protocolBucket('TCP'))->toBe('tcp')
+        ;
+    });
+});
+
+describe('FakeProcessor', function (): void {
+    test('replays queued raw output in order, then an empty string', function (): void {
+        FakeProcessor::reset();
+        FakeProcessor::queueRaw('first');
+        FakeProcessor::queueRaw('second');
+        $raw = static fn (): string => (new FakeProcessor())->execute()['rawOutput'];
+
+        expect([$raw(), $raw(), $raw()])->toBe(['first', 'second', '']);
+
+        FakeProcessor::queueRaw('dropped');
+        FakeProcessor::reset();
+
+        expect(FakeProcessor::$rawResponses)->toBe([])
+            ->and($raw())->toBe('')
         ;
     });
 });

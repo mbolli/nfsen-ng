@@ -8,7 +8,7 @@ use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
 
 /**
- * HealthChecker — runs a suite of configuration and environment checks.
+ * Runs a suite of configuration and environment checks.
  *
  * Call HealthChecker::run() on every view render (cached in app.php with a 30s
  * throttle so it doesn't block every SSE re-render).
@@ -20,7 +20,7 @@ use mbolli\nfsen_ng\processor\NfdumpSlots;
  * @phpstan-type DaemonInfo array{ready: bool, watchCount: int, lastAutoImport: int}
  */
 class HealthChecker {
-    /** Human-readable elapsed time — handles non-positive (clock skew) gracefully. */
+    /** Human-readable elapsed time; non-positive values (clock skew) read as "just now". */
     public static function ageStr(int $seconds): string {
         if ($seconds <= 0) {
             return 'just now';
@@ -71,7 +71,7 @@ class HealthChecker {
 
         $ageStr = static fn (int $s): string => self::ageStr($s);
 
-        // Determine active datasource once — used throughout all checks below.
+        // Determine the active datasource once; every check below uses it.
         $datasource = strtolower($settings->datasourceName);
         $storageGroup = $datasource === 'victoriametrics' ? 'VictoriaMetrics' : 'RRD Storage';
 
@@ -85,7 +85,7 @@ class HealthChecker {
             'php_version',
             'PHP version',
             $phpOk ? 'ok' : 'error',
-            $phpOk ? $phpVer : "{$phpVer} — nfsen-ng requires PHP ≥ 8.4",
+            $phpOk ? $phpVer : "{$phpVer}. nfsen-ng requires PHP 8.4 or later.",
             'PHP Extensions'
         );
 
@@ -94,7 +94,7 @@ class HealthChecker {
             'ext_openswoole',
             'PHP ext-openswoole',
             $swVer !== null ? 'ok' : 'error',
-            $swVer !== null ? "Loaded ({$swVer})" : 'Not loaded — OpenSwoole is required',
+            $swVer !== null ? "Loaded ({$swVer})" : 'Not loaded. OpenSwoole is required.',
             'PHP Extensions'
         );
 
@@ -105,7 +105,7 @@ class HealthChecker {
             'PHP ext-rrd',
             $rrdOk ? 'ok' : ($datasource === 'rrd' ? 'error' : 'warning'),
             $rrdOk ? 'Loaded (' . rrd_version() . ')'
-                   : ($datasource === 'rrd' ? 'Not loaded — install php-rrd'
+                   : ($datasource === 'rrd' ? 'Not loaded. Install php-rrd.'
                                            : 'Not loaded (not required for ' . $settings->datasourceName . ')'),
             'PHP Extensions'
         );
@@ -115,8 +115,20 @@ class HealthChecker {
             'ext_inotify',
             'PHP ext-inotify',
             $inotifyOk ? 'ok' : ($daemonDisabled ? 'warning' : 'error'),
-            $inotifyOk ? 'Loaded' : 'Not loaded — install php-inotify',
+            $inotifyOk ? 'Loaded' : 'Not loaded. Install php-inotify.',
             'PHP Extensions'
+        );
+
+        // SQLite holds the top-N store, saved filters and alert events; without it those degrade.
+        $sqliteVer = ProcessInfo::sqliteVersion();
+        $add(
+            'ext_pdo_sqlite',
+            'PHP ext-pdo_sqlite',
+            $sqliteVer !== '' ? 'ok' : 'error',
+            $sqliteVer !== '' ? "Loaded (SQLite {$sqliteVer})" : 'Not loaded. Install php-sqlite3 (pdo_sqlite).',
+            'PHP Extensions',
+            false,
+            $sqliteVer !== '' ? '' : 'Top-N lists, saved filters and alert history are unavailable without it.'
         );
 
         // ── 2. Timezone ──────────────────────────────────────────────────────────
@@ -125,7 +137,7 @@ class HealthChecker {
         $iniTz = (string) \ini_get('date.timezone');
         $envTz = (string) (getenv('TZ') ?: '');
 
-        // Detect non-IANA abbreviations (e.g. CET, EST) — browsers reject them in Intl APIs
+        // Detect non-IANA abbreviations (e.g. CET, EST): browsers reject them in Intl APIs
         $isNonIana = $iniTz === '' && !str_contains($phpTz, '/')
             && !\in_array($phpTz, ['UTC', 'GMT'], true);
 
@@ -136,10 +148,10 @@ class HealthChecker {
         if ($iniTz !== '' && $envTz !== '' && strcasecmp($iniTz, $envTz) !== 0) {
             $tzStatus = 'warning';
             $tzDetail = $phpTz;
-            $tzHint = "php.ini date.timezone='{$iniTz}' overrides TZ env var '{$envTz}' — set NFCAPD_TZ explicitly if nfcapd uses a different timezone";
+            $tzHint = "php.ini date.timezone='{$iniTz}' overrides TZ env var '{$envTz}'. Set NFCAPD_TZ explicitly if nfcapd uses a different timezone.";
         } elseif ($isNonIana) {
             $tzStatus = 'warning';
-            $tzHint = "'{$phpTz}' is not an IANA timezone identifier — browser Intl APIs may reject it for date display. Use a region/city form (e.g. Europe/London)";
+            $tzHint = "'{$phpTz}' is not an IANA timezone identifier, so browser Intl APIs may reject it for date display. Use a region/city form (e.g. Europe/London).";
         }
 
         $add('tz_php', 'PHP timezone', $tzStatus, $tzDetail, 'Timezone', false, $tzHint);
@@ -151,69 +163,48 @@ class HealthChecker {
                 $nfcapdTz = new \DateTimeZone($nfcapdTzEnv);
                 $add('tz_nfcapd', 'nfcapd timezone', 'ok', $nfcapdTz->getName(), 'Timezone', false, 'Explicit override active via NFCAPD_TZ');
             } catch (\Exception) {
-                $add('tz_nfcapd', 'nfcapd timezone', 'error', $nfcapdTzEnv, 'Timezone', true, 'NFCAPD_TZ is not a valid timezone identifier — nfcapd filenames will be parsed in PHP default timezone instead');
+                $add('tz_nfcapd', 'nfcapd timezone', 'error', $nfcapdTzEnv, 'Timezone', true, 'NFCAPD_TZ is not a valid timezone identifier. nfcapd file names are parsed in the PHP default timezone instead.');
             }
         } else {
-            $add('tz_nfcapd', 'nfcapd timezone', 'ok', $phpTz, 'Timezone', false, 'Inherited from PHP timezone — set NFCAPD_TZ if nfcapd runs in a different timezone');
+            $add('tz_nfcapd', 'nfcapd timezone', 'ok', $phpTz, 'Timezone', false, 'Inherited from the PHP timezone. Set NFCAPD_TZ if nfcapd runs in a different timezone.');
         }
 
-        // nfcapd file time plausibility — parse the most recent filename and check it's not in the future
+        // nfcapd file time plausibility: the newest file name must not lie in the future.
         $plausibilityDone = false;
-        $nfcapdTzResolved = Config::nfcapdTimezone();
-        $profilesDataP = rtrim($settings->nfdumpProfilesData, '/\\');
-        $sourcesP = $settings->sources;
-        if ($profilesDataP !== '' && !empty($sourcesP)) {
+        if (rtrim($settings->nfdumpProfilesData, '/\\') !== '' && !empty($settings->sources)) {
             foreach (Config::detectProfiles() as $profileP) {
-                foreach ($sourcesP as $sourceP) {
-                    $basePath = $profilesDataP . \DIRECTORY_SEPARATOR . $profileP . \DIRECTORY_SEPARATOR . $sourceP;
-                    // Check today then yesterday
-                    foreach ([0, -86400] as $offset) {
-                        $dt = new \DateTimeImmutable('now', $nfcapdTzResolved);
-                        if ($offset !== 0) {
-                            $dt = $dt->modify('-1 day');
-                        }
-                        $dayDir = $basePath . \DIRECTORY_SEPARATOR . $dt->format('Y') . \DIRECTORY_SEPARATOR . $dt->format('m') . \DIRECTORY_SEPARATOR . $dt->format('d');
-                        $files = glob($dayDir . \DIRECTORY_SEPARATOR . 'nfcapd.[0-9]*') ?: [];
-                        if (empty($files)) {
-                            continue;
-                        }
-                        // Find the most recent filename by name (lexicographic = chronological for YYYYMMDDHHII)
-                        rsort($files);
-                        $newest = basename($files[0]);
-                        if (!preg_match('/^nfcapd\.(\d{12})$/', $newest, $fm)) {
-                            continue;
-                        }
-                        $fileDt = \DateTime::createFromFormat('YmdHi', $fm[1], $nfcapdTzResolved);
-                        if ($fileDt === false) {
-                            continue;
-                        }
-                        $fileEpoch = $fileDt->getTimestamp();
-                        $now = time();
-                        $plausibilityDone = true;
-                        if ($fileEpoch > $now + 1800) {
-                            $minutesAhead = (int) round(($fileEpoch - $now) / 60);
-                            $add(
-                                'tz_plausibility',
-                                'nfcapd file time',
-                                'warning',
-                                "Most recent file ({$newest}) is {$minutesAhead} min in the future",
-                                'Timezone',
-                                false,
-                                'Check NFCAPD_TZ — nfcapd filenames may be in a different timezone than configured'
-                            );
-                        } else {
-                            $fileAge = $ageStr($now - $fileEpoch);
-                            $add('tz_plausibility', 'nfcapd file time', 'ok', "Most recent: {$newest} ({$fileAge} ago)", 'Timezone');
-                        }
-
-                        break 3; // Found a file — stop searching
+                foreach ($settings->sources as $sourceP) {
+                    // Today and yesterday in the nfcapd timezone
+                    $newestP = NfcapdFiles::newest($profileP, $sourceP, 1);
+                    if ($newestP === null) {
+                        continue;
                     }
+
+                    $now = time();
+                    $plausibilityDone = true;
+                    if ($newestP['ts'] > $now + 1800) {
+                        $minutesAhead = (int) round(($newestP['ts'] - $now) / 60);
+                        $add(
+                            'tz_plausibility',
+                            'nfcapd file time',
+                            'warning',
+                            "Most recent file ({$newestP['name']}) is {$minutesAhead} min in the future",
+                            'Timezone',
+                            false,
+                            'Check NFCAPD_TZ: nfcapd file names may be in a different timezone than configured.'
+                        );
+                    } else {
+                        $fileAge = $ageStr($now - $newestP['ts']);
+                        $add('tz_plausibility', 'nfcapd file time', 'ok', "Most recent: {$newestP['name']} ({$fileAge} ago)", 'Timezone');
+                    }
+
+                    break 2;
                 }
             }
         }
 
         if (!$plausibilityDone) {
-            // No files found — freshness checks in section 5 will cover this
+            // The freshness checks under nfcapd Paths report the missing files.
             $add('tz_plausibility', 'nfcapd file time', 'ok', 'No files found to check', 'Timezone');
         }
 
@@ -258,11 +249,11 @@ class HealthChecker {
                     'Minimum version',
                     $meetsMin ? 'ok' : 'error',
                     $meetsMin
-                        ? "≥ {$minNfdump}"
-                        : "v{$numericVer} — nfsen-ng requires nfdump ≥ {$minNfdump}",
+                        ? "{$minNfdump} or later"
+                        : "v{$numericVer}. nfsen-ng requires nfdump {$minNfdump} or later.",
                     'nfdump',
                     false,
-                    $meetsMin ? '' : 'JSON output field names differ in 1.6.x; upgrade to nfdump ≥ 1.7.2'
+                    $meetsMin ? '' : 'JSON output field names differ in 1.6.x. Upgrade to nfdump 1.7.2 or later.'
                 );
             }
         }
@@ -276,7 +267,7 @@ class HealthChecker {
             'nfdump_max_processes',
             'Max processes',
             $maxProc >= 1 ? 'ok' : 'error',
-            $maxProc >= 1 ? $inUse . ' of ' . $maxProc . ' in use' : 'max-processes must be ≥ 1',
+            $maxProc >= 1 ? $inUse . ' of ' . $maxProc . ' in use' : 'max-processes must be at least 1',
             'nfdump'
         );
 
@@ -307,7 +298,7 @@ class HealthChecker {
                 'daemon_status',
                 'Daemon status',
                 'error',
-                'Not running — restart required',
+                'Not running. Restart required.',
                 'Import Daemon'
             );
         } else {
@@ -384,19 +375,22 @@ class HealthChecker {
                             "source_layout_{$sourceIdPfx}",
                             $multiProfile ? "Layout {$source} ({$profile})" : "Source layout: {$source}",
                             'error',
-                            'nfcapd files in flat structure — run reorganize_nfcapd.sh and configure nfcapd with -S 1',
+                            'nfcapd files in a flat structure. Run reorganize_nfcapd.sh and configure nfcapd with -S 1.',
                             'nfcapd Paths'
                         );
 
                         continue;
                     }
 
-                    // Capture freshness: check today's YYYY/MM/DD dir (in nfcapd timezone)
+                    // Capture freshness: today's YYYY/MM/DD dir in the nfcapd timezone, rotated files only
+                    // (an nfcapd.current.* file is rewritten continuously and says nothing about rotation).
                     $todayDt = new \DateTimeImmutable('now', Config::nfcapdTimezone());
                     $today = $todayDt->format('Y') . \DIRECTORY_SEPARATOR . $todayDt->format('m') . \DIRECTORY_SEPARATOR . $todayDt->format('d');
-                    $todayDir = $sourcePath . \DIRECTORY_SEPARATOR . $today;
                     $freshnessLabel = $multiProfile ? "Freshness {$source} ({$profile})" : "Capture freshness: {$source}";
-                    if (!is_dir($todayDir)) {
+                    $newest = NfcapdFiles::newest($profile, $source, 0);
+                    // filemtime() is false when nfcapd rotated the file away between scan and stat.
+                    $newestMtime = $newest === null ? false : @filemtime($newest['path']);
+                    if (!is_dir($sourcePath . \DIRECTORY_SEPARATOR . $today)) {
                         $add(
                             "capture_fresh_{$sourceIdPfx}",
                             $freshnessLabel,
@@ -404,45 +398,33 @@ class HealthChecker {
                             "No data dir for today ({$today})",
                             'nfcapd Paths'
                         );
-                    } else {
-                        $files = glob($todayDir . \DIRECTORY_SEPARATOR . 'nfcapd.*') ?: [];
-                        // filemtime() returns false for a file that vanished between the
-                        // glob and the stat (nfcapd rotating underneath us) — treat that
-                        // the same as finding no files at all rather than feeding false
-                        // into max().
-                        $mtimes = array_filter(
-                            array_map('filemtime', $files),
-                            static fn (false|int $mtime): bool => $mtime !== false,
+                    } elseif ($newestMtime === false) {
+                        $add(
+                            "capture_fresh_{$sourceIdPfx}",
+                            $freshnessLabel,
+                            'warning',
+                            "No nfcapd files in today's dir",
+                            'nfcapd Paths'
                         );
-                        if ($mtimes === []) {
-                            $add(
-                                "capture_fresh_{$sourceIdPfx}",
-                                $freshnessLabel,
-                                'warning',
-                                "No nfcapd files in today's dir",
-                                'nfcapd Paths'
-                            );
+                    } else {
+                        $age = time() - $newestMtime;
+                        // nfcapd default rotation is 5 min; warn after 12 min (2.4×) to allow for slow systems
+                        $status = $age > HealthMetrics::STALE_AFTER ? 'warning' : 'ok';
+                        if ($age <= 0) {
+                            $detail = 'Just captured';
+                        } elseif ($age > HealthMetrics::STALE_AFTER) {
+                            $detail = 'Last file ' . $ageStr($age) . ' ago. nfcapd may have stopped.';
                         } else {
-                            $newestMtime = max($mtimes);
-                            $age = time() - $newestMtime;
-                            // nfcapd default rotation is 5 min; warn after 12 min (2.4×) to allow for slow systems
-                            $status = $age > 720 ? 'warning' : 'ok';
-                            if ($age <= 0) {
-                                $detail = 'Just captured';
-                            } elseif ($age > 720) {
-                                $detail = 'Last file ' . $ageStr($age) . ' ago — nfcapd may have stopped';
-                            } else {
-                                $detail = 'Last file ' . $ageStr($age) . ' ago';
-                            }
-                            $add("capture_fresh_{$sourceIdPfx}", $freshnessLabel, $status, $detail, 'nfcapd Paths', false, '', $newestMtime);
+                            $detail = 'Last file ' . $ageStr($age) . ' ago';
                         }
+                        $add("capture_fresh_{$sourceIdPfx}", $freshnessLabel, $status, $detail, 'nfcapd Paths', false, '', $newestMtime);
                     }
                 }
             }
         }
 
         // ── 7. Storage ───────────────────────────────────────────────────────
-        // Delegated to the active datasource implementation — each knows its
+        // Delegated to the active datasource implementation: each knows its
         // own connectivity checks, file paths, and per-source freshness logic.
         if (isset(Config::$db)) {
             array_push($checks, ...Config::$db->healthChecks($storageGroup, $sources));
@@ -458,7 +440,7 @@ class HealthChecker {
                 'settings.php (deprecated)',
                 'Configuration',
                 false,
-                'File-based config is deprecated — migrate to environment variables (NFSEN_*). See the Configuration docs.'
+                'File-based config is deprecated. Migrate to environment variables (NFSEN_*), see the Configuration docs.'
             );
         } else {
             $add('config_source', 'Config source', 'ok', 'Environment variables', 'Configuration');
@@ -477,7 +459,7 @@ class HealthChecker {
 
         // Soft format checks the registry defers to the health page. Path
         // existence is already covered by the dedicated nfdump/nfcapd checks, so
-        // only url/email — which need no filesystem access — are validated here.
+        // only url/email, which need no filesystem access, are validated here.
         foreach (EnvRegistry::table() as $var) {
             if ($var->format === null || !EnvRegistry::isSet($var->name)) {
                 continue;
@@ -510,7 +492,7 @@ class HealthChecker {
                 'env_ipinfo_token_missing',
                 'NFSEN_IPINFO_TOKEN',
                 'warning',
-                'NFSEN_IPINFO_URL contains {token} but NFSEN_IPINFO_TOKEN is empty — the lookup sends an empty key',
+                'NFSEN_IPINFO_URL contains {token} but NFSEN_IPINFO_TOKEN is empty, so the lookup sends an empty key',
                 'Configuration'
             );
         } elseif ($geoToken !== '' && !str_contains($geoUrl, '{token}')) {
@@ -518,7 +500,7 @@ class HealthChecker {
                 'env_ipinfo_token_unused',
                 'NFSEN_IPINFO_TOKEN',
                 'warning',
-                'NFSEN_IPINFO_TOKEN is set but NFSEN_IPINFO_URL has no {token} placeholder — the key is never sent',
+                'NFSEN_IPINFO_TOKEN is set but NFSEN_IPINFO_URL has no {token} placeholder, so the key is never sent',
                 'Configuration'
             );
         }

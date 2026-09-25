@@ -2,7 +2,26 @@
 
 declare(strict_types=1);
 
+use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\LogRing;
+use mbolli\nfsen_ng\common\Settings;
+
+/** Debug with terminal echo off and the given log level, and an empty recent-log ring. */
+function quietDebugAt(int $priority): Debug {
+    Config::$settings = Settings::fromArray([
+        'general' => ['sources' => ['gw'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump'],
+        'nfdump' => ['binary' => '/usr/bin/nfdump', 'profiles-data' => '/tmp', 'profile' => 'live', 'max-processes' => 2],
+        'log' => ['priority' => $priority],
+    ]);
+    (new ReflectionProperty(Debug::class, 'recent'))->setValue(null, new LogRing());
+    Debug::drainBuffer();
+
+    $debug = new Debug();
+    $debug->setDebug(false);
+
+    return $debug;
+}
 
 describe('Debug', function (): void {
     beforeEach(function (): void {
@@ -80,6 +99,84 @@ describe('Debug', function (): void {
             $time2 = $debug->stopWatch();
 
             expect($time2)->toBeGreaterThan($time1);
+        });
+    });
+
+    describe('recent log', function (): void {
+        beforeEach(function (): void {
+            $this->settingsBefore = isset(Config::$settings) ? Config::$settings : null;
+        });
+
+        afterEach(function (): void {
+            if ($this->settingsBefore instanceof Settings) {
+                Config::$settings = $this->settingsBefore;
+            }
+            Debug::drainBuffer();
+        });
+
+        test('recent() returns what passed the level filter, newest first', function (): void {
+            $debug = quietDebugAt(LOG_WARNING);
+            $debug->log('first warning', LOG_WARNING);
+            $debug->log('an info line', LOG_INFO);
+            $debug->log('an error', LOG_ERR);
+            $debug->log('a debug line', LOG_DEBUG);
+
+            $recent = Debug::recent();
+
+            expect(array_column($recent, 'message'))->toBe(['an error', 'first warning'])
+                ->and(array_column($recent, 'levelName'))->toBe(['error', 'warning'])
+            ;
+        });
+
+        test('DEBUG lines appear when the level is DEBUG', function (): void {
+            $debug = quietDebugAt(LOG_DEBUG);
+            $debug->log('nfdump -M /data -R 2024/01/01', LOG_DEBUG);
+
+            expect(Debug::recent()[0])->toMatchArray(['level' => LOG_DEBUG, 'message' => 'nfdump -M /data -R 2024/01/01']);
+        });
+
+        test('recent() filters by priority and limit', function (): void {
+            $debug = quietDebugAt(LOG_DEBUG);
+            foreach ([LOG_DEBUG, LOG_ERR, LOG_INFO, LOG_WARNING, LOG_ERR] as $i => $priority) {
+                $debug->log("line {$i}", $priority);
+            }
+
+            expect(array_column(Debug::recent(200, LOG_WARNING), 'message'))->toBe(['line 4', 'line 3', 'line 1'])
+                ->and(array_column(Debug::recent(2), 'message'))->toBe(['line 4', 'line 3'])
+            ;
+        });
+
+        test('recentSince() returns the lines after a sequence, oldest first', function (): void {
+            $debug = quietDebugAt(LOG_INFO);
+            $debug->log('before', LOG_INFO);
+            $seen = Debug::recent(1)[0]['seq'];
+            $debug->log('after one', LOG_INFO);
+            $debug->log('after two', LOG_NOTICE);
+
+            expect(array_column(Debug::recentSince($seen), 'message'))->toBe(['after one', 'after two']);
+        });
+
+        test('drainBuffer() still collects warnings below the configured level and empties on read', function (): void {
+            $debug = quietDebugAt(LOG_ERR);
+            $debug->log('filtered warning', LOG_WARNING);
+            $debug->log('not buffered', LOG_INFO);
+
+            $drained = Debug::drainBuffer();
+
+            expect($drained)->toHaveCount(1)
+                ->and($drained[0])->toMatchArray(['level' => LOG_WARNING, 'msg' => 'filtered warning'])
+                ->and(array_keys($drained[0]))->toBe(['ts', 'level', 'msg'])
+                ->and(Debug::drainBuffer())->toBe([])
+                ->and(Debug::recent())->toBe([])
+            ;
+        });
+
+        test('draining the buffer leaves the recent log intact', function (): void {
+            $debug = quietDebugAt(LOG_WARNING);
+            $debug->log('kept', LOG_ERR);
+            Debug::drainBuffer();
+
+            expect(array_column(Debug::recent(), 'message'))->toBe(['kept']);
         });
     });
 

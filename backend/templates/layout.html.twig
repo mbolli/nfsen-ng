@@ -227,13 +227,14 @@
         window.tzOptions = tzOptions;
     </script>
 
-    {# Both define window.* helpers that data-init and data-effect expressions read while
+    {# These define window.* helpers that data-init and data-effect expressions read while
        Datastar walks the DOM, so they run before datastar.js (module order is document order). #}
     <script type="module" src="{{ basePath }}js/components/nfsen-router.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/alert-template-preview.js?v={{ shell.assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/nfsen-filter-editor.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/datastar.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ shell.assetVersion }}"></script>
-    {% for component in ['nfsen-chart', 'nfsen-sankey', 'nfsen-matrix', 'nfsen-table', 'nfsen-toast', 'nfsen-tooltip', 'nfsen-filter-manager', 'nfsen-filter-editor', 'nfsen-controls'] %}
+    {% for component in ['nfsen-chart', 'nfsen-sankey', 'nfsen-matrix', 'nfsen-table', 'nfsen-toast', 'nfsen-tooltip', 'nfsen-controls'] %}
         <script type="module" src="{{ basePath }}js/components/{{ component }}.js?v={{ shell.assetVersion }}"></script>
     {% endfor %}
 

@@ -1,1 +1,327 @@
-/* Filter builder drawer (spec 4.5), filled by WP-FD. */
+/* Filter builder drawer (spec 4.5, 2.7.7): the editor beside the saved filters, stacked on phones.
+   The dialog itself (side, size, slide-in, backdrop) is dialog.drawer in ui.css. */
+
+.drawer [hidden] {
+    display: none;
+}
+
+.drawer-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: var(--size-4);
+    align-items: start;
+}
+
+@media (width < 48em) {
+    .drawer-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.drawer-loading {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: var(--size-2);
+    color: var(--text-2);
+}
+
+.drawer .dialog-footer {
+    justify-content: space-between;
+}
+
+/* ── Editor ─────────────────────────────────────────────────────────────── */
+
+.drawer-editor {
+    --stack-gap: var(--size-2);
+}
+
+.drawer-editor textarea {
+    font-family: var(--font-mono);
+}
+
+/* query-kit.css sizes the status line for a row beside buttons; here it is a line of the column. */
+.drawer-editor > .filter-status {
+    flex: none;
+}
+
+#drawerFilterTextarea {
+    min-block-size: 5lh;
+}
+
+#drawerRawTextarea {
+    min-block-size: 12lh;
+}
+
+.drawer-draft {
+    align-items: center;
+    justify-content: space-between;
+}
+
+nfsen-filter-editor {
+    position: relative;
+    display: block;
+}
+
+/* Under the textarea, above what follows it; the highlighted row is the one Enter or Tab accepts. */
+.suggestions {
+    position: absolute;
+    z-index: var(--layer-menu);
+    inset-block-start: calc(100% + var(--size-1));
+    inset-inline-start: 0;
+    min-inline-size: 12rem;
+    max-block-size: 16rem;
+    overflow-y: auto;
+    margin: 0;
+    padding: var(--size-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-2);
+    background: var(--surface-2);
+    box-shadow: var(--shadow-2);
+    list-style: none;
+}
+
+.suggestions [role='option'] {
+    padding: var(--size-1) var(--size-2);
+    border-radius: var(--radius-1);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-0);
+    cursor: pointer;
+}
+
+.suggestions [role='option']:hover {
+    background: var(--surface-3);
+}
+
+.suggestions [role='option'][aria-selected='true'] {
+    background: var(--surface-4);
+    box-shadow: inset 3px 0 0 var(--text-1);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* ── Field tree ─────────────────────────────────────────────────────────── */
+
+.field-tree {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+}
+
+.field-group + .field-group {
+    border-block-start: 1px solid var(--border);
+}
+
+.field-group > summary {
+    padding: var(--size-2) var(--size-3);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+}
+
+.field-group > summary:hover {
+    background: var(--surface-3);
+}
+
+.field-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
+    gap: 0 var(--size-1);
+    margin: 0;
+    padding: 0 var(--size-1) var(--size-2);
+    list-style: none;
+}
+
+.field-list[data-kind='examples'] {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+/* The snippet first, as it will read in the filter; what it means under it. */
+.field-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    inline-size: 100%;
+    padding: var(--size-1) var(--size-2);
+    border-color: transparent;
+    background: none;
+    font-weight: var(--font-weight-normal);
+    text-align: start;
+}
+
+.field-item:hover:not(:disabled) {
+    background: var(--surface-3);
+}
+
+.field-item code {
+    padding: 0;
+    background: none;
+    color: var(--text-1);
+    font-size: var(--font-size-00);
+    overflow-wrap: anywhere;
+}
+
+.field-item small {
+    font-size: var(--font-size-00);
+}
+
+.drawer .dialog-title small {
+    font-weight: var(--font-weight-normal);
+}
+
+/* ── Saved filters ──────────────────────────────────────────────────────── */
+
+.drawer-saved {
+    --stack-gap: var(--size-2);
+}
+
+.drawer-saved h3 {
+    font-size: var(--font-size-1);
+}
+
+.drawer-empty {
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+}
+
+.saved-list {
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    list-style: none;
+}
+
+.saved-filter {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--size-2);
+    padding: var(--size-2);
+}
+
+.saved-filter + .saved-filter {
+    border-block-start: 1px solid var(--border);
+}
+
+.saved-filter-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-1);
+    min-inline-size: 0;
+}
+
+.saved-filter-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-1);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-medium);
+    overflow-wrap: anywhere;
+}
+
+.saved-filter-text > code {
+    padding: 0;
+    background: none;
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    overflow-wrap: anywhere;
+}
+
+/* Starred is a filled star, not a fill of the button: the list stays neutral. */
+.saved-star {
+    --star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='black' stroke-width='1.4' stroke-linejoin='round' d='m8 1.6 1.95 4.1 4.45.55-3.3 3.05.85 4.4L8 11.5l-3.95 2.2.85-4.4L1.6 6.25l4.45-.55z'/%3E%3C/svg%3E");
+    padding: var(--size-1);
+    border-color: transparent;
+    background: none;
+    color: var(--text-2);
+}
+
+.saved-star::before {
+    content: '';
+    inline-size: 1rem;
+    block-size: 1rem;
+    background: currentcolor;
+    mask: var(--star) center / contain no-repeat;
+}
+
+.saved-star[aria-pressed='true'] {
+    --star: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath stroke='black' stroke-width='1.4' stroke-linejoin='round' d='m8 1.6 1.95 4.1 4.45.55-3.3 3.05.85 4.4L8 11.5l-3.95 2.2.85-4.4L1.6 6.25l4.45-.55z'/%3E%3C/svg%3E");
+    border-color: transparent;
+    background: none;
+    color: var(--text-1);
+}
+
+.saved-star:hover:not(:disabled),
+.saved-star[aria-pressed='true']:hover:not(:disabled) {
+    background: var(--surface-3);
+    color: var(--text-1);
+}
+
+.saved-filter .menu [aria-haspopup='menu'] {
+    padding: var(--size-1);
+}
+
+.saved-save {
+    --stack-gap: var(--size-1);
+    padding-block-start: var(--size-2);
+    border-block-start: 1px solid var(--border);
+}
+
+.saved-save .cluster {
+    flex-wrap: nowrap;
+}
+
+.saved-save input {
+    flex: 1;
+}
+
+/* The outcome of the last save, rename, delete or import; a glyph beside the words for a status.
+   Never display: none while empty, or the live region would miss its first message. */
+.drawer-notice {
+    --glyph: none;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--size-1);
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+    overflow-wrap: anywhere;
+}
+
+.drawer-notice[data-level]::before {
+    content: '';
+    flex-shrink: 0;
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+    margin-block-start: 0.25em;
+    background: currentcolor;
+    mask: var(--glyph) center / contain no-repeat;
+}
+
+.drawer-notice[data-level='success'] {
+    --glyph: var(--glyph-success);
+    color: var(--success-emphasis);
+}
+
+.drawer-notice[data-level='warning'] {
+    --glyph: var(--glyph-warning);
+    color: var(--warning-emphasis);
+}
+
+.drawer-notice[data-level='error'] {
+    --glyph: var(--glyph-error);
+    color: var(--danger-emphasis);
+}
+
+@media (forced-colors: active) {
+    .saved-star::before,
+    .drawer-notice[data-level]::before {
+        forced-color-adjust: none;
+        background: CanvasText;
+    }
+
+    .suggestions [role='option'][aria-selected='true'] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+}

@@ -1,9 +1,249 @@
-{# Filter builder drawer (4.5), interim: the closed dialog; WP-FD fills it. #}
-<dialog class="drawer" id="filterDrawer" aria-labelledby="filterDrawerTitle" data-preserve-attr="open">
-    <div class="dialog-header">
-        <h2 class="dialog-title" id="filterDrawerTitle">Filter builder</h2>
-        <button type="button" data-variant="close" aria-label="Close the filter builder"
-                data-on:click="el.closest('dialog').close()"></button>
+{# Filter builder drawer (4.5), opened by the window event nfsen-open-drawer {target, tab}. Closed, it is
+   this frame only (1.7): the editor, the grammar and the saved list render while drawer_open is true. #}
+{% import 'components/filter-field.html.twig' as ff %}
+{% import 'shell/icons.html.twig' as icons %}
+{% set flt = '$' ~ querykit.targets.drawer.filterId %}
+{% set text = "String($" ~ drawer_filter.id() ~ " ?? '')" %}
+{% set target = '$' ~ drawer_target.id() %}
+{% set open = '$' ~ drawer_open.id() %}
+{% set edit = '$' ~ drawer_edit.id() %}
+{% set rename = '$' ~ drawer_rename.id() %}
+{% set name = '$' ~ drawer_name.id() %}
+{% set notice = '$' ~ _drawer_notice.id() %}
+{% set imported = '$' ~ _drawer_imported.id() %}
+{% set ids = '(' ~ drawer.targets|map(t => t.signal)|json_encode ~ ')' %}
+{% set labels = '(' ~ drawer.targets|map(t => t.label)|json_encode ~ ')' %}
+{% set runs = drawer.targets|filter(t => t.runs)|keys|json_encode %}
+{# The text of the field the drawer edits, read through Datastar's signal root by wire id. #}
+{% set targetText = "String($[" ~ ids ~ "[" ~ target ~ "]] ?? '')" %}
+{% set invalid = "(" ~ flt ~ ".checked === " ~ text ~ " && " ~ text ~ ".trim() !== '' && " ~ flt ~ ".status === 'invalid')" %}
+{% set validate = "@post('" ~ validateFilter.url() ~ "?target=drawer')" %}
+{# Closing keeps a draft that differs from the field. Run before close(): its close event comes a task later. #}
+{% set dismiss = "{ const id = " ~ ids ~ "[" ~ target ~ "]; $_drawer_draftFor = id && String($[id] ?? '') !== " ~ text ~ " ? " ~ target ~ " : ''; $_drawer_restored = false; " ~ edit ~ " = 0; " ~ rename ~ " = 0; " ~ open ~ " = false }" %}
+{% set close = "@post('" ~ drawerClose.url() ~ "')" %}
+{# The field's status line is turned on first: an applied text is the user's edit, so its answer is announced. #}
+{% set apply = "const t = " ~ target ~ "; const id = " ~ ids ~ "[t]; el.closest('dialog').close(); if (id) { document.querySelector('[data-filter-status=\"' + t + '\"]')?.setAttribute('aria-live', 'polite'); $[id] = " ~ text ~ " } " ~ dismiss ~ " id ? @post('" ~ validateFilter.url() ~ "?target=' + t) : " ~ close %}
+{% set seeds = {
+    (querykit.targets.drawer.filterId): querykit.defaults.filter,
+    (_drawer_notice.id()): drawer.noticeDefault,
+    (_drawer_imported.id()): _drawer_imported.string(),
+    (drawer_target.id()): drawer_target.string(),
+    (drawer_filter.id()): drawer_filter.string(),
+    (drawer_name.id()): drawer_name.string(),
+    (drawer_open.id()): drawer_open.bool(),
+    (drawer_edit.id()): drawer_edit.int(),
+    (drawer_rename.id()): drawer_rename.int(),
+    '_drawer_search': '',
+    '_drawer_restored': false,
+} %}
+<dialog id="filter-drawer" class="drawer" aria-labelledby="drawerTitle" data-preserve-attr="open"
+        data-signals__ifmissing="{{ seeds|json_encode }}"
+        data-on:nfsen-open-drawer__window="const d = evt.detail || {}; const t = String(d.target || ''); const id = {{ ids }}[t];
+            if (id) {
+                const keep = $_drawer_draftFor === t;
+                {{ target }} = t;
+                if (!keep) { ${{ drawer_filter.id() }} = String($[id] ?? ''); $_drawer_draftFor = '' }
+                $_drawer_restored = keep;
+                $_drawer_tab = d.tab === 'raw' ? 'raw' : 'builder';
+                {{ edit }} = 0; {{ rename }} = 0;
+                {{ open }} = true;
+                el.open || el.showModal();
+                window.nfsenFilterEditor.focusDrawer(d.tab === 'saved' ? 'drawerSearch' : (d.tab === 'raw' ? 'drawerRawTextarea' : 'drawerFilterTextarea'));
+                @post('{{ drawerOpen.url() }}')
+            }"
+        data-on:cancel="{{ dismiss }} {{ close }}"
+        data-on:close="el.open || ({{ open }} = false)"
+        {# The browser's old saved list (3.8.2). Only the server's acknowledgement of this import sets the flag, so a
+           failed or lost post is retried on the next load. #}
+        data-init="const raw = window.nfsenFilterEditor.legacyFilters(); if (raw !== null) { el.fdAck = {{ imported }}; el.fdImporting = true; ${{ drawer_import.id() }} = raw; @post('{{ filterMigrateLocal.url() }}') }"
+        data-effect="const ack = {{ imported }}; if (el.fdImporting === true && ack && ack !== el.fdAck) { el.fdImporting = false; window.nfsenFilterEditor.markMigrated() }">
+    <header class="dialog-header">
+        <h2 id="drawerTitle" class="dialog-title">Filter builder
+            <small data-text="{{ labels }}[{{ target }}] ? 'for ' + {{ labels }}[{{ target }}] : ''">{{ (drawer.targets[drawer.target].label ?? '') != '' ? 'for ' ~ drawer.targets[drawer.target].label : '' }}</small>
+        </h2>
+        {# A notice from a closed drawer (the browser import at load) becomes a toast. #}
+        <span hidden data-effect="const n = {{ notice }}; window.nfsenChanged(el, n?.id) && n?.id && !el.closest('dialog').open && window.showMessage(n.level || 'info', n.text, true)"></span>
+        <button type="button" data-variant="close" aria-label="Close the filter builder" title="Close the filter builder"
+                data-on:click="{{ dismiss }} el.closest('dialog').close(); {{ close }}"></button>
+    </header>
+
+    <div class="dialog-body drawer-grid">
+        {% if drawer.open %}
+            <section class="drawer-editor stack" aria-label="Filter">
+                <div class="notice drawer-draft" hidden data-attr:hidden="!$_drawer_restored" data-preserve-attr="hidden">
+                    <span>Unapplied draft restored.</span>
+                    <button type="button" data-variant="link"
+                            data-on:click="${{ drawer_filter.id() }} = {{ targetText }}; $_drawer_draftFor = ''; $_drawer_restored = false; {{ validate }}">Discard draft</button>
+                </div>
+
+                <div class="tabs" data-size="sm" role="tablist" aria-label="Filter editor">
+                    <button type="button" role="tab" id="drawerTabBuilder" aria-controls="drawerPanelBuilder"
+                            aria-selected="true" tabindex="0"
+                            data-attr:aria-selected="$_drawer_tab !== 'raw' ? 'true' : 'false'"
+                            data-attr:tabindex="$_drawer_tab !== 'raw' ? '0' : '-1'"
+                            data-preserve-attr="aria-selected tabindex"
+                            data-on:click="$_drawer_tab = 'builder'">Builder</button>
+                    <button type="button" role="tab" id="drawerTabRaw" aria-controls="drawerPanelRaw"
+                            aria-selected="false" tabindex="-1"
+                            data-attr:aria-selected="$_drawer_tab === 'raw' ? 'true' : 'false'"
+                            data-attr:tabindex="$_drawer_tab === 'raw' ? '0' : '-1'"
+                            data-preserve-attr="aria-selected tabindex"
+                            data-on:click="$_drawer_tab = 'raw'">Raw filter</button>
+                </div>
+
+                <div role="tabpanel" id="drawerPanelBuilder" class="stack" aria-labelledby="drawerTabBuilder"
+                     data-attr:hidden="$_drawer_tab === 'raw'" data-preserve-attr="hidden">
+                    <label for="drawerFilterTextarea">nfdump filter</label>
+                    <nfsen-filter-editor id="drawerEditor" data-status="drawerSuggestStatus"
+                                         data-grammar="{{ {keywords: drawer.grammar.keywords}|json_encode }}">
+                        <textarea id="drawerFilterTextarea" rows="5" {{ bind(drawer_filter) }} autofocus
+                                  autocomplete="off" autocapitalize="off" spellcheck="false"
+                                  aria-describedby="drawerFilterStatus drawerSuggestStatus"
+                                  data-attr:aria-invalid="{{ invalid }} ? 'true' : false" data-preserve-attr="aria-invalid"
+                                  data-on:input__debounce.300ms="{{ validate }}"
+                                  data-on:blur="const t = {{ text }}; t.trim() !== '' && {{ flt }}.checked !== t && {{ validate }}"></textarea>
+                        <ul class="suggestions" id="drawerSuggestions" role="listbox" aria-label="Suggestions" hidden data-ignore-morph></ul>
+                    </nfsen-filter-editor>
+                    <p id="drawerSuggestStatus" class="visually-hidden" role="status" data-ignore-morph></p>
+                </div>
+
+                <div role="tabpanel" id="drawerPanelRaw" class="stack" aria-labelledby="drawerTabRaw"
+                     hidden data-attr:hidden="$_drawer_tab !== 'raw'" data-preserve-attr="hidden">
+                    <label for="drawerRawTextarea">nfdump filter, as nfdump reads it</label>
+                    <textarea id="drawerRawTextarea" rows="12" {{ bind(drawer_filter) }}
+                              autocomplete="off" autocapitalize="off" spellcheck="false"
+                              aria-describedby="drawerFilterStatus"
+                              data-attr:aria-invalid="{{ invalid }} ? 'true' : false" data-preserve-attr="aria-invalid"
+                              data-on:input__debounce.300ms="{{ validate }}"
+                              data-on:blur="const t = {{ text }}; t.trim() !== '' && {{ flt }}.checked !== t && {{ validate }}"></textarea>
+                    <p class="help">Several lines are one filter; a # starts a comment.</p>
+                </div>
+
+                {{ ff.status('drawer', flt, text, 'drawerFilterStatus', '.drawer-editor') }}
+
+                {# The Builder's palette: each entry inserts its snippet at the cursor. #}
+                <div class="field-tree" role="group" aria-label="Fields and examples"
+                     data-attr:hidden="$_drawer_tab === 'raw'" data-preserve-attr="hidden">
+                    {% for group in [{id: 'basic', title: 'Basic'}, {id: 'advanced', title: 'Advanced'}] %}
+                        <details class="field-group" data-preserve-attr="open"{% if group.id == 'basic' %} open{% endif %}>
+                            <summary>{{ group.title }}</summary>
+                            <ul class="field-list">
+                                {% for field in drawer.grammar.fields|filter(f => f.group == group.id) %}
+                                    <li>
+                                        <button type="button" class="field-item" data-snippet="{{ field.snippet }}" title="{{ field.label }}: {{ field.help }}"
+                                                data-on:click="document.getElementById('drawerEditor')?.insert(el.dataset.snippet)">
+                                            <code>{{ field.snippet }}</code>
+                                            <small>{{ field.label }}</small>
+                                        </button>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </details>
+                    {% endfor %}
+                    <details class="field-group" data-preserve-attr="open">
+                        <summary>Examples</summary>
+                        <ul class="field-list" data-kind="examples">
+                            {% for example in drawer.grammar.examples %}
+                                <li>
+                                    <button type="button" class="field-item" data-snippet="{{ example.expression }}"
+                                            data-on:click="document.getElementById('drawerEditor')?.insert(el.dataset.snippet)">
+                                        <code>{{ example.expression }}</code>
+                                        <small>{{ example.description }}</small>
+                                    </button>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </details>
+                </div>
+
+                {% if drawer.targets[drawer.target].runs ?? false %}
+                    {% include 'components/query-estimate.html.twig' with {target: 'drawer'} %}
+                {% endif %}
+            </section>
+
+            <section class="drawer-saved stack" aria-labelledby="drawerSavedTitle">
+                <h3 id="drawerSavedTitle">Saved filters</h3>
+                <input type="search" id="drawerSearch" data-bind="_drawer_search" autocomplete="off"
+                       placeholder="Search saved filters" aria-label="Search saved filters"{% if drawer.savedError == '' and drawer.savedFilters is not empty %} aria-controls="drawerSavedList"{% endif %}
+                       data-on:keydown="evt.key === 'Escape' && $_drawer_search !== '' && (evt.preventDefault(), $_drawer_search = '')">
+
+                {% if drawer.savedError != '' %}
+                    <p class="notice" data-level="error"><span class="status-dot" data-level="error" aria-hidden="true"></span><span>{{ drawer.savedError }}</span></p>
+                {% elseif drawer.savedFilters is empty %}
+                    <p class="drawer-empty">No saved filters yet.</p>
+                {% else %}
+                    <ul class="saved-list" id="drawerSavedList" aria-label="Saved filters">
+                        {% for f in drawer.savedFilters %}
+                            <li class="saved-filter" id="savedFilter{{ f.id }}" data-filter-id="{{ f.id }}" data-origin="{{ f.origin }}"
+                                data-name="{{ f.name }}" data-expression="{{ f.expression }}"
+                                data-show="window.nfsenFilterEditor.matches(el, $_drawer_search)">
+                                <button type="button" class="saved-star" aria-pressed="{{ f.starred ? 'true' : 'false' }}"
+                                        aria-label="Star {{ f.name }}" title="Star {{ f.name }}"
+                                        data-on:click="@post('{{ filterStar.url() }}?id={{ f.id }}&on={{ f.starred ? 0 : 1 }}')"></button>
+                                <div class="saved-filter-text">
+                                    <span class="saved-filter-name" data-attr:hidden="{{ rename }} === {{ f.id }}" data-preserve-attr="hidden">{{ f.name }}
+                                        {%- if f.origin in ['preference', 'deployment'] %} <span class="badge">preset</span>{% endif -%}
+                                    </span>
+                                    <input type="text" id="savedRename{{ f.id }}" class="saved-rename" {{ bind(drawer_name) }} maxlength="80"
+                                           aria-label="New name for {{ f.name }}"
+                                           hidden data-attr:hidden="{{ rename }} !== {{ f.id }}" data-preserve-attr="hidden"
+                                           data-on:keydown="if (evt.key === 'Enter') { evt.preventDefault(); el.closest('li').querySelector('[aria-haspopup]')?.focus(); @post('{{ filterUpdate.url() }}?id={{ f.id }}&rename=1') } else if (evt.key === 'Escape') { evt.preventDefault(); {{ rename }} = 0; {{ name }} = ''; el.closest('li').querySelector('[aria-haspopup]')?.focus() }">
+                                    <code>{{ f.expression }}</code>
+                                </div>
+                                <div class="menu" data-role="menu">
+                                    <button type="button" data-variant="ghost" data-size="sm" aria-haspopup="menu" aria-expanded="false"
+                                            aria-controls="savedMenu{{ f.id }}" aria-label="Actions for {{ f.name }}" title="Actions for {{ f.name }}"
+                                            data-preserve-attr="aria-expanded">{{ icons.icon('more') }}</button>
+                                    <ul role="menu" id="savedMenu{{ f.id }}" popover data-preserve-attr="style">
+                                        <li role="none"><button type="button" role="menuitem" tabindex="-1" data-action="apply"
+                                                data-on:click="{{ edit }} = 0; {{ rename }} = 0; @post('{{ filterUse.url() }}?id={{ f.id }}')">Apply</button></li>
+                                        <li role="none"><button type="button" role="menuitem" tabindex="-1" data-action="edit"
+                                                data-on:click="const li = el.closest('li[data-filter-id]'); ${{ drawer_filter.id() }} = li.dataset.expression; {{ name }} = li.dataset.name; {{ edit }} = {{ f.id }}; {{ rename }} = 0; $_drawer_tab = 'builder'; setTimeout(() => document.getElementById('drawerFilterTextarea')?.focus()); {{ validate }}">Edit</button></li>
+                                        <li role="none"><button type="button" role="menuitem" tabindex="-1" data-action="rename"
+                                                data-on:click="{{ name }} = el.closest('li[data-filter-id]').dataset.name; {{ rename }} = {{ f.id }}; {{ edit }} = 0; setTimeout(() => { const i = document.getElementById('savedRename{{ f.id }}'); i?.focus(); i?.select() })">Rename</button></li>
+                                        <li role="none"><button type="button" role="menuitem" tabindex="-1" data-action="delete"
+                                                data-on:click="confirm('Delete the saved filter ' + el.closest('li[data-filter-id]').dataset.name + '?') && (setTimeout(() => document.getElementById('drawerSearch')?.focus()), @post('{{ filterDelete.url() }}?id={{ f.id }}'))">Delete</button></li>
+                                    </ul>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                    <p class="drawer-empty" hidden
+                       data-attr:hidden="!window.nfsenFilterEditor.noneMatch(document.getElementById('drawerSavedList'), $_drawer_search)">No saved filter matches the search.</p>
+                {% endif %}
+
+                <p class="drawer-notice" id="drawerNotice" role="status"
+                   data-attr:data-level="{{ notice }}.level || false" data-preserve-attr="data-level"
+                   data-text="{{ notice }}.text"></p>
+
+                <div class="saved-save stack" data-attr:hidden="{{ rename }} > 0" data-preserve-attr="hidden">
+                    <label for="drawerSaveName" data-text="{{ edit }} > 0 ? 'Name of the filter you are editing' : 'Name for the current filter'">Name for the current filter</label>
+                    <div class="cluster">
+                        <input type="text" id="drawerSaveName" {{ bind(drawer_name) }} maxlength="80" autocomplete="off"
+                               placeholder="Defaults to the filter"
+                               data-on:keydown="evt.key === 'Enter' && (evt.preventDefault(), document.getElementById('drawerSave').click())">
+                        <button type="button" id="drawerSave"
+                                data-attr:disabled="{{ text }}.trim() === ''"
+                                data-on:click="{{ edit }} > 0 ? @post('{{ filterUpdate.url() }}?id=' + {{ edit }}) : @post('{{ filterSave.url() }}')"
+                                data-text="{{ edit }} > 0 ? 'Save changes' : 'Save current filter'">Save current filter</button>
+                        <button type="button" data-variant="link" hidden data-attr:hidden="!({{ edit }} > 0)" data-preserve-attr="hidden"
+                                data-on:click="{{ edit }} = 0; {{ name }} = ''">Stop editing</button>
+                    </div>
+                </div>
+            </section>
+        {% else %}
+            <p class="drawer-loading" aria-busy="true"><span class="spinner" aria-hidden="true"></span> Loading filters</p>
+        {% endif %}
     </div>
-    <div class="dialog-body"></div>
+
+    <footer class="dialog-footer cluster" data-justify="between">
+        <div class="cluster">
+            <button type="button" id="drawerApply" data-variant="primary" data-on:click="{{ apply }}">Apply</button>
+            <button type="button" id="drawerApplyRun"
+                    data-show="{{ runs }}.includes({{ target }})"
+                    data-attr:disabled="{{ invalid }} || ${{ query_running.id() }} === true"
+                    data-on:click="{{ apply }}; if (id) document.querySelector('[data-run=&quot;' + t + '&quot;]')?.click()">Apply and run</button>
+        </div>
+        <button type="button" data-on:click="{{ dismiss }} el.closest('dialog').close(); {{ close }}">Cancel</button>
+    </footer>
 </dialog>

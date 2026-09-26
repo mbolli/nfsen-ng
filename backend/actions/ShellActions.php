@@ -7,11 +7,12 @@ namespace mbolli\nfsen_ng\actions;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\pages\PageRegistry;
 use mbolli\nfsen_ng\pages\PageStates;
+use mbolli\nfsen_ng\pages\QueryKit;
 use mbolli\nfsen_ng\pages\Shell;
 use Mbolli\PhpVia\Context;
 
 /**
- * Shell actions: navigate, dismiss-notification and count-files (1.6). Each closure catches
+ * Shell actions (1.6); count-files is an alias of estimate-query until WP-I1. Closures catch
  * \Throwable: php-via only catches \Exception, and an escaped \Error kills the worker.
  */
 final class ShellActions {
@@ -41,14 +42,14 @@ final class ShellActions {
             $c->sync();
         }, 'dismiss-notification');
 
-        // Lightweight scan triggered by date and source changes.
+        // The estimate pushes its own patches, and a new file count re-renders the cost lines.
         $c->action(static function (Context $c): void {
             try {
                 self::countFiles($c);
             } catch (\Throwable $e) {
                 self::fail($c, 'Could not count the capture files', $e);
+                $c->sync();
             }
-            $c->sync();
         }, 'count-files');
     }
 
@@ -74,24 +75,12 @@ final class ShellActions {
         }
     }
 
-    private static function countFiles(Context $c): void {
-        $datestart = $c->getSignal('datestart');
-        $dateend = $c->getSignal('dateend');
-        $graphSources = $c->getSignal('graph_sources');
-        $selectedProfile = $c->getSignal('selected_profile');
-        if ($datestart === null || $dateend === null || $graphSources === null || $selectedProfile === null) {
-            return;
+    /** Estimates the active page's query (3.5.3); pages that read no capture files have none. */
+    public static function countFiles(Context $c): void {
+        $target = QueryKit::targetForPage(Shell::activePage($c));
+        if ($target !== null) {
+            QueryKitActions::estimate($c, $target);
         }
-
-        // Never clamped: one count serves every page, and only some of them clamp their
-        // window. It describes the selected range; a consumer that reads less says so.
-        Helpers::measureNfcapdFiles(
-            $c,
-            $datestart->int(),
-            $dateend->int(),
-            Helpers::resolveSources($graphSources->array()),
-            $selectedProfile->string(),
-        );
     }
 
     private static function fail(Context $c, string $what, \Throwable $e): void {

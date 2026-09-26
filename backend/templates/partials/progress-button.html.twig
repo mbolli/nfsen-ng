@@ -1,6 +1,5 @@
 {#
-    Run button with a real progress bar, shared by every panel that runs a query: per-mille
-    progress and an ETA, exact for the filtered graph, estimated from bytes read otherwise.
+    Query control (2.5): Run, Kill, progress and status, shared by every panel that runs a query.
 
     Params:
       label      idle button text
@@ -16,14 +15,17 @@
       id         DOM id prefix, so several of these can coexist
       run        optional query target, rendered as data-run on the button (e2e runQuery())
       onClick    optional extra JS to run before the POST
+      doneText   optional JS expression announced after a successful run, e.g. "$flows_count + ' flows returned'"
 #}
-{#
-    Only this panel's own query drives its progress: panels on one page share the query_*
-    signals. `disabled` keys off the bare running flag, since one query runs at a time.
-#}
-{% set here = '$' ~ running ~ " && $" ~ kindSignal ~ " === '" ~ kind ~ "'" %}
-<div class="query-control cluster" id="{{ id }}"
-     data-query-state="idle" data-attr:data-query-state="({{ here }}) ? 'running' : 'idle'"
+{# Panels on one page share the query_* signals, so only this panel's query drives its progress.
+   `disabled` keys off the bare running flag, since one query runs at a time. #}
+{% set here = '($' ~ running ~ " && $" ~ kindSignal ~ " === '" ~ kind ~ "')" %}
+{% set mine = "$" ~ kindSignal ~ " === '" ~ kind ~ "'" %}
+{% set done = doneText is defined and doneText
+    ? "(String($" ~ status ~ ").startsWith('Done') ? (" ~ doneText ~ ") + '. ' + $" ~ status ~ " : $" ~ status ~ ")"
+    : '$' ~ status %}
+<div class="query-control" id="{{ id }}"
+     data-query-state="idle" data-attr:data-query-state="{{ here }} ? 'running' : 'idle'"
      data-preserve-attr="data-query-state">
     <button type="button"
             data-variant="primary"
@@ -31,34 +33,36 @@
             data-run="{{ run }}"{% endif %}
             data-attr:disabled="${{ running }}"
             data-on:click="{{ onClick|default('') }}@post('{{ action }}')">
-        <span data-show="!({{ here }})">{{ label }}</span>
-        <span class="spinner" data-show="{{ here }}" role="status" aria-hidden="true"></span>
-        <span data-show="{{ here }}">Processing…</span>
+        <span class="spinner" aria-hidden="true"></span>
+        <span class="query-label">{{ label }}</span>
+        <span class="query-label-running">Processing…</span>
     </button>
 
     <button type="button"
             class="kill"
             data-size="sm"
-            style="display:none"
-            data-show="{{ here }}"
+            title="Stop this query"
+            hidden data-attr:hidden="!{{ here }}" data-preserve-attr="hidden"
             data-on:click="@post('{{ killAction }}')">Kill</button>
 
-    {# The bar exists only while the query runs; the status line outlives it, so the closing
-       "Done in 1.2s." or "Cancelled" stays readable. #}
-    <div class="query-progress" style="display:none"
-         data-show="({{ here }}) || (${{ status }} !== '' && ${{ kindSignal }} === '{{ kind }}')">
-        <progress max="1000" style="display:none"
-             data-show="{{ here }}"
-             data-attr:data-indeterminate="!${{ exact }}"
-             data-attr:value="${{ permille }}">
-        </progress>
-        <div class="cluster cluster-between muted query-progress-line">
+    {# The bar exists only while the query runs; the status line outlives it ("Done in 1.2s."). #}
+    <div class="query-progress"
+         hidden data-attr:hidden="!({{ here }} || (${{ status }} !== '' && {{ mine }}))" data-preserve-attr="hidden">
+        <progress max="1000" aria-label="Query progress"
+                  hidden data-attr:hidden="!{{ here }}" data-preserve-attr="hidden"
+                  data-attr:data-indeterminate="!${{ exact }}"
+                  data-attr:value="${{ permille }}"></progress>
+        <div class="query-progress-line cluster" data-justify="between">
             <span data-text="${{ status }}"></span>
-            <span data-show="{{ here }}">
+            <span class="query-progress-figures" hidden data-attr:hidden="!{{ here }}" data-preserve-attr="hidden">
                 <span data-text="(${{ permille }} / 10).toFixed(1) + '%'"></span>
-                <span data-show="!${{ exact }}" title="Estimated from bytes read">(est.)</span>
-                <span data-show="${{ eta }} !== ''" data-text="' • ' + ${{ eta }}"></span>
+                <span hidden data-attr:hidden="${{ exact }}" data-preserve-attr="hidden" title="Estimated from bytes read">(est.)</span>
+                <span hidden data-attr:hidden="${{ eta }} === ''" data-preserve-attr="hidden" data-text="'· ' + ${{ eta }}"></span>
             </span>
         </div>
     </div>
+
+    {# Announces the start, every 25 %, then the outcome of a run it saw start; never morphed. #}
+    <span class="visually-hidden" role="status" data-ignore-morph
+          data-effect="let t = el.textContent; if ({{ here }}) { el.qkRan = true; const q = Math.min(75, Math.floor(${{ permille }} / 250) * 25); t = q > 0 ? q + ' percent' : 'Query started' } else if (el.qkRan && {{ mine }}) { el.qkRan = false; t = {{ done }} } if (el.textContent !== t) el.textContent = t"></span>
 </div>

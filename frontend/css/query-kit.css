@@ -1,1 +1,224 @@
-/* Query kit: filter field status, estimate and query control (spec 2.5, 3.5), filled by WP-QK. */
+/* Query kit (2.5, 3.5): filter field, estimate and query control, each driven by one state attribute. */
+
+:is(.filter-field, .estimate, .query-control) [hidden] {
+    display: none;
+}
+
+/* ── Filter field ───────────────────────────────────────────────────────── */
+
+.filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-1);
+}
+
+.filter-field textarea {
+    font-family: var(--font-mono);
+}
+
+.filter-field-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--size-1) var(--size-2);
+}
+
+.filter-field-actions {
+    --cluster-gap: var(--size-1);
+}
+
+/* Holds its line while empty, so the field does not jump when the first answer arrives. */
+.filter-status {
+    display: flex;
+    flex: 1 1 12rem;
+    align-items: flex-start;
+    gap: var(--size-1);
+    min-block-size: 1lh;
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+}
+
+.filter-status-shown {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+}
+
+.filter-status-glyph {
+    --glyph: none;
+    flex-shrink: 0;
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+    margin-block-start: 0.25em;
+    background: currentcolor;
+    mask: var(--glyph) center / contain no-repeat;
+}
+
+.filter-status[data-state='empty'] .filter-status-glyph {
+    display: none;
+}
+
+.filter-status[data-state='valid'] {
+    color: var(--success-emphasis);
+}
+
+.filter-status[data-state='valid'] .filter-status-glyph {
+    --glyph: var(--glyph-success);
+}
+
+.filter-status[data-state='invalid'] {
+    color: var(--danger-emphasis);
+}
+
+.filter-status[data-state='invalid'] .filter-status-glyph {
+    --glyph: var(--glyph-error);
+}
+
+/* The glyph turns into the spinner ring while the answer is on its way. */
+.filter-status[data-state='checking'] .filter-status-glyph {
+    border: 2px solid currentcolor;
+    border-block-start-color: transparent;
+    border-radius: 50%;
+    background: none;
+    mask: none;
+    animation: spin 0.7s linear infinite;
+}
+
+/* ── Estimate ───────────────────────────────────────────────────────────── */
+
+.estimate {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-1) var(--size-2);
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+    font-variant-numeric: tabular-nums;
+}
+
+.estimate-pending {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-1);
+}
+
+.estimate-figures {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-1) var(--size-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* The separator is decoration; the alternative text keeps screen readers from reading it. */
+.estimate-figures > li + li::before {
+    content: '·' / '';
+    margin-inline-end: var(--size-2);
+    color: var(--text-3);
+}
+
+.estimate:not([data-state='pending']) .estimate-pending,
+.estimate:not([data-state='empty']) .estimate-empty,
+.estimate:not([data-state='ready']) .estimate-figures,
+.estimate[data-state='none'] {
+    display: none;
+}
+
+/* A refresh keeps the last figures, dimmed, until the new ones arrive. */
+.estimate[aria-busy='true'] .estimate-figures {
+    opacity: 0.6;
+    transition: opacity var(--duration-normal) var(--ease-out);
+}
+
+.estimate-heavy {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-1);
+    color: var(--warning-emphasis);
+    font-weight: var(--font-weight-medium);
+}
+
+.estimate-heavy::after {
+    content: '';
+    order: -1;
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+    background: currentcolor;
+    mask: var(--glyph-warning) center / contain no-repeat;
+}
+
+/* ── Query control ──────────────────────────────────────────────────────── */
+
+.query-control {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2);
+}
+
+.query-control > [data-run],
+.query-control > button[data-variant='primary'] {
+    flex-shrink: 0;
+}
+
+.query-control:not([data-query-state='running']) :is(.spinner, .query-label-running),
+.query-control[data-query-state='running'] .query-label {
+    display: none;
+}
+
+.query-control .query-progress {
+    flex: 1 1 12rem;
+    min-inline-size: 12rem;
+}
+
+.query-control .query-progress progress {
+    display: block;
+    block-size: 0.375rem;
+}
+
+.query-control .query-progress-line {
+    flex-wrap: nowrap;
+    gap: var(--size-2);
+    margin-block-start: var(--size-1);
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-variant-numeric: tabular-nums;
+}
+
+.query-progress-line > :first-child {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+}
+
+.query-progress-figures {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: var(--size-1);
+    white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .filter-status[data-state='checking'] .filter-status-glyph {
+        animation-duration: 2s;
+    }
+
+    .estimate[aria-busy='true'] .estimate-figures {
+        transition: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .filter-status-glyph,
+    .estimate-heavy::after {
+        forced-color-adjust: none;
+        background: CanvasText;
+    }
+
+    .filter-status[data-state='checking'] .filter-status-glyph {
+        border-color: CanvasText;
+        border-block-start-color: transparent;
+        background: none;
+    }
+}

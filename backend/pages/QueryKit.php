@@ -4,18 +4,14 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\pages;
 
+use mbolli\nfsen_ng\actions\QueryKitActions;
+use mbolli\nfsen_ng\actions\QueryRunner;
 use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
 
-/**
- * Shell module for filter validation and query estimates per target (3.5.3): the
- * server-owned `_flt_<target>` and `_est_<target>` signals and the target table.
- */
+/** Filter validation and query estimates per target (3.5.3): `_flt_<t>`, `_est_<t>` and their actions. */
 final class QueryKit implements ShellModule {
-    /**
-     * Filter signal ('' = not validated), estimate kind ('' = none; the drawer borrows its
-     * target's) and whether NFSEN_MAX_STATS_WINDOW clamps the estimate's window.
-     */
+    /** Filter signal ('' = none), estimate kind ('' = none) and whether NFSEN_MAX_STATS_WINDOW clamps. */
     public const array TARGETS = [
         'overview' => ['filter' => 'graph_filter', 'kind' => 'graph', 'clamped' => true],
         'overview-topn' => ['filter' => '', 'kind' => 'overview-topn', 'clamped' => true],
@@ -26,8 +22,23 @@ final class QueryKit implements ShellModule {
         'alert' => ['filter' => 'alert_form_nfdumpFilter', 'kind' => '', 'clamped' => false],
     ];
 
+    /** The target whose estimate count-files refreshes, per page (1.6). */
+    public const array PAGE_TARGETS = [
+        'overview' => 'overview',
+        'talkers' => 'talkers',
+        'flows' => 'flows',
+        'conversations' => 'conversations',
+    ];
+
+    /** @var array{status: ''|'invalid'|'valid', message: string, checked: string} */
     public const array FILTER_DEFAULT = ['status' => '', 'message' => '', 'checked' => ''];
 
+    /**
+     * An answered estimate always has a `window`.
+     *
+     * @var array{pending: bool, files: int, bytes: int, bytesHuman: string, runs: int, seconds: ?int, secondsHuman: string,
+     *            measured: bool, clamped: bool, window: string, heavy: bool}
+     */
     public const array ESTIMATE_DEFAULT = [
         'pending' => true,
         'files' => 0,
@@ -53,8 +64,17 @@ final class QueryKit implements ShellModule {
         }
     }
 
-    public static function register(Context $c, Via $app, PageStates $states): void {}
+    public static function register(Context $c, Via $app, PageStates $states): void {
+        QueryKitActions::register($c, $app);
+    }
 
+    /**
+     * Per target: its signals' wire ids, and whether a run may stop early (the estimate says "up to").
+     *
+     * @return array{targets: array<string, array{filterSignal: string, kind: string, clamped: bool, validates: bool,
+     *               estimates: bool, filterId: string, estimateId: string, earlyStop: bool}>,
+     *               defaults: array{filter: array<string, mixed>, estimate: array<string, mixed>}}
+     */
     public static function viewData(Context $c, Via $app, PageStates $states, bool $isUpdate, string $activePage): array {
         $targets = [];
         foreach (self::TARGETS as $target => $meta) {
@@ -64,10 +84,16 @@ final class QueryKit implements ShellModule {
                 'clamped' => $meta['clamped'],
                 'validates' => $meta['filter'] !== '',
                 'estimates' => $meta['kind'] !== '',
+                'filterId' => $meta['filter'] !== '' ? ($c->getSignal(self::filterSignal($target))?->id() ?? '') : '',
+                'estimateId' => $meta['kind'] !== '' ? ($c->getSignal(self::estimateSignal($target))?->id() ?? '') : '',
+                'earlyStop' => \in_array($meta['kind'], QueryRunner::EARLY_STOP_KINDS, true),
             ];
         }
 
-        return ['targets' => $targets];
+        return [
+            'targets' => $targets,
+            'defaults' => ['filter' => self::FILTER_DEFAULT, 'estimate' => self::ESTIMATE_DEFAULT],
+        ];
     }
 
     /** `_flt_<target>`, with '_' for '-'. */
@@ -78,5 +104,10 @@ final class QueryKit implements ShellModule {
     /** `_est_<target>`, with '_' for '-'. */
     public static function estimateSignal(string $target): string {
         return '_est_' . str_replace('-', '_', $target);
+    }
+
+    /** The estimate target of a page, or null for a page that runs no capture query. */
+    public static function targetForPage(string $page): ?string {
+        return self::PAGE_TARGETS[$page] ?? null;
     }
 }

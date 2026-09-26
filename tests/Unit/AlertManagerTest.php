@@ -1372,6 +1372,12 @@ describe('AlertManager::buildTemplateVars()', function (): void {
         ;
     });
 
+    test('a rule without selected sources names every configured source', function (): void {
+        $vars = AlertManager::buildTemplateVars(makeRule(['sources' => []]), ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0], 1.0, 1700000000);
+
+        expect($vars['{sources}'])->toBe('gw1, gw2');
+    });
+
     test('threshold shows infinity symbol for the cold-start sentinel', function (): void {
         $rule = makeRule();
         $vars = AlertManager::buildTemplateVars($rule, ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0], PHP_FLOAT_MAX, 1700000000);

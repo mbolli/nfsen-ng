@@ -401,7 +401,8 @@ final class AlertManager {
             '{packets}' => number_format((float) ($values['packets'] ?? 0.0), 2),
             '{bytes}' => number_format((float) ($values['bytes'] ?? 0.0), 2),
             '{profile}' => $rule->profile,
-            '{sources}' => implode(', ', $rule->sources),
+            // No source selected means every configured source.
+            '{sources}' => implode(', ', $rule->sources !== [] ? $rule->sources : self::configuredSources()),
             '{time}' => gmdate('Y-m-d H:i:s', $ts),
         ];
     }

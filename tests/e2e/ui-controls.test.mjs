@@ -491,11 +491,11 @@ async function themeColors(page, mode) {
         const chroma = neutral.filter(([, v]) => { const [r, g, b] = v.match(/\\d+/g).map(Number); return Math.max(r, g, b) - Math.min(r, g, b) > 1; });
         let fired = 0;
         const off = m.onThemeChange(() => { fired++; });
-        const toggle = document.querySelector("a[title='Toggle dark mode']");
-        toggle.click();
+        const pick = (c) => document.querySelector('[data-theme-choice="' + c + '"]').click();
+        pick(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
         await new Promise((r) => setTimeout(r, 150));
         const switched = m.chartTheme().surface !== t.surface;
-        toggle.click();
+        pick('default');
         await new Promise((r) => setTimeout(r, 150));
         off();
         return {

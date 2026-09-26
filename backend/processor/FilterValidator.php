@@ -44,14 +44,15 @@ final class FilterValidator {
 
         // `--` keeps a filter that starts with a dash from being read as an option.
         $run = self::check($binary, ['-Z', '--', $filter]);
-        $valid = $run['exitCode'] === 0;
+        // With the exit code unknown, nfdump's `Line N:` error text still marks a rejected filter.
+        $valid = $run['exitCode'] === 0 && ($run['exitKnown'] || preg_match('/^Line \d+:/m', $run['stdout']) !== 1);
         $answer = [
             'valid' => $valid,
             'message' => $valid ? '' : self::message($run['stdout'], $run['stderr'], !str_contains(trim($filter), "\n")),
         ];
 
-        // A timeout (a slow DNS lookup) or a failed start says nothing about the filter, so it is asked again.
-        if (!$run['timedOut'] && $run['exitCode'] !== -1) {
+        // A timeout (a slow DNS lookup), a failed start or a guessed exit code is asked again.
+        if (!$run['timedOut'] && $run['exitCode'] !== -1 && $run['exitKnown']) {
             self::$cache[$key] = $answer;
             if (\count(self::$cache) > self::CACHE_SIZE) {
                 unset(self::$cache[array_key_first(self::$cache)]);
@@ -67,7 +68,7 @@ final class FilterValidator {
      *
      * @param list<string> $args
      *
-     * @return array{exitCode: int, stdout: string, stderr: string, timedOut: bool}
+     * @return array{exitCode: int, stdout: string, stderr: string, timedOut: bool, exitKnown: bool}
      */
     public static function check(string $binary, array $args): array {
         $limited = is_executable(self::TIMEOUT_BINARY);
@@ -77,7 +78,7 @@ final class FilterValidator {
 
         $process = proc_open($argv, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
         if (!\is_resource($process)) {
-            return ['exitCode' => -1, 'stdout' => '', 'stderr' => '', 'timedOut' => false];
+            return ['exitCode' => -1, 'stdout' => '', 'stderr' => '', 'timedOut' => false, 'exitKnown' => false];
         }
 
         fclose($pipes[0]);
@@ -85,7 +86,11 @@ final class FilterValidator {
         $stderr = (string) stream_get_contents($pipes[2]);
         fclose($pipes[1]);
         fclose($pipes[2]);
-        $exitCode = Nfdump::exitCodeFrom(proc_close($process));
+        $polled = self::polledExitCode($process);
+        $exitCode = $polled ?? Nfdump::exitCodeFrom(proc_close($process));
+        if ($polled !== null) {
+            proc_close($process);
+        }
 
         return [
             'exitCode' => $exitCode,
@@ -93,7 +98,27 @@ final class FilterValidator {
             'stderr' => $stderr,
             // 124 is timeout's own code for "the command ran out of time".
             'timedOut' => $limited && $exitCode === 124,
+            'exitKnown' => $polled !== null,
         ];
+    }
+
+    /**
+     * Under OpenSwoole's process hook proc_close() sometimes reports 0 for a failed run, so the
+     * exit code is read with proc_get_status() first. Null when it could not be seen.
+     *
+     * @param resource $process
+     */
+    private static function polledExitCode($process): ?int {
+        $deadline = microtime(true) + self::TIMEOUT_SECONDS + 1.0;
+        do {
+            $status = proc_get_status($process);
+            if (!$status['running']) {
+                return $status['exitcode'] >= 0 ? $status['exitcode'] : null;
+            }
+            usleep(1000);
+        } while (microtime(true) < $deadline);
+
+        return null;
     }
 
     /** The protocol table nfdump prints after an unknown protocol is never reached. */

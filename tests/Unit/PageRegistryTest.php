@@ -227,7 +227,7 @@ describe('composition', function (): void {
             'sankey_topN', 'sankey_metric', 'sankey_show_ports', 'sankey_lower_limit', 'sankey_upper_limit',
             'selected_profile', 'available_profiles', 'admin_target_profile', 'import_running', 'confirm_rescan',
             'import_scan_ports', 'settings_defaultView', 'settings_graphDisplay', 'settings_graphDatatype',
-            'settings_graphProtocols', 'settings_flowLimit', 'settings_statsOrderBy', 'settings_filtersText',
+            'settings_graphProtocols', 'settings_flowLimit', 'settings_statsOrderBy',
             'settings_logPriority', 'settings_defaultEmailSubjectTemplate', 'settings_defaultEmailBodyTemplate',
             'settings_defaultWebhookTitleTemplate', 'settings_defaultWebhookMessageTemplate', 'serverTz', 'nfcapdTz',
             'displayTz', 'alert_form_id', 'alert_form_name', 'alert_form_enabled', 'alert_form_profile',
@@ -247,26 +247,26 @@ describe('composition', function (): void {
 
         expect($c->getSignal('page')?->string())->toBe('talkers')
             ->and($c->getSignal('page')?->hasChanged())->toBeFalse()
-            ->and($c->getSignal('protocol')?->string())->toBe('any')
+            ->and($c->getSignal('protocol')?->string())->toBe('tcp')
             ->and($c->getSignal('range_preset')?->string())->toBe('24h')
             ->and($c->getSignal('range_live')?->bool())->toBeTrue()
             ->and($c->getSignal('graph_sources')?->array())->toBe(['gw1', 'gw2'])
             ->and($c->getSignal('graph_trafficUnit')?->string())->toBe('bits')
             ->and($c->getSignal('dateend')?->int() - $c->getSignal('datestart')?->int())->toBe(86400)
-            ->and($c->getSignal('settings_defaultView')?->string())->toBe('statistics')
+            ->and($c->getSignal('settings_defaultView')?->string())->toBe('talkers')
             ->and($c->getSignal('selected_profile')?->string())->toBe('live')
         ;
     });
 
-    test('the graph protocols preference does not narrow the queries while no control shows the protocol', function (): void {
+    test('the protocol the controls bar shows is the first graph protocols preference, and the queries carry it', function (): void {
         [, $c] = pageRegistryTestCompose();
         $protocol = RangeControls::protocol($c);
         $window = TimeWindow::raw(1_000, 2_000);
 
-        expect($protocol)->toBe('any')
-            ->and((new FlowsQuery($window, ['gw1'], 'live', 20, 'host 10.0.0.1', protocol: $protocol))->effectiveFilter())->not->toContain('proto')
-            ->and((new StatsQuery($window, ['gw1'], 'live', 'srcip', 'bytes', 10, 'host 10.0.0.1', protocol: $protocol))->effectiveFilter())->not->toContain('proto')
-            ->and((new MatrixQuery($window, ['gw1'], 'live', 'bytes', 10, filter: 'host 10.0.0.1', protocol: $protocol))->effectiveFilter())->not->toContain('proto')
+        expect($protocol)->toBe('tcp')
+            ->and((new FlowsQuery($window, ['gw1'], 'live', 20, 'host 10.0.0.1', protocol: $protocol))->effectiveFilter())->toContain('proto tcp')
+            ->and((new StatsQuery($window, ['gw1'], 'live', 'srcip', 'bytes', 10, 'host 10.0.0.1', protocol: $protocol))->effectiveFilter())->toContain('proto tcp')
+            ->and((new MatrixQuery($window, ['gw1'], 'live', 'bytes', 10, filter: 'host 10.0.0.1', protocol: $protocol))->effectiveFilter())->toContain('proto tcp')
         ;
     });
 
@@ -284,7 +284,7 @@ describe('composition', function (): void {
         expect(array_keys($app->globalState(Shell::STATUS_CACHE, [])))->toBe(['recent', 'live']);
     });
 
-    test('the live window follows the clock on analysis pages, and the data range keeps its own import throttle (1.7)', function (): void {
+    test('the live window follows the clock on analysis pages, and during an import only with the graph (1.7)', function (): void {
         [$app, $c, $states] = pageRegistryTestCompose();
         $app->setGlobalState('_fatalError', null);
         // Without sources the data range read returns early, so no datasource is touched.
@@ -301,6 +301,9 @@ describe('composition', function (): void {
         $onHealth = $renderWith('health');
         $onOverview = $renderWith('overview');
         $width = $c->getSignal('dateend')?->int() - $c->getSignal('datestart')?->int();
+        $graphFetchedAt = $states->shell->graphFetchedAt;
+        // A graph fetched just now is not due again during an import, so the window waits for it.
+        $states->shell->graphFetchedAt = $now;
         $c->getSignal('import_running')?->setValue(true, broadcast: false);
         $importing = $renderWith('overview');
 
@@ -308,8 +311,8 @@ describe('composition', function (): void {
             ->and($onOverview)->toBeGreaterThanOrEqual($now)
             ->and($width)->toBe(3_600)
             ->and($states->shell->rangeFetchedAt)->toBeGreaterThanOrEqual($now)
-            // Throttled by the data range's own read, although no graph was ever fetched.
-            ->and($states->shell->graphFetchedAt)->toBe(0)
+            // The data range is read on every page, the graph only where it shows.
+            ->and($graphFetchedAt)->toBe(0)
             ->and($importing)->toBe($now - 120)
         ;
     });
@@ -415,7 +418,8 @@ describe('composition', function (): void {
             ->and($data['pages']['talkers'])->toBe(['active' => false])
             ->and($data['graph']['mode'])->toBe('none')
             ->and($data['graph']['data'])->toBe('')
-            ->and($data)->toHaveKeys(['healthChecks', 'daemonsInfo', 'importLog'])
+            ->and($data['pages']['health'])->toHaveKeys(['level', 'checks', 'import', 'topn', 'sources', 'disks', 'system', 'log'])
+            ->and($data)->not->toHaveKeys(['healthChecks', 'daemonsInfo', 'importLog'])
             ->and($data)->not->toHaveKey('statsTableHtml')
         ;
     });

@@ -39,7 +39,7 @@ $viaConfig = (new ViaConfig())
 
         // Our own JS/CSS carry ?v={{ assetVersion }}, so a changed file gets a new URL; the
         // vendored libraries are not versioned in the template and revalidate weekly.
-        if (in_array(basename($filePath), ['nouislider.min.js', 'echarts.min.js'], true)) {
+        if (basename($filePath) === 'echarts.min.js') {
             return 'public, max-age=604800, must-revalidate';
         }
 

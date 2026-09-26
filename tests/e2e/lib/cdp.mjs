@@ -286,35 +286,14 @@ class Page {
         await this.waitFor(`${control}?.dataset.queryState === 'idle'`, { timeout, label: `${target} query to finish` });
     }
 
-    /** Choose a theme. Without #themeMenu the old toggle sets light or dark, and system/default
-        drop the stored choice. */
+    /** Choose a theme from the sidebar's theme menu: light, dark, system or default. */
     async chooseTheme(choice) {
-        const hasMenu = await this.evaluate(`!!document.getElementById('themeMenu')`);
-        if (hasMenu) {
-            await this.evaluate(`(function(){
-                var toggle = document.querySelector('#themeMenu .menu-toggle');
-                if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
-            })()`);
-            await this.waitFor(`!!document.querySelector('[data-theme-choice="${choice}"]')`, { label: `theme choice ${choice}` });
-            await this.evaluate(`document.querySelector('[data-theme-choice="${choice}"]').click()`);
-            return;
-        }
-        if (choice === 'light' || choice === 'dark') {
-            await this.evaluate(`(function(){
-                if (document.documentElement.dataset.theme !== ${JSON.stringify(choice)}) document.querySelector("[title='Toggle dark mode']").click();
-            })()`);
-            await this.waitFor(`document.documentElement.dataset.theme === ${JSON.stringify(choice)}`, {
-                label: `${choice} theme to apply`,
-            });
-            return;
-        }
         await this.evaluate(`(function(){
-            try { localStorage.removeItem('nfsen-theme'); } catch (e) {}
-            var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            window.__nfsenTheme.dark = dark;
-            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-            window.dispatchEvent(new CustomEvent('nfsen-colorscheme', { detail: { dark: dark } }));
+            var toggle = document.querySelector('#themeMenu .menu-toggle');
+            if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
         })()`);
+        await this.waitFor(`!!document.querySelector('[data-theme-choice="${choice}"]')`, { label: `theme choice ${choice}` });
+        await this.evaluate(`document.querySelector('[data-theme-choice="${choice}"]').click()`);
     }
 
     /** Record the POSTs sent from now on; names() gives action names without the random suffix. */

@@ -21,6 +21,7 @@ backend/settings/settings.php
 backend/settings/alerts-log.json*
 backend/settings/alerts-state.json
 backend/settings/preferences.json
+backend/settings/preferences.json.tmp.*
 backend/settings/nfsen-ng.sqlite*
 
 # PHP tooling config

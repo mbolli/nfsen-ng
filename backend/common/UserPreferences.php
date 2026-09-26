@@ -156,7 +156,7 @@ final class UserPreferences {
             throw new \RuntimeException("Cannot create preferences directory: {$dir}");
         }
 
-        $tmp = $path . '.tmp.' . getmypid();
+        $tmp = $path . '.tmp.' . getmypid() . '.' . bin2hex(random_bytes(4));
 
         if (file_put_contents($tmp, $json, LOCK_EX) === false) {
             throw new \RuntimeException("Cannot write preferences to: {$tmp}");

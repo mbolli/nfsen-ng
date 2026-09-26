@@ -2,6 +2,7 @@
 .vscode/
 backend/settings/settings.php
 backend/settings/preferences.json
+backend/settings/preferences.json.tmp.*
 backend/settings/alerts-state.json
 backend/settings/alerts-log.json*
 backend/settings/nfsen-ng.sqlite*

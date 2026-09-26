@@ -375,7 +375,7 @@ describe('composition', function (): void {
         )->and($actions)->not->toContain('dismiss-sankey-notification');
     });
 
-    test('the render array carries the 1.5 contract and the old top-level keys', function (): void {
+    test('the render array carries the 1.5 contract, and old top-level keys for the shell and the active page only', function (): void {
         [$app, $c, $states] = pageRegistryTestCompose();
         $data = Shell::render($c, $app, $states, false);
 
@@ -383,34 +383,46 @@ describe('composition', function (): void {
             ->and($data)->not->toHaveKey(Shell::LEGACY)
             ->and(array_keys($data['pages']))->toBe(PageRegistry::ids())
             ->and(array_keys(array_filter(array_map(static fn (array $p): bool => $p['active'], $data['pages']))))->toBe(['talkers'])
+            ->and($data['pages']['flows'])->toBe(['active' => false])
+            ->and($data['pages']['health'])->toBe(['active' => false])
             ->and($data['shell']['activePage'])->toBe('talkers')
             ->and($data['shell']['isAnalysis'])->toBeTrue()
             ->and($data['shell']['pagesMeta'])->toBe(PageRegistry::meta())
-            ->and($data['shell']['defaults'])->toBe(['view' => 'statistics', 'theme' => 'auto', 'density' => 'comfortable'])
+            ->and($data['shell']['defaults'])->toBe(['view' => 'talkers', 'theme' => 'auto', 'density' => 'comfortable'])
             ->and($data['shell']['healthLevel'])->toBe('unknown')
+            ->and($data['shell']['healthIssues'])->toBe(0)
+            ->and($data['shell']['alertsFiring'])->toBe(0)
             ->and($data['graph']['mode'])->toBe('overview')
             ->and(array_column($data['range']['presets'], 'id'))->toBe(['1h', '24h', '7d', '30d', '1y'])
             ->and($data['querykit']['targets'])->toHaveKeys(['overview', 'overview-topn', 'talkers', 'flows', 'conversations', 'drawer', 'alert'])
             ->and($data)->toHaveKeys([
-                'version', 'assetVersion', 'fatalError', 'connections', 'importYears', 'sources', 'ports', 'filters',
-                'defaults', 'deployDatasource', 'datasourceAcceptsHistoricWrites', 'deployImportYears',
-                'deployDefaultTheme', 'deployNfdumpBinary', 'deployNfdumpProfiles', 'deployPrefsFile', 'graphData',
-                'filteredCost', 'flowTableHtml', 'flowsGraphData', 'flowsGraphBuilt', 'flowsGraphCost',
-                'flowsGraphStale', 'flowNotifications', 'statsTableHtml', 'statsNotifications', 'sankeyData',
-                'sankeyNotifications', 'hasPorts', 'importSources', 'importProgress', 'importCurrentFile',
-                'importStatusText', 'importEta', 'importLog', 'importActiveProfile', 'daemonDisabled', 'daemonsInfo',
-                'daemonInfo', 'captureStatus', 'captureLabel', 'daemonStatus', 'daemonLabel', 'healthChecks', 'alerts',
-                'alertLog', 'alertFiredHtml', 'alertEmailEnabled', 'alertBuiltinEmailSubject', 'alertBuiltinEmailBody',
-                'alertBuiltinWebhookTitle', 'alertBuiltinWebhookMessage', 'alertEffectiveEmailSubject',
-                'alertEffectiveEmailBody', 'alertEffectiveWebhookTitle', 'alertEffectiveWebhookMessage',
+                'sources', 'ports', 'filters', 'deployDatasource', 'importProgress', 'importCurrentFile', 'importStatusText', 'importEta',
+                'graphData', 'statsTableHtml', 'statsNotifications',
             ])
-            ->and($data['defaults'])->toBe(['view' => 'statistics', 'theme' => 'auto'])
-            ->and($data['sankeyData'])->toBe('{"nodes":[],"links":[]}')
+            // The shell's own keys moved under `shell`; other pages' keys only come with their page.
+            ->and($data)->not->toHaveKeys(['version', 'defaults', 'captureStatus', 'alertFiredHtml', 'importSources'])
+            ->and($data)->not->toHaveKeys(['flowTableHtml', 'sankeyData', 'filteredCost', 'healthChecks', 'alerts', 'deployImportYears'])
+        ;
+    });
+
+    test('an inactive page renders no data, and a non-analysis page no graph (1.2)', function (): void {
+        [$app, $c, $states] = pageRegistryTestCompose();
+        $c->getSignal('page')?->setValue('health', broadcast: false);
+        $data = Shell::render($c, $app, $states, true);
+
+        expect($data['shell']['activePage'])->toBe('health')
+            ->and($data['shell']['isAnalysis'])->toBeFalse()
+            ->and($data['pages']['talkers'])->toBe(['active' => false])
+            ->and($data['graph']['mode'])->toBe('none')
+            ->and($data['graph']['data'])->toBe('')
+            ->and($data)->toHaveKeys(['healthChecks', 'daemonsInfo', 'importLog'])
+            ->and($data)->not->toHaveKey('statsTableHtml')
         ;
     });
 
     test('the result partials render from it, escaping nfdump\'s messages (D21)', function (string $partial, string $page): void {
         [$app, $c, $states] = pageRegistryTestCompose();
+        $c->getSignal('page')?->setValue($page, broadcast: false);
         $state = $states->for($page);
         $state?->notifyFailure(new NfdumpException("Unknown protocol: <b>x</b> at '\"<b>x</b>\"'", "nfdump -M /data -- 'proto \"<b>x</b>\"'"));
 
@@ -431,18 +443,28 @@ describe('composition', function (): void {
 
     test('a page render marks every state rendered, so unchanged results are not re-sent', function (): void {
         [$app, $c, $states] = pageRegistryTestCompose();
+        $page = $c->getSignal('page');
+        $page?->setValue('flows', broadcast: false);
         $states->flows->setResult('<table></table>', 1);
 
         $first = Shell::render($c, $app, $states, false);
         $second = Shell::render($c, $app, $states, true);
         $states->flows->setResult('<table></table>', 1);
         $third = Shell::render($c, $app, $states, true);
+        $page?->setValue('health', broadcast: false);
+        Shell::render($c, $app, $states, true);
+        $page?->setValue('flows', broadcast: false);
+        $back = Shell::render($c, $app, $states, true);
+        $page?->setValue('conversations', broadcast: false);
+        $conversations = Shell::render($c, $app, $states, true);
 
         expect($first['pages']['flows']['result']['send'])->toBeTrue()
             ->and($second['pages']['flows']['result']['send'])->toBeFalse()
             ->and($third['pages']['flows']['result']['send'])->toBeTrue()
-            ->and($first['pages'][OverviewPage::id()])->toHaveKey('notifications')
-            ->and($first['pages'][ConversationsPage::id()]['result']['send'])->toBeTrue()
+            // Its section held a skeleton in between, so the result is sent again.
+            ->and($back['pages']['flows']['result']['send'])->toBeTrue()
+            ->and($conversations['pages'][ConversationsPage::id()]['result']['send'])->toBeTrue()
+            ->and($conversations['pages'][OverviewPage::id()])->toBe(['active' => false])
         ;
     });
 });

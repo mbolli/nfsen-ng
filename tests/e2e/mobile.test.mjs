@@ -173,13 +173,12 @@ export default async function mobileTest() {
         // A live window may advance meanwhile, so the width must hold and the start may only move on.
         assert.equal(end2 - start2, end - start, 'a swipe on the graph keeps the window width');
         assert.ok(start2 - start >= 0 && start2 - start <= 120, `a swipe on the graph does not move the range (${start2 - start} s)`);
-        if (await page.evaluate(`!!document.getElementById('brushToggle')`)) {
-            assert.equal(await page.evaluate(visible('#brushToggle')), true, '#brushToggle is visible on a phone');
-            const onGraph = await page.evaluate('window.scrollY');
-            assert.ok(onGraph > 50, `a vertical swipe on the graph scrolls the page (scrollY ${onGraph})`);
-        } else {
-            console.log('mobile: the traffic graph has no #brushToggle yet (WP-OV), so its swipe-to-scroll check is skipped');
-        }
+        // The 1.8 touch contract: the brush waits for #brushToggle, a swipe scrolls, the graph is 13rem.
+        assert.equal(await page.evaluate(visible('#brushToggle')), true, '#brushToggle is visible on a phone');
+        const onGraph = await page.evaluate('window.scrollY');
+        assert.ok(onGraph > 50, `a vertical swipe on the graph scrolls the page (scrollY ${onGraph})`);
+        const graphHeight = await page.evaluate(`document.querySelector('#trafficGraph .chart-canvas').getBoundingClientRect().height / parseFloat(getComputedStyle(document.documentElement).fontSize)`);
+        assert.ok(Math.abs(graphHeight - 13) < 0.5, `the phone graph is about 13rem tall (${graphHeight.toFixed(2)}rem)`);
 
         // Nothing is wider than the phone, on any page, with results on the pages that hold them.
         await page.setRangePreset('1y');

@@ -1723,7 +1723,8 @@ table.ranking td[data-kind='share'] > .bar {
     block-size: 2rem;
 }
 
-.empty-state h2 {
+/* Inside a card with its own h2 title the heading is an h3. */
+.empty-state :is(h2, h3) {
     color: var(--text-1);
     font-size: var(--font-size-2);
 }

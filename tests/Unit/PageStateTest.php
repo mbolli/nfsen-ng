@@ -146,13 +146,17 @@ describe('snapshot and restore', function (): void {
         ;
     });
 
-    test('the conversations payload is an empty graph until a run stored one', function (): void {
+    test('the conversations state is empty until a run stored a payload', function (): void {
         $state = new ConversationsState();
 
-        expect($state->payload())->toBe('{"nodes":[],"links":[]}');
+        expect($state->isEmpty())->toBeTrue()
+            ->and($state->snapshot())->toBe([])
+        ;
 
-        $state->setResult('{"nodes":[{"name":"src:a"}],"links":[]}');
-        expect($state->payload())->toBe('{"nodes":[{"name":"src:a"}],"links":[]}');
+        $state->setResult('{"pairs":[]}', '<table></table>', ['pairs' => 0]);
+        expect($state->isEmpty())->toBeFalse()
+            ->and($state->payload)->toBe('{"pairs":[]}')
+        ;
     });
 
     test('every stored result gets a new id, also for identical content', function (): void {

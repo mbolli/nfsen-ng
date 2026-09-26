@@ -361,7 +361,7 @@ describe('components', function (): void {
             "window.dispatchEvent(new CustomEvent('nfsen-open-drawer', {detail: {target: 'flows', tab: 'saved'}}))\">Saved</button>",
         )
             ->and(($this->field)([]))->not->toContain('data-open-drawer', 'nfsen-open-drawer')
-            ->and(($this->field)([]))->toContain('<nfsen-filter-manager')
+            ->and(($this->field)([]))->not->toContain('nfsen-filter-manager')
         ;
     });
 

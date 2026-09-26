@@ -82,9 +82,10 @@ describe('ids and lookups', function (): void {
     test('the graph and the live window run for the analysis pages, and for every page until rendering is lazy', function (): void {
         foreach (PageRegistry::ids() as $id) {
             $analysis = PageRegistry::isAnalysis($id);
+            $graph = ['talkers' => 'picker', 'flows' => 'picker', 'conversations' => 'picker-total'][$id] ?? 'overview';
 
             expect(PageRegistry::rendersAnalysis($id))->toBe($analysis || !PageRegistry::lazy())
-                ->and(TrafficGraph::mode($id))->toBe($analysis || !PageRegistry::lazy() ? 'overview' : 'none')
+                ->and(TrafficGraph::mode($id))->toBe($analysis || !PageRegistry::lazy() ? $graph : 'none')
             ;
         }
     });
@@ -214,7 +215,7 @@ describe('composition', function (): void {
         [, $c] = pageRegistryTestCompose();
         $signals = array_keys($c->getNamedSignals());
         $old = ['datestart', 'dateend', 'data_range_min', 'data_range_max', '_error', 'graph_display', 'graph_sources',
-            'graph_ports', 'graph_protocols', 'graph_datatype', 'graph_trafficUnit', 'graph_resolution', 'graph_mode',
+            'graph_ports', 'graph_datatype', 'graph_trafficUnit', 'graph_resolution', 'graph_mode',
             'graph_filter', 'graph_isLive', 'graph_actualResolution', 'graph_lastUpdate', 'query_running',
             'query_permille', 'query_status', 'query_eta', 'query_exact', 'query_kind', 'flows_filter',
             'flows_graph_shown', 'flows_graph_unit', 'flows_graph_key', 'flows_graph_fingerprint', 'flows_limit',
@@ -224,7 +225,7 @@ describe('composition', function (): void {
             'stats_orderBy', 'stats_lower_limit', 'stats_upper_limit', 'stats_agg_bidirectional', 'stats_agg_proto',
             'stats_agg_srcport', 'stats_agg_dstport', 'stats_agg_srcip', 'stats_agg_srcip_prefix', 'stats_agg_dstip',
             'stats_agg_dstip_prefix', 'nfcapd_file_count', 'nfcapd_total_bytes', 'nfcapd_measured', 'sankey_filter',
-            'sankey_topN', 'sankey_metric', 'sankey_show_ports', 'sankey_lower_limit', 'sankey_upper_limit',
+            'sankey_topN', 'sankey_metric', 'sankey_lower_limit', 'sankey_upper_limit',
             'selected_profile', 'available_profiles', 'admin_target_profile', 'import_running', 'confirm_rescan',
             'import_scan_ports', 'settings_defaultView', 'settings_graphDisplay', 'settings_graphDatatype',
             'settings_graphProtocols', 'settings_flowLimit', 'settings_statsOrderBy',
@@ -238,7 +239,9 @@ describe('composition', function (): void {
 
         expect(array_diff($old, $signals))->toBe([])
             ->and($signals)->toContain('page', 'range_preset', 'range_live', 'protocol', '_flt_flows', '_est_overview_topn')
+            ->and($signals)->toContain('conv_group', 'conv_direction', '_conv_stale')
             ->and($signals)->not->toContain('_flt_overview_topn', '_est_alert')
+            ->and($signals)->not->toContain('sankey_show_ports')
         ;
     });
 
@@ -365,7 +368,8 @@ describe('composition', function (): void {
             'flow-actions',
             'build-flows-graph',
             'touch-flows-graph',
-            'sankey-actions',
+            'conversations-run',
+            'conversations-check',
             'save-alert',
             'delete-alert',
             'toggle-alert',
@@ -375,7 +379,7 @@ describe('composition', function (): void {
             'force-rescan',
             'cancel-import',
             'save-settings',
-        )->and($actions)->not->toContain('dismiss-sankey-notification');
+        )->and($actions)->not->toContain('dismiss-sankey-notification', 'sankey-actions');
     });
 
     test('the render array carries the 1.5 contract, and old top-level keys for the shell and the active page only', function (): void {
@@ -395,16 +399,15 @@ describe('composition', function (): void {
             ->and($data['shell']['healthLevel'])->toBe('unknown')
             ->and($data['shell']['healthIssues'])->toBe(0)
             ->and($data['shell']['alertsFiring'])->toBe(0)
-            ->and($data['graph']['mode'])->toBe('overview')
+            ->and($data['graph']['mode'])->toBe('picker')
             ->and(array_column($data['range']['presets'], 'id'))->toBe(['1h', '24h', '7d', '30d', '1y'])
             ->and($data['querykit']['targets'])->toHaveKeys(['overview', 'overview-topn', 'talkers', 'flows', 'conversations', 'drawer', 'alert'])
             ->and($data)->toHaveKeys([
                 'sources', 'ports', 'filters', 'deployDatasource', 'importProgress', 'importCurrentFile', 'importStatusText', 'importEta',
-                'graphData', 'statsTableHtml', 'statsNotifications',
             ])
             // The shell's own keys moved under `shell`; other pages' keys only come with their page.
             ->and($data)->not->toHaveKeys(['version', 'defaults', 'captureStatus', 'alertFiredHtml', 'importSources'])
-            ->and($data)->not->toHaveKeys(['flowTableHtml', 'sankeyData', 'filteredCost', 'healthChecks', 'alerts', 'deployImportYears'])
+            ->and($data)->not->toHaveKeys(['flowTableHtml', 'sankeyData', 'filteredCost', 'graphData', 'healthChecks', 'alerts', 'deployImportYears'])
         ;
     });
 
@@ -424,26 +427,21 @@ describe('composition', function (): void {
         ;
     });
 
-    test('the result partials render from it, escaping nfdump\'s messages (D21)', function (string $partial, string $page): void {
+    test('the page templates render from it, escaping nfdump\'s messages (D21)', function (string $page): void {
         [$app, $c, $states] = pageRegistryTestCompose();
         $c->getSignal('page')?->setValue($page, broadcast: false);
         $state = $states->for($page);
         $state?->notifyFailure(new NfdumpException("Unknown protocol: <b>x</b> at '\"<b>x</b>\"'", "nfdump -M /data -- 'proto \"<b>x</b>\"'"));
 
-        $html = $c->render("partials/{$partial}.html.twig", Shell::render($c, $app, $states, false));
+        $html = $c->render("pages/{$page}.html.twig", Shell::render($c, $app, $states, false));
 
         expect($html)->not->toContain('<b>x</b>')
             ->and($html)->toContain(
-                'Error: Unknown protocol: &lt;b&gt;x&lt;/b&gt;',
-                '<code>nfdump -M /data -- &#039;proto &quot;&lt;b&gt;x&lt;/b&gt;&quot;&#039;</code>',
-                "?page={$page}&id={$state?->notifications[0]['id']}')",
+                'Unknown protocol: &lt;b&gt;x&lt;/b&gt;',
+                'nfdump -M /data -- &#039;proto &quot;&lt;b&gt;x&lt;/b&gt;&quot;&#039;',
             )
         ;
-    })->with([
-        ['flow-view', 'flows'],
-        ['stats-view', 'talkers'],
-        ['sankey-view', 'conversations'],
-    ]);
+    })->with(['flows', 'talkers', 'conversations']);
 
     test('a page render marks every state rendered, so unchanged results are not re-sent', function (): void {
         [$app, $c, $states] = pageRegistryTestCompose();

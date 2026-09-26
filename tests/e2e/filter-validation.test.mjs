@@ -254,12 +254,14 @@ export default async function filterValidationTest() {
         );
         await estimateSettled(page, 'the estimate after the run');
 
-        // Keyboard: Tab from the Sources select reaches the field.
-        await page.evaluate(`document.querySelector('#filterFlowSources select').focus()`);
-        for (let i = 0; i < 4 && (await page.evaluate('document.activeElement?.id')) !== FIELD.slice(1); i++) {
-            await press(page, 'Tab', 'Tab', 9);
+        // Keyboard: Shift+Tab from the Limit select reaches the field.
+        await page.evaluate(`document.getElementById('flowsLimit').focus()`);
+        for (let i = 0; i < 6 && (await page.evaluate('document.activeElement?.id')) !== FIELD.slice(1); i++) {
+            for (const type of ['keyDown', 'keyUp']) {
+                await page.send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 });
+            }
         }
-        assert.equal(await page.evaluate('document.activeElement?.id'), FIELD.slice(1), 'Tab reaches the filter field');
+        assert.equal(await page.evaluate('document.activeElement?.id'), FIELD.slice(1), 'Shift+Tab reaches the filter field');
         const quiet = await statusOf(page);
         assert.equal(quiet.politeness, 'off', 'the answer for the loaded filter is not announced');
 

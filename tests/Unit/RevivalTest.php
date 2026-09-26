@@ -36,7 +36,7 @@ describe('snapshots', function (): void {
         expect($states->flows->tableHtml)->toBe('<table id="flowTable"></table>')
             ->and($states->flows->count)->toBe(3)
             ->and($states->flows->notifications[0]['code'])->toBe('nfdump -M /data')
-            ->and($states->conversations->sankeyData)->toBe('{"nodes":["newer"],"links":[]}')
+            ->and($states->conversations->payload)->toBe('{"nodes":["newer"],"links":[]}')
             ->and($states->talkers->isEmpty())->toBeTrue()
         ;
     });
@@ -124,7 +124,7 @@ describe('restore and persist in app-global state', function (): void {
         expect($this->app->globalState(Revival::KEY)['ctx-persist'])->toHaveKeys(['flows', 'conversations']);
 
         $states->flows->clearResult();
-        $states->conversations->sankeyData = '';
+        $states->conversations->clearResult();
         Revival::persist($c, $this->app, $states);
         expect($this->app->globalState(Revival::KEY))->not->toHaveKey('ctx-persist');
     });

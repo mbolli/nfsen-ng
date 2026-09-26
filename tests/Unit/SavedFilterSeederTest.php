@@ -219,7 +219,7 @@ describe('a preferences.json with its own filters', function (): void {
         $result = json_decode($out, true, flags: JSON_THROW_ON_ERROR);
 
         expect($result['deployment'])->toBe(['proto tcp', 'dst port 22'])
-            ->and($result['settings'])->toBe(['proto tcp', 'dst port 22', 'dst port 443'])
+            ->and($result['settings'])->toBe(['dst port 443', 'proto tcp'])
             ->and($result['saved'])->toEqualCanonicalizing([
                 'proto tcp' => 'deployment',
                 'dst port 22' => 'deployment',

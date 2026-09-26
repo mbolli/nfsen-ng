@@ -187,7 +187,7 @@ export default async function smokeTest() {
         await page.gotoPage('flows');
         await page.gotoPage('overview');
         await sleep(1000);
-        assert.deepEqual(await page.signalValue('graph_protocols'), ['tcp', 'udp', 'icmp', 'other'], 'the protocols survive a page switch');
+        assert.equal(await page.signalValue('graph_display'), 'protocols', 'the display survives a page switch');
         await page.setSelectValue('#filterDisplaySelect', 'sources');
 
         // A sync rendered for a page the client has already left must not flip it back, and the

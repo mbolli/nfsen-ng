@@ -1,102 +1,116 @@
 /**
- * Toast Notification Web Component
- * Displays notice messages with auto-dismiss functionality
- * Each instance is a single toast that removes itself when dismissed
+ * Toast (4.0.6): the message is text, never markup. An auto-dismissing toast waits while the
+ * pointer or the focus is on it.
  */
+const LEVELS = ['success', 'info', 'warning', 'error'];
+const DURATION = 5000;
+const FADE = 220;
+
 class NfsenToast extends HTMLElement {
-    constructor() {
-        super();
-        this.autoDismissDelay = 5000; // 5 seconds for success messages
-    }
-
     connectedCallback() {
-        // Get data from attributes
-        const type = this.dataset.type || 'info';
-        const message = this.dataset.message || '';
-        const autoDismiss = this.dataset.autoDismiss === 'true';
+        if (this._notice) return;
+        const level = LEVELS.includes(this.dataset.type) ? this.dataset.type : 'info';
+        this.render(level, this.dataset.message ?? '', this.dataset.autoDismiss === 'true');
+    }
 
-        // Render the toast
-        this.render(type, message, autoDismiss);
+    disconnectedCallback() {
+        clearTimeout(this._timer);
+    }
 
-        // Auto-dismiss if requested
+    render(level, message, autoDismiss) {
+        const notice = document.createElement('div');
+        notice.className = 'notice dismissible';
+        notice.dataset.level = level;
+        // Each toast is its own live region; errors and warnings interrupt.
+        notice.setAttribute('role', level === 'error' || level === 'warning' ? 'alert' : 'status');
+
+        const glyph = document.createElement('span');
+        glyph.className = 'status-dot';
+        glyph.dataset.level = level;
+        glyph.setAttribute('aria-hidden', 'true');
+
+        const text = document.createElement('span');
+        text.className = 'toast-message';
+
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.dataset.variant = 'close';
+        close.setAttribute('aria-label', 'Dismiss notification');
+        close.title = 'Dismiss';
+        close.addEventListener('click', () => this.dismiss());
+
+        notice.append(glyph, text, close);
         if (autoDismiss) {
-            setTimeout(() => {
-                this.dismiss();
-            }, this.autoDismissDelay);
+            const progress = document.createElement('span');
+            progress.className = 'toast-progress';
+            progress.setAttribute('aria-hidden', 'true');
+            progress.style.setProperty('--toast-duration', `${DURATION}ms`);
+            notice.append(progress);
+            this.startTimer(DURATION);
         }
+        this._notice = notice;
+        this.replaceChildren(notice);
+        // A status region reads out what changes in it, not what it was inserted with.
+        requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+                text.textContent = message;
+            })
+        );
     }
 
-    /**
-     * Render the toast as a notice
-     */
-    render(type, message, autoDismiss = false) {
-        const level = type;
-        const icon = this.getIcon(type);
-        const progressBar = autoDismiss ? `<div class="toast-progress" style="animation-duration:${this.autoDismissDelay}ms"></div>` : '';
-
-        this.innerHTML = `
-            <div class="notice dismissible" data-level="${level}" role="alert">
-                ${icon}&nbsp;${message}
-                <button type="button" data-variant="close" aria-label="Close"></button>
-                ${progressBar}
-            </div>
-        `;
-
-        // Add click handler for close button
-        const closeBtn = this.querySelector('[data-variant="close"]');
-        closeBtn.addEventListener('click', () => {
-            this.dismiss();
-        });
-    }
-
-    /**
-     * Get the icon for a message type
-     */
-    getIcon(type) {
-        const icons = {
-            success:
-                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg>',
-            error: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/></svg>',
-            warning:
-                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/></svg>',
-            info: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2"/></svg>',
+    startTimer(remaining) {
+        let started = 0;
+        let left = remaining;
+        let paused = true;
+        const run = () => {
+            if (!paused || held()) return;
+            paused = false;
+            started = Date.now();
+            this._timer = setTimeout(() => this.dismiss(), left);
         };
-        return icons[type] || icons.info;
+        const pause = () => {
+            if (paused) return;
+            paused = true;
+            clearTimeout(this._timer);
+            left = Math.max(0, left - (Date.now() - started));
+        };
+        const held = () => this.matches(':hover, :focus-within');
+        this.addEventListener('pointerenter', pause);
+        this.addEventListener('focusin', pause);
+        this.addEventListener('pointerleave', run);
+        this.addEventListener('focusout', () => setTimeout(run));
+        run();
     }
 
-    /**
-     * Dismiss this toast with animation and remove from DOM
-     */
+    /** Fades the notice out, then removes the toast. */
     dismiss() {
-        const alert = this.querySelector('.alert');
-        if (alert) {
-            alert.classList.add('is-dismissing');
-        }
+        if (this._dismissing) return;
+        this._dismissing = true;
+        clearTimeout(this._timer);
+        this.querySelector('.notice.dismissible')?.classList.add('is-dismissing');
         setTimeout(() => {
             this.dispatchEvent(new CustomEvent('nfsen-toast-dismissed', { bubbles: true }));
             this.remove();
-        }, 150); // Match the fade-out transition
+        }, FADE);
     }
 }
 
-// Define the custom element
 customElements.define('nfsen-toast', NfsenToast);
 
-// Global helper function for client-side usage
-// containerSelector: optional CSS selector for the target container (should have data-ignore-morph)
+/**
+ * Shows a toast. containerSelector: an optional target, which should carry data-ignore-morph
+ * so a sync keeps it; the shell's toast stack otherwise.
+ */
 window.showMessage = (type, message, autoDismiss = false, containerSelector = null) => {
-    // Create a new toast element
     const toast = document.createElement('nfsen-toast');
     toast.dataset.type = type;
-    toast.dataset.message = message;
-    if (autoDismiss) {
-        toast.dataset.autoDismiss = 'true';
-    }
+    toast.dataset.message = String(message ?? '');
+    if (autoDismiss) toast.dataset.autoDismiss = 'true';
 
-    // Prefer the specified container, then the fixed overlay, then body
     const container =
         (containerSelector && document.querySelector(containerSelector)) ||
         document.getElementById('alerts-toast-container') ||
         document.body;
     container.appendChild(toast);
+    return toast;
 };

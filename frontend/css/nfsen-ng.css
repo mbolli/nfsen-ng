@@ -1,8 +1,3 @@
-/* The pre-shell page header: the tab strip sits on this line, so it must not draw its own. */
-body > header {
-    border-block-end: 1px solid var(--border);
-}
-
 /* graph */
 
 /* View Transitions for chart updates: simple crossfade */
@@ -30,18 +25,6 @@ body > header {
     animation: 250ms ease-out both fade-in;
 }
 
-/* View Transitions for tab switching */
-main.tab-content {
-    view-transition-name: tab-content;
-}
-
-::view-transition-old(tab-content) {
-    animation: 100ms ease-in both fade-out;
-}
-::view-transition-new(tab-content) {
-    animation: 200ms ease-out both fade-in;
-}
-
 [id='legend'] span {
     padding: 0.2rem;
 }
@@ -52,10 +35,6 @@ main.tab-content {
 
 [id='series'] label {
     display: block;
-}
-
-[id='viewList'] li h4 {
-    margin-left: 10px;
 }
 
 /* column selector */
@@ -94,45 +73,6 @@ main.tab-content {
 }
 .live-badge {
     animation: live-pulse 2s ease-in-out infinite;
-}
-
-/* Import dot on the Settings nav tab: pulses while an import runs */
-@keyframes import-dot-pulse {
-    0%,
-    100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.35;
-    }
-}
-/* A dot on the Settings tab while an import runs. Positioned by its list item rather
-   than by utilities, so nothing else has to know it is there. */
-.tabs li.has-indicator {
-    position: relative;
-}
-
-.import-indicator-dot {
-    position: absolute;
-    inset-block-start: 0;
-    inset-inline-end: 0;
-    inline-size: 0.55rem;
-    block-size: 0.55rem;
-    border-radius: 50%;
-    background: var(--text-2);
-    animation: import-dot-pulse 1.2s ease-in-out infinite;
-}
-
-/* The tab strip's own bits: a home icon and the theme toggle read as icons, not links. */
-.tabs a.reload,
-.tabs a[title='Toggle dark mode'] {
-    color: inherit;
-}
-
-.brand {
-    flex-shrink: 0;
-    color: var(--text-2);
-    text-decoration: none;
 }
 
 .profile-select {
@@ -177,138 +117,6 @@ th.sortable.sort-desc {
 .card.loading .card-body {
     opacity: 0.5;
     transition: opacity var(--duration-normal) var(--ease-out);
-}
-
-/* The slider needs room for its pip labels below and its handle tooltips above. */
-.daterange-wrap {
-    margin-block-end: var(--size-4);
-}
-
-.date-range-controls {
-    margin-block-end: var(--size-4);
-}
-
-/* ── noUiSlider skin (replaces ion.rangeSlider / sprite-skin-nice) ─────────
-   Targets to match the previous "Nice" skin look-and-feel:
-   - Horizontal grey track, 8px tall
-   - A neutral filled bar between handles
-   - Circular white handles (22×22 px) with subtle shadow
-   - Small grid/pip labels below the track
-   - Floating tooltips above handles, styled like the old irs-from/irs-to bubbles
-──────────────────────────────────────────────────────────────────────────── */
-
-nfsen-daterange {
-    display: block;
-    width: 100%;
-    padding: 20px 12px 8px; /* top: tooltips above track; sides/bottom: breathing room */
-}
-
-nfsen-daterange .daterange-slider {
-    margin: 0 11px; /* compensate for handle overflow at track edges */
-}
-
-/* Base track */
-.noUi-target {
-    height: 8px;
-    border-radius: 4px;
-    background: var(--surface-4);
-    border: 1px solid var(--border);
-    box-shadow: inset 0 1px 2px color-mix(in oklab, var(--text-1) 12%, transparent);
-}
-
-.noUi-connects {
-    border-radius: 4px;
-    overflow: hidden; /* clip connect bar to track radius */
-}
-
-/* Filled bar between the two handles */
-.noUi-connect {
-    background: var(--text-2);
-}
-
-/* Handles */
-.noUi-handle {
-    width: 22px !important;
-    height: 22px !important;
-    right: -11px !important;
-    top: -8px !important;
-    border-radius: 50%;
-    background: var(--surface-2);
-    border: 1px solid var(--control-border);
-    box-shadow: var(--shadow-1);
-    cursor: default;
-}
-/* Remove the default inner cross-hair lines */
-.noUi-handle::before,
-.noUi-handle::after {
-    display: none;
-}
-.noUi-handle:hover {
-    border-color: var(--text-1);
-    box-shadow: var(--shadow-2);
-}
-.noUi-handle:focus-visible {
-    outline: 2px solid var(--focus-color);
-    outline-offset: 1px;
-}
-
-/* Floating tooltips above handles */
-.noUi-tooltip {
-    background: var(--surface-inverse);
-    color: var(--text-on-inverse);
-    border: none;
-    border-radius: 3px;
-    font-size: 10px;
-    line-height: 1.333;
-    padding: 1px 5px;
-    white-space: nowrap;
-    bottom: 26px; /* position above the handle */
-}
-
-/* Pip grid below track */
-.noUi-pips-horizontal {
-    padding: 6px 0 0;
-    height: 30px;
-    top: 100%;
-}
-.noUi-marker-horizontal.noUi-marker {
-    height: 8px;
-    background: var(--text-2);
-    width: 1px;
-}
-.noUi-marker-horizontal.noUi-marker-large,
-.noUi-marker-horizontal.noUi-marker-normal {
-    height: 12px;
-}
-.noUi-marker-horizontal.noUi-marker-sub {
-    height: 6px;
-}
-.noUi-value {
-    color: var(--text-2);
-    font-size: 9px;
-    line-height: 1;
-    padding: 0 3px;
-}
-
-/* ── Tooltip component (paired with nfsen-tooltip.js) ────────────────────── */
-.nfsen-tip-popup {
-    z-index: var(--layer-tooltip);
-    background: var(--surface-inverse);
-    color: var(--text-on-inverse);
-    padding: 3px 8px;
-    border-radius: 3px;
-    font-size: 11px;
-    max-width: 260px;
-    white-space: normal;
-    line-height: 1.4;
-    pointer-events: none;
-}
-
-/* With the handles close together one label carries both ends (see
-   nfsen-daterange.js) and the other formats to nothing; an empty tooltip would
-   otherwise still draw its box and border. */
-.noUi-tooltip:empty {
-    display: none;
 }
 
 /* The /24 beside an IP aggregation select: wide enough for three digits, no wider. */
@@ -506,6 +314,11 @@ nfsen-daterange .daterange-slider {
     line-height: 1.35;
 }
 
+/* The nfdump command a result notice quotes wraps anywhere, or a phone would cut it off. */
+.notice > code {
+    overflow-wrap: anywhere;
+}
+
 .ip-link {
     text-decoration-style: dotted;
 }
@@ -679,78 +492,16 @@ nfsen-daterange .daterange-slider {
     margin-block-start: var(--size-5);
 }
 
-/* ── Native <dialog> modal (ip-info-modal) ───────────────────────────────── */
-dialog#ip-modal-inner {
-    border: none;
-    border-radius: 8px;
-    padding: 24px;
-    min-width: 400px;
-    max-width: 92vw;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: var(--shadow-2);
-    background-color: var(--surface-2);
-    color: var(--text-1);
-}
-dialog#ip-modal-inner::backdrop {
-    background: var(--backdrop);
-}
-
-/* ── Toast notification overlay ──────────────────────────────────────────── */
-#alerts-toast-container {
-    position: fixed;
-    bottom: 1.25rem;
-    right: 1.25rem;
-    z-index: var(--layer-toast);
-    display: flex;
-    flex-direction: column-reverse;
-    gap: 0.5rem;
-    min-width: 320px;
-    max-width: min(480px, calc(100vw - 2.5rem));
-    pointer-events: none; /* let clicks pass through empty space */
-}
-#alerts-toast-container nfsen-toast {
-    pointer-events: auto;
-}
-#alerts-toast-container .notice {
-    margin-bottom: 0;
-    box-shadow: var(--shadow-2);
-    overflow: hidden; /* contain the progress bar */
-}
-.toast-progress {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    height: 3px;
-    width: 100%;
-    background: currentColor;
-    opacity: 0.25;
-    transform-origin: left;
-    animation: toast-shrink linear forwards;
-}
-@keyframes toast-shrink {
-    from {
-        transform: scaleX(1);
-    }
-    to {
-        transform: scaleX(0);
-    }
-}
-
 /* ── Country flag emoji (IP info modal) ──────────────────────────────────── */
 
-/* Rendered server-side as a regional-indicator pair instead of loading a flag
-   image from a CDN. Name the colour emoji fonts explicitly: without them the
-   glyphs fall back to the body font, which on some Linux setups draws the two
-   letters in a monochrome box even where a colour font is installed. Windows
-   has no flag glyphs at all outside Firefox and shows the letters, still
-   readable, and the country name is a row below. */
+/* A regional-indicator pair, not a CDN image. The colour emoji fonts are named because the
+   body font draws the two letters in a monochrome box on some Linux setups. */
 .flag-emoji {
+    margin-inline-end: var(--size-1);
     font-family: 'Twemoji Mozilla', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', sans-serif;
-    font-size: 2rem;
+    font-size: 1.25rem;
     line-height: 1;
     vertical-align: -0.15em;
-    margin-left: 0.35rem;
 }
 
 /* ── Graph series controls with many series ──────────────────────────────── */

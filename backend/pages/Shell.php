@@ -206,6 +206,20 @@ final class Shell {
         ));
     }
 
+    /**
+     * Shows $html in the tab's modal root (D24): kept in ShellState so every later render
+     * carries it, patched in now, then opened. $dialogId names the dialog inside $html.
+     */
+    public static function openModal(Context $c, ShellState $shell, string $html, string $dialogId): void {
+        $shell->modalHtml = $html;
+        $c->getPatchManager()->queuePatch([
+            'type' => 'elements',
+            'content' => '<div id="modal-root">' . $html . '</div>',
+        ]);
+        $id = json_encode($dialogId, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+        $c->execScript("(() => { const d = document.getElementById({$id}); if (d && !d.open) d.showModal(); })()");
+    }
+
     /** Config failed to initialise: renders show the banner and touch no datasource. */
     public static function fatal(Via $app): bool {
         return $app->globalState('_fatalError', null) !== null;

@@ -1,93 +1,104 @@
-{#
-    IP info modal fragment — pushed by the server as a Datastar patchElements event.
-    Replaces #ip-modal-placeholder in the DOM, then JS calls .showModal() on #ip-modal-inner.
-    Uses a native <dialog> element, shown with showModal().
-#}
-<div id="ip-modal-placeholder">
-    <dialog id="ip-modal-inner" aria-labelledby="ipModalLabel">
-        <div class="dialog-content">
-            <div class="dialog-header">
-                <h1 class="dialog-title" id="ipModalLabel">Info for IP: {{ ip }}</h1>
-                <button type="button" data-variant="close" aria-label="Close"
-                        data-on:click="document.getElementById('ip-modal-inner').close()"></button>
-            </div>
-            <div class="dialog-body">
-                <dl>
-                    <dt>Hostname</dt>
-                    <dd{% if hostname == 'could not be resolved' %} class="muted italic"{% endif %}>{{ hostname }}</dd>
-                </dl>
+{# IP info (4.0.6, D24): kept in ShellState::$modalHtml and rendered on every sync, so a morph
+   neither empties nor closes it; only the client closes it. #}
+{% set labels = {
+    country_name: 'Country', region: 'Region', city: 'City', postal: 'Postal code',
+    timezone: 'Time zone', asn: 'AS number', org: 'Organisation', network: 'Network',
+} %}
+{# Shown elsewhere in the dialog, or provider bookkeeping nobody needs here. #}
+{% set ignored = ['ip', 'source', 'latitude', 'longitude', 'country', 'country_code', 'country_code_iso3',
+                  'country_tld', 'country_area', 'country_population', 'continent_code', 'in_eu', 'version',
+                  'error', 'reason', 'readme', 'success', 'status', 'message', 'country_flag', 'region_code'] %}
+<dialog id="ip-modal-inner" class="ip-info" aria-labelledby="ipModalLabel" data-preserve-attr="open">
+    <form method="dialog" class="dialog-content">
+        <header class="dialog-header">
+            <h2 class="dialog-title" id="ipModalLabel">IP info: <span class="ip-info-address">{{ ip }}</span></h2>
+            <button type="submit" data-variant="close" aria-label="Close" title="Close"></button>
+        </header>
+        <div class="dialog-body stack">
+            <dl class="ip-info-fields">
+                <dt>Hostname</dt>
+                <dd {% if not hostnameFound %}data-kind="none"{% endif %}>{{ hostname }}</dd>
+            </dl>
 
-                {# Rows stay curated rather than looping the payload: netbox() returns the raw
-                   API object, whose nested values (status, role, tenant) only read well through
-                   .label/.name, and which carries id/url/timestamps nobody needs here (#168). #}
-                {% if netboxData is defined and netboxData is not empty %}
-                    <h3>{{ ip }} (Netbox)</h3>
-                    <table>
+            {# Curated rows, not a loop: the raw Netbox object nests status, role and tenant, and
+               carries ids and timestamps nobody needs here (#168). #}
+            {% if netboxData is not empty %}
+                <section class="ip-info-section" aria-labelledby="ipNetboxHeading">
+                    <h3 id="ipNetboxHeading">Netbox</h3>
+                    <dl class="ip-info-fields">
                         {% if netboxData.address is defined %}
-                            <tr><th>Address</th><td>{{ netboxData.address }}</td></tr>
+                            <dt>Address</dt><dd>{{ netboxData.address }}</dd>
                         {% endif %}
                         {% if netboxData.dns_name is defined and netboxData.dns_name %}
-                            <tr><th>DNS name</th><td>{{ netboxData.dns_name }}</td></tr>
+                            <dt>DNS name</dt><dd>{{ netboxData.dns_name }}</dd>
                         {% endif %}
                         {% if netboxData.description is defined and netboxData.description %}
-                            <tr><th>Description</th><td>{{ netboxData.description }}</td></tr>
+                            <dt>Description</dt><dd>{{ netboxData.description }}</dd>
                         {% endif %}
                         {% if netboxData.tenant is defined and netboxData.tenant %}
-                            <tr><th>Tenant</th><td>{{ netboxData.tenant.name }}</td></tr>
+                            <dt>Tenant</dt><dd>{{ netboxData.tenant.name ?? '' }}</dd>
                         {% endif %}
                         {% if netboxData.vrf is defined and netboxData.vrf %}
-                            <tr><th>VRF</th><td>{{ netboxData.vrf.name }}</td></tr>
+                            <dt>VRF</dt><dd>{{ netboxData.vrf.name ?? '' }}</dd>
                         {% endif %}
                         {% if netboxData.status is defined %}
-                            <tr><th>Status</th><td>{{ netboxData.status.label ?? netboxData.status }}</td></tr>
+                            <dt>Status</dt><dd>{{ netboxData.status.label ?? netboxData.status }}</dd>
                         {% endif %}
                         {% if netboxData.role is defined and netboxData.role %}
-                            <tr><th>Role</th><td>{{ netboxData.role.label ?? netboxData.role }}</td></tr>
+                            <dt>Role</dt><dd>{{ netboxData.role.label ?? netboxData.role }}</dd>
                         {% endif %}
                         {% if netboxData.assigned_object is defined and netboxData.assigned_object %}
-                            <tr><th>Assigned to</th><td>{{ netboxData.assigned_object.display ?? netboxData.assigned_object.name ?? '' }}</td></tr>
+                            <dt>Assigned to</dt><dd>{{ netboxData.assigned_object.display ?? netboxData.assigned_object.name ?? '' }}</dd>
                         {% endif %}
-                    </table>
-                {% endif %}
+                    </dl>
+                    <p class="ip-info-source">Source: Netbox</p>
+                </section>
+            {% endif %}
 
-                {# A private IP gets no geo lookup at all (UtilityActions), so without this the
-                   else-branch below rendered a bare heading over an empty table (#168). #}
-                {% if geoData is defined and geoData is not empty %}
-                {% if geoData.error is defined and geoData.error %}
-                    <div class="notice" data-level="warning">{{ geoData.reason ?? 'IP lookup failed' }}</div>
-                {% else %}
-                    {% set countryName = geoData.country_name ?? geoData.country_code ?? '' %}
-                    <h3>
-                        {{ ip }}
-                        {% if geoData.country_flag is defined and geoData.country_flag %}
-                            {# Emoji rather than a flagcdn image: no third-party request, so the
-                               modal also works on an install with no outbound internet access.
-                               Windows ships no flag glyphs outside Firefox, where this degrades
-                               to the boxed country letters. #}
-                            <span class="flag-emoji" role="img"
-                                  title="{{ countryName }}"
-                                  aria-label="{{ countryName }}">{{ geoData.country_flag }}</span>
-                        {% endif %}
-                    </h3>
-                    {% set ignored = ['country_code', 'country_code_iso3', 'country_tld', 'country_area',
-                                      'country_population', 'continent_code', 'in_eu', 'network', 'version',
-                                      'error', 'reason', 'readme', 'success', 'status', 'message',
-                                      'country_flag'] %}
-                    <table>
-                        {% for key, value in geoData %}
-                            {% if key not in ignored %}
-                                {# providers differ: a nested object would blow up on string conversion #}
-                                <tr><th>{{ key }}</th><td>{{ value is iterable ? value|json_encode : value }}</td></tr>
+            {% if geoData is not empty %}
+                <section class="ip-info-section" aria-labelledby="ipGeoHeading">
+                    <h3 id="ipGeoHeading">Location</h3>
+                    {% if geoData.error is defined and geoData.error %}
+                        <div class="notice" data-level="warning" role="status">
+                            <span class="status-dot" data-level="warning" aria-hidden="true"></span>
+                            <span>{{ geoData.reason ?? 'IP lookup failed.' }}</span>
+                        </div>
+                    {% else %}
+                        {% set countryName = geoData.country_name ?? geoData.country_code ?? '' %}
+                        <dl class="ip-info-fields">
+                            {% for key, label in labels %}
+                                {% if geoData[key] is defined and geoData[key] is not same as('') and geoData[key] is not null %}
+                                    <dt>{{ label }}</dt>
+                                    <dd>
+                                        {% if key == 'country_name' and geoData.country_flag is defined and geoData.country_flag %}
+                                            {# Emoji rather than a flag image: no third-party request, so the modal
+                                               also works offline. Windows shows the boxed letters instead. #}
+                                            <span class="flag-emoji" role="img" title="{{ countryName }}" aria-label="{{ countryName }}">{{ geoData.country_flag }}</span>
+                                        {% endif %}
+                                        {{ geoData[key] is iterable ? geoData[key]|json_encode : geoData[key] }}
+                                    </dd>
+                                {% endif %}
+                            {% endfor %}
+                            {% if geoData.latitude is defined and geoData.longitude is defined %}
+                                <dt>Coordinates</dt><dd>{{ geoData.latitude }}, {{ geoData.longitude }}</dd>
                             {% endif %}
-                        {% endfor %}
-                    </table>
-                {% endif %}
-                {% endif %}
-            </div>
-            <div class="dialog-footer">
-                <button type="button" 
-                        data-on:click="document.getElementById('ip-modal-inner').close()">Close</button>
-            </div>
+                            {% for key, value in geoData %}
+                                {% if key not in ignored and labels[key] is not defined and value is not same as('') and value is not null %}
+                                    {# Providers differ: a nested object would fail on string conversion. #}
+                                    <dt>{{ key|replace({'_': ' '})|capitalize }}</dt>
+                                    <dd>{{ value is iterable ? value|json_encode : value }}</dd>
+                                {% endif %}
+                            {% endfor %}
+                        </dl>
+                    {% endif %}
+                    {% if geoSource %}<p class="ip-info-source">Source: {{ geoSource }}</p>{% endif %}
+                </section>
+            {% elseif isPrivate and netboxData is empty %}
+                <p class="ip-info-source">A private address has no public location to look up.</p>
+            {% endif %}
         </div>
-    </dialog>
-</div>
+        <footer class="dialog-footer">
+            <button type="submit" autofocus>Close</button>
+        </footer>
+    </form>
+</dialog>

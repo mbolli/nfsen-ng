@@ -1,5 +1,5 @@
-/* The page frame (spec 2.6, 4.0). Breakpoints are literals: custom properties do not work in
-   media queries. */
+/* The page frame (spec 2.6, 4.0, 4.9). Breakpoints are literals: custom properties do not work
+   in media queries. */
 
 /* Page sections, headings and banners are shown and hidden through the attribute, and a
    component's own display rule must not bring them back. */
@@ -38,6 +38,15 @@ body.app[data-sidebar='collapsed'] {
     min-inline-size: 0;
 }
 
+/* The brand and the controls bar share a row on phones only; elsewhere the wrapper has no box. */
+.app-top {
+    display: contents;
+}
+
+.app-brand {
+    display: none;
+}
+
 .shell-notices:not(:has(> :not([hidden]))) {
     display: none;
 }
@@ -47,6 +56,11 @@ body.app[data-sidebar='collapsed'] {
     flex-direction: column;
     gap: var(--size-2);
     padding: var(--size-3) var(--size-4) 0;
+}
+
+/* A levelled notice leads with its glyph, set on the first line of the text. */
+.notice > .status-dot {
+    margin-block-start: 0.2lh;
 }
 
 #page-content {
@@ -126,15 +140,17 @@ body.app[data-sidebar='collapsed'] {
     background: none;
     color: var(--text-1);
     font-size: var(--font-size-0);
+    font-weight: var(--font-weight-normal);
     text-align: start;
     text-decoration: none;
 }
 
 .nav-item:hover,
-.sidebar-action:hover {
+.sidebar-action:hover:not(:disabled) {
     background: var(--surface-3);
 }
 
+/* Current: a heavier weight and a solid bar, never a fill alone (2.1). */
 .nav-item[aria-current='page'] {
     background: var(--surface-4);
     font-weight: var(--font-weight-semibold);
@@ -155,9 +171,14 @@ body.app[data-sidebar='collapsed'] {
     white-space: nowrap;
 }
 
+/* The label takes the room, so the count, glyphs and chevron line up at the end. */
+:is(.nav-item, .sidebar-action) > .nav-label {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+}
+
 .nav-badge {
     min-inline-size: 1.25rem;
-    margin-inline-start: auto;
     padding: 0 var(--size-1);
     border-radius: var(--radius-round);
     background: var(--surface-4);
@@ -165,16 +186,13 @@ body.app[data-sidebar='collapsed'] {
     font-size: var(--font-size-00);
     font-variant-numeric: tabular-nums;
     font-weight: var(--font-weight-semibold);
+    line-height: 1.25rem;
     text-align: center;
 }
 
 .nav-badge[data-level='error'] {
     background: var(--danger);
     color: var(--on-danger);
-}
-
-.nav-item .nav-dot {
-    margin-inline-start: auto;
 }
 
 .nav-import {
@@ -203,7 +221,13 @@ body.app[data-sidebar='collapsed'] {
     cursor: pointer;
 }
 
-/* The theme switch shows the theme it switches to; the head script sets data-theme before paint. */
+/* ── Theme menu (4.0.7) ─────────────────────────────────────────────────── */
+
+.theme-menu {
+    display: block;
+}
+
+/* The toggle shows the theme in effect; the head script sets data-theme before paint. */
 :root[data-theme='dark'] [data-theme-icon='light'],
 :root:not([data-theme='dark']) [data-theme-icon='dark'] {
     display: none;
@@ -213,7 +237,40 @@ body.app[data-sidebar='collapsed'] {
     display: inline-flex;
 }
 
-/* Collapsed: icons only. Every item keeps its name, visually hidden, and a title. */
+/* The current choice's check (2.5), drawn as a mask: no font is sure to have U+2713. Restated
+   here because the check column rule in ui.css outranks its own mark. */
+.menu-list:has(.menu-item:is([aria-pressed], [aria-current]))
+.menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page'])::before {
+    content: '';
+    block-size: 0.75rem;
+    background: currentcolor;
+    mask: var(--glyph-success) center / contain no-repeat;
+}
+
+/* Forced colours drop the fill and the bar; the More tab gets the ring its pages get. */
+@media (forced-colors: active) {
+    .menu-item::before {
+        forced-color-adjust: none;
+    }
+
+    .tabbar-item[data-current='page'] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+}
+
+.menu-heading {
+    padding: var(--size-1) var(--size-2) 0;
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+/* ── Collapsed sidebar: icons only ──────────────────────────────────────── */
+
+/* Every item keeps its name, visually hidden, and a title. */
 body.app[data-sidebar='collapsed'] .sidebar :is(.nav-label, .nav-group) {
     position: absolute;
     inline-size: 1px;
@@ -231,11 +288,24 @@ body.app[data-sidebar='collapsed'] .sidebar-brand {
     padding-inline: 0;
 }
 
+body.app[data-sidebar='collapsed'] .sidebar-nav {
+    padding-block-start: var(--size-2);
+}
+
+body.app[data-sidebar='collapsed'] .theme-menu > .menu-toggle::after {
+    content: none;
+}
+
+/* The Alerts count stays a number and the Health glyph keeps its shape, over the icon's corner. */
 body.app[data-sidebar='collapsed'] .nav-item :is(.nav-badge, .nav-dot, .nav-import) {
     position: absolute;
     inset-block-start: 0.125rem;
     inset-inline-end: 0.125rem;
     margin: 0;
+}
+
+body.app[data-sidebar='collapsed'] .nav-item .nav-import {
+    inset-block: auto 0.125rem;
 }
 
 body.app[data-sidebar='collapsed'] .nav-badge {
@@ -266,6 +336,10 @@ body.app[data-sidebar='collapsed'] .nav-badge {
     outline-offset: 2px;
 }
 
+.page-lede {
+    color: var(--text-2);
+}
+
 .page {
     display: flex;
     flex-direction: column;
@@ -276,13 +350,22 @@ body.app[data-sidebar='collapsed'] .nav-badge {
     font-size: var(--font-size-1);
 }
 
-/* Query cards collapse their fields behind "Show filters" on small screens; the run row stays. */
+/* The rough shape of a page while its content is on its way: a query card, then results. */
+.page-skeleton > :first-child {
+    min-block-size: 7rem;
+}
+
+.page-skeleton > :last-child {
+    min-block-size: 16rem;
+}
+
+/* Query cards collapse their fields behind "Show filters" on phones; the run row stays (4.9). */
 .options-toggle {
     display: none;
     margin-inline-start: auto;
 }
 
-/* ── Footer ─────────────────────────────────────────────────────────────── */
+/* ── Footer (4.0.5) ─────────────────────────────────────────────────────── */
 
 .status-footer {
     justify-content: center;
@@ -296,6 +379,10 @@ body.app[data-sidebar='collapsed'] .nav-badge {
     color: var(--text-2);
 }
 
+.status-footer a:hover {
+    color: var(--text-1);
+}
+
 .status-item {
     display: inline-flex;
     align-items: center;
@@ -303,11 +390,181 @@ body.app[data-sidebar='collapsed'] .nav-badge {
     cursor: help;
 }
 
+/* ── IP info dialog (4.0.6) ─────────────────────────────────────────────── */
+
+/* The tab's modal root (D24): IP info and the alert Test result. The reset's margin: 0 would
+   pin a modal to the corner, and a column lets the body scroll under a fixed header and footer. */
+[id='modal-root'] > dialog[open] {
+    display: flex;
+    flex-direction: column;
+    margin: auto;
+    overflow: hidden;
+}
+
+[id='modal-root'] > dialog > :is(.dialog-content, form) {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    max-block-size: none;
+}
+
+[id='modal-root'] > dialog .dialog-body {
+    flex: 1 1 auto;
+    min-block-size: 0;
+}
+
+dialog.ip-info {
+    inline-size: min(32rem, 100vw - 2rem);
+}
+
+.ip-info-address {
+    font-family: var(--font-mono);
+    font-weight: var(--font-weight-medium);
+    overflow-wrap: anywhere;
+}
+
+.ip-info-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-2);
+}
+
+.ip-info-section h3 {
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.ip-info-fields {
+    display: grid;
+    grid-template-columns: minmax(7rem, max-content) minmax(0, 1fr);
+    gap: var(--size-1) var(--size-4);
+    margin: 0;
+}
+
+.ip-info-fields dt {
+    color: var(--text-2);
+}
+
+.ip-info-fields dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.ip-info-fields dd[data-kind='none'],
+.ip-info-source {
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+}
+
+.ip-info-fields dd[data-kind='none'] {
+    font-style: italic;
+}
+
+dialog.ip-info .dialog-body {
+    --stack-gap: var(--size-4);
+}
+
+/* ── Toasts (4.0.6) ─────────────────────────────────────────────────────── */
+
+.toast-stack {
+    position: fixed;
+    z-index: var(--layer-toast);
+    inset-block-end: var(--size-4);
+    inset-inline-end: var(--size-4);
+    display: flex;
+    flex-direction: column-reverse;
+    gap: var(--size-2);
+    inline-size: min(28rem, 100vw - 2 * var(--size-4));
+    pointer-events: none;
+}
+
+.toast-stack > nfsen-toast {
+    display: block;
+    pointer-events: auto;
+}
+
+.toast-stack .notice {
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-2);
+}
+
+.toast-message {
+    overflow-wrap: anywhere;
+}
+
+/* Time left before an auto-dismiss; it pauses while the pointer or focus is on the toast. */
+.toast-progress {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    block-size: 3px;
+    background: currentcolor;
+    opacity: 0.25;
+    transform-origin: left;
+    animation: toast-shrink var(--toast-duration, 5s) linear forwards;
+}
+
+.toast-progress:dir(rtl) {
+    transform-origin: right;
+}
+
+nfsen-toast:is(:hover, :focus-within) .toast-progress {
+    animation-play-state: paused;
+}
+
+@keyframes toast-shrink {
+    to {
+        transform: scaleX(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast-progress {
+        display: none;
+    }
+}
+
+/* ── Tooltip (nfsen-tooltip.js) ─────────────────────────────────────────── */
+
+.tip-icon {
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-round);
+    background: none;
+    color: var(--text-2);
+    cursor: help;
+}
+
+.tip-icon:hover:not(:disabled) {
+    background: none;
+    color: var(--text-1);
+}
+
+.nfsen-tip-popup {
+    position: fixed;
+    z-index: var(--layer-tooltip);
+    max-inline-size: 16rem;
+    padding: var(--size-1) var(--size-2);
+    border-radius: var(--radius-1);
+    background: var(--surface-inverse);
+    color: var(--text-on-inverse);
+    font-size: var(--font-size-00);
+    line-height: 1.4;
+    white-space: normal;
+}
+
 /* ── Mobile tab bar ─────────────────────────────────────────────────────── */
 
 .tabbar {
     display: none;
 }
+
+/* ── Phones (< 48em, spec 4.9) ──────────────────────────────────────────── */
 
 @media (max-width: 47.98em) {
     body.app,
@@ -319,13 +576,57 @@ body.app[data-sidebar='collapsed'] .nav-badge {
         display: none;
     }
 
+    /* A safety net: stray visually hidden text must not widen a phone's layout viewport and push
+       the tab bar off screen. mobile.test.mjs fails on any visible content this clips. */
     .app-main {
+        position: relative;
         grid-column: 1;
         padding-block-end: calc(var(--tabbar-size) + env(safe-area-inset-bottom));
+        overflow-x: clip;
+    }
+
+    /* Logo, then the controls bar's own row: range menu and its overflow button (#controlsMore). */
+    .app-top {
+        position: sticky;
+        z-index: var(--layer-sticky);
+        inset-block-start: 0;
+        display: flex;
+        align-items: stretch;
+        border-block-end: 1px solid var(--border);
+        background: var(--surface-2);
+    }
+
+    .app-brand {
+        display: flex;
+        align-items: center;
+        padding-inline: var(--size-3) var(--size-2);
+        color: var(--text-1);
+    }
+
+    .app-top > .controls-bar {
+        position: static;
+        flex: 1;
+        min-inline-size: 0;
+        padding-inline-start: 0;
+        border-block-end: none;
+    }
+
+    .shell-notices {
+        padding: var(--size-2) var(--size-3) 0;
     }
 
     #page-content {
         padding: var(--size-3);
+        gap: var(--size-3);
+    }
+
+    /* The lede goes: on a phone the title alone says where you are. */
+    .page-heading .page-lede {
+        display: none;
+    }
+
+    .page-heading h1 {
+        font-size: var(--font-size-2);
     }
 
     .options-toggle {
@@ -334,6 +635,18 @@ body.app[data-sidebar='collapsed'] .nav-badge {
 
     .query-card[data-collapsed] .query-fields {
         display: none;
+    }
+
+    .status-footer {
+        gap: var(--size-2) var(--size-3);
+        padding: var(--size-3);
+        font-size: var(--font-size-00);
+    }
+
+    .toast-stack {
+        inset-block-end: calc(var(--tabbar-size) + env(safe-area-inset-bottom) + var(--size-2));
+        inset-inline: var(--size-2);
+        inline-size: auto;
     }
 
     .tabbar {
@@ -350,6 +663,7 @@ body.app[data-sidebar='collapsed'] .nav-badge {
     }
 
     .tabbar-item {
+        position: relative;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -357,17 +671,40 @@ body.app[data-sidebar='collapsed'] .nav-badge {
         gap: 2px;
         inline-size: 100%;
         block-size: 100%;
+        padding: 0;
         border: none;
+        border-radius: 0;
         background: none;
         color: var(--text-2);
         font-size: var(--font-size-00);
+        font-weight: var(--font-weight-normal);
         text-decoration: none;
     }
 
-    .tabbar-item[aria-current='page'] {
+    .tabbar-item:hover:not(:disabled) {
+        background: var(--surface-3);
+        color: var(--text-1);
+    }
+
+    /* Current: the text colour, a heavier weight and a bar along the top edge. */
+    .tabbar-item:is([aria-current='page'], [data-current='page']) {
         color: var(--text-1);
         font-weight: var(--font-weight-semibold);
         box-shadow: inset 0 3px 0 var(--text-1);
+    }
+
+    .tabbar-item > .icon {
+        inline-size: 1.25rem;
+        block-size: 1.25rem;
+    }
+
+    .tabbar-item > .nav-badge {
+        position: absolute;
+        inset-block-start: var(--size-1);
+        inset-inline-start: calc(50% + 0.375rem);
+        min-inline-size: 1rem;
+        font-size: 0.625rem;
+        line-height: 1rem;
     }
 
     .tabbar-more {
@@ -376,5 +713,9 @@ body.app[data-sidebar='collapsed'] .nav-badge {
 
     .tabbar-more > .menu-toggle::after {
         content: none;
+    }
+
+    .tabbar-more .menu-item .nav-dot {
+        margin-inline-start: auto;
     }
 }

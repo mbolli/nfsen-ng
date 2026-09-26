@@ -26,35 +26,20 @@ final class UtilityActions {
 
     /** Register ip-info and kill-nfdump actions. */
     public static function register(Context $c, PageStates $states): void {
-        // IP info: geo lookup and hostname resolution, pushed as a rendered modal fragment
+        // IP info: Netbox for private addresses, geolocation for public ones, and the hostname,
+        // shown in the tab's modal (4.0.6).
         $c->action(static function (Context $c) use ($states): void {
-            $ip = $c->input('ip') ?? '';
-
-            if (empty($ip) || !filter_var($ip, FILTER_VALIDATE_IP)) {
+            $ip = trim((string) ($c->input('ip') ?? ''));
+            if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) {
                 return;
             }
 
-            $isPrivate = IpLookup::isPrivate($ip);
-
-            $netboxData = $isPrivate ? IpLookup::netbox($ip) : null;
-            $geoData = $isPrivate ? [] : IpLookup::geo($ip);
-
-            $hostname = self::hostnameFor($ip, Config::$settings->rdnsEnabled, self::resolveHostname(...));
-
-            $modalHtml = $c->render('partials/ip-info-modal.html.twig', [
-                'ip' => htmlspecialchars($ip, ENT_QUOTES),
-                'hostname' => htmlspecialchars((string) $hostname, ENT_QUOTES),
-                'geoData' => $geoData,
-                'netboxData' => $netboxData ?? [],
-            ]);
-            $states->shell->modalHtml = $modalHtml;
-
-            $c->getPatchManager()->queuePatch([
-                'type' => 'elements',
-                'content' => $modalHtml,
-            ]);
-
-            $c->execScript('document.getElementById("ip-modal-inner").showModal()');
+            try {
+                Shell::openModal($c, $states->shell, $c->render('partials/ip-info-modal.html.twig', self::ipInfoView($ip)), 'ip-modal-inner');
+            } catch (\Throwable $e) {
+                $c->getSignal('_error')?->setValue('IP info for ' . $ip . ' failed: ' . $e->getMessage(), broadcast: false);
+                $c->syncSignals();
+            }
         }, 'ip-info');
 
         // Kill the running nfdump process: sends SIGTERM to the PID in Nfdump::$runningPid.
@@ -99,6 +84,41 @@ final class UtilityActions {
         }
 
         return [FlowsPage::id(), TalkersPage::id()];
+    }
+
+    /**
+     * Data for partials/ip-info-modal.html.twig. Values are raw: the template escapes them.
+     *
+     * @return array{ip: string, hostname: string, hostnameFound: bool, isPrivate: bool, netboxData: array<string, mixed>, geoData: array<string, mixed>, geoSource: string}
+     */
+    public static function ipInfoView(string $ip): array {
+        $isPrivate = IpLookup::isPrivate($ip);
+        $geoData = $isPrivate ? [] : IpLookup::geo($ip);
+        $hostname = self::hostnameFor($ip, Config::$settings->rdnsEnabled, self::resolveHostname(...));
+
+        return [
+            'ip' => $ip,
+            'hostname' => $hostname,
+            'hostnameFound' => !\in_array($hostname, [self::HOSTNAME_UNRESOLVED, self::HOSTNAME_RDNS_DISABLED], true),
+            'isPrivate' => $isPrivate,
+            'netboxData' => ($isPrivate ? IpLookup::netbox($ip) : null) ?? [],
+            'geoData' => $geoData,
+            'geoSource' => $geoData === [] ? '' : self::geoSource($geoData, IpLookup::geoUrl($ip)),
+        ];
+    }
+
+    /**
+     * Where a geolocation answer came from: the local database, or the web service's host.
+     *
+     * @param array<string, mixed> $geoData
+     */
+    public static function geoSource(array $geoData, string $geoUrl): string {
+        if (($geoData['source'] ?? null) === IpLookup::SOURCE_MAXMIND) {
+            return 'MaxMind database';
+        }
+        $host = parse_url($geoUrl, PHP_URL_HOST);
+
+        return \is_string($host) && $host !== '' ? $host : 'geolocation service';
     }
 
     /**

@@ -1,17 +1,20 @@
 <!DOCTYPE html>
+{% import 'shell/icons.html.twig' as icons %}
 {% set activeMeta = shell.pagesMeta|filter(m => m.id == shell.activePage)|first %}
 <html lang="en"
     data-density="{{ shell.defaults.density }}"
+    {# Read by the head script, so a new instance default applies to a browser without its own choice. #}
+    data-theme-default="{{ shell.defaults.theme }}"
     {# The client-local signals of 1.9, seeded on the element that persists them: an unseeded
        path reads back as '', which data-persist would store over the default for good. #}
-    data-signals__ifmissing="{ {{ page.id() }}: '{{ shell.activePage }}', _darkMode: window.__nfsenTheme.dark, _sidebarCollapsed: window.matchMedia('(max-width: 63.98em)').matches, _moreOpen: false, _optionsOpen_overview: false, _optionsOpen_talkers: false, _optionsOpen_flows: false, _optionsOpen_conversations: false, _prevRange: null, _autoSyncGraph: false, _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _ov_optionsOpen: false, _ov_seriesOpen: true, _flows_tab: 'flows', _conv_view: 'sankey', _settings_tab: 'general', _drawer_tab: 'builder', _drawer_draftFor: '' }"
-    data-persist="{_sidebarCollapsed: $_sidebarCollapsed, _autoSyncGraph: $_autoSyncGraph, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _ov_optionsOpen: $_ov_optionsOpen, _ov_seriesOpen: $_ov_seriesOpen, _flows_tab: $_flows_tab, _conv_view: $_conv_view, _settings_tab: $_settings_tab, _drawer_tab: $_drawer_tab}"
+    data-signals__ifmissing="{ {{ page.id() }}: '{{ shell.activePage }}', _darkMode: window.__nfsenTheme.dark, _themeChoice: window.__nfsenTheme.choice ?? 'default', _sidebarCollapsed: window.__nfsenSidebar.collapsed, _moreOpen: false, _optionsOpen_overview: false, _optionsOpen_talkers: false, _optionsOpen_flows: false, _optionsOpen_conversations: false, _prevRange: null, _autoSyncGraph: false, _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _ov_optionsOpen: false, _ov_seriesOpen: true, _flows_tab: 'flows', _conv_view: 'sankey', _settings_tab: 'general', _drawer_tab: 'builder', _drawer_draftFor: '' }"
+    data-persist="{_autoSyncGraph: $_autoSyncGraph, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _ov_optionsOpen: $_ov_optionsOpen, _ov_seriesOpen: $_ov_seriesOpen, _flows_tab: $_flows_tab, _conv_view: $_conv_view, _settings_tab: $_settings_tab, _drawer_tab: $_drawer_tab}"
     data-on:hashchange__window="window.nfsenRouter.follow(${{ page.id() }}, (p) => { ${{ page.id() }} = p; @post('{{ navigate.url() }}') })"
     {# Fallback for JS off entirely; the head script overrides it (#156, #167). #}
     {% if shell.defaults.theme == 'dark' %}data-theme="dark"{% elseif shell.defaults.theme == 'light' %}data-theme="light"{% endif %}
     data-attr:data-theme="$_darkMode ? 'dark' : 'light'"
-    {# Dispatched by the head script's matchMedia listener. #}
-    data-on:nfsen-colorscheme__window="$_darkMode = evt.detail.dark"
+    {# Dispatched by the head script whenever the resolved theme or the stored choice changes. #}
+    data-on:nfsen-colorscheme__window="$_darkMode = evt.detail.dark; $_themeChoice = evt.detail.choice ?? 'default'"
     {# Keep the client's live theme across SSE morphs (#151). #}
     data-preserve-attr="data-theme">
 <head>
@@ -39,47 +42,66 @@
             } catch (e) { /* storage disabled: nothing was persisted either */ }
         })();
     </script>
-    {# Blocking, and above the stylesheets, so the light frame never paints first (#167).
-       Precedence: explicit toggle, else NFSEN_DEFAULT_THEME, else the OS. #}
+    {# Blocking, and above the stylesheets, so the wrong frame never paints first (#167, D8).
+       Precedence: this browser's choice, else the instance default, else the OS. #}
     <script>
         (function () {
-            var DEFAULT = {{ shell.defaults.theme|json_encode|raw }};
+            var root = document.documentElement;
             var mq = window.matchMedia('(prefers-color-scheme: dark)');
+            var CHOICES = ['light', 'dark', 'system'];
+            var KEY = 'nfsen-theme';
+            var valid = function (value) { return CHOICES.indexOf(value) >= 0 ? value : null; };
             var choice = null;
             try {
-                choice = localStorage.getItem('nfsen-theme');
+                choice = valid(localStorage.getItem(KEY));
                 // Pre-#167 key held the resolved value, so it cannot be told apart from an
                 // auto-resolved one. Dropped rather than migrated.
                 localStorage.removeItem('nfsen-persist:_darkMode');
             } catch (e) { /* storage disabled */ }
 
+            // 'light', 'dark', or 'system'/'auto', which follow the OS.
             function resolve() {
-                if (choice === 'dark' || choice === 'light') return choice === 'dark';
-                if (DEFAULT === 'dark') return true;
-                if (DEFAULT === 'light') return false;
+                var pick = choice || root.getAttribute('data-theme-default') || 'auto';
+                if (pick === 'dark' || pick === 'light') return pick === 'dark';
                 return mq.matches;
             }
 
-            function apply(dark) {
-                document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-            }
-
-            window.__nfsenTheme = {
+            var theme = {
                 dark: resolve(),
-                choose: function (dark) {
-                    choice = dark ? 'dark' : 'light';
-                    try { localStorage.setItem('nfsen-theme', choice); } catch (e) {}
+                choice: choice,
+                choose: function (next) {
+                    choice = valid(next);
+                    try {
+                        if (choice) localStorage.setItem(KEY, choice);
+                        else localStorage.removeItem(KEY);
+                    } catch (e) { /* storage disabled: the choice lasts for this page */ }
+                    apply(true);
                 },
             };
-            apply(window.__nfsenTheme.dark);
 
-            // With no explicit choice, follow the OS live; the event moves the signal too.
-            mq.addEventListener('change', function (e) {
-                if (choice === 'dark' || choice === 'light') return;
-                window.__nfsenTheme.dark = e.matches;
-                apply(e.matches);
-                window.dispatchEvent(new CustomEvent('nfsen-colorscheme', { detail: { dark: e.matches } }));
+            function apply(announce) {
+                var dark = resolve();
+                announce = announce || dark !== theme.dark;
+                theme.dark = dark;
+                theme.choice = choice;
+                root.setAttribute('data-theme', dark ? 'dark' : 'light');
+                if (announce) {
+                    window.dispatchEvent(new CustomEvent('nfsen-colorscheme', { detail: { dark: dark, choice: choice } }));
+                }
+            }
+
+            window.__nfsenTheme = theme;
+            root.setAttribute('data-theme', theme.dark ? 'dark' : 'light');
+
+            mq.addEventListener('change', function () { apply(false); });
+            // A choice made in another tab of this browser.
+            window.addEventListener('storage', function (e) {
+                if (e.key !== KEY && e.key !== null) return;
+                try { choice = valid(localStorage.getItem(KEY)); } catch (err) { choice = null; }
+                apply(true);
             });
+            // A new instance default, which a sync writes into data-theme-default.
+            new MutationObserver(function () { apply(false); }).observe(root, { attributeFilter: ['data-theme-default'] });
         })();
     </script>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -98,7 +120,7 @@
                              ((evt.detail.type.startsWith('datastar') && ($_disconnected = false)) ||
                              (['retrying', 'error', 'finished'].includes(evt.detail.type) && ($_disconnected = true)))">
     <meta data-init="window.addEventListener('beforeunload', () => { navigator.sendBeacon('{{ basePath }}_session/close', '{{ contextId }}'); });">
-    {% for sheet in ['tokens', 'ui', 'shell', 'controls-bar', 'traffic-graph', 'query-kit', 'drawer', 'nouislider.min', 'nfsen-ng', 'pages/overview', 'pages/talkers', 'pages/flows', 'pages/conversations', 'pages/alerts', 'pages/health', 'pages/settings'] %}
+    {% for sheet in ['tokens', 'ui', 'shell', 'controls-bar', 'traffic-graph', 'query-kit', 'drawer', 'nfsen-ng', 'pages/overview', 'pages/talkers', 'pages/flows', 'pages/conversations', 'pages/alerts', 'pages/health', 'pages/settings'] %}
         <link rel="stylesheet" type="text/css" href="{{ basePath }}css/{{ sheet }}.css?v={{ shell.assetVersion }}">
     {% endfor %}
 </head>
@@ -108,27 +130,53 @@
 <body class="app" data-attr:data-sidebar="$_sidebarCollapsed ? 'collapsed' : 'expanded'" data-preserve-attr="data-sidebar"
       data-server-page="{{ shell.activePage }}"
       data-init="window.nfsenRouter.start(el.dataset.serverPage, (p) => { ${{ page.id() }} = p; @post('{{ navigate.url() }}') })">
+    {# Set before the first paint and seeds _sidebarCollapsed. Only the toggle stores it, so the
+       tablet default (2.6) holds until someone chooses otherwise. #}
+    <script>
+        (function () {
+            var KEY = 'nfsen-persist:_sidebarCollapsed';
+            var collapsed = null;
+            try { collapsed = JSON.parse(localStorage.getItem(KEY)); } catch (e) { /* none stored */ }
+            if (typeof collapsed !== 'boolean') collapsed = window.matchMedia('(max-width: 63.98em)').matches;
+            document.body.setAttribute('data-sidebar', collapsed ? 'collapsed' : 'expanded');
+            window.__nfsenSidebar = {
+                collapsed: collapsed,
+                remember: function (value) {
+                    try { localStorage.setItem(KEY, JSON.stringify(value)); } catch (e) { /* storage disabled */ }
+                },
+            };
+        })();
+    </script>
     {% include 'shell/sidebar.html.twig' %}
 
     <div class="app-main">
-        {% include 'shell/controls-bar.html.twig' %}
+        {# On phones the sidebar is hidden, so its brand leads the controls row (2.7.11); on
+           wider screens this wrapper has no box and the controls bar is a child of .app-main. #}
+        <div class="app-top">
+            <a class="app-brand" href="#/{{ shell.defaults.view }}" title="nfsen-ng home" aria-label="nfsen-ng home">{{ icons.icon('logo') }}</a>
+            {% include 'shell/controls-bar.html.twig' %}
+        </div>
 
+        {# Shell notices (4.0.3): each level also has its glyph and says what happened in words. #}
         <div class="shell-notices">
             <div class="notice" data-level="warning" role="status"
                  hidden data-attr:hidden="!$_disconnected" data-preserve-attr="hidden">
-                Reconnecting to server...
+                <span class="status-dot" data-level="warning" aria-hidden="true"></span>
+                <span>Reconnecting to server...</span>
             </div>
             {% if shell.fatalError %}
                 <div class="notice" data-level="error" role="alert">
-                    <strong>Fatal error:</strong> {{ shell.fatalError }}
+                    <span class="status-dot" data-level="error" aria-hidden="true"></span>
+                    <span><strong>Fatal error:</strong> {{ shell.fatalError }}</span>
                 </div>
             {% endif %}
             {# Server banner, pushed by the server and dismissed here only. #}
             <div class="notice dismissible" data-level="error" role="alert"
                  {% if _error.string() == '' %}hidden{% endif %}
                  data-attr:hidden="!${{ _error.id() }}" data-preserve-attr="hidden">
+                <span class="status-dot" data-level="error" aria-hidden="true"></span>
                 <span data-text="${{ _error.id() }}">{{ _error.string() }}</span>
-                <button type="button" data-variant="close" aria-label="Dismiss"
+                <button type="button" data-variant="close" aria-label="Dismiss this error" title="Dismiss"
                         data-on:click="${{ _error.id() }} = ''"></button>
             </div>
         </div>
@@ -157,14 +205,13 @@
     {% include 'shell/bottom-tabs.html.twig' %}
     {% include 'drawer/filter-drawer.html.twig' %}
 
-    {# The server-rendered modal (D24); ip-info replaces #ip-modal-placeholder by id. #}
-    <div id="modal-root">{% if shell.modalHtml %}{{ shell.modalHtml|raw }}{% else %}<div id="ip-modal-placeholder"></div>{% endif %}</div>
+    {# The modal of this tab (D24): ip-info and the alert Test result, kept in ShellState and
+       rendered on every sync; the dialog preserves its open attribute across the morph. #}
+    <div id="modal-root">{{ shell.modalHtml|raw }}</div>
     {# Tooltips and toasts are appended by JS; data-ignore-morph keeps them across syncs. #}
     <div id="nfsen-tip-container" data-ignore-morph></div>
-    <div id="alerts-toast-container" data-ignore-morph></div>
+    <div id="alerts-toast-container" class="toast-stack" data-ignore-morph></div>
 
-    {# The noUiSlider range picker stays until the controls bar replaces it (WP-CB). #}
-    <script src="{{ basePath }}js/nouislider.min.js" defer></script>
     <script src="{{ basePath }}js/echarts.min.js" defer></script>
 
     {# Before any module script (a later import map is ignored). Versioned, so a bare import
@@ -186,7 +233,7 @@
     <script type="module" src="{{ basePath }}js/components/alert-template-preview.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/datastar.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ shell.assetVersion }}"></script>
-    {% for component in ['nfsen-chart', 'nfsen-sankey', 'nfsen-matrix', 'nfsen-table', 'nfsen-daterange', 'nfsen-toast', 'nfsen-tooltip', 'nfsen-filter-manager', 'nfsen-filter-editor', 'nfsen-controls'] %}
+    {% for component in ['nfsen-chart', 'nfsen-sankey', 'nfsen-matrix', 'nfsen-table', 'nfsen-toast', 'nfsen-tooltip', 'nfsen-filter-manager', 'nfsen-filter-editor', 'nfsen-controls'] %}
         <script type="module" src="{{ basePath }}js/components/{{ component }}.js?v={{ shell.assetVersion }}"></script>
     {% endfor %}
 

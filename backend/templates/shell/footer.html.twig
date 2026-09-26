@@ -1,14 +1,14 @@
-{# Status footer (4.0.5): visible text next to each glyph; the full status line is in the
-   title as extra detail only. #}
+{# Status footer (4.0.5): each glyph is followed by its state in words; the full status line is
+   in the title as extra detail only. #}
 {% set captureState = {success: 'ok', warning: 'stale', error: 'stale', neutral: 'no data'}[shell.status.captureLevel] ?? 'no data' %}
 {% set daemonState = {success: 'ok', warning: 'starting', error: 'disabled', neutral: 'disabled'}[shell.status.daemonLevel] ?? 'disabled' %}
 <footer class="status-footer cluster">
     <span class="status-item" title="{{ shell.status.captureLabel }}">
-        <span class="status-dot" data-level="{{ shell.status.captureLevel }}"></span>
+        <span class="status-dot" data-level="{{ shell.status.captureLevel }}" aria-hidden="true"></span>
         nfcapd {{ captureState }}
     </span>
     <span class="status-item" title="{{ shell.status.daemonLabel }}">
-        <span class="status-dot" data-level="{{ shell.status.daemonLevel }}"></span>
+        <span class="status-dot" data-level="{{ shell.status.daemonLevel }}" aria-hidden="true"></span>
         daemon {{ daemonState }}
     </span>
     <span class="badge">{{ shell.connections }} connection{{ shell.connections != 1 ? 's' : '' }}</span>

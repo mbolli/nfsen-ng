@@ -5,12 +5,11 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\pages\state;
 
 /**
- * Per-tab state of the shell: the modal the layout renders into #modal-root (D24), the
- * last alert toast this tab showed, and the import throttles of the traffic graph and the
- * data range.
+ * Per-tab state of the shell: the modal the layout renders into #modal-root (D24), the last
+ * alert toast this tab showed, the traffic graph's import throttle and its last fetch.
  */
 final class ShellState extends PageState {
-    /** During an import the graph and the data range refresh at most every 10 s instead of per imported file. */
+    /** During an import the graph refreshes at most every 10 s instead of per imported file. */
     public const int IMPORT_THROTTLE = 10;
 
     /** Trusted HTML rendered by the server (IP info, alert test result). */
@@ -22,7 +21,7 @@ final class ShellState extends PageState {
     /** When the traffic graph was last fetched for this tab. */
     public int $graphFetchedAt = 0;
 
-    /** When the data range was last read for this tab; pages without the graph read it too. */
+    /** When the data range was last read for this tab; RangeControls::RANGE_TTL throttles the read. */
     public int $rangeFetchedAt = 0;
 
     /** GraphData JSON of the last fetch, reused while an import throttles the next one. */
@@ -39,6 +38,7 @@ final class ShellState extends PageState {
         return $this->rangeFetchedAt > $this->graphFetchedAt || self::due($this->graphFetchedAt, $importing, $now);
     }
 
+    /** @deprecated the data range read is throttled by RangeControls::RANGE_TTL, not by an import */
     public function rangeDue(bool $importing, int $now): bool {
         return self::due($this->rangeFetchedAt, $importing, $now);
     }

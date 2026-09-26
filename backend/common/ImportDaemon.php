@@ -143,7 +143,7 @@ class ImportDaemon {
     /**
      * Process one inotify poll tick. Call this from $app->setInterval(..., 1000).
      *
-     * @param callable $onImportDone invoked after each successfully imported file
+     * @param callable(string $source, int $fileTs, bool $isLastSource): void $onImportDone invoked after each imported file
      */
     public function pollOnce(callable $onImportDone): void {
         if ($this->inotify === false) {
@@ -239,11 +239,18 @@ class ImportDaemon {
                 $this->importTimed($relativePath, $source, $isLastSource);
                 $this->debug->log("ImportDaemon: catch-up imported {$filename} (source: {$source})", LOG_INFO);
                 $this->lastAutoImportTime = time();
-                $onImportDone();
+                $onImportDone($source, self::fileTs($filename), $isLastSource);
             } catch (\Throwable $e) {
                 $this->debug->log("ImportDaemon: catch-up error {$filename}: " . $e->getMessage(), LOG_ERR);
             }
         }
+    }
+
+    /** Interval start of an nfcapd.YYYYMMDDHHII file, read in the nfcapd timezone. */
+    private static function fileTs(string $filename): int {
+        $dt = \DateTimeImmutable::createFromFormat('!YmdHi', substr($filename, -12), Config::nfcapdTimezone());
+
+        return $dt === false ? 0 : $dt->getTimestamp();
     }
 
     /**
@@ -399,7 +406,7 @@ class ImportDaemon {
             $this->importTimed($relativePath, $eventSource, $isLastSource);
             $this->debug->log("ImportDaemon: processed {$filename}", LOG_INFO);
             $this->lastAutoImportTime = time();
-            $onImportDone();
+            $onImportDone($eventSource, self::fileTs($filename), $isLastSource);
         } catch (\Throwable $e) {
             $this->debug->log("ImportDaemon: error processing {$filename}: " . $e->getMessage(), LOG_ERR);
             $this->debug->log('ImportDaemon: ' . $e->getTraceAsString(), LOG_DEBUG);

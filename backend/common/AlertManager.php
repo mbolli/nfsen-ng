@@ -7,122 +7,235 @@ namespace mbolli\nfsen_ng\common;
 use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
+use mbolli\nfsen_ng\store\AlertEventRepository;
+use mbolli\nfsen_ng\store\Database;
+use mbolli\nfsen_ng\store\StoreUnavailableException;
 use OpenSwoole\Coroutine;
 use OpenSwoole\Coroutine\Http\Client;
 
 /**
- * Evaluates alert rules after each nfcapd import and dispatches notifications.
- * One instance is shared for the lifetime of the server process.
+ * Evaluates alert rules once per data interval and dispatches notifications. Rule state lives in
+ * alerts-state.json, the event history in SQLite. One instance lives as long as the server process.
+ *
+ * @phpstan-import-type AlertEvent from AlertEventRepository
+ * @phpstan-import-type LegacyEntry from AlertEventRepository
+ *
+ * @phpstan-type SlotValues array{flows: float, packets: float, bytes: float}
+ * @phpstan-type Measurement array{values: ?SlotValues, threshold: ?float, reason: string}
+ * @phpstan-type RenderedTemplates array{title: string, message: string, subject: string, body: string}
+ * @phpstan-type TestResult array{fired: bool, evaluated: bool, value: float, threshold: ?float, condition: string,
+ *                                reason: string, slot: int, notified: bool, title: string, message: string, subject: string, body: string}
  */
 final class AlertManager {
     public const DEFAULT_EMAIL_SUBJECT = '[nfsen-ng] Alert: {rule}';
     public const DEFAULT_EMAIL_BODY = "Alert rule \"{rule}\" fired.\n\nMetric:  {metric}\nValue:   {value}\nProfile: {profile}\nSources: {sources}\nTime:    {time} UTC\n";
     public const DEFAULT_WEBHOOK_TITLE = 'nfsen-ng alert: {rule}';
     public const DEFAULT_WEBHOOK_MESSAGE = '{metric} = {value} (profile: {profile}, sources: {sources})';
-    private const MAX_LOG_ENTRIES = 50;
+
+    /** Length of one nfcapd data interval. */
+    public const int SLOT_SECONDS = 300;
+
+    /** A last evaluated slot this far in the future, followed by one that is not, means the clock or NFCAPD_TZ moved back. */
+    private const int REWIND_SECONDS = 3600;
+
+    /** How long a slot waits for a source whose capture files are still being imported (the hourly catch-up of a new day directory). */
+    private const int CATCH_UP_SECONDS = 7200;
+
+    private const array ZERO = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
 
     /** @var array<string, AlertState> Keyed by rule ID */
     private array $states = [];
 
-    /** @var list<array<string, mixed>> In-memory log cache */
-    private array $log = [];
+    /** @var array<string, int> rule ID => bumped whenever its state is dropped, so an evaluation in flight discards its result */
+    private array $generation = [];
 
+    /**
+     * Slots not evaluated yet, with the sources that reported them and each source's stored values
+     * read right after its import (a string says why they cannot be read, null: not read yet).
+     *
+     * @var array<string, array<int, array<string, null|SlotValues|string>>> profile => slot => source => values
+     */
+    private array $pending = [];
+
+    /** @var array<string, array<string, int>> profile => source => newest file timestamp it reported */
+    private array $newestBySource = [];
+
+    /** @var array<string, array<string, true>> profile => sources left out because nothing of theirs was waiting, until they report again */
+    private array $down = [];
+
+    /** @var array<string, int> profile => newest file timestamp onFileImported() has seen */
+    private array $lastSeenTs = [];
+
+    /** @var array<string, int> profile => newest slot onFileImported() has evaluated */
+    private array $evaluatedSlot = [];
+
+    private string $eventsError = '';
+
+    private bool $eventsWarned = false;
+
+    private bool $stateWriteFailed = false;
+
+    /** @param null|AlertEventRepository $events null: opened from Database::shared() on first use */
     public function __construct(
         private readonly Datasource $db,
         private readonly string $statePath,
         private readonly string $logPath,
         private readonly string $emailFrom,
+        private ?AlertEventRepository $events = null,
     ) {
         $this->loadState();
-        $this->loadLog();
     }
 
-    // ── Public API ─────────────────────────────────────────────────────────────
+    // ── Scheduling and evaluation ──────────────────────────────────────────────
 
     /**
-     * Evaluate all enabled alert rules for the given profile.
-     * Call this after each successful nfcapd import.
+     * Evaluates each slot of the profile once, in order, when every configured source has reported
+     * it or a newer file, whatever the arrival order (D17). A source with nothing waiting on disk
+     * once a later interval is in counts as down and is left out until it reports again.
      *
-     * @param AlertRule[] $rules
+     * @param list<AlertRule> $rules  every rule; the state of a rule missing from the list is dropped
+     * @param null|string     $source the source that imported the file; null lets $isLastSource stand for every source
      *
-     * @return string[] Names of rules that fired this cycle
+     * @return list<string> names of the rules that fired
      */
-    public function runPeriodic(array $rules, string $profile): array {
-        $fired = [];
-
-        foreach ($rules as $rule) {
-            if (!$rule->enabled || $rule->profile !== $profile) {
-                continue;
-            }
-
-            $state = $this->states[$rule->id] ?? AlertState::initial();
-
-            // Tick down cooldown
-            if ($state->cooldownRemaining > 0) {
-                --$state->cooldownRemaining;
-                $this->states[$rule->id] = $state;
-
-                continue;
-            }
-
-            $current = $this->fetchCurrentSlot($rule, $profile);
-            $threshold = $this->computeThreshold($rule, $current);
-            $value = $current[$rule->metric] ?? 0.0;
-
-            if ($this->evaluate($rule->operator, $value, $threshold)) {
-                $ts = time();
-                $state->cooldownRemaining = max(0, $rule->cooldownSlots - 1);
-                $state->lastTriggeredAt = $ts;
-                $state->recentTriggers = \array_slice(
-                    array_merge($state->recentTriggers, [$ts]),
-                    -10,
-                );
-                $this->states[$rule->id] = $state;
-
-                $this->dispatchNotifications($rule, $current, $threshold, $ts);
-                $fired[] = $rule->name;
-            } else {
-                $this->states[$rule->id] = $state;
-            }
+    public function onFileImported(array $rules, string $profile, int $fileTs, bool $isLastSource, ?string $source = null): array {
+        $this->dropMissingRules($rules);
+        // Taken before the first read can yield: a forget() after it discards that rule's evaluation.
+        $generations = $this->generation;
+        $lastSeen = $this->lastSeenTs[$profile] ?? null;
+        if ($lastSeen !== null && self::rewound($lastSeen, $fileTs)) {
+            unset($this->pending[$profile], $this->newestBySource[$profile], $this->down[$profile], $this->lastSeenTs[$profile], $this->evaluatedSlot[$profile]);
         }
 
-        $this->saveState();
+        $sources = self::configuredSources();
+        $open = $fileTs > ($this->evaluatedSlot[$profile] ?? PHP_INT_MIN);
+        foreach ($source !== null ? [$source] : ($isLastSource ? $sources : []) as $reporter) {
+            $this->newestBySource[$profile][$reporter] = max($fileTs, $this->newestBySource[$profile][$reporter] ?? $fileTs);
+            unset($this->down[$profile][$reporter]);
+            if ($open) {
+                $this->pending[$profile][$fileTs][$reporter] = $reporter === $source && $this->readsStore($rules, $profile, $reporter)
+                    ? $this->readAfterImport($reporter, $profile, $fileTs)
+                    : null;
+            }
+        }
+        if ($open) {
+            $this->pending[$profile][$fileTs] ??= [];
+            ksort($this->pending[$profile]);
+        }
+        $this->lastSeenTs[$profile] = max($fileTs, $this->lastSeenTs[$profile] ?? $fileTs);
 
-        return $fired;
+        $fired = [];
+        foreach (array_keys($this->pending[$profile] ?? []) as $slot) {
+            if (!$this->complete($profile, $slot, $sources)) {
+                break;
+            }
+            $reports = $this->pending[$profile][$slot];
+            unset($this->pending[$profile][$slot]);
+            $this->evaluatedSlot[$profile] = max($slot, $this->evaluatedSlot[$profile] ?? $slot);
+            $fired = [...$fired, ...$this->evaluateRules($rules, $profile, $slot, $reports, $generations)];
+        }
+
+        return array_values(array_unique($fired));
     }
 
     /**
-     * Fetch the current metric slot for a rule, honouring its optional nfdumpFilter.
-     * Shared by runPeriodic() and the test-alert action so both evaluate a rule
-     * identically.
+     * Evaluates every enabled rule of the profile for the data interval starting at $slot, reading
+     * each source's newest stored interval for rules without a traffic filter.
      *
-     * @return array{flows: float, packets: float, bytes: float}
+     * @param list<AlertRule> $rules
+     *
+     * @return list<string> names of the rules that fired
+     */
+    public function runPeriodic(array $rules, string $profile, int $slot): array {
+        return $this->evaluateRules($rules, $profile, $slot, null, $this->generation);
+    }
+
+    /**
+     * Evaluates the rule for the newest complete slot with the sources the live evaluation would
+     * use, records a 'test' event and notifies only when the condition holds. Never touches the
+     * rule's state. The four templates are rendered whether or not the rule would fire.
+     *
+     * @return TestResult
+     */
+    public function testRule(AlertRule $rule, string $profile): array {
+        [$slot, $reports] = $rule->nfdumpFilter === null ? $this->storedSlot($rule, $profile) : [$this->newestSlot($rule, $profile), null];
+        $measured = $this->measure($rule, $profile, $slot, $reports);
+        $values = $measured['values'] ?? self::ZERO;
+        $threshold = $measured['threshold'];
+        $evaluated = $measured['values'] !== null && $threshold !== null;
+        $value = $values[$rule->metric] ?? 0.0;
+        $fired = $evaluated && $this->evaluate($rule->operator, $value, $threshold);
+
+        $vars = self::buildTemplateVars($rule, $values, $threshold ?? PHP_FLOAT_MAX, $slot);
+        if ($evaluated) {
+            $this->recordEvent('test', $rule, $value, $threshold, time(), $profile);
+        }
+        $notified = $fired && $this->notify($rule, $values, $vars, $slot);
+
+        return [
+            'fired' => $fired,
+            'evaluated' => $evaluated,
+            'value' => $value,
+            'threshold' => $threshold,
+            'condition' => $vars['{condition}'],
+            'reason' => $measured['reason'],
+            'slot' => $slot,
+            'notified' => $notified,
+        ] + self::renderTemplates($rule, $vars);
+    }
+
+    /**
+     * Drops the rule's state (disabled or deleted rule), including the result of an evaluation
+     * still in flight. A rule that was firing gets a 'resolved' event with its last value.
+     */
+    public function forget(string $ruleId, ?AlertRule $rule = null): void {
+        $known = isset($this->states[$ruleId]);
+        $this->release($ruleId, $rule);
+        if ($known) {
+            $this->saveState();
+        }
+    }
+
+    /** @return array<string, AlertState> copies, keyed by rule ID */
+    public function states(): array {
+        return array_map(static fn (AlertState $state): AlertState => clone $state, $this->states);
+    }
+
+    public function firingCount(): int {
+        return \count(array_filter($this->states, static fn (AlertState $state): bool => $state->firing));
+    }
+
+    /**
+     * Fetch the current metric slot for a rule, honouring its optional nfdumpFilter, from the same
+     * slot and sources as testRule(). Zeros when the values cannot be read.
+     *
+     * @return SlotValues
      */
     public function fetchCurrentSlot(AlertRule $rule, string $profile): array {
-        return $rule->nfdumpFilter !== null
-            ? $this->fetchFilteredSlot($rule, $profile)
-            : $this->db->fetchLatestSlot($rule->sources, $profile);
+        $values = $rule->nfdumpFilter === null
+            ? $this->storedValues($rule, $profile, ...$this->storedSlot($rule, $profile))
+            : $this->fetchFilteredSlot($rule, $profile, $this->newestSlot($rule, $profile));
+
+        return \is_array($values) ? $values : self::ZERO;
     }
 
     /**
      * Compute the effective threshold value for a rule given the current metrics.
      * For percent_of_avg: returns PHP_FLOAT_MAX when the rolling average is 0
-     * (cold-start — no baseline available, so never trigger).
+     * (cold start: there is no baseline yet, so the rule cannot be evaluated).
      *
-     * @param array{flows: float, packets: float, bytes: float} $current
+     * @param SlotValues $current
      */
     public function computeThreshold(AlertRule $rule, array $current): float {
         if ($rule->thresholdType === 'absolute') {
             return $rule->thresholdValue;
         }
 
-        // percent_of_avg: compute rolling average for the configured window
         $windowSeconds = $this->parseWindow($rule->avgWindow);
-        $avg = $this->db->fetchRollingAverage($rule->sources, $rule->profile, $windowSeconds);
+        $avg = $this->db->fetchRollingAverage($this->sourcesOf($rule), $rule->profile, $windowSeconds);
         $avgValue = $avg[$rule->metric] ?? 0.0;
 
         if ($avgValue <= 0.0) {
-            // Cold-start: no baseline — suppress triggering by returning unreachable threshold
             return PHP_FLOAT_MAX;
         }
 
@@ -130,49 +243,147 @@ final class AlertManager {
     }
 
     /**
-     * Returns the most recent log entries (newest first).
+     * Records an event of $kind and sends the rule's email and webhook.
      *
-     * @return list<array<string, mixed>>
+     * @param SlotValues $values
      */
-    public function getRecentLog(int $n = 10): array {
-        return \array_slice($this->log, 0, max(1, $n));
+    public function dispatchNotifications(AlertRule $rule, array $values, float $threshold, int $ts, string $kind = 'test'): void {
+        $this->recordEvent($kind, $rule, $values[$rule->metric] ?? 0.0, $threshold, $ts);
+        $this->notify($rule, $values, self::buildTemplateVars($rule, $values, $threshold, $ts), $ts);
     }
 
-    /** @param array{flows: float, packets: float, bytes: float} $values */
-    public function dispatchNotifications(AlertRule $rule, array $values, float $threshold, int $ts): void {
-        $entry = [
-            'ts' => $ts,
-            'rule' => $rule->name,
-            'metric' => $rule->metric,
-            'value' => $values[$rule->metric] ?? 0.0,
-            'profile' => $rule->profile,
-            'sources' => $rule->sources,
-        ];
+    // ── History ────────────────────────────────────────────────────────────────
 
-        // Prepend, keep only MAX_LOG_ENTRIES
-        array_unshift($this->log, $entry);
-        $this->log = \array_slice($this->log, 0, self::MAX_LOG_ENTRIES);
-        $this->saveLog();
+    /** False when the SQLite store cannot be opened; eventsError() says why. */
+    public function eventsAvailable(): bool {
+        return $this->events() !== null;
+    }
 
-        $vars = self::buildTemplateVars($rule, $values, $threshold, $ts);
+    /** Why the history is unavailable, '' when it is available. */
+    public function eventsError(): string {
+        $this->events();
 
-        // Email
-        if ($rule->notifyEmail !== null && $this->emailFrom !== '') {
-            $this->sendEmail($rule, $vars);
+        return $this->eventsError;
+    }
+
+    /**
+     * Newest first; empty when the history is unavailable.
+     *
+     * @return list<AlertEvent>
+     */
+    public function recentEvents(int $limit = 20, ?string $ruleId = null): array {
+        try {
+            return $this->events()?->recent($limit, $ruleId) ?? [];
+        } catch (\Throwable $e) {
+            $this->log('Alert history could not be read: ' . $e->getMessage(), LOG_WARNING);
+
+            return [];
         }
+    }
 
-        // Webhook
-        if ($rule->notifyWebhook !== null) {
-            $this->sendWebhook($rule, $entry, $vars);
+    /** @return array<string, int> ruleId => ts of the newest 'fired' event */
+    public function lastFired(): array {
+        try {
+            return $this->events()?->lastFired() ?? [];
+        } catch (\Throwable $e) {
+            $this->log('Alert history could not be read: ' . $e->getMessage(), LOG_WARNING);
+
+            return [];
         }
     }
 
     /**
-     * Build the {token} → formatted-value substitution map for notification templates.
+     * The fired and test events in the shape of the old alerts-log.json entries, newest first.
+     *
+     * @return list<array{ts: int, rule: string, metric: string, value: float, profile: string, sources: list<string>,
+     *                    kind: string, threshold: ?float, ruleId: ?string}>
+     */
+    public function getRecentLog(int $n = 10): array {
+        try {
+            $events = $this->events()?->recent(max(1, $n), null, ['fired', 'test']) ?? [];
+        } catch (\Throwable $e) {
+            $this->log('Alert history could not be read: ' . $e->getMessage(), LOG_WARNING);
+
+            return [];
+        }
+
+        return array_map(static fn (array $event): array => [
+            'ts' => $event['ts'],
+            'rule' => $event['ruleName'],
+            'metric' => $event['metric'],
+            'value' => $event['value'],
+            'profile' => $event['profile'],
+            'sources' => $event['sources'],
+            'kind' => $event['kind'],
+            'threshold' => $event['threshold'],
+            'ruleId' => $event['ruleId'],
+        ], $events);
+    }
+
+    /**
+     * Moves alerts-log.json into SQLite once: every entry becomes a migrated 'fired' event in one
+     * transaction that also sets the meta key, then the file is renamed to *.migrated. Throws when
+     * the import fails, which changes nothing, so the next start retries.
+     *
+     * @param null|list<AlertRule> $rules the current rules; null reads them from the settings
+     *
+     * @return int migrated entries
+     */
+    public function migrateLegacyLog(?array $rules = null): int {
+        $events = $this->events();
+        clearstatcache(true, $this->logPath);
+        if ($events === null || !is_file($this->logPath)) {
+            return 0;
+        }
+        if ($events->legacyLogMigrated()) {
+            $this->renameLegacyLog();
+
+            return 0;
+        }
+
+        $raw = @file_get_contents($this->logPath);
+        if ($raw === false) {
+            throw new \RuntimeException("cannot read {$this->logPath}");
+        }
+
+        $idsByName = [];
+        foreach ($rules ?? (isset(Config::$settings) ? Config::$settings->alerts : []) as $rule) {
+            $idsByName[$rule->name][] = $rule->id;
+        }
+
+        $decoded = json_decode($raw, true);
+        $entries = [];
+        foreach (\is_array($decoded) ? $decoded : [] as $item) {
+            if (!\is_array($item)) {
+                continue;
+            }
+            $name = \is_scalar($item['rule'] ?? null) ? (string) $item['rule'] : '';
+            $ids = $idsByName[$name] ?? [];
+            $entries[] = [
+                'ts' => (int) ($item['ts'] ?? 0),
+                'ruleId' => \count($ids) === 1 ? $ids[0] : null,
+                'ruleName' => $name,
+                'profile' => \is_scalar($item['profile'] ?? null) ? (string) $item['profile'] : '',
+                'sources' => array_values(array_map(strval(...), array_filter((array) ($item['sources'] ?? []), is_scalar(...)))),
+                'metric' => \is_scalar($item['metric'] ?? null) ? (string) $item['metric'] : 'bytes',
+                'value' => is_numeric($item['value'] ?? null) ? (float) $item['value'] : 0.0,
+            ];
+        }
+
+        $count = $events->importLegacyLog($entries);
+        $this->renameLegacyLog();
+
+        return $count;
+    }
+
+    // ── Templates ──────────────────────────────────────────────────────────────
+
+    /**
+     * Build the {token} to formatted-value substitution map for notification templates.
      * All three flow metrics are always exposed regardless of $rule->metric, since
      * fetchCurrentSlot() already computes all three in one nfdump/RRD round-trip.
      *
-     * @param array{flows: float, packets: float, bytes: float} $values
+     * @param SlotValues $values
      *
      * @return array<string, string>
      */
@@ -196,7 +407,7 @@ final class AlertManager {
     }
 
     /**
-     * Resolve the effective template string: per-rule override → global default → built-in default.
+     * Resolve the effective template string: per-rule override, then global default, then built-in default.
      */
     public static function resolveTemplate(?string $ruleTemplate, string $globalTemplate, string $builtinDefault): string {
         if ($ruleTemplate !== null && $ruleTemplate !== '') {
@@ -204,6 +415,24 @@ final class AlertManager {
         }
 
         return $globalTemplate !== '' ? $globalTemplate : $builtinDefault;
+    }
+
+    /**
+     * The webhook title and message and the email subject and body, as a notification sends them.
+     *
+     * @param array<string, string> $vars from buildTemplateVars()
+     *
+     * @return RenderedTemplates
+     */
+    public static function renderTemplates(AlertRule $rule, array $vars): array {
+        $settings = isset(Config::$settings) ? Config::$settings : null;
+
+        return [
+            'title' => strtr(self::resolveTemplate($rule->webhookTitleTemplate, $settings->defaultWebhookTitleTemplate ?? '', self::DEFAULT_WEBHOOK_TITLE), $vars),
+            'message' => strtr(self::resolveTemplate($rule->webhookMessageTemplate, $settings->defaultWebhookMessageTemplate ?? '', self::DEFAULT_WEBHOOK_MESSAGE), $vars),
+            'subject' => strtr(self::resolveTemplate($rule->emailSubjectTemplate, $settings->defaultEmailSubjectTemplate ?? '', self::DEFAULT_EMAIL_SUBJECT), $vars),
+            'body' => strtr(self::resolveTemplate($rule->emailBodyTemplate, $settings->defaultEmailBodyTemplate ?? '', self::DEFAULT_EMAIL_BODY), $vars),
+        ];
     }
 
     /**
@@ -236,12 +465,12 @@ final class AlertManager {
     /**
      * Sum flows/packets/bytes from nfdump's unaggregated `-o json` decoded records.
      * Each record already represents exactly one flow (no per-record flow-count field),
-     * and uses `in_packets`/`in_bytes` — the whitespace-aggregation format's `ipkt`/`ibyt`
+     * and uses `in_packets`/`in_bytes`: the whitespace-aggregation format's `ipkt`/`ibyt`
      * short names don't exist in this schema.
      *
      * @param array<array<string, mixed>> $decoded
      *
-     * @return array{flows: float, packets: float, bytes: float}
+     * @return SlotValues
      */
     public static function sumDecodedFlowRecords(array $decoded): array {
         $flows = 0.0;
@@ -259,100 +488,544 @@ final class AlertManager {
         return ['flows' => $flows, 'packets' => $packets, 'bytes' => $bytes];
     }
 
-    // ── Notifications ──────────────────────────────────────────────────────────
+    /**
+     * @param list<AlertRule>                            $rules
+     * @param null|array<string, null|SlotValues|string> $reports     the sources that reported the slot (see $pending); null: runPeriodic()
+     * @param array<string, int>                         $generations $generation when the caller got $rules
+     *
+     * @return list<string> names of the rules that fired
+     */
+    private function evaluateRules(array $rules, string $profile, int $slot, ?array $reports, array $generations): array {
+        $fired = [];
+        $changed = false;
+
+        foreach ($rules as $rule) {
+            $generation = $generations[$rule->id] ?? 0;
+            if ($rule->profile !== $profile || ($this->generation[$rule->id] ?? 0) !== $generation) {
+                // A changed generation: forget() ran since $rules was read, so this copy of the rule is stale.
+                continue;
+            }
+
+            $state = $this->states[$rule->id] ?? null;
+            if (!$rule->enabled) {
+                if ($state !== null && $state->firing) {
+                    $this->release($rule->id, $rule, $slot);
+                    $changed = true;
+                }
+
+                continue;
+            }
+
+            $state ??= AlertState::initial();
+            if (self::alreadyEvaluated($state, $slot)) {
+                continue;
+            }
+
+            $measured = $this->measure($rule, $profile, $slot, $reports);
+            if (($this->generation[$rule->id] ?? 0) !== $generation) {
+                continue;
+            }
+            if ($measured['values'] === null || $measured['threshold'] === null) {
+                $this->log("Alert '{$rule->name}': slot " . gmdate('Y-m-d H:i', $slot) . " UTC not evaluated: {$measured['reason']}", LOG_INFO);
+
+                continue;
+            }
+
+            $values = $measured['values'];
+            $threshold = $measured['threshold'];
+            $value = $values[$rule->metric] ?? 0.0;
+
+            $state->lastEvaluatedSlot = $slot;
+            $state->lastValue = $value;
+            if ($state->cooldownRemaining > 0) {
+                --$state->cooldownRemaining;
+            }
+
+            if ($this->evaluate($rule->operator, $value, $threshold)) {
+                if (!$state->firing || $state->cooldownRemaining === 0) {
+                    $notify = $state->cooldownRemaining === 0;
+                    if (!$state->firing) {
+                        $state->firing = true;
+                        $state->firedAt = $slot;
+                    }
+                    $state->lastTriggeredAt = $slot;
+                    $state->recentTriggers = \array_slice([...$state->recentTriggers, $slot], -10);
+                    $state->cooldownRemaining = $rule->cooldownSlots;
+
+                    if ($notify) {
+                        $this->dispatchNotifications($rule, $values, $threshold, $slot, 'fired');
+                    } else {
+                        $this->recordEvent('fired', $rule, $value, $threshold, $slot);
+                    }
+                    $fired[] = $rule->name;
+                }
+            } elseif ($state->firing) {
+                $state->firing = false;
+                $state->firedAt = null;
+                $this->recordEvent('resolved', $rule, $value, $threshold, $slot);
+            }
+
+            $this->states[$rule->id] = $state;
+            $changed = true;
+        }
+
+        if ($changed) {
+            $this->saveState();
+        }
+
+        return $fired;
+    }
+
+    // ── Internals ──────────────────────────────────────────────────────────────
+
+    /** @param list<AlertRule> $rules */
+    private function dropMissingRules(array $rules): void {
+        $known = array_flip(array_map(static fn (AlertRule $rule): string => $rule->id, $rules));
+        $missing = array_diff_key($this->states, $known);
+        foreach (array_keys($missing) as $ruleId) {
+            $this->release((string) $ruleId, null);
+        }
+        if ($missing !== []) {
+            $this->saveState();
+        }
+    }
 
     /**
-     * Run nfdump over the latest 5-min slot with the rule's nfdumpFilter and return
-     * aggregate flows/packets/bytes.  Falls back to zeros on any nfdump error so the
-     * caller can still evaluate the threshold (and presumably not fire).
+     * Whether every configured source has reported $slot, reported a newer file, or is down. A
+     * slot more than CATCH_UP_SECONDS behind the newest file stops waiting.
      *
-     * @return array{flows: float, packets: float, bytes: float}
+     * @param list<string> $sources
      */
-    private function fetchFilteredSlot(AlertRule $rule, string $profile): array {
-        $empty = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+    private function complete(string $profile, int $slot, array $sources): bool {
+        $lastSeen = $this->lastSeenTs[$profile] ?? $slot;
+        if ($slot < $lastSeen - self::CATCH_UP_SECONDS) {
+            return true;
+        }
 
-        // Skip rather than queue when there is no free slot. This used to read
-        // Nfdump::$runningPid, which now means "whichever run started last" and says nothing
-        // about capacity: with the process cap at two it let a call through while both slots
-        // were busy, where acquire() blocks for thirty seconds and the rule then evaluates on
-        // zeros — a threshold that silently does not fire.
-        if (NfdumpSlots::inUse() >= max(1, Config::$settings->nfdumpMaxProcesses)) {
-            return $empty;
+        foreach ($sources as $source) {
+            if (\array_key_exists($source, $this->pending[$profile][$slot] ?? []) || ($this->newestBySource[$profile][$source] ?? PHP_INT_MIN) > $slot) {
+                continue;
+            }
+            $givenUp = $lastSeen > $slot || isset($this->down[$profile][$source]);
+            if (!$givenUp || $this->filesWaiting($profile, $source, $slot)) {
+                return false;
+            }
+            $this->down[$profile][$source] = true;
+        }
+
+        return true;
+    }
+
+    /** Whether the source has an unreported capture file up to $slot on disk: its catch-up is still running, it is not down. */
+    private function filesWaiting(string $profile, string $source, int $slot): bool {
+        $newest = $this->newestBySource[$profile][$source] ?? null;
+        $from = $newest === null ? $slot : max($newest + 1, $slot - self::CATCH_UP_SECONDS);
+
+        try {
+            return NfcapdFiles::names($from, $slot, $source, $profile) !== [];
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Whether an enabled rule of the profile without a traffic filter covers the source.
+     *
+     * @param list<AlertRule> $rules
+     */
+    private function readsStore(array $rules, string $profile, string $source): bool {
+        foreach ($rules as $rule) {
+            if ($rule->enabled && $rule->profile === $profile && $rule->nfdumpFilter === null && \in_array($source, $this->sourcesOf($rule), true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Read right after the import, while $slot is the source's newest stored interval: a catch-up
+     * imports one source after the other, so by evaluation time it may no longer be.
+     *
+     * @return null|SlotValues|string null when the read failed, so it is tried again at evaluation
+     */
+    private function readAfterImport(string $source, string $profile, int $slot): array|string|null {
+        try {
+            return $this->readStored($source, $profile, $slot);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @return SlotValues|string a string when the store's newest interval of the source is not $slot
+     */
+    private function readStored(string $source, string $profile, int $slot): array|string {
+        $stored = $this->db->last_update($source, 0, $profile);
+        if ($stored > $slot) {
+            return "the stored traffic of {$source} is already past this interval";
+        }
+        // 0: the datasource cannot tell, so its newest row is read as before.
+        if ($stored > 0 && $stored < $slot) {
+            return "the traffic of {$source} for this interval was not stored";
+        }
+
+        return $this->db->fetchLatestSlot([$source], $profile);
+    }
+
+    /**
+     * The newest stored interval of the rule's sources and the sources that hold it, chosen like
+     * newestSlot() chooses a capture file: a source more than one interval behind is down. Null
+     * sources when the store cannot tell (every last_update() is 0).
+     *
+     * @return array{int, null|array<string, null>}
+     */
+    private function storedSlot(AlertRule $rule, string $profile): array {
+        $stored = [];
+        foreach ($this->sourcesOf($rule) as $source) {
+            try {
+                $ts = $this->db->last_update($source, 0, $profile);
+            } catch (\Throwable) {
+                $ts = 0;
+            }
+            if ($ts > 0) {
+                $stored[$source] = $ts;
+            }
+        }
+        if ($stored === []) {
+            return [$this->newestSlot($rule, $profile), null];
+        }
+
+        $top = max($stored);
+        $recent = array_filter($stored, static fn (int $ts): bool => $ts >= $top - self::SLOT_SECONDS);
+
+        return [min($top, ...array_values($recent)), array_fill_keys(array_keys($recent), null)];
+    }
+
+    /** A slot up to the last evaluated one is skipped, unless the timeline moved back in between. */
+    private static function alreadyEvaluated(AlertState $state, int $slot): bool {
+        $last = $state->lastEvaluatedSlot;
+
+        return $last !== null && $slot <= $last && ($slot === $last || !self::rewound($last, $slot));
+    }
+
+    /**
+     * Whether $slot after $last means the clock or NFCAPD_TZ moved back: $last lies more than an
+     * hour ahead of now and $slot does not. A timeline that is always ahead is no rewind.
+     */
+    private static function rewound(int $last, int $slot): bool {
+        $horizon = time() + self::REWIND_SECONDS;
+
+        return $slot < $last && $last > $horizon && $slot <= $horizon;
+    }
+
+    /**
+     * Current values and threshold for a slot. Either is null when the rule cannot be evaluated
+     * (no free nfdump process, a failed query, no baseline yet); $reason then says why.
+     *
+     * @param null|array<string, null|SlotValues|string> $reports see evaluateRules()
+     *
+     * @return Measurement
+     */
+    private function measure(AlertRule $rule, string $profile, int $slot, ?array $reports): array {
+        $values = null;
+        $threshold = null;
+        $reason = '';
+
+        try {
+            $fetched = $rule->nfdumpFilter !== null
+                ? $this->fetchFilteredSlot($rule, $profile, $slot)
+                : $this->storedValues($rule, $profile, $slot, $reports);
+            if (\is_string($fetched)) {
+                $reason = $fetched;
+            } else {
+                $values = $fetched;
+            }
+        } catch (\Throwable $e) {
+            $reason = 'reading the traffic failed: ' . $e->getMessage();
         }
 
         try {
-            $now = time();
+            $computed = $this->computeThreshold($rule, $values ?? self::ZERO);
+            if ($computed === PHP_FLOAT_MAX) {
+                $reason = $reason !== '' ? $reason : "no baseline yet for the {$rule->avgWindow} average";
+            } else {
+                $threshold = $computed;
+            }
+        } catch (\Throwable $e) {
+            $reason = $reason !== '' ? $reason : 'reading the average failed: ' . $e->getMessage();
+        }
+
+        return ['values' => $values, 'threshold' => $threshold, 'reason' => $reason];
+    }
+
+    /**
+     * The stored values of the slot, summed over the rule's sources that reported it, like the
+     * filtered path sums the sources that have its capture file. Without reports (runPeriodic(), or
+     * a store that cannot tell which interval it holds) every source's newest stored interval is summed.
+     *
+     * @param null|array<string, null|SlotValues|string> $reports
+     *
+     * @return SlotValues|string
+     */
+    private function storedValues(AlertRule $rule, string $profile, int $slot, ?array $reports): array|string {
+        if ($reports === null) {
+            return $this->db->fetchLatestSlot($this->sourcesOf($rule), $profile);
+        }
+
+        $sum = null;
+        foreach ($this->sourcesOf($rule) as $source) {
+            if (!\array_key_exists($source, $reports)) {
+                continue;
+            }
+            $values = $reports[$source] ?? $this->readStored($source, $profile, $slot);
+            if (\is_string($values)) {
+                return $values;
+            }
+            $sum ??= self::ZERO;
+            foreach ($sum as $metric => $total) {
+                $sum[$metric] = $total + $values[$metric];
+            }
+        }
+
+        return $sum ?? 'none of its sources delivered this interval';
+    }
+
+    /**
+     * Runs nfdump with the rule's filter over the capture file of $slot and sums
+     * flows/packets/bytes. A string says why it could not run.
+     *
+     * @return SlotValues|string
+     */
+    private function fetchFilteredSlot(AlertRule $rule, string $profile, int $slot): array|string {
+        // Skip rather than queue: acquire() would block for thirty seconds, and a rule that then
+        // evaluates on zeros is a threshold that silently does not fire.
+        if (NfdumpSlots::inUse() >= max(1, Config::$settings->nfdumpMaxProcesses)) {
+            return 'no free nfdump process';
+        }
+
+        $sources = array_values(array_filter(
+            $this->sourcesOf($rule),
+            static fn (string $source): bool => NfcapdFiles::names($slot, $slot, $source, $profile) !== [],
+        ));
+        if ($sources === []) {
+            $name = (new \DateTimeImmutable('@' . $slot))->setTimezone(Config::nfcapdTimezone())->format('YmdHi');
+
+            return "no capture file nfcapd.{$name}";
+        }
+
+        try {
             $nfdump = Nfdump::getInstance();
             $nfdump->reset();
             $nfdump->setProfile($profile);
-
-            // -M must be set before -R: Nfdump::setOption('-R', ...) resolves nfcapd file
-            // paths immediately using the sources recorded by the -M handler.
-            $sources = $rule->sources;
-            if (\count($sources) > 1) {
-                $nfdump->setOption('-M', implode(':', $sources));
-            } elseif (\count($sources) === 1) {
-                $nfdump->setOption('-M', $sources[0]);
-            }
-
-            $nfdump->setOption('-R', [$now - 300, $now]);
-
+            // -M must be set before -R: -R resolves file paths with the sources -M recorded.
+            $nfdump->setOption('-M', implode(':', $sources));
+            $nfdump->setOption('-R', [$slot, $slot]);
             $nfdump->setFilter($rule->nfdumpFilter ?? '');
             $nfdump->setOption('-o', 'json');
             $result = $nfdump->execute();
 
             return self::sumDecodedFlowRecords($result['decoded']);
-        } catch (\Throwable) {
-            return $empty;
+        } catch (\Throwable $e) {
+            return 'nfdump failed: ' . $e->getMessage();
         }
-    }
-
-    // ── Helpers ────────────────────────────────────────────────────────────────
-
-    /** @param array<string, string> $vars */
-    private function sendEmail(AlertRule $rule, array $vars): void {
-        $subject = strtr(self::resolveTemplate($rule->emailSubjectTemplate, Config::$settings->defaultEmailSubjectTemplate, self::DEFAULT_EMAIL_SUBJECT), $vars);
-        $body = strtr(self::resolveTemplate($rule->emailBodyTemplate, Config::$settings->defaultEmailBodyTemplate, self::DEFAULT_EMAIL_BODY), $vars);
-
-        $headers = "From: {$this->emailFrom}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8";
-        @mail((string) $rule->notifyEmail, $subject, $body, $headers);
     }
 
     /**
-     * @param array<string, mixed>  $entry JSON payload data (rule/metric/value/profile/sources/ts)
-     * @param array<string, string> $vars  title/message template substitution map
+     * Start of the newest complete interval: the oldest of the sources' newest capture files, so a
+     * source that has not rotated yet is not left out. A source more than one interval behind the
+     * newest is down and does not hold the slot back, as in onFileImported().
      */
-    private function sendWebhook(AlertRule $rule, array $entry, array $vars): void {
-        $url = (string) $rule->notifyWebhook;
+    private function newestSlot(AlertRule $rule, string $profile): int {
+        $newest = [];
 
-        // SSRF guard — only allow http:// and https:// to external hosts
-        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
-        if ($scheme !== 'http' && $scheme !== 'https') {
+        try {
+            foreach ($this->sourcesOf($rule) as $source) {
+                $ts = NfcapdFiles::newest($profile, $source, 1)['ts'] ?? null;
+                if ($ts !== null) {
+                    $newest[] = $ts;
+                }
+            }
+        } catch (\Throwable) {
+        }
+        if ($newest === []) {
+            return intdiv(time(), self::SLOT_SECONDS) * self::SLOT_SECONDS - self::SLOT_SECONDS;
+        }
+
+        $top = max($newest);
+        $slot = $top;
+        foreach ($newest as $ts) {
+            if ($ts >= $top - self::SLOT_SECONDS) {
+                $slot = min($slot, $ts);
+            }
+        }
+
+        return $slot;
+    }
+
+    /**
+     * A rule without sources covers every configured source.
+     *
+     * @return list<string>
+     */
+    private function sourcesOf(AlertRule $rule): array {
+        return $rule->sources !== [] ? array_values($rule->sources) : self::configuredSources();
+    }
+
+    /** @return list<string> */
+    private static function configuredSources(): array {
+        return isset(Config::$settings) ? Config::$settings->sources : [];
+    }
+
+    /**
+     * Drops a rule's state; a firing rule gets a 'resolved' event with its last value. Without $ts
+     * the event goes right after the last evaluated slot, on the time base of the other events.
+     */
+    private function release(string $ruleId, ?AlertRule $rule, ?int $ts = null): void {
+        $state = $this->states[$ruleId] ?? null;
+        unset($this->states[$ruleId]);
+        $this->generation[$ruleId] = ($this->generation[$ruleId] ?? 0) + 1;
+        if ($state === null || !$state->firing) {
+            return;
+        }
+        $ts ??= $state->lastEvaluatedSlot !== null ? $state->lastEvaluatedSlot + self::SLOT_SECONDS : time();
+
+        $events = $this->events();
+        if ($events === null) {
             return;
         }
 
-        $title = strtr(self::resolveTemplate($rule->webhookTitleTemplate, Config::$settings->defaultWebhookTitleTemplate, self::DEFAULT_WEBHOOK_TITLE), $vars);
-        $message = strtr(self::resolveTemplate($rule->webhookMessageTemplate, Config::$settings->defaultWebhookMessageTemplate, self::DEFAULT_WEBHOOK_MESSAGE), $vars);
+        try {
+            $last = $events->recent(1, $ruleId)[0] ?? null;
+            $rule ??= self::configuredRule($ruleId);
+            $value = $state->lastValue ?? ($last['value'] ?? 0.0);
+            $threshold = $last['threshold'] ?? null;
+            if ($rule !== null) {
+                $events->record('resolved', $ts, $ruleId, $rule->name, $rule->profile, array_values($rule->sources), $rule->metric, $rule->operator, $value, $threshold);
+            } elseif ($last !== null) {
+                $events->record('resolved', $ts, $ruleId, $last['ruleName'], $last['profile'], $last['sources'], $last['metric'], $last['operator'], $value, $threshold);
+            }
+        } catch (\Throwable $e) {
+            $this->log("Alert {$ruleId}: recording the resolved event failed: " . $e->getMessage(), LOG_WARNING);
+        }
+    }
+
+    private static function configuredRule(string $ruleId): ?AlertRule {
+        foreach (isset(Config::$settings) ? Config::$settings->alerts : [] as $rule) {
+            if ($rule->id === $ruleId) {
+                return $rule;
+            }
+        }
+
+        return null;
+    }
+
+    private function recordEvent(string $kind, AlertRule $rule, float $value, ?float $threshold, int $ts, ?string $profile = null): void {
+        $events = $this->events();
+        if ($events === null) {
+            return;
+        }
+
+        try {
+            $events->record(
+                $kind,
+                $ts,
+                $rule->id,
+                $rule->name,
+                $profile ?? $rule->profile,
+                array_values($rule->sources),
+                $rule->metric,
+                $rule->operator,
+                $value,
+                $threshold === PHP_FLOAT_MAX ? null : $threshold,
+            );
+        } catch (\Throwable $e) {
+            $this->log("Alert '{$rule->name}': recording the {$kind} event failed: " . $e->getMessage(), LOG_WARNING);
+        }
+    }
+
+    /** The repository, opened lazily; null while the store is unavailable. */
+    private function events(): ?AlertEventRepository {
+        if ($this->events !== null) {
+            return $this->events;
+        }
+
+        try {
+            $this->events = new AlertEventRepository(Database::shared());
+            $this->eventsError = '';
+        } catch (StoreUnavailableException $e) {
+            $this->eventsError = $e->reason;
+            if (!$this->eventsWarned) {
+                $this->eventsWarned = true;
+                $this->log('Alert history unavailable, rules are still evaluated and notified: ' . $e->getMessage(), LOG_WARNING);
+            }
+        }
+
+        return $this->events;
+    }
+
+    private function renameLegacyLog(): void {
+        if (!@rename($this->logPath, $this->logPath . '.migrated')) {
+            $this->log("Alerts: {$this->logPath} is imported but could not be renamed; it will not be imported again", LOG_WARNING);
+        }
+    }
+
+    /**
+     * @param SlotValues            $values
+     * @param array<string, string> $vars
+     *
+     * @return bool whether an email or a webhook was sent
+     */
+    private function notify(AlertRule $rule, array $values, array $vars, int $ts): bool {
+        $templates = self::renderTemplates($rule, $vars);
+        $sent = false;
+
+        if ($rule->notifyEmail !== null && $this->emailFrom !== '') {
+            $sent = $this->sendEmail($rule, $templates);
+        }
+        if ($rule->notifyWebhook !== null) {
+            $sent = $this->sendWebhook($rule, $values[$rule->metric] ?? 0.0, $ts, $templates) || $sent;
+        }
+
+        return $sent;
+    }
+
+    /** @param RenderedTemplates $templates */
+    private function sendEmail(AlertRule $rule, array $templates): bool {
+        $headers = "From: {$this->emailFrom}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8";
+
+        return @mail((string) $rule->notifyEmail, $templates['subject'], $templates['body'], $headers);
+    }
+
+    /** @param RenderedTemplates $templates */
+    private function sendWebhook(AlertRule $rule, float $value, int $ts, array $templates): bool {
+        $url = (string) $rule->notifyWebhook;
+
+        // SSRF guard: only http:// and https://
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        if ($scheme !== 'http' && $scheme !== 'https') {
+            return false;
+        }
 
         $payload = json_encode([
             'event' => 'alert_fired',
             'rule' => $rule->name,
             'metric' => $rule->metric,
-            'value' => $entry['value'],
+            'value' => $value,
             'profile' => $rule->profile,
             'sources' => $rule->sources,
-            'ts' => $entry['ts'],
+            'ts' => $ts,
             // Gotify's POST /message requires a top-level "message" string; Apprise's
             // POST /notify/<key> requires "body" instead. Sending both lets the webhook
             // URL point directly at either (e.g. https://gotify.example/message?token=...)
             // without an intermediary.
-            'title' => $title,
-            'message' => $message,
-            'body' => $message,
+            'title' => $templates['title'],
+            'message' => $templates['message'],
+            'body' => $templates['message'],
         ], JSON_UNESCAPED_SLASHES);
 
         if ($payload === false) {
-            return;
+            return false;
         }
 
         // Use OpenSwoole coroutine HTTP client when inside a coroutine context,
@@ -362,6 +1035,8 @@ final class AlertManager {
         } else {
             $this->sendWebhookCurl($url, $payload);
         }
+
+        return true;
     }
 
     private function sendWebhookCoroutine(string $url, string $payload): void {
@@ -385,7 +1060,7 @@ final class AlertManager {
                 $client->post($path, $payload);
                 $client->close();
             } catch (\Throwable) {
-                // Webhook failures are best-effort — do not crash the server
+                // Webhook failures are best-effort and must not crash the server
             }
         });
     }
@@ -435,24 +1110,32 @@ final class AlertManager {
         }
     }
 
-    private function saveLog(): void {
-        $this->atomicWrite($this->logPath, (string) json_encode($this->log, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-    }
-
-    private function loadLog(): void {
-        if (!file_exists($this->logPath)) {
-            return;
-        }
-
-        $raw = json_decode((string) @file_get_contents($this->logPath), true);
-        if (\is_array($raw)) {
-            $this->log = array_values($raw);
-        }
-    }
-
+    /** A read-only state directory must not stop evaluation, so a failed write is logged once. */
     private function atomicWrite(string $path, string $content): void {
         $tmp = $path . '.tmp.' . getmypid();
-        file_put_contents($tmp, $content);
-        rename($tmp, $path);
+        $error = '';
+        set_error_handler(static function (int $level, string $message) use (&$error): bool {
+            $error = $message;
+
+            return true;
+        });
+
+        try {
+            $ok = file_put_contents($tmp, $content) !== false && rename($tmp, $path);
+            if (!$ok && file_exists($tmp)) {
+                unlink($tmp);
+            }
+        } finally {
+            restore_error_handler();
+        }
+
+        if (!$ok && !$this->stateWriteFailed) {
+            $this->log("Alerts: cannot write {$path}, rule state is kept in memory only: {$error}", LOG_WARNING);
+        }
+        $this->stateWriteFailed = !$ok;
+    }
+
+    private function log(string $message, int $priority): void {
+        Debug::getInstance()->log($message, $priority);
     }
 }

@@ -12,8 +12,15 @@ final class AlertState {
     public function __construct(
         public int $cooldownRemaining,
         public int $lastTriggeredAt,
-        /** @var int[] Unix timestamps of the last ≤10 trigger events */
+        /** @var list<int> Unix timestamps of the last 10 or fewer trigger events */
         public array $recentTriggers,
+        public bool $firing = false,
+        /** Slot of the 'fired' event that started the current firing period */
+        public ?int $firedAt = null,
+        /** The rule's metric value in the last evaluated slot */
+        public ?float $lastValue = null,
+        /** Start of the last data interval evaluated (from the nfcapd file name) */
+        public ?int $lastEvaluatedSlot = null,
     ) {}
 
     public static function initial(): self {
@@ -30,6 +37,10 @@ final class AlertState {
             cooldownRemaining: max(0, (int) ($data['cooldownRemaining'] ?? 0)),
             lastTriggeredAt: (int) ($data['lastTriggeredAt'] ?? 0),
             recentTriggers: array_values(array_map('intval', (array) ($data['recentTriggers'] ?? []))),
+            firing: (bool) ($data['firing'] ?? false),
+            firedAt: isset($data['firedAt']) ? (int) $data['firedAt'] : null,
+            lastValue: isset($data['lastValue']) ? (float) $data['lastValue'] : null,
+            lastEvaluatedSlot: isset($data['lastEvaluatedSlot']) ? (int) $data['lastEvaluatedSlot'] : null,
         );
     }
 
@@ -39,6 +50,10 @@ final class AlertState {
             'cooldownRemaining' => $this->cooldownRemaining,
             'lastTriggeredAt' => $this->lastTriggeredAt,
             'recentTriggers' => $this->recentTriggers,
+            'firing' => $this->firing,
+            'firedAt' => $this->firedAt,
+            'lastValue' => $this->lastValue,
+            'lastEvaluatedSlot' => $this->lastEvaluatedSlot,
         ];
     }
 }

@@ -47,6 +47,15 @@ class AppStartup {
         );
         $app->setGlobalState('alertManager', $alertManager);
 
+        try {
+            $migrated = $alertManager->migrateLegacyLog();
+            if ($migrated > 0) {
+                $debug->log("Alerts: moved {$migrated} entries from alerts-log.json into the SQLite store", LOG_INFO);
+            }
+        } catch (\Throwable $e) {
+            $debug->log('Alerts: alerts-log.json was not migrated, retrying on the next start: ' . $e->getMessage(), LOG_WARNING);
+        }
+
         if ((bool) EnvRegistry::value('NFSEN_SKIP_DAEMON')) {
             $debug->log('ImportDaemon skipped (NFSEN_SKIP_DAEMON)', LOG_INFO);
             $app->setGlobalState('daemon_disabled', true);
@@ -177,7 +186,7 @@ class AppStartup {
             /** @var array<string, ImportDaemon> $daemons */
             foreach ($daemons as $_profile => $daemon) {
                 try {
-                    $daemon->pollOnce(function () use ($app, $debug, $_profile): void {
+                    $daemon->pollOnce(function (string $source, int $fileTs, bool $isLastSource) use ($app, $debug, $_profile): void {
                         $debug->log('ImportDaemon: file imported → broadcasting rrd:live', LOG_DEBUG);
 
                         // Surface any RRD write warnings from this inotify-triggered import
@@ -198,11 +207,11 @@ class AppStartup {
                             $app->broadcast('rrd:live');
                         }
 
-                        // Evaluate alert rules for this profile after each successful import
+                        // Rules run once per interval, when every source's file of it is in (D17).
                         /** @var null|AlertManager $alertMgr */
                         $alertMgr = $app->globalState('alertManager', null);
-                        if ($alertMgr !== null && !empty(Config::$settings->alerts)) {
-                            $fired = $alertMgr->runPeriodic(Config::$settings->alerts, $_profile);
+                        if ($alertMgr !== null) {
+                            $fired = $alertMgr->onFileImported(Config::$settings->alerts, $_profile, $fileTs, $isLastSource, $source);
                             if (!empty($fired)) {
                                 $app->setGlobalState('alert_fired', ['names' => $fired, 'ts' => time()]);
                                 if (!empty($app->getClients())) {

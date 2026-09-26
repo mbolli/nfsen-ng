@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\query;
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\NfcapdFiles;
+use mbolli\nfsen_ng\processor\MultiStatCsvParser;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\Processor;
 
@@ -13,9 +14,14 @@ use mbolli\nfsen_ng\processor\Processor;
  * Top-N statistics over the capture files: nfdump -s <for>/<orderBy>.
  *
  * Built from plain values rather than signals, so the same query can be driven by the
- * Statistics panel, a test, or any other caller without a php-via Context in scope.
+ * Top Talkers page, a test, or any other caller without a php-via Context in scope.
+ *
+ * @phpstan-import-type StatRow from MultiStatCsvParser
  */
 final readonly class StatsQuery {
+    /** @var list<string> csv carries nfdump's share columns (bytP), which the Top Talkers bars show */
+    public const array OUTPUTS = ['json', 'csv'];
+
     /**
      * @param list<string>         $sources
      * @param string               $for         what to aggregate by, a StatisticCatalog element such as 'srcip'
@@ -37,6 +43,8 @@ final readonly class StatsQuery {
         public string $handle = 'default',
         /** The global protocol, one of ProtocolFilter::PROTOCOLS. */
         public string $protocol = 'any',
+        /** nfdump's -o, one of OUTPUTS; an aggregated record statistic answers csv whatever this says. */
+        public string $output = 'json',
     ) {
         // These reach nfdump's options, and the messages leave the value out because the
         // panels render them as markup.
@@ -47,6 +55,9 @@ final readonly class StatsQuery {
             throw new \InvalidArgumentException('Unknown order, expected one of ' . implode(', ', StatisticCatalog::ORDER_BY) . '.');
         }
         ProtocolFilter::assertValid($protocol);
+        if (!\in_array($output, self::OUTPUTS, true)) {
+            throw new \InvalidArgumentException('Unknown output, expected one of ' . implode(', ', self::OUTPUTS) . '.');
+        }
     }
 
     /**
@@ -91,7 +102,7 @@ final readonly class StatsQuery {
         $processor->setOption('-M', implode(':', $this->sources));
         $processor->setOption('-R', $this->window->toRangeOption());
         $processor->setOption('-n', $this->limit);
-        $processor->setOption('-o', 'json');
+        $processor->setOption('-o', $this->output);
         $processor->setOption('-s', $this->for . '/' . $this->orderBy);
 
         // Same shape as the Flows panel: bidirectional is its own flag, everything else is a
@@ -132,5 +143,17 @@ final readonly class StatsQuery {
             notes: $result['notes'] ?? [],
             exitCode: $result['exitCode'] ?? 0,
         );
+    }
+
+    /**
+     * The rows of a csv run with nfdump's share of bytes (bytP), read from the raw output: the
+     * processor's own csv decoding keeps the columns but not their meaning.
+     *
+     * @return list<StatRow>
+     */
+    public function statRows(QueryResult $result): array {
+        $raw = \is_string($result->rawOutput) ? $result->rawOutput : '';
+
+        return MultiStatCsvParser::parse($raw, [$this->for])[0] ?? [];
     }
 }

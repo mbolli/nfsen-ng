@@ -163,6 +163,205 @@ describe('Table', function (): void {
         });
     });
 
+    describe('the contract other pages use (4.3.4)', function (): void {
+        test('still a bare table, inside an nfsen-table with the given id', function (): void {
+            $result = Table::generate([['a' => 1]], 'statsTable');
+
+            expect($result)->toStartWith('<nfsen-table id="statsTable"')
+                ->toContain('<table>')
+                ->not->toContain('<table class=')
+            ;
+        });
+
+        test('derives every id from the table id, so two tables can share a page', function (): void {
+            $flows = Table::generate([['a' => 1]], 'flowTable', ['originalData' => 'raw']);
+            $stats = Table::generate([['a' => 1]], 'statsTable', ['originalData' => 'raw']);
+
+            preg_match_all('/\bid="([^"]+)"/', $flows . $stats, $ids);
+
+            expect($ids[1])->toBe(array_unique($ids[1]))
+                ->and($flows)->toContain('id="flowTable-enhanced"', 'id="flowTableOuter"', 'id="flowTableInner"')
+                ->and($stats)->toContain('id="statsTable-enhanced"', 'id="statsTableOuter"', 'id="statsTableInner"')
+                ->and($flows . $stats)->not->toContain('id="exportEnhancedData"')
+            ;
+        });
+
+        test('leaves the export buttons to the page and keeps the Enhanced data choice', function (): void {
+            $result = Table::generate([['a' => 1]], 'flowTable');
+
+            expect($result)->toContain('class="export-enhanced-data"', 'Enhanced data', 'column-selector-placeholder')
+                ->not->toContain('export-csv', 'export-json', 'export-print', 'data-ref', 'style=')
+            ;
+        });
+
+        test('hides the default fields when no hiddenFields are passed, and only the given ones otherwise', function (): void {
+            $row = [['srcip' => '10.0.0.1', 'cnt' => 1, 'type' => 'FLOW', 'ident' => 'x', 'export_sysid' => 1, 'sampled' => 0]];
+
+            preg_match_all('/data-original-title="([^"]+)"/', Table::generate($row, 't'), $default);
+            preg_match_all('/data-original-title="([^"]+)"/', Table::generate($row, 't', ['hiddenFields' => ['cnt']]), $given);
+
+            expect($default[1])->toBe(['srcip'])
+                ->and(Table::HIDDEN_FIELDS)->toBe(['cnt', 'type', 'ident', 'export_sysid', 'sampled'])
+                ->and($given[1])->toBe(['srcip', 'type', 'ident', 'export_sysid', 'sampled'])
+            ;
+        });
+
+        test('headers are sort buttons, and numbers, times and addresses say what they are', function (): void {
+            $result = Table::generate([['first' => 1700000000, 'src_addr' => '10.0.0.1', 'bytes' => 10, 'proto' => 6, 'note' => 'x']], 't');
+
+            expect($result)->toContain(
+                '<th scope="col" data-original-title="bytes" data-num><button type="button" class="sort-button">Bytes</button></th>',
+                '<td data-kind="time" data-raw="1700000000"><time data-epoch="1700000000">',
+                '<td data-kind="address" data-sort-value="0167772161"><a href="#" class="ip-link">10.0.0.1</a></td>',
+                '<td data-num data-raw="10">10.00 B</td>',
+                '<td>x</td>',
+            );
+        });
+
+        // A 10,000 row result has to fit a 128 MB worker.
+        test('a cell repeats no value it already shows', function (): void {
+            $result = Table::generate([['proto' => 6, 'packets' => 7, 'label' => 'a<b']], 't');
+
+            expect($result)->toContain('<td data-raw="6">TCP <small>(6)</small></td>', '<td data-num>7</td>', '<td>a&lt;b</td>');
+        });
+
+        test('address links post ip-info through one handler on the table', function (): void {
+            $linked = Table::generate([['src_addr' => '10.0.0.1']], 't', ['ipInfoActionUrl' => "/_action/ip-info-a'b"]);
+            $plain = Table::generate([['src_addr' => '10.0.0.1']], 't', ['ipInfoActionUrl' => '/x', 'linkIpAddresses' => false]);
+
+            expect($linked)->toContain(
+                'data-on:click="const a = evt.target.closest(&apos;a.ip-link&apos;); if (a) { evt.preventDefault(); @post(&apos;/_action/ip-info-a\\&apos;b?ip=&apos; + encodeURIComponent(a.textContent.trim())) }"',
+            )
+                ->and(substr_count($linked, 'data-on:'))->toBe(1)
+                ->and($plain)->not->toContain('data-on:', 'ip-link')
+            ;
+        });
+
+        test('pagination keeps the rows past the first page in a template and renders the pager', function (): void {
+            $rows = array_map(static fn (int $i): array => ['n' => $i], range(1, 60));
+
+            $result = Table::generate($rows, 'flowTable', ['paginate' => true, 'pageSize' => 25, 'limit' => 60]);
+
+            expect($result)->toContain('data-page-size="25"', 'data-limit="60"', 'class="table-pager"', 'id="flowTable-page-size"')
+                ->toContain('Showing 1-25 of 60 returned (limit 60). nfdump cannot skip rows: raise the limit to see more.')
+                ->toContain('data-page="0" aria-current="page"', 'data-page="2" aria-label="Page 3"', '<option value="25" selected>25</option>')
+                ->and(substr_count(explode('<template class="table-rows">', $result)[0], '<tr>'))->toBe(26)
+                ->and(substr_count(explode('<template class="table-rows">', $result)[1] ?? '', '<tr>'))->toBe(35)
+                ->and($result)->toContain("</tbody>\n</table>\n</div>\n<template class=\"table-rows\">\n<tr>")
+            ;
+        });
+
+        test('a table without pagination shows every row and has no pager', function (): void {
+            $result = Table::generate(array_map(static fn (int $i): array => ['n' => $i], range(1, 60)), 't');
+
+            expect($result)->not->toContain('<template', 'table-pager', 'data-page-size');
+        });
+
+        test('the pager text names the limit, and why there are no more rows only when it was reached', function (): void {
+            expect(Table::pagerText(1, 50, 1234, 10000))->toBe('Showing 1-50 of 1,234 returned (limit 10,000).')
+                ->and(Table::pagerText(51, 100, 10000, 10000))->toBe('Showing 51-100 of 10,000 returned (limit 10,000). nfdump cannot skip rows: raise the limit to see more.')
+                ->and(Table::pagerText(1, 20, 20, 0))->toBe('Showing 1-20 of 20 rows.')
+                ->and(Table::pagerText(0, 0, 0, 50))->toBe('No rows returned (limit 50).')
+            ;
+        });
+
+        test('the pager lists every page up to seven, else the ends and the pages around the current one', function (): void {
+            expect(Table::pagerPages(0, 3))->toBe([0, 1, 2])
+                ->and(Table::pagerPages(0, 25))->toBe([0, 1, 2, 3, 4, null, 24])
+                ->and(Table::pagerPages(12, 25))->toBe([0, null, 11, 12, 13, null, 24])
+                ->and(Table::pagerPages(23, 25))->toBe([0, null, 20, 21, 22, 23, 24])
+            ;
+        });
+
+        test('a rank column comes first as a chip, coloured only for ranks with a series slot', function (): void {
+            $rows = [
+                ['src' => '10.0.0.1', 'rank' => 1, 'bytes' => 30],
+                ['src' => '10.0.0.2', 'rank' => 2, 'bytes' => 20],
+                ['src' => '10.0.0.3', 'rank' => 3, 'bytes' => 10],
+            ];
+
+            $result = Table::generate($rows, 'conversationsTable', ['rankColumn' => 'rank', 'rankSeries' => [1 => 1, 2 => 5]]);
+            preg_match_all('/data-original-title="([^"]+)"/', $result, $headers);
+
+            expect($headers[1])->toBe(['rank', 'src', 'bytes'])
+                ->and($result)->toContain('<table class="ranking">')
+                ->toContain('<td data-kind="rank"><span class="rank" data-series="1">1</span></td>')
+                ->toContain('<span class="rank" data-series="5">2</span>')
+                ->toContain('<span class="rank">3</span>')
+            ;
+        });
+
+        test('the caption names the table for assistive technology and for the printout', function (): void {
+            $result = Table::generate([['a' => 1]], 'flowTable', ['caption' => 'Flows <all>', 'exportName' => 'flows-1-2']);
+
+            expect($result)->toContain('data-caption="Flows &lt;all&gt;"', '<caption class="visually-hidden">Flows &lt;all&gt;</caption>', 'data-export-name="flows-1-2"');
+        });
+
+        test('the Original view holds nfdump\'s text escaped, without the <b> marks the processor adds', function (): void {
+            $result = Table::generate([['a' => 1]], 't', ['originalData' => "<b>Date first seen</b>\n<script>x</script>"]);
+
+            expect($result)->toContain('data-view="original"', 'aria-pressed="true" data-view="table"', '<div class="original" hidden><pre>Date first seen')
+                ->toContain('&lt;script&gt;x&lt;/script&gt;')
+                ->not->toContain('<script>', '<b>')
+            ;
+        });
+
+        test('output nfdump could not read into rows is shown escaped', function (): void {
+            $result = Table::generate([], 't', ['originalData' => '<b>Summary:</b> <img src=x onerror=alert(1)>']);
+
+            expect($result)->toBe('<div id="t" class="table-raw"><pre>Summary: &lt;img src=x onerror=alert(1)&gt;</pre></div>');
+        });
+
+        test('no rows is an empty state with the message escaped, not a status notice', function (): void {
+            expect(Table::generate([], 't', ['emptyMessage' => 'No <rows>']))->toBe('<div id="t" class="empty-state"><h3>No rows</h3><p>No &lt;rows&gt;</p></div>');
+        });
+
+        test('a chunked table holds its first page and yields the other rows in chunks', function (): void {
+            $rows = array_map(static fn (int $i): array => ['n' => $i], range(1, 2_600));
+
+            $table = Table::generateChunked($rows, 'flowTable', ['pageSize' => 50, 'limit' => 10_000, 'result' => 'ab12', 'rowsUrl' => "/_action/flows-rows-x'y"], 1_000);
+            $chunks = iterator_to_array($table['chunks']);
+
+            expect($table['html'])->toContain(
+                'data-result="ab12"',
+                'data-page-size="50"',
+                'data-total="2600"',
+                'data-chunks="3"',
+                'data-on:nfsen-table-more="@post(&apos;/_action/flows-rows-x\\&apos;y?result=&apos; + evt.detail.result + &apos;&amp;chunk=&apos; + evt.detail.chunk)"',
+                'Showing 1-50 of 2,600 returned (limit 10,000).',
+            )
+                ->and($table['html'])->not->toContain('<template')
+                ->and(substr_count($table['html'], '<tr>'))->toBe(51)
+                ->and(array_keys($chunks))->toBe([0, 1, 2])
+                ->and(array_map(static fn (string $c): int => substr_count($c, '<tr>'), $chunks))->toBe([1_000, 1_000, 550])
+                ->and($chunks[0])->toStartWith('<template class="table-rows" data-chunk="0">' . "\n<tr><td>51</td></tr>")
+                ->and($chunks[2])->toEndWith("\n<tr><td>2600</td></tr>\n</template>")
+            ;
+        });
+
+        test('a chunked table of one page has no chunks', function (): void {
+            $table = Table::generateChunked([['n' => 1]], 't', ['rowsUrl' => '/x']);
+
+            expect(iterator_to_array($table['chunks']))->toBe([])
+                ->and($table['html'])->not->toContain('data-chunks', 'nfsen-table-more')
+                ->and(iterator_to_array(Table::generateChunked([], 't', [])['chunks']))->toBe([])
+            ;
+        });
+
+        test('the caller says whether the limit cut the result: aggregation merges the flows it counts', function (): void {
+            $rows = array_map(static fn (int $i): array => ['flows' => 4], range(1, 25));
+
+            $cut = Table::generate($rows, 't', ['paginate' => true, 'limit' => 100, 'limitReached' => true]);
+            $whole = Table::generate(array_fill(0, 100, ['n' => 1]), 't', ['paginate' => true, 'limit' => 100, 'limitReached' => false]);
+
+            expect($cut)->toContain('data-limit-reached="true"', 'Showing 1-25 of 25 returned (limit 100). nfdump cannot skip rows')
+                ->and($whole)->toContain('data-limit-reached="false"', 'Showing 1-50 of 100 returned (limit 100).</p>')
+                ->and(Table::pagerText(1, 25, 25, 100, true))->toEndWith('raise the limit to see more.')
+                ->and(Table::pagerText(1, 50, 100, 100, false))->toBe('Showing 1-50 of 100 returned (limit 100).')
+            ;
+        });
+    });
+
     describe('field title mapping', function (): void {
         test('maps srcip to Source IP', function (): void {
             $data = [['srcip' => '10.0.0.1']];

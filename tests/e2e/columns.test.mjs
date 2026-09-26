@@ -1,40 +1,53 @@
-// Column selector: the "Columns" dropdown used to be pure Bootstrap markup
-// (data-bs-toggle="dropdown") long after Bootstrap's JS was dropped from the
-// bundle, so clicking it did nothing (#161). Open/close is now driven by a
-// browser-local Datastar signal, which is what this asserts -- plus that the
-// checkboxes still actually hide a column.
+// The result tables' Columns menu on nfsen-controls.js's disclosure contract (4.3.4), one per
+// table, and the Original view switch the Top Talkers table keeps.
 import assert from 'node:assert/strict';
-import { withPage, BASE } from './lib/cdp.mjs';
+import { BASE, withPage } from './lib/cdp.mjs';
 
 const BTN = '#flowTable .column-selector button';
 const MENU = '#flowTable .column-selector-menu';
 const MENU_OPEN = `(function(){var m=document.querySelector('${MENU}');return !!m&&m.hasAttribute('data-open')&&m.offsetParent!==null;})()`;
 
+async function press(page, key, code = key, keyCode = 0) {
+    for (const type of ['keyDown', 'keyUp']) {
+        await page.send('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: keyCode });
+    }
+}
+
+/** A real pointer press at a point, which is what closes a menu from outside. */
+async function clickAt(page, x, y) {
+    for (const type of ['mousePressed', 'mouseReleased']) {
+        await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+    }
+}
+
 export default async function columnsTest() {
     await withPage(async (page) => {
-        await page.navigate(BASE + '/');
+        await page.navigate(`${BASE}/`);
         await page.waitForBoot();
         await page.gotoPage('flows');
 
         await page.setRangePreset('1y');
         await page.setSelectValue('#filterFlowsLimit select', 20);
-        await page.runQuery('flows');
+        await page.runQuery('flows', { timeout: 60000 });
 
-        await page.waitFor(`!!document.querySelector('${BTN}')`, { label: 'column selector button' });
+        await page.waitFor(`!!document.querySelector('${BTN}')`, { timeout: 15000, label: 'column selector button' });
         assert.equal(await page.evaluate(MENU_OPEN), false, 'the menu should start closed');
+        assert.equal(
+            await page.evaluate(`document.querySelector('${BTN}').getAttribute('aria-controls')`),
+            'flowTable-columns',
+            'the toggle names its list, by an id derived from the table id'
+        );
 
         // Open.
-        await page.clickByText('Columns', 'button');
+        await page.evaluate(`document.querySelector('${BTN}').click()`);
         await page.waitFor(MENU_OPEN, { label: 'menu to open' });
         assert.equal(
             await page.evaluate(`document.querySelector('${BTN}').getAttribute('aria-expanded')`),
             'true',
-            'aria-expanded should follow the open state'
+            'aria-expanded follows the open state'
         );
 
-        // Popper is gone with Bootstrap's JS, so verify the menu is actually laid
-        // out under the button instead of unpositioned beside it -- and that it
-        // stays inside the viewport, which Popper used to take care of.
+        // Laid out under the button, right-aligned with it, inside the viewport.
         const box = JSON.parse(
             await page.evaluate(`(function(){
                 var b=document.querySelector('${BTN}').getBoundingClientRect();
@@ -48,48 +61,90 @@ export default async function columnsTest() {
         assert.ok(box.rightAligned, `expected the menu right-aligned with the button, got ${JSON.stringify(box)}`);
         assert.ok(box.inViewport, `expected the menu to fit in the viewport, got ${JSON.stringify(box)}`);
 
-        // A click inside the menu must NOT close it -- it is a checkbox list.
-        const firstColumn = await page.evaluate(
-            `(function(){var c=document.querySelector('${MENU} .column-checkbox');c.click();return c.dataset.columnName;})()`
+        // A click inside the menu keeps it open; the column goes by its key.
+        const key = await page.evaluate(
+            `(function(){var c=document.querySelector('${MENU} .column-checkbox');c.click();return c.dataset.columnKey;})()`
         );
-        assert.equal(await page.evaluate(MENU_OPEN), true, 'clicking a checkbox should keep the menu open');
+        assert.equal(await page.evaluate(MENU_OPEN), true, 'clicking a checkbox keeps the menu open');
+        const hidden = `(function(){
+            var th=document.querySelector('#flowTable thead th[data-original-title=${JSON.stringify(key)}]');
+            var i=[...th.parentNode.children].indexOf(th);
+            var cells=[...document.querySelectorAll('#flowTable tbody tr')].map(function(r){return r.cells[i];});
+            return th.hidden && cells.length>0 && cells.every(function(c){return c.hidden && c.getClientRects().length===0;});
+        })()`;
+        await page.waitFor(hidden, { label: `column "${key}" to hide` });
+        const stored = await page.evaluate(`JSON.parse(localStorage.getItem('nfsen-table-hidden-columns-flowTable'))`);
+        assert.deepEqual(stored, [key], 'the choice is stored by column key');
+        assert.equal(await page.evaluate(`document.querySelector('${MENU} [data-column-all]').checked`), false, 'Show all is unchecked');
 
-        // ...and it must hide that column's header + cells.
-        await page.waitFor(
-            `(function(){
-                var th=[...document.querySelectorAll('#flowTable thead th')].find(function(h){return h.textContent.replace(/[▲▼]/g,'').trim()===${JSON.stringify(firstColumn)};});
-                return !!th && th.style.display==='none';
-            })()`,
-            { label: `column "${firstColumn}" to hide` }
+        // An outside press closes.
+        const outside = JSON.parse(
+            await page.evaluate(
+                `JSON.stringify((function(){var r=document.getElementById('pageTitle').getBoundingClientRect();return {x:r.left+5,y:r.top+5};})())`
+            )
         );
+        await clickAt(page, outside.x, outside.y);
+        await page.waitFor(`!${MENU_OPEN}`, { label: 'menu to close on outside press' });
 
-        // Outside click closes.
-        await page.evaluate(`document.body.click()`);
-        await page.waitFor(`!${MENU_OPEN}`, { label: 'menu to close on outside click' });
-
-        // Escape closes.
-        await page.clickByText('Columns', 'button');
+        // Keyboard: Escape closes and gives the focus back to the toggle.
+        await page.evaluate(`document.querySelector('${BTN}').click()`);
         await page.waitFor(MENU_OPEN, { label: 'menu to reopen' });
-        await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+        await page.evaluate(`document.querySelector('${MENU} [data-column-all]').focus()`);
+        await press(page, 'Escape', 'Escape', 27);
         await page.waitFor(`!${MENU_OPEN}`, { label: 'menu to close on Escape' });
+        assert.ok(await page.evaluate(`document.activeElement === document.querySelector('${BTN}')`), 'focus is back on the toggle');
 
-        // Restore the column so the test leaves localStorage as it found it.
-        await page.clickByText('Columns', 'button');
-        await page.evaluate(`document.querySelector('${MENU} .column-checkbox').click()`);
-        await page.evaluate(`document.body.click()`);
+        // Show all brings the column back and leaves localStorage as it found it.
+        await page.evaluate(`document.querySelector('${BTN}').click()`);
+        await page.waitFor(MENU_OPEN, { label: 'menu to open again' });
+        await page.evaluate(`document.querySelector('${MENU} [data-column-all]').click()`);
+        await page.waitFor(`!${hidden}`, { label: `column "${key}" to come back` });
+        assert.deepEqual(await page.evaluate(`JSON.parse(localStorage.getItem('nfsen-table-hidden-columns-flowTable'))`), []);
+        await clickAt(page, outside.x, outside.y);
         await page.waitFor(`!${MENU_OPEN}`, { label: 'menu to close again' });
 
-        // The open state is per table -- one shared signal would open the Flows menu too,
-        // were its table still in the document.
+        // The Top Talkers table has its own menu, and its Original view switch works.
         await page.gotoPage('talkers');
         await page.setRangePreset('1y');
-        await page.runQuery('talkers');
-        await page.waitFor(`!!document.querySelector('#statsTable .column-selector button')`, { label: 'stats column selector' });
+        await page.runQuery('talkers', { timeout: 60000 });
+        await page.waitFor(`!!document.querySelector('#statsTable .column-selector button')`, {
+            timeout: 15000,
+            label: 'stats column selector',
+        });
         await page.evaluate(`document.querySelector('#statsTable .column-selector button').click()`);
         await page.waitFor(`document.querySelector('#statsTable .column-selector-menu').hasAttribute('data-open')`, {
             label: 'stats menu to open',
         });
-        assert.equal(await page.evaluate(MENU_OPEN), false, "the Statistics menu should not open the Flows table's menu");
+        assert.equal(
+            await page.evaluate(`document.querySelector('#statsTable .column-selector button').getAttribute('aria-controls')`),
+            'statsTable-columns'
+        );
+        assert.equal(await page.evaluate(MENU_OPEN), false, "the Top Talkers menu does not open the Flows table's menu");
+        await press(page, 'Escape', 'Escape', 27);
+
+        // StatsActions passes nfdump's text, so the switch must be there.
+        assert.equal(
+            await page.evaluate(`!!document.querySelector('#statsTable button[data-view="original"]')`),
+            true,
+            'the Top Talkers table has its Original view switch'
+        );
+        await page.evaluate(`document.querySelector('#statsTable button[data-view="original"]').click()`);
+        const original = await page.evaluate(`JSON.stringify({
+            pressed: document.querySelector('#statsTable button[data-view="original"]').getAttribute('aria-pressed'),
+            text: document.querySelector('#statsTable .original').getClientRects().length > 0,
+            table: document.querySelector('#statsTable .table-wrap').getClientRects().length > 0,
+        })`);
+        assert.deepEqual(
+            JSON.parse(original),
+            { pressed: 'true', text: true, table: false },
+            "the Original view shows nfdump's text instead of the table"
+        );
+        await page.evaluate(`document.querySelector('#statsTable button[data-view="table"]').click()`);
+        assert.equal(
+            await page.evaluate(`document.querySelector('#statsTable .table-wrap').getClientRects().length > 0`),
+            true,
+            'and back to the table'
+        );
 
         const errors = page.realErrors();
         assert.deepEqual(errors, [], `expected no console errors during the Columns test, got:\n${errors.join('\n')}`);

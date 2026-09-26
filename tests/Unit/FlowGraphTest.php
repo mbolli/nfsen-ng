@@ -5,8 +5,12 @@ declare(strict_types=1);
 use mbolli\nfsen_ng\actions\FlowGraphActions;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
+use mbolli\nfsen_ng\pages\QueryKit;
 use mbolli\nfsen_ng\query\FlowsQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
+use Mbolli\PhpVia\Config as ViaConfig;
+use Mbolli\PhpVia\Context;
+use Mbolli\PhpVia\Via;
 
 describe('FlowGraphActions::effectiveFilter()', function (): void {
     test('passes a plain filter through', function (): void {
@@ -77,5 +81,55 @@ describe('FlowGraphActions::effectiveFilter()', function (): void {
                 ->toBe($query->effectiveFilter())
             ;
         }
+    });
+});
+
+describe('FlowGraphActions::cost()', function (): void {
+    beforeEach(function (): void {
+        $this->settingsBefore = isset(Config::$settings) ? Config::$settings : null;
+        Config::$settings = Settings::fromArray(mockSettings());
+        $c = new Context('ctx-flow-graph-cost', '/', new Via(new ViaConfig()));
+        $c->signal(1_700_000_000, 'datestart');
+        $c->signal(1_700_086_400, 'dateend');
+        $c->signal('live', 'selected_profile');
+        $c->signal('', 'flows_filter');
+        $c->signal('', 'flows_lower_limit');
+        $c->signal('', 'flows_upper_limit');
+        $c->signal(['gateway'], 'graph_sources');
+        $c->signal('bytes', 'flows_graph_unit');
+        $this->c = $c;
+    });
+
+    afterEach(function (): void {
+        if ($this->settingsBefore !== null) {
+            Config::$settings = $this->settingsBefore;
+        }
+    });
+
+    // A render must not walk the capture tree: the files and bytes are the Flows estimate's.
+    test('reads the files and bytes from the Flows estimate, the runs from arithmetic', function (): void {
+        $this->c->signal([...QueryKit::ESTIMATE_DEFAULT, 'pending' => false, 'files' => 288, 'bytes' => 3_000_000, 'bytesHuman' => '2.9 MiB', 'window' => '1 day'], QueryKit::estimateSignal('flows'));
+
+        expect(FlowGraphActions::cost($this->c))->toMatchArray([
+            'files' => 288,
+            'bytes' => '2.9 MiB',
+            'estimated' => true,
+            'clamped' => false,
+        ])
+            ->and(FlowGraphActions::cost($this->c)['intervals'])->toBeGreaterThan(0)
+        ;
+    });
+
+    test('says nothing about files before the estimate has answered', function (): void {
+        $this->c->signal(QueryKit::ESTIMATE_DEFAULT, QueryKit::estimateSignal('flows'));
+
+        expect(FlowGraphActions::cost($this->c))->toMatchArray(['files' => 0, 'bytes' => '', 'estimated' => false]);
+    });
+
+    test('ignores the old nfcapd counters', function (): void {
+        $this->c->signal(99, 'nfcapd_file_count');
+        $this->c->signal(99_999, 'nfcapd_total_bytes');
+
+        expect(FlowGraphActions::cost($this->c))->toMatchArray(['files' => 0, 'estimated' => false]);
     });
 });

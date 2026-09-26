@@ -1,19 +1,19 @@
 <?php
 
-/**
- * Table Generation Class
- * Provides common functionality for generating HTML tables from data arrays.
- */
-
 declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\common;
 
+/** Result tables of nfdump rows, enhanced client-side by nfsen-table.js (4.3.4). */
 class Table {
-    /**
-     * Fields to hide from table display by default.
-     */
-    private const HIDDEN_FIELDS = ['cnt', 'type', 'ident', 'export_sysid', 'sampled'];
+    /** Fields left out unless the caller passes its own hiddenFields. */
+    public const array HIDDEN_FIELDS = ['cnt', 'type', 'ident', 'export_sysid', 'sampled'];
+
+    /** Rows per page choices of a paginated table (D14). */
+    public const array PAGE_SIZES = [25, 50, 100, 250];
+
+    /** Rows per chunk of generateChunked(): about 1 MB of markup, one event each. */
+    public const int CHUNK_ROWS = 1000;
 
     /**
      * Field name to human-readable title mapping.
@@ -136,6 +136,8 @@ class Table {
         'mplsLabel9' => 'MPLS Label 9',
         'mplsLabel10' => 'MPLS Label 10',
         'bps' => 'Bits/s',
+        'rank' => 'Rank',
+        'share_pct' => 'Share',
         'bpp' => 'Bytes/Packet',
         // Merged-flow columns, which exist only for a bi-directional query.
         'outPackets' => 'Out Packets',
@@ -145,180 +147,66 @@ class Table {
     ];
 
     /**
-     * Generate a standard HTML table from data array.
+     * A table of nfdump rows inside an `<nfsen-table>`. Ids are derived from $tableId, so
+     * several tables can share a document.
      *
-     * @param array                $data    Array of associative arrays representing table rows
-     * @param string               $tableId HTML ID for the table container
      * @param list<mixed>          $data    one decoded nfdump record per entry (field => value), or raw
      *                                      output lines rendered as preformatted text
      * @param array<string, mixed> $options Optional configuration:
-     *                                      - 'hiddenFields' => array of fields to exclude
-     *                                      - 'responsive' => bool, wrap in responsive div
-     *                                      - 'linkIpAddresses' => bool, convert IP addresses to links
-     *                                      - 'emptyMessage' => string, message when no data
-     *
-     * @return string HTML table
+     *                                      - 'hiddenFields' => list<string>, fields to leave out (default HIDDEN_FIELDS)
+     *                                      - 'linkIpAddresses' => bool, addresses open the IP info modal
+     *                                      - 'ipInfoActionUrl' => string, the ip-info action the address links post to
+     *                                      - 'emptyMessage' => string, said when there are no rows
+     *                                      - 'emptyTitle' => string, the empty state's heading (default 'No rows')
+     *                                      - 'originalData' => string, nfdump's text for the Original view
+     *                                      - 'paginate' => bool, client-side pages (default false)
+     *                                      - 'pageSize' => int, rows per page (default 50)
+     *                                      - 'limit' => int, the row limit the rows were fetched with, for the pager text
+     *                                      - 'limitReached' => bool, whether that limit cut the result (default: rows >= limit)
+     *                                      - 'rankColumn' => string, field rendered as a .rank chip, first
+     *                                      - 'rankSeries' => array<int, int>, rank => series slot
+     *                                      - 'caption' => string, the table's caption and print title
+     *                                      - 'exportName' => string, file name of exports without extension
+     *                                      - 'result' => string, the result id nfsen-table tells results apart by
      */
     public static function generate(array $data, string $tableId, array $options = []): string {
-        // Merge options with defaults
-        $options = array_merge([
-            'hiddenFields' => self::HIDDEN_FIELDS,
-            'responsive' => true,
-            'linkIpAddresses' => true,
-            'emptyMessage' => 'No data available',
-        ], $options);
+        return self::render($data, $tableId, $options, 0)['html'];
+    }
 
-        // Handle empty data
-        if (empty($data)) {
-            if (!empty($options['originalData'])) {
-                // Raw aggregated output (e.g. bidirectional) — render as pre-formatted text
-                return \sprintf('<div id="%s"><pre class="nfsen-raw-output">%s</pre></div>', $tableId, $options['originalData']);
-            }
+    /**
+     * generate() with only the first page inline: the other rows are `<template>` chunks that
+     * nfsen-table asks $options['rowsUrl'] for one at a time, so no event holds them all (D26).
+     *
+     * @param list<mixed>          $data
+     * @param array<string, mixed> $options generate()'s options plus 'rowsUrl' => string
+     *
+     * @return array{html: string, chunks: \Generator<int, string, mixed, void>}
+     */
+    public static function generateChunked(array $data, string $tableId, array $options, int $chunkRows = self::CHUNK_ROWS): array {
+        return self::render($data, $tableId, [...$options, 'paginate' => true], max(1, $chunkRows));
+    }
 
-            return \sprintf('<div id="%s" class="notice" data-level="info">%s</div>', $tableId, $options['emptyMessage']);
+    /**
+     * "Showing 1-50 of 1,234 returned (limit 10,000)." plus why there are no more when the
+     * limit was reached; nfsen-table.js says the same after a page change.
+     */
+    public static function pagerText(int $from, int $to, int $total, int $limit, ?bool $limitReached = null): string {
+        $shown = $total === 0 ? 'No rows' : \sprintf('Showing %s-%s of %s', number_format($from), number_format($to), number_format($total));
+        if ($limit <= 0) {
+            return $shown . ($total === 0 ? '.' : ' rows.');
         }
 
-        if (\is_string($data[0])) {
-            // If data rows are strings, return as preformatted text. Only the first row
-            // is inspected, so drop anything that isn't a line rather than letting it
-            // reach implode() as an array.
-            return \sprintf(
-                '<div id="%s"><pre>%s</pre></div>',
-                $tableId,
-                htmlspecialchars(implode("\n", array_filter($data, \is_string(...))))
-            );
-        }
-        $headers = array_filter(self::collectHeaders($data), fn ($key) => !\in_array($key, $options['hiddenFields'], true));
+        $text = \sprintf('%s returned (limit %s).', $shown, number_format($limit));
 
-        // Build view switcher HTML
-        $viewSwitcherHtml = '';
-        if ($options['originalData'] ?? false) {
-            $viewSwitcherHtml = <<<'HTML'
-            <div class="button-group" role="group" aria-label="View switcher">
-                <button type="button" data-size="sm" aria-pressed="true" data-view="table">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                        <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5 0v-3H1v2a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"/>
-                    </svg>
-                    Table View
-                </button>
-                <button type="button" data-size="sm" aria-pressed="false" data-view="original">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                        <path d="M5 4a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1zm-.5 2.5A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5M5 8a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1z"/>
-                        <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2zm10-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1"/>
-                    </svg>
-                    Original View
-                </button>
-            </div>
-            HTML;
-        } else {
-            $viewSwitcherHtml = '<div></div>';
-        }
+        return ($limitReached ?? $total >= $limit) ? $text . ' nfdump cannot skip rows: raise the limit to see more.' : $text;
+    }
 
-        // Build export buttons HTML
-        $exportButtonsHtml = <<<'HTML'
-        <div class="export-buttons cluster">
-            <button data-size="sm" class="export-csv" title="Export as CSV">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                    <path fill-rule="evenodd" d="M14 4.5V14a2 2 0 0 1-2 2h-1v-1h1a1 1 0 0 0 1-1V4.5h-2A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v9H2V2a2 2 0 0 1 2-2h5.5zM3.517 14.841a1.13 1.13 0 0 0 .401.823q.195.162.478.252.284.091.665.091.507 0 .859-.158.354-.158.539-.44.187-.284.187-.656 0-.336-.134-.56a1 1 0 0 0-.375-.357 2 2 0 0 0-.566-.21l-.621-.144a1 1 0 0 1-.404-.176.37.37 0 0 1-.144-.299q0-.234.185-.384.188-.152.512-.152.214 0 .37.068a.6.6 0 0 1 .246.181.56.56 0 0 1 .12.258h.75a1.1 1.1 0 0 0-.2-.566 1.2 1.2 0 0 0-.5-.41 1.8 1.8 0 0 0-.78-.152q-.439 0-.776.15-.337.149-.527.421-.19.273-.19.639 0 .302.122.524.124.223.352.367.228.143.539.213l.618.144q.31.073.463.193a.39.39 0 0 1 .152.326.5.5 0 0 1-.085.29.56.56 0 0 1-.255.193q-.167.07-.413.07-.175 0-.32-.04a.8.8 0 0 1-.248-.115.58.58 0 0 1-.255-.384zM.806 13.693q0-.373.102-.633a.87.87 0 0 1 .302-.399.8.8 0 0 1 .475-.137q.225 0 .398.097a.7.7 0 0 1 .272.26.85.85 0 0 1 .12.381h.765v-.072a1.33 1.33 0 0 0-.466-.964 1.4 1.4 0 0 0-.489-.272 1.8 1.8 0 0 0-.606-.097q-.534 0-.911.223-.375.222-.572.632-.195.41-.196.979v.498q0 .568.193.976.197.407.572.626.375.217.914.217.439 0 .785-.164t.55-.454a1.27 1.27 0 0 0 .226-.674v-.076h-.764a.8.8 0 0 1-.118.363.7.7 0 0 1-.272.25.9.9 0 0 1-.401.087.85.85 0 0 1-.478-.132.83.83 0 0 1-.299-.392 1.7 1.7 0 0 1-.102-.627zm8.239 2.238h-.953l-1.338-3.999h.917l.896 3.138h.038l.888-3.138h.879z"/>
-                </svg>
-                CSV
-            </button>
-            <button data-size="sm" class="export-json" title="Export as JSON">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                    <path fill-rule="evenodd" d="M14 4.5V11h-1V4.5h-2A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v9H2V2a2 2 0 0 1 2-2h5.5zM4.151 15.29a1.2 1.2 0 0 1-.111-.449h.764a.58.58 0 0 0 .255.384q.105.073.25.114.142.041.319.041.245 0 .413-.07a.56.56 0 0 0 .255-.193.5.5 0 0 0 .084-.29.39.39 0 0 0-.152-.326q-.152-.12-.463-.193l-.618-.143a1.7 1.7 0 0 1-.539-.214 1 1 0 0 1-.352-.367 1.1 1.1 0 0 1-.123-.524q0-.366.19-.639.192-.272.528-.422.337-.15.777-.149.456 0 .779.152.326.153.5.41.18.255.2.566h-.75a.56.56 0 0 0-.12-.258.6.6 0 0 0-.246-.181.9.9 0 0 0-.37-.068q-.324 0-.512.152a.47.47 0 0 0-.185.384q0 .18.144.3a1 1 0 0 0 .404.175l.621.143q.326.075.566.211a1 1 0 0 1 .375.358q.135.222.135.56 0 .37-.188.656a1.2 1.2 0 0 1-.539.439q-.351.158-.858.158-.381 0-.665-.09a1.4 1.4 0 0 1-.478-.252 1.1 1.1 0 0 1-.29-.375m-3.104-.033a1.3 1.3 0 0 1-.082-.466h.764a.6.6 0 0 0 .074.27.5.5 0 0 0 .454.246q.285 0 .422-.164.137-.165.137-.466v-2.745h.791v2.725q0 .66-.357 1.005-.355.345-.985.345a1.6 1.6 0 0 1-.568-.094 1.15 1.15 0 0 1-.407-.266 1.1 1.1 0 0 1-.243-.39m9.091-1.585v.522q0 .384-.117.641a.86.86 0 0 1-.322.387.9.9 0 0 1-.47.126.9.9 0 0 1-.47-.126.87.87 0 0 1-.32-.387 1.55 1.55 0 0 1-.117-.641v-.522q0-.386.117-.641a.87.87 0 0 1 .32-.387.87.87 0 0 1 .47-.129q.265 0 .47.129a.86.86 0 0 1 .322.387q.117.255.117.641m.803.519v-.513q0-.565-.205-.973a1.46 1.46 0 0 0-.59-.63q-.38-.22-.916-.22-.534 0-.92.22a1.44 1.44 0 0 0-.589.628q-.205.407-.205.975v.513q0 .562.205.973.205.407.589.626.386.217.92.217.536 0 .917-.217.384-.22.589-.627.204-.41.205-.973m1.29-.935v2.675h-.746v-3.999h.662l1.752 2.66h.032v-2.66h.75v4h-.656l-1.761-2.676z"/>
-                </svg>
-                JSON
-            </button>
-            <button data-size="sm" class="export-print" title="Print Report">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                    <path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1"/>
-                    <path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1"/>
-                </svg>
-                Print
-            </button>
-            <div class="choice">
-                <input class="export-enhanced-data" type="checkbox" id="exportEnhancedData" checked title="Export formatted/enhanced data (unchecked = raw data)">
-                <label for="exportEnhancedData" title="Export formatted/enhanced data (unchecked = raw data)">
-                    Enhanced Data
-                </label>
-            </div>
-        </div>
-        HTML;
-
-        // Build column selector placeholder (will be populated by JS)
-        $columnSelectorHtml = '<div class="column-selector-placeholder"></div>';
-
-        // Build complete table HTML
-        $html = <<<HTML
-        <nfsen-table id="{$tableId}">
-            <div class="table-toolbar cluster cluster-between">
-                {$viewSwitcherHtml}
-                {$exportButtonsHtml}
-                {$columnSelectorHtml}
-            </div>
-        HTML;
-
-        // Add responsive wrapper and table start
-        $html .= <<<'HTML'
-            <div class="table-wrap" style="height: 1rem;" data-ref="outerWrapper" data-on:scroll__throttle.25ms.trailing="$inner.scrollLeft = el.scrollLeft">
-                <div data-ref="outer"></div>
-            </div>
-            <div class="table-wrap" data-ref="inner" data-init="$outer.style.width = el.scrollWidth + 'px'" data-on:resize__throttle.50ms.trailing="$outer.style.width = el.scrollWidth + 'px'" data-on:scroll__throttle.50ms.trailing="$outerWrapper.scrollLeft = el.scrollLeft">
-                <table>
-                    <thead>
-                        <tr>
-        HTML;
-
-        // Add table headers
-        foreach ($headers as $header) {
-            $title = self::humanizeFieldName($header);
-            $html .= <<<HTML
-                            <th data-original-title="{$header}" class="sortable" style="cursor: pointer;">{$title}</th>
-            HTML;
-        }
-
-        $html .= <<<'HTML'
-                        </tr>
-                    </thead>
-                    <tbody>
-        HTML;
-
-        // Add table rows
-        foreach ($data as $row) {
-            $html .= "\n                        <tr>";
-            foreach ($headers as $header) {
-                $value = $row[$header] ?? '';
-                $sortValue = TableFormatter::getSortValue($value, $header);
-                $formattedValue = TableFormatter::formatCellValue($value, $header, $options);
-                $sortValueEscaped = htmlspecialchars((string) $sortValue, ENT_QUOTES);
-                $rawValueEscaped = htmlspecialchars((string) $value, ENT_QUOTES);
-                $html .= "\n                            <td data-sort-value=\"{$sortValueEscaped}\" data-raw=\"{$rawValueEscaped}\">{$formattedValue}</td>";
-            }
-            $html .= "\n                        </tr>";
-        }
-
-        $html .= <<<'HTML'
-
-                    </tbody>
-                </table>
-            </div>
-        HTML;
-
-        // Add original data if present
-        if ($options['originalData'] ?? false) {
-            $originalDataEscaped = htmlspecialchars($options['originalData']);
-            $html .= <<<HTML
-
-            <div class="original" style="display: none;">
-                <pre>{$originalDataEscaped}</pre>
-            </div>
-        HTML;
-        }
-
-        // Close nfsen-table component
-        $html .= "\n</nfsen-table>";
-
-        return $html;
+    /**
+     * nfdump's text as it came. Nfdump::beautifyAggregatedOutput() marks labels up with <b>
+     * for a view that printed it raw; shown as text, those tags are only noise.
+     */
+    public static function plainOutput(string $output): string {
+        return str_replace(['<b>', '</b>'], '', $output);
     }
 
     /**
@@ -333,9 +221,212 @@ class Table {
     }
 
     /**
+     * Page numbers (0-based) the pager lists, null for a gap: all of up to seven, else the
+     * first, the last and the ones around the current page.
+     *
+     * @return list<null|int>
+     */
+    public static function pagerPages(int $current, int $pages): array {
+        if ($pages <= 7) {
+            return range(0, max(0, $pages - 1));
+        }
+        if ($current < 4) {
+            return [0, 1, 2, 3, 4, null, $pages - 1];
+        }
+        if ($current > $pages - 5) {
+            return [0, null, ...range($pages - 5, $pages - 1)];
+        }
+
+        return [0, null, $current - 1, $current, $current + 1, null, $pages - 1];
+    }
+
+    /**
+     * @param list<mixed>          $data
+     * @param array<string, mixed> $options
+     *
+     * @return array{html: string, chunks: \Generator<int, string, mixed, void>}
+     */
+    private static function render(array $data, string $tableId, array $options, int $chunkRows): array {
+        $options = array_merge([
+            'hiddenFields' => self::HIDDEN_FIELDS,
+            'linkIpAddresses' => true,
+            'emptyMessage' => 'No data available',
+            'emptyTitle' => 'No rows',
+            'originalData' => '',
+            'paginate' => false,
+            'pageSize' => 50,
+            'limit' => 0,
+            'limitReached' => null,
+            'rankColumn' => '',
+            'rankSeries' => [],
+            'caption' => '',
+            'exportName' => '',
+            'result' => '',
+            'rowsUrl' => '',
+        ], $options);
+
+        $id = self::attr($tableId);
+        $original = self::plainOutput(\is_string($options['originalData']) ? $options['originalData'] : '');
+
+        if ($data === []) {
+            if ($original !== '') {
+                // Output nfdump could not read into rows (an unparsed biflow table): the text is the result.
+                return ['html' => \sprintf('<div id="%s" class="table-raw"><pre>%s</pre></div>', $id, self::text($original)), 'chunks' => self::noChunks()];
+            }
+
+            // Result tables sit in a card under its h2 title (2.5).
+            return ['html' => \sprintf('<div id="%s" class="empty-state"><h3>%s</h3><p>%s</p></div>', $id, self::text(self::stringOption($options, 'emptyTitle')), self::text(self::stringOption($options, 'emptyMessage'))), 'chunks' => self::noChunks()];
+        }
+
+        if (\is_string($data[0])) {
+            // Only the first row is inspected, so anything that is not a line is dropped rather
+            // than reaching implode() as an array.
+            return ['html' => \sprintf(
+                '<div id="%s" class="table-raw"><pre>%s</pre></div>',
+                $id,
+                self::text(implode("\n", array_filter($data, \is_string(...))))
+            ), 'chunks' => self::noChunks()];
+        }
+
+        $hidden = \is_array($options['hiddenFields']) ? $options['hiddenFields'] : self::HIDDEN_FIELDS;
+        $rankColumn = self::stringOption($options, 'rankColumn');
+        $headers = array_values(array_filter(self::collectHeaders($data), static fn (string $key): bool => !\in_array($key, $hidden, true)));
+        if ($rankColumn !== '' && \in_array($rankColumn, $headers, true)) {
+            $headers = [$rankColumn, ...array_values(array_diff($headers, [$rankColumn]))];
+        }
+        $kinds = [];
+        foreach ($headers as $header) {
+            $kinds[$header] = $header === $rankColumn ? 'rank' : TableFormatter::cellKind($header);
+        }
+
+        /** @var array<int, int> $rankSeries */
+        $rankSeries = \is_array($options['rankSeries']) ? $options['rankSeries'] : [];
+        $row = static function (array $row) use ($headers, $kinds, $rankColumn, $rankSeries, $options): string {
+            $html = '<tr>';
+            foreach ($headers as $header) {
+                $value = $row[$header] ?? '';
+                $scalar = self::scalar($value);
+                $content = $header === $rankColumn
+                    ? self::rankChip($scalar, $rankSeries)
+                    : TableFormatter::formatCellValue($value, $header, $options);
+                $html .= self::cell($kinds[$header], $content, $scalar, self::scalar(TableFormatter::getSortValue($value, $header)));
+            }
+
+            return $html . '</tr>';
+        };
+
+        $rows = array_values(array_filter($data, \is_array(...)));
+        $total = \count($rows);
+        $paginate = (bool) $options['paginate'];
+        $pageSize = max(1, (int) $options['pageSize']);
+        $limit = max(0, (int) $options['limit']);
+        $reached = \is_bool($options['limitReached']) ? $options['limitReached'] : ($limit > 0 && $total >= $limit);
+        $chunked = $chunkRows > 0 && $total > $pageSize;
+        $inline = $chunked ? $pageSize : $total;
+        $caption = self::stringOption($options, 'caption');
+        $exportName = self::stringOption($options, 'exportName');
+        $result = self::stringOption($options, 'result');
+
+        // Datastar moves an element whose id both results share into the new result host and
+        // morphs it, so nfsen-table.js tells results apart by this token, not by element identity.
+        $attributes = ['id' => $tableId, 'data-result' => $result !== '' ? $result : bin2hex(random_bytes(4))];
+        if ($caption !== '') {
+            $attributes['data-caption'] = $caption;
+        }
+        if ($exportName !== '') {
+            $attributes['data-export-name'] = $exportName;
+        }
+        if ($paginate) {
+            $attributes['data-page-size'] = (string) $pageSize;
+            $attributes['data-limit'] = (string) $limit;
+            $attributes['data-limit-reached'] = $reached ? 'true' : 'false';
+        }
+        if ($chunked) {
+            $attributes['data-total'] = (string) $total;
+            $attributes['data-chunks'] = (string) (int) ceil(($total - $pageSize) / $chunkRows);
+            $rowsUrl = self::stringOption($options, 'rowsUrl');
+            if ($rowsUrl !== '') {
+                $attributes['data-on:nfsen-table-more'] = "@post('" . self::jsString($rowsUrl) . "?result=' + evt.detail.result + '&chunk=' + evt.detail.chunk)";
+            }
+        }
+        $ipInfoUrl = self::stringOption($options, 'ipInfoActionUrl');
+        if ($options['linkIpAddresses'] && $ipInfoUrl !== '') {
+            // One handler for every address link, rather than one per cell for Datastar to wire up.
+            $attributes['data-on:click'] = "const a = evt.target.closest('a.ip-link'); if (a) { evt.preventDefault(); @post('"
+                . self::jsString($ipInfoUrl) . "?ip=' + encodeURIComponent(a.textContent.trim())) }";
+        }
+
+        $html = '<nfsen-table' . self::attributes($attributes) . ">\n";
+        $html .= self::toolbar($tableId, $original !== '');
+        $html .= \sprintf('<div class="table-scrollbar" id="%sOuter" aria-hidden="true"><div></div></div>', $id) . "\n";
+        $html .= \sprintf('<div class="table-wrap" id="%sInner">', $id) . "\n";
+        $html .= $rankColumn !== '' ? '<table class="ranking">' : '<table>';
+        if ($caption !== '') {
+            $html .= '<caption class="visually-hidden">' . self::text($caption) . '</caption>';
+        }
+        $html .= "\n<thead>\n<tr>";
+        foreach ($headers as $header) {
+            $html .= \sprintf(
+                '<th scope="col" data-original-title="%s"%s><button type="button" class="sort-button">%s</button></th>',
+                self::attr($header),
+                $kinds[$header] === 'num' ? ' data-num' : '',
+                self::text(self::humanizeFieldName($header))
+            );
+        }
+        $html .= "</tr>\n</thead>\n<tbody>";
+
+        for ($index = 0; $index < $inline; ++$index) {
+            if ($paginate && $index === $pageSize) {
+                // Rows past the first page wait in a template: Datastar never walks them, and
+                // nfsen-table.js keeps them in memory, attaching one page at a time.
+                $html .= "\n</tbody>\n</table>\n</div>\n<template class=\"table-rows\">";
+            }
+            $html .= "\n" . $row($rows[$index]);
+        }
+        $html .= $paginate && $inline > $pageSize ? "\n</template>\n" : "\n</tbody>\n</table>\n</div>\n";
+
+        if ($original !== '') {
+            $html .= '<div class="original" hidden><pre>' . self::text($original) . "</pre></div>\n";
+        }
+        if ($paginate) {
+            $html .= self::pager($tableId, $total, $pageSize, $limit, $reached);
+        }
+
+        return [
+            'html' => $html . '</nfsen-table>',
+            'chunks' => $chunked ? self::chunks($rows, $pageSize, $chunkRows, $row) : self::noChunks(),
+        ];
+    }
+
+    /**
+     * The rows from $from on, as `<template data-chunk>` elements of $size rows each.
+     *
+     * @param list<array<mixed>>             $rows
+     * @param \Closure(array<mixed>): string $row
+     *
+     * @return \Generator<int, string, mixed, void>
+     */
+    private static function chunks(array $rows, int $from, int $size, \Closure $row): \Generator {
+        $total = \count($rows);
+        for ($chunk = 0, $start = $from; $start < $total; ++$chunk, $start += $size) {
+            $html = '<template class="table-rows" data-chunk="' . $chunk . '">';
+            for ($index = $start, $end = min($total, $start + $size); $index < $end; ++$index) {
+                $html .= "\n" . $row($rows[$index]);
+            }
+
+            yield $chunk => $html . "\n</template>";
+        }
+    }
+
+    /** @return \Generator<int, string, mixed, void> */
+    private static function noChunks(): \Generator {
+        yield from [];
+    }
+
+    /**
      * Collect the column list as the union of all rows' keys.
      *
-     * Rows are not guaranteed to share a schema — nfdump's JSON output emits per-record
+     * Rows are not guaranteed to share a schema: nfdump's JSON output emits per-record
      * fields (ports for TCP/UDP vs. icmp_type/icmp_code for ICMP, and so on), so deriving
      * the columns from the first row alone silently drops every field the first record
      * happens not to carry (#157). A new key is inserted right behind the previous key of
@@ -367,6 +458,120 @@ class Table {
         }
 
         return $headers;
+    }
+
+    /** The Original view switch (Top Talkers keeps it), Enhanced data and the Columns menu slot. */
+    private static function toolbar(string $tableId, bool $original): string {
+        $id = self::attr($tableId);
+        $html = '<div class="table-toolbar">';
+        if ($original) {
+            $html .= <<<'HTML'
+                <div class="button-group" role="group" aria-label="View">
+                    <button type="button" data-size="sm" aria-pressed="true" data-view="table">Table</button>
+                    <button type="button" data-size="sm" aria-pressed="false" data-view="original">Original</button>
+                </div>
+                HTML;
+        }
+        $html .= \sprintf(
+            '<label class="choice table-enhanced" title="Export formatted values; unchecked exports the raw values"><input type="checkbox" class="export-enhanced-data" id="%s-enhanced" checked> Enhanced data</label>',
+            $id
+        );
+
+        return $html . "<div class=\"column-selector-placeholder\"></div></div>\n";
+    }
+
+    /** The pager as nfsen-table.js renders it for the first page, so nothing moves when it takes over. */
+    private static function pager(string $tableId, int $total, int $pageSize, int $limit, bool $reached): string {
+        $id = self::attr($tableId);
+        $pages = max(1, (int) ceil($total / $pageSize));
+        $buttons = '';
+        foreach (self::pagerPages(0, $pages) as $page) {
+            $buttons .= match ($page) {
+                null => '<li aria-hidden="true">…</li>',
+                0 => '<li><button type="button" data-size="sm" data-page="0" aria-current="page" aria-label="Page 1">1</button></li>',
+                default => \sprintf('<li><button type="button" data-size="sm" data-page="%1$d" aria-label="Page %2$d">%2$d</button></li>', $page, $page + 1),
+            };
+        }
+        $options = '';
+        foreach (array_unique([...self::PAGE_SIZES, $pageSize]) as $size) {
+            $options .= \sprintf('<option value="%1$d"%2$s>%1$d</option>', $size, $size === $pageSize ? ' selected' : '');
+        }
+
+        return \sprintf(
+            '<nav class="table-pager" aria-label="Pages"><p class="table-pager-status" aria-live="polite">%1$s</p>'
+            . '<div class="table-pager-controls"><button type="button" data-size="sm" data-page="prev" disabled>Previous</button>'
+            . '<ol class="table-pager-pages">%2$s</ol>'
+            . '<button type="button" data-size="sm" data-page="next"%3$s>Next</button>'
+            . '<label class="table-pager-size" for="%4$s-page-size">Rows per page</label> <select id="%4$s-page-size">%5$s</select></div></nav>',
+            self::text(self::pagerText($total > 0 ? 1 : 0, min($total, $pageSize), $total, $limit, $reached)),
+            $buttons,
+            $pages > 1 ? '' : ' disabled',
+            $id,
+            $options
+        ) . "\n";
+    }
+
+    /**
+     * A 10,000 row result has to fit a 128 MB worker, so a cell does not repeat a value it
+     * already shows; nfsen-table.js reads those from the text or the time's epoch.
+     */
+    private static function cell(string $kind, string $content, string $raw, string $sort): string {
+        $attributes = match ($kind) {
+            'num' => ' data-num',
+            'time', 'address', 'rank' => ' data-kind="' . $kind . '"',
+            default => '',
+        };
+        if ($sort !== $raw && !str_contains($content, 'data-epoch="' . $sort . '"')) {
+            $attributes .= ' data-sort-value="' . self::attr($sort) . '"';
+        }
+        if ($content !== self::text($raw) && html_entity_decode(strip_tags($content), ENT_QUOTES | ENT_HTML5) !== $raw) {
+            $attributes .= ' data-raw="' . self::attr($raw) . '"';
+        }
+
+        return '<td' . $attributes . '>' . $content . '</td>';
+    }
+
+    /** @param array<int, int> $rankSeries */
+    private static function rankChip(string $rank, array $rankSeries): string {
+        $slot = ctype_digit($rank) ? ($rankSeries[(int) $rank] ?? null) : null;
+
+        return \sprintf(
+            '<span class="rank"%s>%s</span>',
+            $slot !== null ? ' data-series="' . $slot . '"' : '',
+            self::text($rank)
+        );
+    }
+
+    /** @param array<string, string> $attributes */
+    private static function attributes(array $attributes): string {
+        $html = '';
+        foreach ($attributes as $name => $value) {
+            $html .= ' ' . $name . '="' . self::attr($value) . '"';
+        }
+
+        return $html;
+    }
+
+    /** @param array<string, mixed> $options */
+    private static function stringOption(array $options, string $key): string {
+        return \is_string($options[$key] ?? null) ? $options[$key] : '';
+    }
+
+    private static function scalar(mixed $value): string {
+        return \is_scalar($value) ? (string) $value : '';
+    }
+
+    /** Inside a single-quoted JavaScript string. */
+    private static function jsString(string $value): string {
+        return addcslashes($value, "\\'\n\r");
+    }
+
+    private static function attr(string $value): string {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_HTML5);
+    }
+
+    private static function text(string $value): string {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_HTML5);
     }
 
     /**

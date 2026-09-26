@@ -1,20 +1,418 @@
-{#
-    Flows (4.3), interim: the query card and results of the old Flows view.
-#}
-<div class="stack">
-    <section class="card query-card" aria-labelledby="flowsQueryTitle"
-             data-collapsed data-attr:data-collapsed="!$_optionsOpen_flows" data-preserve-attr="data-collapsed">
+{# Flows (4.3, 2.7.5). The table and the raw output sit in result hosts (D26) and fill in chunks. #}
+{% import 'components/result-host.html.twig' as results %}
+{% import 'shell/icons.html.twig' as icons %}
+{% set f = pages.flows %}
+{% set tz = '$' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() %}
+{% set shown = '$' ~ flows_graph_shown.id() %}
+{% set copy = "window.nfsenCopyText(document.getElementById(el.dataset.copy)?.textContent ?? '', el)" %}
+{% set copyLoaded = "window.nfsenWhenLoaded(document.getElementById(el.dataset.copy)).then((t) => window.nfsenCopyText(t?.textContent ?? '', el))" %}
+{% set progress = {
+    killAction: killNfdump.url(),
+    running: query_running.id(),
+    permille: query_permille.id(),
+    status: query_status.id(),
+    eta: query_eta.id(),
+    exact: query_exact.id(),
+    kindSignal: query_kind.id(),
+} %}
+
+{% macro tab(id, label, selected) %}
+    <button type="button" role="tab" id="flowsTab-{{ id }}" aria-controls="flowsPanel-{{ id }}"
+            aria-selected="{{ selected ? 'true' : 'false' }}" tabindex="{{ selected ? '0' : '-1' }}"
+            data-attr:aria-selected="$_flows_tab === '{{ id }}' ? 'true' : 'false'"
+            data-preserve-attr="aria-selected tabindex"
+            data-on:click="$_flows_tab = '{{ id }}'">{{ label }}</button>
+{% endmacro %}
+
+{% macro protocols(lines, caption) %}
+    <div class="table-wrap">
+        <table class="flows-protocols">
+            <caption class="visually-hidden">{{ caption }}</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Protocol</th>
+                    <th scope="col" data-num>Flows</th>
+                    <th scope="col" data-num>Packets</th>
+                    <th scope="col" data-num>Bytes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in lines %}
+                    <tr>
+                        <th scope="row">
+                            {%- if p.series %}<span class="series-swatch" data-series="{{ p.series }}" aria-hidden="true"></span>{% endif -%}
+                            {{ p.name }}
+                        </th>
+                        <td data-num>{{ p.flows }}</td>
+                        <td data-num>{{ p.packets }}</td>
+                        <td data-num>{{ p.bytes }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endmacro %}
+{% import _self as ui %}
+
+<div class="flows-page stack">
+    <div class="flows-query">
+        <section class="card query-card" id="flowsQuery" aria-labelledby="flowsQueryTitle"
+                 data-collapsed data-attr:data-collapsed="!$_optionsOpen_flows" data-preserve-attr="data-collapsed">
+            <header>
+                <h2 id="flowsQueryTitle">Query</h2>
+                <button type="button" class="options-toggle" data-size="sm" aria-controls="flowsQueryFields"
+                        aria-expanded="false" data-attr:aria-expanded="$_optionsOpen_flows ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+                        data-on:click="$_optionsOpen_flows = !$_optionsOpen_flows"
+                        data-text="$_optionsOpen_flows ? 'Hide filters' : 'Show filters'">Show filters</button>
+            </header>
+            <div class="card-body query-fields stack" id="flowsQueryFields">
+                <div class="field flows-filter">
+                    <span class="field-label" aria-hidden="true">nfdump filter</span>
+                    {% include 'components/filter-field.html.twig' with {target: 'flows', signal: flows_filter, textareaId: 'filterNfdumpTextarea', label: 'nfdump filter'} %}
+                </div>
+
+                <div class="flows-options">
+                    <div class="field" id="filterFlowsLimit">
+                        <label class="field-label" for="flowsLimit">Limit</label>
+                        {% set current = flows_limit.int() %}
+                        <select id="flowsLimit" {{ bind(flows_limit) }} aria-describedby="flowsLimitHelp">
+                            {% for n in f.limits %}
+                                <option value="{{ n }}"{{ n == current ? ' selected' }}>{{ n|number_format }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="help" id="flowsLimitHelp">Rows nfdump returns (-c).</p>
+                    </div>
+
+                    <fieldset class="field flows-bytes">
+                        <legend class="field-label">Bytes per flow</legend>
+                        <div class="flows-bytes-inputs">
+                            <label for="flows_lower_limitInput">Min</label>
+                            <input type="text" id="flows_lower_limitInput" {{ bind(flows_lower_limit) }} placeholder="e.g. 1M"
+                                   autocomplete="off" spellcheck="false" aria-describedby="flowsBytesHelp">
+                            <label for="flows_upper_limitInput">Max</label>
+                            <input type="text" id="flows_upper_limitInput" {{ bind(flows_upper_limit) }} placeholder="e.g. 100M"
+                                   autocomplete="off" spellcheck="false" aria-describedby="flowsBytesHelp">
+                        </div>
+                        <p class="help" id="flowsBytesHelp">Added to the filter as bytes &gt; min and bytes &lt; max. Accepts k, M and G.</p>
+                    </fieldset>
+                </div>
+
+                <details class="flows-aggregation" id="filterFlowAggregation" data-preserve-attr="open">
+                    <summary>Aggregation and output</summary>
+                    <div class="flows-aggregation-body stack">
+                        <div class="filter-subgrid">
+                            {% include 'partials/aggregation-controls.html.twig' with {
+                                idPrefix: 'filterFlow',
+                                aggBidirectional: flows_agg_bidirectional,
+                                aggProto: flows_agg_proto,
+                                aggSrcPort: flows_agg_srcport,
+                                aggDstPort: flows_agg_dstport,
+                                aggSrcIp: flows_agg_srcip,
+                                aggSrcIpPrefix: flows_agg_srcip_prefix,
+                                aggDstIp: flows_agg_dstip,
+                                aggDstIpPrefix: flows_agg_dstip_prefix
+                            } only %}
+                        </div>
+                        <div class="field" id="filterOutput">
+                            <label class="choice" for="flowsFilterOrderTstart">
+                                <input type="checkbox" id="flowsFilterOrderTstart" {{ bind(flows_orderByTstart) }} aria-describedby="flowsOrderHelp">
+                                Order by start time
+                            </label>
+                            <p class="help" id="flowsOrderHelp">Sorts the returned rows only; nfdump stops after the limit in file order.</p>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+
+        <section class="card flows-estimate" id="flowsEstimate" aria-labelledby="flowsEstimateTitle">
+            <header>
+                <h2 id="flowsEstimateTitle">Estimate</h2>
+            </header>
+            <div class="card-body stack">
+                {% include 'components/query-estimate.html.twig' with {target: 'flows'} %}
+                {% include 'partials/progress-button.html.twig' with progress|merge({
+                    id: 'flowsRun',
+                    label: 'Run',
+                    action: flowActions.url(),
+                    kind: 'flows',
+                    run: 'flows',
+                    onClick: "$_flows_tab = 'flows'; ",
+                    doneText: "Number($" ~ flows_count.id() ~ ").toLocaleString('en') + ' ' + $" ~ flows_count_label.id() ~ " + ' returned'",
+                }) only %}
+            </div>
+        </section>
+    </div>
+
+    {# One nfdump per bin (#166), so it builds only on a click, after saying what that costs. #}
+    <section class="card flows-graph" id="flowsGraph" aria-labelledby="flowsGraphTitle"
+             data-computed:flows._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ['any'], ports: [], display: ((${{ graph_sources.id() }}.includes('any') || ${{ graph_sources.id() }}.length === 0 ? {{ shell.sources|length }} : ${{ graph_sources.id() }}.length) > 1 ? 'sources' : 'protocols'), type: (${{ flows_graph_unit.id() }} === 'bytes' ? 'traffic' : ${{ flows_graph_unit.id() }}), trafficUnit: 'bytes', logscale: false, stacked: false, stepplot: true, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}">
         <header>
-            <h2 id="flowsQueryTitle">Query</h2>
-            <button type="button" class="options-toggle" data-size="sm" aria-controls="flowsQueryFields"
-                    aria-expanded="false" data-attr:aria-expanded="$_optionsOpen_flows ? 'true' : 'false'" data-preserve-attr="aria-expanded"
-                    data-on:click="$_optionsOpen_flows = !$_optionsOpen_flows"
-                    data-text="$_optionsOpen_flows ? 'Hide filters' : 'Show filters'">Show filters</button>
+            <h2 id="flowsGraphTitle">
+                <button type="button" class="flows-disclosure" aria-controls="flowsGraphBody"
+                        aria-expanded="{{ flows_graph_shown.bool() ? 'true' : 'false' }}"
+                        data-attr:aria-expanded="{{ shown }} ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+                        data-on:click="{{ shown }} = !{{ shown }}">Traffic over time</button>
+            </h2>
+            <span class="card-meta">Plots this filter over the range. Reads capture files, so it builds only when you ask.</span>
         </header>
-        <div class="card-body">
-            {% include 'partials/flow-filters.html.twig' %}
+        <div class="card-body stack" id="flowsGraphBody"
+             {{ flows_graph_shown.bool() ? '' : 'hidden' }} data-attr:hidden="!{{ shown }}" data-preserve-attr="hidden">
+            <div class="cluster" data-justify="between">
+                <div class="segmented" role="radiogroup" aria-label="Plot">
+                    {% for u in ['bytes', 'packets', 'flows'] %}
+                        {# el.checked, not data-attr:checked: the attribute only seeds defaultChecked. #}
+                        <input type="radio" name="flowsGraphUnit" id="flowsGraphUnit_{{ u }}"
+                               value="{{ u }}" {{ bind(flows_graph_unit) }}
+                               data-effect="el.checked = ${{ flows_graph_unit.id() }} === '{{ u }}'"
+                               data-on:change="@post('{{ touchFlowsGraph.url() }}')">
+                        <label for="flowsGraphUnit_{{ u }}">{{ u|capitalize }}</label>
+                    {% endfor %}
+                </div>
+                {% include 'partials/progress-button.html.twig' with progress|merge({
+                    id: 'flowsGraphRun',
+                    label: 'Build graph',
+                    action: buildFlowsGraph.url(),
+                    kind: 'flowsgraph',
+                    run: 'flows-graph',
+                }) only %}
+            </div>
+
+            {% set cost = f.graph.cost %}
+            {% if cost %}
+                {% set est = '$' ~ querykit.targets.flows.estimateId %}
+                <p class="help" id="flowsGraphCost">
+                    {% if cost.clamped %}
+                        <span class="status-text" data-level="warning">Window shortened to the {{ cost.window }} allowed by NFSEN_MAX_STATS_WINDOW.</span>
+                        Reads that range in {{ cost.intervals|number_format }} nfdump run{{ cost.intervals == 1 ? '' : 's' }}.
+                    {% else %}
+                        Reads
+                        <span data-text="{{ est }}.window === '' ? 'the capture files' : Number({{ est }}.files).toLocaleString('en') + ({{ est }}.files === 1 ? ' capture file' : ' capture files') + ' (' + {{ est }}.bytesHuman + ')'">
+                            {%- if cost.estimated %}{{ cost.files|number_format }} capture file{{ cost.files == 1 ? '' : 's' }} ({{ cost.bytes }}){% else %}the capture files{% endif -%}
+                        </span>
+                        in {{ cost.intervals|number_format }} nfdump run{{ cost.intervals == 1 ? '' : 's' }}.
+                    {% endif %}
+                    The row limit and aggregation above do not apply to this graph.
+                </p>
+            {% endif %}
+
+            {% if f.graph.built and f.graph.stale %}
+                <p class="notice" data-kind="stale">The query or window has changed since this graph was built. Build it again to match the table.</p>
+            {% endif %}
+
+            {% if f.graph.built %}
+                <nfsen-chart data-external-prefix="flowsGraph" data-builtin-legend
+                             data-attr:data-chart-config="$flows._config"
+                             data-chart-data="{{ f.graph.data }}">
+                    <div class="chart-container" data-ignore-morph data-ignore>
+                        <div class="chart-canvas"></div>
+                    </div>
+                </nfsen-chart>
+                <div id="flowsGraph-legend" class="flows-graph-legend"></div>
+            {% else %}
+                <p class="chart-placeholder">Not built yet. The graph plots the filter above, so it reads capture files rather than stored series.</p>
+            {% endif %}
         </div>
     </section>
 
-    {% include 'partials/flow-view.html.twig' %}
+    <section class="card flows-results" id="flowResults" aria-labelledby="flowResultsTitle">
+        <header>
+            <h2 id="flowResultsTitle"{% if f.hasResult %} class="visually-hidden"{% endif %}>Results</h2>
+            {% if f.hasResult %}
+                <div class="tabs" role="tablist" aria-label="Result views">
+                    {{ ui.tab('flows', 'Flows (' ~ f.count|number_format ~ ')', true) }}
+                    {{ ui.tab('raw', 'Raw output', false) }}
+                    {{ ui.tab('summary', 'Summary', false) }}
+                </div>
+                <span class="card-meta" aria-live="polite">
+                    {{- f.count|number_format }} {{ f.countLabel }} returned
+                    {%- if f.aggregated %}, aggregated from {{ f.limitReached ? 'the first ' }}{{ f.flowsRead|number_format }} flows{{ f.limitReached ? ' (the limit)' }}
+                    {%- elseif f.limitReached %}, the limit of {{ f.limit|number_format }}{% endif -%}
+                </span>
+                <div class="menu flows-export" data-role="menu">
+                    <button type="button" class="menu-toggle" data-size="sm" aria-haspopup="menu" aria-controls="flowsExportMenu"
+                            aria-expanded="false" data-preserve-attr="aria-expanded"
+                            {{ f.count == 0 or f.result.lost ? 'disabled' }}>Export</button>
+                    <ul role="menu" id="flowsExportMenu" aria-label="Export the flows" data-preserve-attr="data-open">
+                        <li role="none"><button type="button" role="menuitem" data-on:click="document.getElementById('flowTable')?.exportCsv()">CSV</button></li>
+                        <li role="none"><button type="button" role="menuitem" data-on:click="document.getElementById('flowTable')?.exportJson()">JSON</button></li>
+                        <li role="none"><button type="button" role="menuitem" data-on:click="document.getElementById('flowTable')?.print()">Print</button></li>
+                    </ul>
+                </div>
+            {% endif %}
+        </header>
+        <div class="card-body stack">
+            <div id="flowMessage" class="stack">
+                {% for n in f.notifications %}
+                    <div class="notice dismissible" data-level="{{ n.type }}" role="{{ n.type == 'error' ? 'alert' : 'status' }}">
+                        <span>
+                            {{ n.message }}
+                            {% if n.code %}
+                                <code id="flowsNotice-{{ n.id }}">{{ n.code }}</code>
+                                <button type="button" data-size="sm" data-variant="ghost" data-copy="flowsNotice-{{ n.id }}"
+                                        aria-label="Copy the command" data-on:click="{{ copy }}">Copy</button>
+                            {% endif %}
+                        </span>
+                        <button type="button" data-variant="close" aria-label="Dismiss this notice"
+                                data-on:click="@post('{{ dismissNotification.url() }}?page=flows&id={{ n.id }}')"></button>
+                    </div>
+                {% endfor %}
+            </div>
+
+            {% if not f.hasResult %}
+                <div class="empty-state">
+                    {{ icons.icon('rows') }}
+                    <h3>No flows yet</h3>
+                    <p>Set a filter and press Run.</p>
+                </div>
+            {% else %}
+                {% if f.stale %}
+                    <p class="notice" data-kind="stale">These results are for an earlier query. Run again to update.</p>
+                {% elseif f.movedOn %}
+                    <p class="notice">
+                        <span>Covers <span id="flowsCovers-{{ f.result.id }}" data-ignore-morph data-text="window.nfsenTime.formatRange({{ f.covers.from }}, {{ f.covers.to }}, {{ tz }})">{{ f.covers.from|date('M j, H:i') }} to {{ f.covers.to|date('M j, H:i') }}</span>.
+                        The live window has moved on; Run again to include newer data.</span>
+                    </p>
+                {% endif %}
+
+                <div role="tabpanel" id="flowsPanel-flows" aria-labelledby="flowsTab-flows" tabindex="0"
+                     data-attr:hidden="$_flows_tab !== 'flows'" data-preserve-attr="hidden">
+                    {% if f.result.lost %}
+                        <p class="notice">The server dropped these rows to free memory for other results. Run again to see them.</p>
+                    {% else %}
+                        {{ results.host('flowTableHost', f.result.id, f.result.send, f.tableHtml) }}
+                    {% endif %}
+                </div>
+
+                <div role="tabpanel" id="flowsPanel-raw" aria-labelledby="flowsTab-raw" tabindex="0" hidden
+                     data-attr:hidden="$_flows_tab !== 'raw'" data-preserve-attr="hidden">
+                    {% set rawId = 'flowsRawOutput-' ~ f.raw.id %}
+                    {% set raw = '' %}
+                    {% if f.raw.send and not f.raw.lost %}{% set raw %}
+                        <div class="flows-raw stack">
+                            <section class="stack" aria-labelledby="flowsRawCommandTitle">
+                                <div class="cluster" data-justify="between">
+                                    <h3 id="flowsRawCommandTitle">Command</h3>
+                                    <button type="button" data-size="sm" data-copy="flowsRawCommand" data-on:click="{{ copy }}">Copy</button>
+                                </div>
+                                <pre class="flows-command"><code id="flowsRawCommand">{{ f.command }}</code></pre>
+                                {% if f.notes %}
+                                    <ul class="flows-notes" aria-label="What nfdump printed beside the data">
+                                        {% for note in f.notes %}<li>{{ note }}</li>{% endfor %}
+                                    </ul>
+                                {% endif %}
+                            </section>
+                            <section class="stack" aria-labelledby="flowsRawOutputTitle">
+                                <div class="cluster" data-justify="between">
+                                    <h3 id="flowsRawOutputTitle">nfdump output</h3>
+                                    <div class="cluster">
+                                        <button type="button" data-size="sm" data-copy="{{ rawId }}" data-on:click="{{ copyLoaded }}">Copy</button>
+                                        <button type="button" data-size="sm" data-copy="{{ rawId }}"
+                                                data-on:click="window.nfsenWhenLoaded(document.getElementById(el.dataset.copy)).then((t) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t?.textContent ?? ''], {type: 'text/plain'})); a.download = '{{ f.downloadName|e('js') }}'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000) })">Download</button>
+                                    </div>
+                                </div>
+                                {% if f.rawTruncated %}
+                                    <p class="notice">The page keeps the first {{ f.rawShown }} of nfdump's {{ f.rawSize }}; Copy and Download hold that part. Lower the limit to see all of it.</p>
+                                {% endif %}
+                                {% if f.rawEmpty %}
+                                    <p class="help">nfdump printed nothing.</p>
+                                {% endif %}
+                                {% if f.raw.chunks > 0 %}
+                                    <pre class="flows-output" id="{{ rawId }}" tabindex="0" aria-labelledby="flowsRawOutputTitle" aria-busy="true"
+                                         data-chunks="{{ f.raw.chunks }}"
+                                         data-effect="$_flows_tab === 'raw' && window.nfsenPullChunks?.(el, (n) => @post('{{ flowsRaw.url() }}?result={{ f.raw.id }}&chunk=' + n))"></pre>
+                                {% else %}
+                                    <pre class="flows-output" id="{{ rawId }}" tabindex="0" aria-labelledby="flowsRawOutputTitle"></pre>
+                                {% endif %}
+                            </section>
+                        </div>
+                    {% endset %}{% endif %}
+                    {% if f.raw.lost %}
+                        <p class="notice">The server dropped nfdump's output to free memory for other results. Run again to see it.</p>
+                    {% else %}
+                        {{ results.host('flowRawHost', f.raw.id, f.raw.send, raw) }}
+                    {% endif %}
+                </div>
+
+                <div role="tabpanel" id="flowsPanel-summary" aria-labelledby="flowsTab-summary" tabindex="0" hidden
+                     data-attr:hidden="$_flows_tab !== 'summary'" data-preserve-attr="hidden">
+                    <div class="flows-summary">
+                        <section class="flows-summary-block stack" aria-labelledby="flowsReturnedTitle">
+                            <h3 id="flowsReturnedTitle">
+                                Returned rows{% if f.limitReached %} (limited to {{ f.limit|number_format }} by the row limit){% endif %}
+                            </h3>
+                            <p class="help">From the {{ f.count|number_format }} row{{ f.count == 1 ? '' : 's' }} nfdump returned.</p>
+                            {% if f.returned %}
+                                <dl class="flows-figures">
+                                    {% for figure in f.returned %}
+                                        <div>
+                                            <dt>{{ figure.label }}</dt>
+                                            <dd>
+                                                {%- if figure.epoch -%}
+                                                    <time id="flowsFigure-{{ loop.index }}-{{ f.result.id }}" datetime="{{ figure.epoch|date('c') }}" data-ignore-morph
+                                                          data-text="new Date({{ figure.epoch * 1000 }}).toLocaleString('sv-SE', window.nfsenTime.tzOptions({{ tz }}))">{{ figure.value }}</time>
+                                                {%- else -%}
+                                                    {{ figure.value }}
+                                                {%- endif -%}
+                                            </dd>
+                                        </div>
+                                    {% endfor %}
+                                </dl>
+                            {% endif %}
+                        </section>
+
+                        <section class="flows-summary-block stack" aria-labelledby="flowsRangeTitle">
+                            <h3 id="flowsRangeTitle">Range totals</h3>
+                            <p class="help">Stored series, all traffic in the range, unfiltered. No capture file is read.</p>
+                            {% if f.rangePending %}
+                                <p class="help" aria-busy="true">Reading the stored totals…</p>
+                            {% elseif f.range is null %}
+                                <p class="notice">Not available for this result.</p>
+                            {% elseif not f.range.available %}
+                                <p class="notice">Not available: {{ f.range.reason }}</p>
+                            {% else %}
+                                {{ ui.protocols(f.range.protocols, 'Range totals by protocol') }}
+                            {% endif %}
+                        </section>
+
+                        <section class="flows-summary-block stack" id="flowsFiltered" aria-labelledby="flowsFilteredTitle">
+                            <h3 id="flowsFilteredTitle">Filtered totals</h3>
+                            <p class="help">Every flow the filter matches in the range, without the row limit or aggregation. Reads all capture files of the range, so it runs only when you ask.</p>
+                            {% if f.filtered %}
+                                {% if f.filtered.stale %}
+                                    <p class="notice" data-kind="stale">These totals are for an earlier filter or range. Compute them again to update.</p>
+                                {% endif %}
+                                <dl class="flows-figures">
+                                    <div><dt>Flows</dt><dd>{{ f.filtered.flows }}</dd></div>
+                                    <div><dt>Packets</dt><dd>{{ f.filtered.packets }}</dd></div>
+                                    <div><dt>Bytes</dt><dd>{{ f.filtered.bytes }}</dd></div>
+                                </dl>
+                                {% if f.filtered.protocols %}
+                                    {{ ui.protocols(f.filtered.protocols, 'Filtered totals by protocol') }}
+                                {% endif %}
+                                <p class="help">nfdump: <code>{{ f.filtered.command }}</code> ({{ f.filtered.elapsed }} s)</p>
+                            {% else %}
+                                <div class="empty-state">
+                                    <p>Not computed yet.</p>
+                                </div>
+                            {% endif %}
+                            {% include 'components/query-estimate.html.twig' with {
+                                target: 'flows-summary',
+                                querykit: querykit|merge({targets: querykit.targets|merge({'flows-summary': f.summaryEstimate})}),
+                                estimateQuery: flowsSummaryEstimate,
+                            } %}
+                            {% include 'partials/progress-button.html.twig' with progress|merge({
+                                id: 'flowsSummaryRun',
+                                label: 'Compute filtered totals',
+                                action: flowsSummaryRun.url(),
+                                kind: 'flows-summary',
+                                run: 'flows-summary',
+                                doneText: "'Filtered totals computed'",
+                            }) only %}
+                        </section>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </section>
 </div>

@@ -7,9 +7,9 @@ namespace mbolli\nfsen_ng\actions;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\FilteredGraphCache;
-use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\common\QueryProgress;
+use mbolli\nfsen_ng\pages\QueryKit;
 use mbolli\nfsen_ng\processor\FilteredSeries;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\query\CostEstimate;
@@ -123,20 +123,21 @@ final class FlowGraphActions {
     }
 
     /**
-     * What this build would read, for the line beside the button. Counts are maintained by the
-     * count-files action rather than walked here: this runs on every render.
+     * What this build would read: the runs from arithmetic, the files and bytes from the Flows
+     * estimate (`_est_flows`, same window and sources), so a render never walks the capture tree.
      *
-     * @return array{files: int, bytes: string, intervals: int, clamped: bool, window: string}
+     * @return array{files: int, bytes: string, intervals: int, clamped: bool, window: string, estimated: bool}
      */
     public static function cost(Context $c): array {
         $p = self::params($c);
-        $files = $c->getSignal('nfcapd_file_count');
-        $bytes = $c->getSignal('nfcapd_total_bytes');
         $groups = $p['display'] === 'sources' ? max(1, \count($p['sources'])) : 1;
+        $estimate = $c->getSignal(QueryKit::estimateSignal('flows'))?->getValue();
+        $estimate = \is_array($estimate) ? $estimate : [];
+        $estimated = ($estimate['window'] ?? '') !== '';
 
         return [
-            'files' => $files?->int() ?? 0,
-            'bytes' => QueryRunner::formatBytes($bytes?->int() ?? 0),
+            'files' => \is_int($estimate['files'] ?? null) ? $estimate['files'] : 0,
+            'bytes' => \is_string($estimate['bytesHuman'] ?? null) ? $estimate['bytesHuman'] : '',
             'intervals' => CostEstimate::runsForFilteredSeries(
                 TimeWindow::raw($p['start'], $p['end']),
                 $p['points'],
@@ -144,6 +145,7 @@ final class FlowGraphActions {
             ),
             'clamped' => $p['clamped'],
             'window' => GraphActions::formatWindow(Config::$settings->maxStatsWindow),
+            'estimated' => $estimated,
         ];
     }
 
@@ -350,17 +352,5 @@ final class FlowGraphActions {
         $c->action(static function (Context $c): void {
             $c->sync();
         }, 'touch-flows-graph');
-    }
-
-    /**
-     * Capture files in the window for the flow query, so the cost line has real numbers.
-     *
-     * @return array{count: int, bytes: int}
-     */
-    public static function measure(Context $c): array {
-        $p = self::params($c);
-        $files = NfcapdFiles::list($p['start'], $p['end'], $p['sources'], $p['profile']);
-
-        return ['count' => \count($files), 'bytes' => NfcapdFiles::totalSize($files)];
     }
 }

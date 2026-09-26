@@ -1,19 +1,15 @@
 <?php
 
-/**
- * Table Cell Formatter
- * Provides formatting functions for different data types in table cells.
- */
-
 declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\common;
 
+/** Cell values of result tables as HTML: units, names for numbers, status as [data-level]. */
 class TableFormatter {
     /**
      * Regex patterns for field type detection.
      */
-    private const PATTERN_DATE_FIELDS = '/^(first|last|received|t_first|t_last|time|timestamp)$/i';
+    private const PATTERN_DATE_FIELDS = '/^(first|last|received|t_first|t_last|time|timestamp|firstseen|lastseen)$/i';
     private const PATTERN_DATE_SUFFIX = '/_time$|_date$/';
     private const PATTERN_DURATION_FIELDS = '/^(duration|td)$/i';
     private const PATTERN_BYTES_FIELDS = '/^(bytes|ibyt|obyt|octets|in_bytes|out_bytes)$/i';
@@ -33,6 +29,49 @@ class TableFormatter {
     private const PATTERN_PERCENTAGE_SUFFIX = '/(percent|pct|ratio)$/i';
     private const PATTERN_IP_SUFFIX = '/(?:ip|addr)$/i';
 
+    /** nfdump's NSEL/NAT event names and codes as [label, badge level]. */
+    private const array EVENT_NAMES = [
+        'ignore' => ['ignore', ''],
+        'create' => ['create', 'success'],
+        'delete' => ['delete', 'error'],
+        'term' => ['term', 'error'],
+        'deny' => ['deny', 'warning'],
+        'keepalive' => ['keepalive', ''],
+        'add' => ['add', 'success'],
+        '<no-evt>' => ['no-event', ''],
+    ];
+
+    private const array EVENT_CODES = [
+        0 => ['ignore', ''],
+        1 => ['create', 'success'],
+        2 => ['delete', 'error'],
+        3 => ['keepalive', ''],
+        4 => ['deny', 'warning'],
+        5 => ['quota exceeded', 'warning'],
+    ];
+
+    /**
+     * How a column's cells are set (2.5): 'num' right aligned in tabular figures, 'time' and
+     * 'address' by their own rules, '' as text.
+     */
+    public static function cellKind(string $fieldName): string {
+        $field = strtolower($fieldName);
+
+        return match (true) {
+            self::isDate($field) => 'time',
+            preg_match(self::PATTERN_BYTES_FIELDS, $field) === 1,
+            preg_match(self::PATTERN_BYTES_SUFFIX, $field) === 1,
+            preg_match(self::PATTERN_PACKETS_FIELDS, $field) === 1,
+            preg_match(self::PATTERN_PACKETS_SUFFIX, $field) === 1 && !str_contains($field, 'port'),
+            preg_match(self::PATTERN_FLOWS_FIELDS, $field) === 1,
+            preg_match(self::PATTERN_BITRATE_FIELDS, $field) === 1,
+            preg_match(self::PATTERN_DURATION_FIELDS, $field) === 1,
+            preg_match(self::PATTERN_PERCENTAGE_SUFFIX, $field) === 1 => 'num',
+            preg_match(self::PATTERN_IP_SUFFIX, $field) === 1 => 'address',
+            default => '',
+        };
+    }
+
     /**
      * Get the raw sort value for a cell (unformatted).
      *
@@ -42,36 +81,21 @@ class TableFormatter {
      * @return mixed Raw sort value (number, string, etc.)
      */
     public static function getSortValue($value, string $fieldName) {
-        // Handle null/empty values
-        if ($value === null || $value === '') {
+        if ($value === null || $value === '' || !\is_scalar($value)) {
             return '';
         }
 
         $fieldLower = strtolower($fieldName);
 
-        // For date/timestamp fields, convert to Unix timestamp for numeric sorting
-        if (preg_match(self::PATTERN_DATE_FIELDS, $fieldLower)
-            || preg_match(self::PATTERN_DATE_SUFFIX, $fieldLower)) {
-            // If it's already a timestamp (numeric), return it
-            if (is_numeric($value)) {
-                return (int) $value;
-            }
-
-            // Try to parse as date string and convert to timestamp
-            try {
-                $date = new \DateTimeImmutable($value);
-
-                return $date->getTimestamp();
-            } catch (\Exception) {
-                // If parsing fails, return original value
-                return $value;
-            }
+        // Dates sort by their timestamp.
+        if (self::isDate($fieldLower)) {
+            return self::epoch($value) ?? $value;
         }
 
         // For IP address fields (e.g. srcip, dstip, src_addr, ip), convert to sortable format
         if (preg_match(self::PATTERN_IP_SUFFIX, strtolower($fieldName))) {
             // If already a dotted IP string, use it
-            if (filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            if (\is_string($value) && filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                 return \sprintf('%010u', ip2long($value));
             }
 
@@ -118,16 +142,16 @@ class TableFormatter {
      * @return string Formatted HTML
      */
     public static function formatCellValue($value, string $fieldName, array $options): string {
-        // Handle null/empty values
         if ($value === null || $value === '') {
             return '';
+        }
+        if (!\is_scalar($value)) {
+            return htmlspecialchars((string) json_encode($value), ENT_QUOTES | ENT_HTML5);
         }
 
         $fieldLower = strtolower($fieldName);
 
-        // Format dates (timestamps like first, last, received, t_first, t_last)
-        if (preg_match(self::PATTERN_DATE_FIELDS, $fieldLower)
-            || preg_match(self::PATTERN_DATE_SUFFIX, $fieldLower)) {
+        if (self::isDate($fieldLower)) {
             return self::formatDate($value);
         }
 
@@ -210,12 +234,8 @@ class TableFormatter {
             }
 
             if (filter_var($value, FILTER_VALIDATE_IP)) {
-                return \sprintf(
-                    '<a href="#" class="ip-link" data-on:click__prevent="@post(\'%s?ip=\'+encodeURIComponent(\'%s\'))">%s</a>',
-                    htmlspecialchars((string) ($options['ipInfoActionUrl'] ?? ''), ENT_QUOTES | ENT_HTML5),
-                    htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5),
-                    htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5)
-                );
+                // The table element posts ip-info for any .ip-link clicked inside it (Table::generate).
+                return '<a href="#" class="ip-link">' . htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5) . '</a>';
             }
         }
 
@@ -224,25 +244,36 @@ class TableFormatter {
     }
 
     /**
-     * Format a timestamp or date string.
-     *
-     * @param mixed $value
+     * A time as <time data-epoch>: the server's rendering until nfsen-table.js localises it in
+     * the display timezone. A value that is not a date stays as it came.
      */
-    private static function formatDate($value): string {
-        // If it's already a formatted date string, return it
-        if (!is_numeric($value)) {
-            $date = new \DateTimeImmutable($value);
-
-            return $date->format('Y-m-d H:i:s');
+    private static function formatDate(bool|float|int|string $value): string {
+        $epoch = self::epoch($value);
+        if ($epoch === null || $epoch <= 0) {
+            return htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5);
         }
 
-        // Convert Unix timestamp to readable format
-        $timestamp = (int) $value;
-        if ($timestamp > 0) {
-            return date('Y-m-d H:i:s', $timestamp);
+        return \sprintf('<time data-epoch="%d">%s</time>', $epoch, date('Y-m-d H:i:s', $epoch));
+    }
+
+    /** Seconds since the epoch of a timestamp or a date string nfdump printed in the server's timezone. */
+    private static function epoch(bool|float|int|string|null $value): ?int {
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+        if (!\is_string($value) || trim($value) === '') {
+            return null;
         }
 
-        return (string) $value;
+        try {
+            return new \DateTimeImmutable($value)->getTimestamp();
+        } catch (\Exception) {
+            return null;
+        }
+    }
+
+    private static function isDate(string $fieldLower): bool {
+        return preg_match(self::PATTERN_DATE_FIELDS, $fieldLower) === 1 || preg_match(self::PATTERN_DATE_SUFFIX, $fieldLower) === 1;
     }
 
     /**
@@ -378,7 +409,7 @@ class TableFormatter {
         }
 
         if ($value === '........') {
-            return '<span class="muted">-</span>';
+            return '<small>-</small>';
         }
 
         // Handle string format like "......S." (from nfdump)
@@ -406,7 +437,7 @@ class TableFormatter {
             }
 
             return implode(', ', $flagNames)
-                   . \sprintf(' <span class="muted">(%s)</span>', $value);
+                   . \sprintf(' <small>(%s)</small>', $value);
         }
 
         // Handle numeric format (hex or decimal)
@@ -445,7 +476,7 @@ class TableFormatter {
             }
 
             return implode(', ', $flagNames)
-                   . \sprintf(' <span class="muted">(0x%02X)</span>', $flags);
+                   . \sprintf(' <small>(0x%02X)</small>', $flags);
         }
 
         return (string) $value;
@@ -500,7 +531,7 @@ class TableFormatter {
 
         if (isset($dscpNames[$dscp])) {
             return \sprintf(
-                '%s <span class="muted">(ToS:%d/DSCP:%d)</span>',
+                '%s <small>(ToS:%d/DSCP:%d)</small>',
                 $dscpNames[$dscp],
                 $tos,
                 $dscp
@@ -509,7 +540,7 @@ class TableFormatter {
 
         // If not a common value, just show ToS and DSCP values
         if ($dscp > 0) {
-            return \sprintf('DSCP %d <span class="muted">(ToS:%d)</span>', $dscp, $tos);
+            return \sprintf('DSCP %d <small>(ToS:%d)</small>', $dscp, $tos);
         }
 
         return (string) $value;
@@ -559,7 +590,7 @@ class TableFormatter {
 
         if (isset($icmpTypes[$typeNum])) {
             return \sprintf(
-                '%s <span class="muted">(%d)</span>',
+                '%s <small>(%d)</small>',
                 $icmpTypes[$typeNum],
                 $typeNum
             );
@@ -616,20 +647,17 @@ class TableFormatter {
         ];
 
         if (isset($statusNames[$status])) {
-            // Color-code based on status type
-            $class = 'muted';
-            if ($status >= 65 && $status < 128) {
-                $class = 'text-success'; // Forwarded = green
-            } elseif ($status >= 128 && $status < 192) {
-                $class = 'text-danger'; // Dropped = red
-            } elseif ($status >= 192) {
-                $class = 'text-info'; // Consumed = blue
-            }
+            $level = match (true) {
+                $status >= 192 => 'info',
+                $status >= 128 => 'error',
+                $status >= 65 => 'success',
+                default => '',
+            };
 
             return \sprintf(
-                '<span class="%s">%s</span> <span class="muted">(%d)</span>',
-                $class,
-                $statusNames[$status],
+                '<span class="status-text"%s>%s</span> <small>(%d)</small>',
+                $level !== '' ? ' data-level="' . $level . '"' : '',
+                htmlspecialchars($statusNames[$status], ENT_QUOTES | ENT_HTML5),
                 $status
             );
         }
@@ -652,7 +680,7 @@ class TableFormatter {
 
         if ($protoName !== false) {
             return \sprintf(
-                '%s <span class="muted">(%d)</span>',
+                '%s <small>(%d)</small>',
                 strtoupper($protoName),
                 $protoNum
             );
@@ -676,7 +704,7 @@ class TableFormatter {
 
         if ($service !== false) {
             return \sprintf(
-                '%d <span class="muted">(%s)</span>',
+                '%d <small>(%s)</small>',
                 $port,
                 htmlspecialchars($service, ENT_QUOTES | ENT_HTML5)
             );
@@ -686,54 +714,27 @@ class TableFormatter {
     }
 
     /**
-     * Format a NSEL/NAT event type value as a human-readable badge.
-     * Handles both numeric event codes and string event names.
-     *
-     * NSEL/ASA event codes: 0=ignore, 1=create, 2=delete, 3=keepalive, 4=deny
-     * NEL/NAT event codes: 1=add, 2=delete
+     * A NSEL/NAT event as a badge, levelled when it says something happened to a connection.
+     * NSEL/ASA codes: 0 ignore, 1 create, 2 delete, 3 keepalive, 4 deny; NEL: 1 add, 2 delete.
      *
      * @param mixed $value
      */
     private static function formatNatEvent($value): string {
-        // Map string event names (as returned by nfdump for flow listing)
-        static $stringMap = [
-            'ignore' => ['ignore', 'secondary'],
-            'create' => ['create', 'success'],
-            'delete' => ['delete', 'danger'],
-            'term' => ['term', 'danger'],
-            'deny' => ['deny', 'warning'],
-            'keepalive' => ['keepalive', 'secondary'],
-            'add' => ['add', 'success'],
-            '<no-evt>' => ['no-event', 'secondary'],
-        ];
-
-        $lower = strtolower(trim((string) $value));
-        if (isset($stringMap[$lower])) {
-            [$label, $color] = $stringMap[$lower];
-
-            return \sprintf('<span class="badge bg-%s">%s</span>', $color, htmlspecialchars($label, ENT_QUOTES | ENT_HTML5));
+        $event = self::EVENT_NAMES[strtolower(trim(\is_scalar($value) ? (string) $value : ''))] ?? null;
+        if ($event === null && is_numeric($value)) {
+            $event = self::EVENT_CODES[(int) $value] ?? ['event ' . (int) $value, ''];
+        }
+        if ($event === null) {
+            return htmlspecialchars(\is_scalar($value) ? (string) $value : '', ENT_QUOTES | ENT_HTML5);
         }
 
-        if (is_numeric($value)) {
-            $code = (int) $value;
-            static $codeMap = [
-                0 => ['ignore', 'secondary'],
-                1 => ['create', 'success'],
-                2 => ['delete', 'danger'],
-                3 => ['keepalive', 'secondary'],
-                4 => ['deny', 'warning'],
-                5 => ['quota exceeded', 'warning'],
-            ];
-            if (isset($codeMap[$code])) {
-                [$label, $color] = $codeMap[$code];
+        [$label, $level] = $event;
 
-                return \sprintf('<span class="badge bg-%s">%s</span>', $color, htmlspecialchars($label, ENT_QUOTES | ENT_HTML5));
-            }
-
-            return \sprintf('<span class="badge">event %d</span>', $code);
-        }
-
-        return htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5);
+        return \sprintf(
+            '<span class="badge"%s>%s</span>',
+            $level !== '' ? ' data-level="' . $level . '"' : '',
+            htmlspecialchars($label, ENT_QUOTES | ENT_HTML5)
+        );
     }
 
     /**

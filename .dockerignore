@@ -18,7 +18,7 @@ deploy/*.dist
 
 # Local settings file (must not be baked into the image; configure via env vars or volume mount)
 backend/settings/settings.php
-backend/settings/alerts-log.json
+backend/settings/alerts-log.json*
 backend/settings/alerts-state.json
 backend/settings/preferences.json
 backend/settings/nfsen-ng.sqlite*

@@ -7,7 +7,7 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["frontend/js/components/**", "frontend/css/**", "!frontend/css/nouislider.min.css"]
+		"includes": ["frontend/js/components/**", "frontend/css/**"]
 	},
 	"formatter": {
 		"enabled": true,

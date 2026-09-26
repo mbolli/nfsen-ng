@@ -1,20 +1,13 @@
-// Overview's traffic graph: codifies the manual verification done for the Dygraphs -> ECharts
-// migration as a repeatable regression check -- chart mounts at the real
-// container size (not the stale 100px-measured-while-hidden bug that shipped
-// once), zoom fires the sync button + graph-zoom wiring date-range.html.twig
-// depends on, series visibility/style toggles apply, and dark mode re-themes
-// without errors.
+// Overview's traffic graph: the chart mounts at the real container size (not the stale
+// 100px-measured-while-hidden bug that shipped once), a Ctrl+wheel style zoom shows the
+// #zoomPreview whose Apply sets the global window, Sync now and Follow graph zoom do the same
+// from the Live menu, Previous range restores the window before, series style toggles apply,
+// and dark mode re-themes without errors.
 //
-// Data-dependent assertions (zoom, sync, style toggles) only run if the
-// widest available range actually has data -- this dev sandbox's "Traffic"
-// (bits/bytes) datatype is frequently empty due to a known, documented,
-// pre-existing environment quirk (cross-container inotify not reliably
-// firing here, see book/src/architecture/import-pipeline.md's Environment
-// caveat), which gaps RRD's derived byte-rate counters more than its Flows/
-// Packets counters. A genuinely fresh environment (e.g. CI with no demo
-// data at all) would have nothing in *any* datatype. Either way, the test
-// must not hard-fail on missing data -- only on the app behaving wrong given
-// whatever data is actually there.
+// Data-dependent assertions (zoom, sync, style toggles) only run if the widest available range
+// actually has data: this sandbox's "Traffic" datatype is often empty because cross-container
+// inotify does not fire here (book/src/architecture/import-pipeline.md), and a fresh
+// environment has nothing in any datatype. The test fails on wrong behaviour, not on missing data.
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
 
@@ -67,50 +60,118 @@ export default async function graphsTest() {
             `chart-reported width (${sizes.chartWidth}) should match the container's actual width (${sizes.containerWidth})`
         );
 
-        // Zoom -> sync button should enable, data-zoom-* attrs should be set, and
-        // getCurrentRange() should reflect the zoomed (not full) range.
+        // Zoom the chart the way Ctrl+wheel does, inside the stored data (a range before it is
+        // refused): the preview names the zoomed range and its Apply makes it the global window.
+        const zoomTo = async (at = [1 / 4, 1 / 2]) => {
+            const min = await page.signalValue('data_range_min');
+            await page.evaluate(`(function(){
+                var el = document.getElementById('trafficGraph');
+                var src = el.chart.getOption().dataset[0].source;
+                var toTs = function(d){ return d instanceof Date ? d.getTime() : d; };
+                var first = Math.max(toTs(src[0][0]), ${min} * 1000), last = toTs(src[src.length - 1][0]);
+                el.chart.dispatchAction({ type: 'dataZoom', startValue: first + (last - first) * ${at[0]}, endValue: first + (last - first) * ${at[1]} });
+            })()`);
+            await page.waitFor(`!document.getElementById('zoomPreview').hidden`, { label: '#zoomPreview after a zoom' });
+            const range = await page.evaluate(`${CHART}.getCurrentRange()`);
+            assert.ok(range && range.from < range.to, `expected a valid {from,to} range, got ${JSON.stringify(range)}`);
+            return range;
+        };
+        const windowMatches = async (range) => {
+            const start = Date.now();
+            for (;;) {
+                const [from, to] = [await page.signalValue('datestart'), await page.signalValue('dateend')];
+                if (Math.abs(from - range.from / 1000) <= 300 && Math.abs(to - range.to / 1000) <= 300) return;
+                if (Date.now() - start > 8000) {
+                    throw new Error(`window ${from}..${to} does not match the zoom ${range.from / 1000}..${range.to / 1000}`);
+                }
+                await new Promise((resolve) => setTimeout(resolve, 150));
+            }
+        };
+
+        const presetWindow = [await page.signalValue('datestart'), await page.signalValue('dateend')];
+        const zoomed = await zoomTo();
+        assert.match(await page.evaluate(`document.getElementById('zoomPreview').textContent`), /Previewing .+ to /);
+        await page.evaluate(`document.getElementById('zoomApply').click()`);
+        await windowMatches(zoomed);
+        assert.equal(await page.signalValue('range_live'), false, 'an applied zoom in the past is a fixed window');
+        await page.waitFor(`document.getElementById('zoomPreview').hidden`, { label: 'the preview to go once applied' });
+
+        // Previous range brings the live 1y preset back.
+        await page.waitFor(`!document.getElementById('rangeUndo').disabled`, { label: '#rangeUndo to enable' });
+        await page.evaluate(`document.getElementById('rangeUndo').click()`);
+        await page.waitFor(`document.querySelector('#rangeMenu .menu-toggle').textContent.includes('Last year')`, {
+            label: 'the 1y preset to return',
+        });
+        const [undoFrom, undoTo] = [await page.signalValue('datestart'), await page.signalValue('dateend')];
+        assert.ok(Math.abs(undoTo - undoFrom - (presetWindow[1] - presetWindow[0])) <= 300, 'Previous range restores the width');
+        assert.equal(await page.signalValue('range_live'), true, 'Previous range restores a live window as live');
+        await page.waitFor(`!!${CHART}.chart`, { label: 'the chart to redraw' });
+
+        // Reset puts the view back without touching the window.
+        await zoomTo();
+        await page.evaluate(`document.getElementById('zoomReset').click()`);
+        await page.waitFor(`document.getElementById('zoomPreview').hidden`, { label: 'Reset to hide the preview' });
+        assert.equal(await page.signalValue('range_live'), true, 'Reset leaves the window alone');
+
+        // Sync zoom to range now, from the Live menu.
+        const synced = await zoomTo();
+        await page.evaluate(`document.querySelector('#liveMenu .menu-toggle').click()`);
+        await page.waitFor(`!document.getElementById('syncZoom').disabled`, { label: '#syncZoom to enable' });
+        await page.evaluate(`document.getElementById('syncZoom').click()`);
+        await windowMatches(synced);
+
+        // Follow graph zoom applies a zoom by itself, and the preview stays away.
+        await page.setRangePreset('1y');
+        await page.waitFor(`!!${CHART}.chart`, { label: 'the chart to redraw' });
         await page.evaluate(`(function(){
+            var toggle = document.querySelector('#liveMenu .menu-toggle');
+            if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+            document.getElementById('followZoom').click();
+        })()`);
+        assert.equal(await page.signalValue('_autoSyncGraph'), true, 'Follow graph zoom is on');
+        const min = await page.signalValue('data_range_min');
+        const followed = await page.evaluate(`(function(){
             var el = document.getElementById('trafficGraph');
             var src = el.chart.getOption().dataset[0].source;
-            var first = src[0][0], mid = src[Math.floor(src.length / 3)][0];
             var toTs = function(d){ return d instanceof Date ? d.getTime() : d; };
-            el.chart.dispatchAction({ type: 'dataZoom', startValue: toTs(first), endValue: toTs(mid) });
+            var first = Math.max(toTs(src[0][0]), ${min} * 1000), last = toTs(src[src.length - 1][0]);
+            el.chart.dispatchAction({ type: 'dataZoom', startValue: first + (last - first) / 3, endValue: first + (last - first) / 2 });
+            return el.getCurrentRange();
         })()`);
-        await page.waitFor(`document.querySelector('#date_syncing button.sync-date').disabled === false`, {
-            label: 'sync button to enable after zoom',
+        assert.equal(await page.evaluate(`document.getElementById('zoomPreview').hidden`), true, 'no preview while following');
+        await windowMatches(followed);
+        await page.evaluate(`(function(){
+            var toggle = document.querySelector('#liveMenu .menu-toggle');
+            if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+            document.getElementById('followZoom').click();
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        })()`);
+        assert.equal(await page.signalValue('_autoSyncGraph'), false, 'Follow graph zoom is off again');
+        await page.setRangePreset('1y');
+        await page.waitFor(`!!${CHART}.chart`, { label: 'the chart to redraw' });
+
+        // Follow live data off pins the window, so no live tick redraws under the toggles below.
+        await page.evaluate(`(function(){
+            var toggle = document.querySelector('#liveMenu .menu-toggle');
+            if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+            document.getElementById('followLive').click();
+        })()`);
+        await page.waitFor(`document.querySelector('#trafficGraphSection .badge')?.textContent.includes('HISTORICAL')`, {
+            label: 'the HISTORICAL badge once pinned',
         });
-        const range = await page.evaluate(`${CHART}.getCurrentRange()`);
-        assert.ok(range && range.from < range.to, `expected a valid {from,to} range, got ${JSON.stringify(range)}`);
+        assert.equal(await page.signalValue('range_live'), false, 'Follow live data off pins the window');
 
-        // "Sync now" should move the date-range slider to match the chart's current range.
-        await page.clickByText('Sync now', 'button');
-        await page.waitFor(`document.querySelector('#date_syncing button.sync-date').disabled === true`, {
-            label: 'sync button to re-disable after Sync now',
-        });
-        const sliderRange = await page.evaluate(`document.getElementById('dateRangeSlider').slider.noUiSlider.get(true).map(Number)`);
-        assert.equal(Math.round(sliderRange[0]), range.from, 'slider start should match the chart range after Sync now');
-        assert.equal(Math.round(sliderRange[1]), range.to, 'slider end should match the chart range after Sync now');
-
-        // Sync now moved the date slider, which fires a 'change' event that
-        // layout.html.twig throttles to one refreshGraphs POST per second (see
-        // its data-on:change__window__throttle.1000ms). Let that settle before
-        // touching client-side style toggles below -- otherwise the server's
-        // full-option refresh (built from the config captured *before* the
-        // toggle below) can land moments after the toggle and stomp it back to
-        // its pre-toggle value. Same characteristic existed pre-migration; not
-        // something to paper over inside the component itself.
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-
-        // Series-display / scale toggles should apply without throwing.
+        // Series-display / scale toggles should apply without throwing. Each toggle also redraws
+        // through a view transition, so the option is awaited rather than read at once.
         const chartEl = CHART;
         await page.evaluate(`document.getElementById('graph_linestacked_stacked').click()`);
-        const series0 = await page.evaluate(`${chartEl}.chart.getOption().series[0]`);
-        assert.equal(series0.stack, 'total', 'expected stack:"total" after clicking Stacked');
-        assert.ok(series0.areaStyle, 'expected areaStyle after clicking Stacked');
+        await page.waitFor(`${chartEl}.chart.getOption().series[0].stack === 'total'`, { label: 'stack:"total" after clicking Stacked' });
+        assert.ok(await page.evaluate(`!!${chartEl}.chart.getOption().series[0].areaStyle`), 'expected areaStyle after clicking Stacked');
 
         await page.evaluate(`document.getElementById('graph_linlog_log').click()`);
-        const yAxisType = await page.evaluate(`${chartEl}.chart.getOption().yAxis[0].type`);
-        assert.equal(yAxisType, 'log', 'expected log-scale y-axis after clicking Logarithmic');
+        await page.waitFor(`${chartEl}.chart.getOption().yAxis[0].type === 'log'`, {
+            label: 'a log-scale y-axis after clicking Logarithmic',
+        });
 
         // Reset back to defaults so this test doesn't leave client-local UI state
         // behind for whatever runs next against the same dev server.

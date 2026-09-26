@@ -1,34 +1,91 @@
 {# The persistent traffic graph (1.8). Off the analysis pages: hidden, no data, ignored by
    morphs; the chart keeps its last drawing for the way back. #}
+{% import 'shell/controls-bar.html.twig' as bar %}
 {% set analysisIds = shell.pagesMeta|filter(m => m.analysis)|map(m => m.id)|json_encode %}
+{% set ds = '$' ~ datestart.id() %}
+{% set de = '$' ~ dateend.id() %}
+{% set live = '$' ~ range_live.id() %}
+{% set tz = '$' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() %}
+{% set remember = '$_prevRange = {from: ' ~ ds ~ ', to: ' ~ de ~ ', live: ' ~ live ~ ', preset: $' ~ range_preset.id() ~ '}' %}
+{# Changes whenever the chart draws new data, which also resets its zoom. #}
+{% set drawn = [graph.lastUpdate, graph.points, graph.data|length, datestart.int(), dateend.int()]|join(':') %}
 <section class="traffic-graph" id="trafficGraphSection" aria-labelledby="trafficGraphTitle"
          data-attr:hidden="!{{ analysisIds }}.includes(${{ page.id() }})" data-preserve-attr="hidden"
          {% if graph.mode == 'none' %}hidden data-ignore-morph{% endif %}
          data-computed:graph._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ${{ graph_protocols.id() }}, ports: ${{ graph_ports.id() }}, display: ${{ graph_display.id() }}, type: ${{ graph_datatype.id() }}, trafficUnit: ${{ graph_trafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}"
          data-indicator:graph._connecting
          {# Live tick (1.7): stored series only, every 15 s on Overview and every 60 s on the other analysis pages. #}
-         data-on-interval__duration.15s.leading="!$_disconnected && ${{ page.id() }} === 'overview' && ${{ graph_mode.id() }} === 'stored' && ${{ range_live.id() }} && @post('{{ refreshGraphs.url() }}')"
-         data-on-interval__duration.60s="!$_disconnected && ${{ page.id() }} !== 'overview' && {{ analysisIds }}.includes(${{ page.id() }}) && ${{ graph_mode.id() }} === 'stored' && ${{ range_live.id() }} && @post('{{ refreshGraphs.url() }}')"
-         data-on:change__window__throttle.250ms="{{ analysisIds }}.includes(${{ page.id() }}) && evt.target.closest('nfsen-daterange, .date-range-controls') && @post('{{ refreshGraphs.url() }}')">
+         data-on-interval__duration.15s.leading="!$_disconnected && ${{ page.id() }} === 'overview' && ${{ graph_mode.id() }} === 'stored' && {{ live }} && @post('{{ refreshGraphs.url() }}')"
+         data-on-interval__duration.60s="!$_disconnected && ${{ page.id() }} !== 'overview' && {{ analysisIds }}.includes(${{ page.id() }}) && ${{ graph_mode.id() }} === 'stored' && {{ live }} && @post('{{ refreshGraphs.url() }}')">
 
-    <header class="traffic-graph-header cluster">
-        <h2 id="trafficGraphTitle">{{ graph.title }}</h2>
-        <span class="traffic-graph-mode">{{ graph.modeLabel }}</span>
-        {% if graph.filtered %}
-            <span class="badge" title="Series built by re-reading the capture files through an nfdump filter">FILTERED</span>
-        {% elseif graph.live %}
-            <span class="badge" data-level="success" title="The graph follows the newest data">
-                LIVE
-                {% if graph.lastUpdate > 0 %}
-                    <span>updated <span data-text="new Date(${{ graph_lastUpdate.id() }} * 1000).toLocaleString(undefined, tzOptions(${{ displayTz.id() }}, ${{ nfcapdTz.id() }}))"></span></span>
-                {% endif %}
-            </span>
-        {% else %}
-            <span class="badge" title="The graph shows a fixed window">HISTORICAL</span>
-        {% endif %}
-        {% if graph.points > 0 %}
-            <span class="badge" title="Number of data points">{{ graph.points }} points</span>
-        {% endif %}
+    <header class="traffic-graph-header" data-signals__ifmissing="{_zoom: false}">
+        <div class="traffic-graph-heading">
+            <h2 id="trafficGraphTitle">{{ graph.title }}</h2>
+            <span class="traffic-graph-mode">{{ graph.modeLabel }}</span>
+            {% if graph.filtered %}
+                <span class="badge" title="Series built by re-reading the capture files through an nfdump filter">FILTERED</span>
+            {% elseif range_live.bool() %}
+                <span class="badge" data-level="success" title="The window follows the newest data">
+                    LIVE
+                    {% if graph.lastUpdate > 0 %}
+                        <span>updated <span data-ignore-morph data-text="new Date(${{ graph_lastUpdate.id() }} * 1000).toLocaleString(undefined, {...tzOptions({{ tz }}), hour: '2-digit', minute: '2-digit', hourCycle: 'h23'})"></span></span>
+                    {% endif %}
+                </span>
+            {% else %}
+                <span class="badge" title="The window stays where it is">HISTORICAL</span>
+            {% endif %}
+            {% if graph.points > 0 %}
+                <span class="badge" title="Number of data points">{{ graph.points }} points</span>
+            {% endif %}
+        </div>
+
+        <p class="traffic-graph-hint">Drag across the graph to set the range<span class="visually-hidden">, or set it with the range controls at the top of the page</span>.</p>
+
+        <div class="traffic-graph-actions">
+            {# A zoomed view the window does not follow yet (D6): apply it or put the view back. #}
+            <div class="zoom-preview" id="zoomPreview" role="status" hidden
+                 data-attr:hidden="!($_zoom && !$_autoSyncGraph)" data-preserve-attr="hidden"
+                 data-init="'{{ drawn }}' && ($_zoom = false)"
+                 data-on:graph-zoom__window="evt.target.id === 'trafficGraph' && ($_zoom = evt.target.isZoomed() ? evt.detail : false)">
+                <span>Previewing <span data-ignore-morph data-text="$_zoom ? window.nfsenTime.formatRange($_zoom.from / 1000, $_zoom.to / 1000, {{ tz }}) : ''"></span></span>
+                <button type="button" id="zoomApply" data-size="sm"
+                        data-on:click="$_zoom && ({{ remember }}, @post('{{ setRange.url() }}?op=abs&from=' + Math.floor($_zoom.from / 1000) + '&to=' + Math.ceil($_zoom.to / 1000))); $_zoom = false">Apply</button>
+                <button type="button" id="zoomReset" data-size="sm" data-variant="ghost"
+                        data-on:click="$graph._widget?.chart?.dispatchAction({type: 'dataZoom', start: 0, end: 100}); $_zoom = false">Reset</button>
+            </div>
+
+            <button type="button" id="rangeUndo" data-size="sm" title="Go back to the range before the last change"
+                    disabled data-attr:disabled="!$_prevRange" data-preserve-attr="disabled"
+                    data-on:click="const query = window.nfsenTime.restoreQuery($_prevRange); {{ remember }}; query && @post('{{ setRange.url() }}' + query)">{{ bar.icon('undo') }} Previous range</button>
+
+            <div class="menu live-menu" id="liveMenu"
+                 data-on:graph-zoom__window__debounce.500ms="evt.target.id === 'trafficGraph' && $_autoSyncGraph && evt.target.isZoomed() && ({{ remember }}, $_zoom = false, @post('{{ setRange.url() }}?op=abs&from=' + Math.floor(evt.detail.from / 1000) + '&to=' + Math.ceil(evt.detail.to / 1000)))">
+                <button type="button" class="menu-toggle" data-size="sm" aria-controls="liveMenuList"
+                        aria-expanded="false" data-preserve-attr="aria-expanded">Live</button>
+                <div class="menu-list live-menu-list" id="liveMenuList" popover data-preserve-attr="style">
+                    <label class="menu-item switch">
+                        <input type="checkbox" id="followLive" role="switch" {% if range_live.bool() %}checked{% endif %}
+                               data-effect="el.checked = {{ live }}"
+                               data-on:change="{{ remember }}; @post('{{ setRange.url() }}?op=' + (el.checked ? 'now' : 'pin'))">
+                        Follow live data
+                    </label>
+                    <label class="menu-item switch">
+                        <input type="checkbox" id="followZoom" role="switch"
+                               data-effect="el.checked = $_autoSyncGraph"
+                               data-on:change="$_autoSyncGraph = el.checked">
+                        Follow graph zoom
+                    </label>
+                    <div class="menu-sep" role="separator"></div>
+                    <button type="button" class="menu-item" id="syncZoom"
+                            disabled data-attr:disabled="!$_zoom" data-preserve-attr="disabled"
+                            data-on:click="$_zoom && ({{ remember }}, @post('{{ setRange.url() }}?op=abs&from=' + Math.floor($_zoom.from / 1000) + '&to=' + Math.ceil($_zoom.to / 1000))); $_zoom = false">Sync zoom to range now</button>
+                </div>
+            </div>
+
+            <button type="button" id="zoomOut" data-size="sm" title="Show twice the time around this range"
+                    data-attr:disabled="{{ ds }} <= ${{ data_range_min.id() }} && {{ de }} >= ${{ data_range_max.id() }}" data-preserve-attr="disabled"
+                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=zoomout')">{{ bar.icon('zoom-out') }} Zoom out</button>
+        </div>
     </header>
 
     {# An unbuilt filtered series says so instead of drawing an empty chart; Apply filter is on Overview only. #}

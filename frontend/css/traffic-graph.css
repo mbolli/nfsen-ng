@@ -10,6 +10,23 @@
     background: var(--surface-2);
 }
 
+/* Title, mode and badges on the left, the range actions on the right, the hint under both. */
+.traffic-graph-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2) var(--size-3);
+}
+
+.traffic-graph-heading,
+.traffic-graph-actions,
+.zoom-preview:not([hidden]) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2);
+}
+
 .traffic-graph-header h2 {
     font-size: var(--font-size-1);
 }
@@ -17,6 +34,41 @@
 .traffic-graph-mode {
     color: var(--text-2);
     font-size: var(--font-size-0);
+}
+
+.traffic-graph-actions {
+    margin-inline-start: auto;
+}
+
+.traffic-graph-hint {
+    order: 1;
+    flex-basis: 100%;
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+}
+
+/* Touch has #brushToggle to explain itself, so the hint stays for screen readers only. */
+@media (pointer: coarse) {
+    .traffic-graph-hint {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+}
+
+.zoom-preview {
+    padding-inline-start: var(--size-2);
+    border-inline-start: 2px solid var(--border-strong);
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-variant-numeric: tabular-nums;
+}
+
+.live-menu-list {
+    min-inline-size: 14rem;
 }
 
 /* The series and legend panel sits beside the chart where there is room, under it otherwise. */

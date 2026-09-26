@@ -4,7 +4,15 @@ declare(strict_types=1);
 
 use mbolli\nfsen_ng\actions\GraphActions;
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\FilteredGraphCache;
 use mbolli\nfsen_ng\common\Settings;
+use mbolli\nfsen_ng\datasources\Datasource;
+use mbolli\nfsen_ng\pages\OverviewPage;
+use mbolli\nfsen_ng\pages\RangeControls;
+use mbolli\nfsen_ng\pages\Shell;
+use Mbolli\PhpVia\Config as ViaConfig;
+use Mbolli\PhpVia\Context;
+use Mbolli\PhpVia\Via;
 
 // normalizeSources()/normalizePorts() read Config::$settings for their fallbacks.
 beforeAll(function (): void {
@@ -42,7 +50,7 @@ describe('GraphActions::normalizeSources', function (): void {
 
     test('falls back to all configured sources for an empty selection', function (): void {
         expect(GraphActions::normalizeSources([], 'sources'))->toBe(['gateway', 'swi6', 'core']);
-        // (array) null / (array) '' — what Signal::array() yields for a scalar signal
+        // (array) null and (array) '' are what Signal::array() yields for a scalar signal
         expect(GraphActions::normalizeSources([''], 'sources'))->toBe(['gateway', 'swi6', 'core']);
     });
 
@@ -87,5 +95,83 @@ describe('GraphActions::normalizePorts', function (): void {
     test('falls back to all configured ports for an empty selection', function (): void {
         expect(GraphActions::normalizePorts([]))->toBe([80, 443]);
         expect(GraphActions::normalizePorts(['']))->toBe([80, 443]);
+    });
+});
+
+describe('the Overview graph and the explicit live window', function (): void {
+    beforeEach(function (): void {
+        $prefs = new ReflectionProperty(Config::class, 'prefsFile');
+        $this->prefsBefore = $prefs->isInitialized() ? Config::$prefsFile : null;
+        $db = new ReflectionProperty(Config::class, 'db');
+        $this->dbBefore = $db->isInitialized() ? Config::$db : null;
+        $this->series = ['data' => [1_000 => [1.0]], 'start' => 1_000, 'end' => 1_300, 'step' => 300, 'legend' => ['gateway']];
+        $stub = $this->createStub(Datasource::class);
+        $stub->method('get_graph_data')->willReturn($this->series);
+        Config::$db = $stub;
+        Config::$prefsFile = sys_get_temp_dir() . '/nfsen-graph-actions-test-missing.json';
+        putenv('VIA_TEST_MODE=1');
+        $this->c = new Context('ctx-graph', '/', new Via(new ViaConfig()));
+        Shell::signals($this->c);
+        RangeControls::signals($this->c);
+        OverviewPage::signals($this->c);
+        GraphActions::register($this->c);
+        FilteredGraphCache::clear();
+    });
+
+    afterEach(function (): void {
+        putenv('VIA_TEST_MODE');
+        FilteredGraphCache::clear();
+        if ($this->prefsBefore !== null) {
+            Config::$prefsFile = $this->prefsBefore;
+        }
+        if ($this->dbBefore !== null) {
+            Config::$db = $this->dbBefore;
+        }
+    });
+
+    test('change-profile moved to the range actions', function (): void {
+        expect(array_keys($this->c->getNamedActions()))->toBe(['run-filtered-graph', 'refresh-graphs']);
+    });
+
+    test('refresh-graphs leaves a live window to the render, which advances it', function (string $mode): void {
+        $c = $this->c;
+        $c->getSignal('graph_mode')?->setValue($mode, broadcast: false);
+        $c->getSignal('range_live')?->setValue(true, broadcast: false);
+        $c->getSignal('datestart')?->setValue(time() - 3_720, broadcast: false);
+        $c->getSignal('dateend')?->setValue(time() - 120, broadcast: false);
+        $window = [$c->getSignal('datestart')?->int(), $c->getSignal('dateend')?->int()];
+
+        $c->setRequestInput([], []);
+        $c->executeAction((string) $c->getAction('refresh-graphs')?->id());
+
+        expect([$c->getSignal('datestart')?->int(), $c->getSignal('dateend')?->int()])->toBe($window);
+    })->with(['stored', 'filtered']);
+
+    test('a stored series is live exactly while the window is', function (bool $live): void {
+        $c = $this->c;
+        $c->getSignal('range_live')?->setValue($live, broadcast: false);
+        $c->getSignal('graph_isLive')?->setValue(!$live, broadcast: false);
+
+        expect(GraphActions::fetchGraphData($c))->toBe($this->series)
+            ->and($c->getSignal('graph_isLive')?->bool())->toBe($live)
+        ;
+    })->with([true, false]);
+
+    test('a filtered series is never live, and a fetch clears only the graph\'s own banner', function (): void {
+        $c = $this->c;
+        $c->getSignal('graph_mode')?->setValue('filtered', broadcast: false);
+        $c->getSignal('range_live')?->setValue(true, broadcast: false);
+        $series = ['start' => 1_000, 'end' => 1_600, 'step' => 300, 'legend' => ['all'], 'data' => [1_000 => [1.0], 1_300 => [2.0]]];
+        FilteredGraphCache::put(GraphActions::filteredKey($c), $series);
+
+        $c->getSignal('_error')?->setValue('Filtered graph: nfdump failed', broadcast: false);
+        expect(GraphActions::fetchGraphData($c))->toBe($series)
+            ->and($c->getSignal('graph_isLive')?->bool())->toBeFalse()
+            ->and($c->getSignal('_error')?->string())->toBe('')
+        ;
+
+        $c->getSignal('_error')?->setValue('Range: Enter a duration between 1 and 9999.', broadcast: false);
+        GraphActions::fetchGraphData($c);
+        expect($c->getSignal('_error')?->string())->toBe('Range: Enter a duration between 1 and 9999.');
     });
 });

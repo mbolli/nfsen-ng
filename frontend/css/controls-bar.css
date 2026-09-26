@@ -1,4 +1,6 @@
-/* Global controls bar (spec 4.0.2). The frame only: sticky, one surface, controls wrap. */
+/* Global controls bar (spec 4.0.2, 4.9). One row at 80em with the sidebar expanded, one
+   profile and no import running; it wraps otherwise. On phones the range menu and
+   #controlsMore stay, and the other controls fold behind it. */
 
 .controls-bar {
     position: sticky;
@@ -7,24 +9,145 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--size-2) var(--size-3);
+    gap: var(--size-2);
     padding: var(--size-2) var(--size-4);
     border-block-end: 1px solid var(--border);
     background: var(--surface-2);
 }
 
-.controls-range {
-    flex: 1 1 32rem;
-    min-inline-size: 0;
+/* Groups for #controlsMore only: their controls are items of the bar's own row. */
+.controls-panel,
+.controls-status:not([hidden]) {
+    display: contents;
 }
 
-.controls-bar .controls-end {
+.controls-bar :is(.profile-select, .protocol-select) {
+    inline-size: auto;
+    padding: var(--size-1) var(--size-2);
+    font-size: var(--font-size-00);
+}
+
+.controls-bar .menu-toggle {
+    font-variant-numeric: tabular-nums;
+}
+
+.controls-bar .segmented label {
+    padding: var(--size-1) var(--size-2);
+    font-size: var(--font-size-00);
+}
+
+.controls-end {
+    display: flex;
+    align-items: center;
+    gap: var(--size-2);
     margin-inline-start: auto;
 }
 
-/* Until the bar folds into one row on phones (4.9) it is too tall to stay pinned there. */
+.controls-more {
+    display: none;
+}
+
+.controls-more[aria-expanded='true'] {
+    background: var(--surface-3);
+}
+
+.controls-bar .chip {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Menu contents ──────────────────────────────────────────────────────── */
+
+.range-menu-list {
+    min-inline-size: 15rem;
+}
+
+.custom-duration {
+    padding: var(--size-1) var(--size-2) var(--size-2);
+}
+
+.custom-duration input {
+    inline-size: 5rem;
+}
+
+.custom-duration :is(input, select) {
+    padding: var(--size-1) var(--size-2);
+    font-size: var(--font-size-00);
+}
+
+.range-entry {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-3);
+    min-inline-size: 16rem;
+    padding: var(--size-3);
+}
+
+.range-entry button {
+    align-self: flex-start;
+}
+
+.range-entry .status-text:empty {
+    display: none;
+}
+
+.sources-list {
+    min-inline-size: 12rem;
+}
+
+/* ── Phones (4.9) ───────────────────────────────────────────────────────── */
+
 @media (max-width: 47.98em) {
+    /* Rows are spaced by the folded controls' own margin, so the break adds none. */
     .controls-bar {
-        position: static;
+        row-gap: 0;
+        padding: var(--size-2) var(--size-3);
+    }
+
+    .controls-end {
+        display: contents;
+    }
+
+    .controls-bar .reconnecting {
+        order: 1;
+    }
+
+    .controls-more {
+        display: inline-flex;
+        order: 2;
+        margin-inline-start: auto;
+    }
+
+    /* Ends the first row, so the folded controls start on a row of their own. */
+    .controls-bar[data-more='open']::before {
+        content: '';
+        order: 3;
+        flex-basis: 100%;
+    }
+
+    .controls-bar[data-more='open'] :is(.profile-select, .controls-panel > *, #reloadButton),
+    .controls-status:not([hidden]) {
+        margin-block-start: var(--size-2);
+    }
+
+    .controls-bar .profile-select {
+        order: 4;
+    }
+
+    .controls-panel > * {
+        order: 5;
+    }
+
+    #reloadButton {
+        order: 6;
+    }
+
+    .controls-status:not([hidden]) {
+        display: block;
+        order: 7;
+        flex-basis: 100%;
+    }
+
+    .controls-bar[data-more='closed'] :is(.profile-select, .controls-panel > *, #reloadButton) {
+        display: none;
     }
 }

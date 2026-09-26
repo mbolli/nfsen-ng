@@ -1,8 +1,16 @@
-{# Global controls bar (4.0.2), interim. Seeds what the traffic graph reads, ahead of every
-   bind that would otherwise invent it. #}
+{# Global controls bar (4.0.2): profile, range, sources, protocol and unit for every page. The
+   seeds cover what this bar and the traffic graph read until the first sync delivers it. #}
 {% import 'shell/icons.html.twig' as icons %}
-{% set countingPages = ['flows', 'talkers', 'conversations'] %}
+{% import _self as bar %}
+{% set sources = range.sources %}
 {% set seeds = {
+    (datestart.id()): datestart.int(),
+    (dateend.id()): dateend.int(),
+    (data_range_min.id()): data_range_min.int(),
+    (data_range_max.id()): data_range_max.int(),
+    (range_preset.id()): range_preset.string(),
+    (range_live.id()): range_live.bool(),
+    (protocol.id()): protocol.string(),
     (graph_sources.id()): graph_sources.array(),
     (graph_protocols.id()): graph_protocols.array(),
     (graph_ports.id()): graph_ports.array(),
@@ -11,14 +19,29 @@
     (graph_trafficUnit.id()): graph_trafficUnit.string(),
     (displayTz.id()): displayTz.string(),
     (nfcapdTz.id()): nfcapdTz.string(),
+    '_controlsMore': false,
+    '_rangeEntryError': '',
 } %}
-<div class="controls-bar" role="region" aria-label="Range and profile"
+{% set ds = '$' ~ datestart.id() %}
+{% set de = '$' ~ dateend.id() %}
+{% set live = '$' ~ range_live.id() %}
+{% set preset = '$' ~ range_preset.id() %}
+{% set gs = '$' ~ graph_sources.id() %}
+{% set tz = '$' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() %}
+{# Every range change first remembers the window it replaces, for Previous range (1.8). #}
+{% set remember = '$_prevRange = {from: ' ~ ds ~ ', to: ' ~ de ~ ', live: ' ~ live ~ ', preset: ' ~ preset ~ '}' %}
+{% set labels = {} %}
+{% for p in range.presets %}{% set labels = labels|merge({(p.id): p.label}) %}{% endfor %}
+{% set allSources = sources|json_encode %}
+{% set allPicked = '(' ~ gs ~ '.includes(\'any\') || ' ~ allSources ~ '.every(s => ' ~ gs ~ '.includes(s)))' %}
+{% set chip = range.importChip %}
+
+<div class="controls-bar" role="region" aria-label="Range and filters"
      data-signals__ifmissing="{{ seeds|json_encode }}"
-     data-indicator:nfcapd._counting
-     data-on:change__window__throttle.1000ms="({{ countingPages|json_encode }}.includes(${{ page.id() }}) || (${{ page.id() }} === 'overview' && ${{ graph_mode.id() }} === 'filtered')) && evt.target.closest('nfsen-daterange') && @post('{{ countFiles.url() }}')">
+     data-more="closed" data-attr:data-more="$_controlsMore ? 'open' : 'closed'" data-preserve-attr="data-more">
 
     {% if available_profiles.array()|length > 1 %}
-        <select id="profileSelect" class="profile-select" aria-label="Profile" data-size="sm"
+        <select id="profileSelect" class="profile-select" aria-label="Profile" title="Profile"
                 {{ bind(selected_profile) }}
                 data-on:change="@post('{{ changeProfile.url() }}')">
             {% for group in range.profiles %}
@@ -33,18 +56,141 @@
         </select>
     {% endif %}
 
-    <div class="controls-range">
-        {% include 'partials/date-range.html.twig' %}
+    {# Presets and a custom duration; the toggle names the window (4.0.2). #}
+    <div class="menu range-menu" id="rangeMenu">
+        <button type="button" class="menu-toggle" data-size="sm" aria-controls="rangeMenuList"
+                aria-expanded="false" data-preserve-attr="aria-expanded" title="Time range">
+            {{ bar.icon('clock') }}
+            <span data-ignore-morph data-text="window.nfsenTime.rangeLabel({{ preset }}, {{ live }}, {{ ds }}, {{ de }}, {{ labels|json_encode }})">{{ range_live.bool() ? (labels[range_preset.string()] ?? 'Custom range') : 'Custom range' }}</span>
+        </button>
+        <div class="menu-list range-menu-list" id="rangeMenuList" popover data-align="start" data-preserve-attr="style">
+            {% for p in range.presets %}
+                <button type="button" class="menu-item" data-range-preset="{{ p.id }}"
+                        aria-pressed="{{ range_live.bool() and range_preset.string() == p.id ? 'true' : 'false' }}"
+                        data-attr:aria-pressed="{{ live }} && {{ preset }} === '{{ p.id }}' ? 'true' : 'false'" data-preserve-attr="aria-pressed"
+                        data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=preset&v={{ p.id }}')">{{ p.label }}</button>
+            {% endfor %}
+            <div class="menu-sep" role="separator"></div>
+            <div class="custom-duration field" role="group" aria-labelledby="customDurationLabel">
+                <span class="field-label" id="customDurationLabel">Custom duration</span>
+                <div class="input-group">
+                    <input type="number" id="customDurationValue" min="1" max="9999" step="1" inputmode="numeric" required
+                           aria-label="Duration" placeholder="6"
+                           data-on:keydown="evt.key === 'Enter' && (evt.preventDefault(), document.getElementById('customDurationApply').click())">
+                    <select id="customDurationUnit" aria-label="Duration unit">
+                        <option value="h">hours</option>
+                        <option value="d">days</option>
+                        <option value="w">weeks</option>
+                    </select>
+                    <button type="button" id="customDurationApply" data-size="sm"
+                            data-on:click="const field = document.getElementById('customDurationValue'); const n = Number(field.value); Number.isInteger(n) && n >= 1 && n <= 9999 ? ({{ remember }}, @post('{{ setRange.url() }}?op=duration&n=' + n + '&u=' + document.getElementById('customDurationUnit').value)) : (evt.stopPropagation(), field.reportValidity())">Apply</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="controls-end cluster">
-        <a class="chip" id="importChip" href="#/health" data-state="running"
-           {% if not shell.import.running %}hidden{% endif %}
-           data-attr:hidden="!${{ import_running.id() }}">
-            <span class="chip-dot"></span>
-            Import running
-            <span>{{ shell.import.progress }}%{% if shell.import.eta %} · {{ shell.import.eta }}{% endif %}</span>
-        </a>
+    <button type="button" class="controls-more" id="controlsMore" data-size="sm" aria-controls="controlsPanel"
+            aria-expanded="false" data-attr:aria-expanded="$_controlsMore ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+            title="More controls" aria-label="More controls"
+            data-on:click="$_controlsMore = !$_controlsMore">{{ icons.icon('more') }}</button>
+
+    {# On phones this group, the profile and Reload fold behind #controlsMore (4.9). #}
+    <div class="controls-panel" id="controlsPanel">
+        <div class="button-group range-steps" role="group" aria-label="Step through time">
+            <button type="button" id="rangeBack" data-size="sm" title="Previous period" aria-label="Previous period"
+                    {% if datestart.int() <= data_range_min.int() %}disabled{% endif %} data-attr:disabled="{{ ds }} <= ${{ data_range_min.id() }}" data-preserve-attr="disabled"
+                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=back')">{{ bar.icon('back') }}</button>
+            <button type="button" id="rangeForward" data-size="sm" title="Next period" aria-label="Next period"
+                    {% if range_live.bool() %}disabled{% endif %} data-attr:disabled="{{ live }}"
+                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=forward')">{{ bar.icon('forward') }}</button>
+            <button type="button" id="rangeNow" data-size="sm" title="Jump to now" aria-label="Jump to now"
+                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=now')">{{ bar.icon('now') }}</button>
+        </div>
+
+        {# Where the window is, in the display timezone, and an entry for an absolute one. #}
+        <div class="menu range-display" id="rangeDisplay">
+            <button type="button" class="menu-toggle" data-size="sm" aria-controls="rangeDisplayList"
+                    aria-expanded="false" data-preserve-attr="aria-expanded" title="Set a start and an end"
+                    data-on:click="el.getAttribute('aria-expanded') !== 'true' && (document.getElementById('rangeFrom').value = window.nfsenTime.toLocalInput({{ ds }}, {{ tz }}), document.getElementById('rangeTo').value = window.nfsenTime.toLocalInput({{ de }}, {{ tz }}), $_rangeEntryError = '')">
+                <span data-ignore-morph data-text="window.nfsenTime.formatRange({{ ds }}, {{ de }}, {{ tz }})">{{ datestart.int()|date('M j, H:i', nfcapdTz.string()) }} to {{ dateend.int()|date('M j, H:i', nfcapdTz.string()) }}</span>
+            </button>
+            <div class="menu-list" id="rangeDisplayList" popover data-align="start" data-preserve-attr="style">
+                <div class="range-entry">
+                    <div class="field">
+                        <label for="rangeFrom">From</label>
+                        <input type="datetime-local" id="rangeFrom" step="60"
+                               data-on:keydown="evt.key === 'Enter' && document.getElementById('rangeApply').click()">
+                    </div>
+                    <div class="field">
+                        <label for="rangeTo">To</label>
+                        <input type="datetime-local" id="rangeTo" step="60"
+                               data-on:keydown="evt.key === 'Enter' && document.getElementById('rangeApply').click()">
+                    </div>
+                    <p class="help" data-ignore-morph data-text="{{ '$' ~ displayTz.id() }} === 'server' ? 'Times in ' + {{ '$' ~ nfcapdTz.id() }} + ', the capture timezone.' : 'Times in this browser\'s timezone.'">Times in this browser's timezone.</p>
+                    <p class="status-text" data-level="error" role="alert" data-ignore-morph data-text="$_rangeEntryError"></p>
+                    <button type="button" id="rangeApply" data-variant="primary" data-size="sm"
+                            data-on:click="const from = window.nfsenTime.toEpoch(document.getElementById('rangeFrom').value, {{ tz }}); const to = window.nfsenTime.toEpoch(document.getElementById('rangeTo').value, {{ tz }}); from < to ? ({{ remember }}, $_rangeEntryError = '', @post('{{ setRange.url() }}?op=abs&from=' + from + '&to=' + to)) : (evt.stopPropagation(), $_rangeEntryError = Number.isNaN(from) || Number.isNaN(to) ? 'Enter a start and an end.' : 'The range has to end after it starts.')">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        {# At least one source stays checked; the post waits until the ticking stops. #}
+        <div class="menu sources-menu" id="sourcesMenu">
+            <button type="button" class="menu-toggle" data-size="sm" aria-controls="sourcesMenuList"
+                    aria-expanded="false" data-preserve-attr="aria-expanded" title="Sources">
+                <span data-ignore-morph data-text="{{ allPicked }} ? 'All sources' : ({{ allSources }}.filter(s => {{ gs }}.includes(s)).length === 1 ? {{ allSources }}.find(s => {{ gs }}.includes(s)) : {{ allSources }}.filter(s => {{ gs }}.includes(s)).length + ' of {{ sources|length }} sources')">All sources</span>
+            </button>
+            <div class="menu-list sources-list" id="sourcesMenuList" popover data-align="start" data-preserve-attr="style"
+                 data-on:change__debounce.400ms="@post('{{ applyGlobals.url() }}')">
+                {% if sources|length > 1 %}
+                    <label class="menu-item choice">
+                        <input type="checkbox" id="sourcesAll" data-effect="el.checked = {{ allPicked }}"
+                               data-on:change="el.checked ? ({{ gs }} = {{ allSources }}) : (el.checked = true)">
+                        All sources
+                    </label>
+                    <div class="menu-sep" role="separator"></div>
+                {% endif %}
+                {% for source in sources %}
+                    <label class="menu-item choice">
+                        <input type="checkbox" name="globalSource" value="{{ source }}"
+                               data-effect="el.checked = {{ allPicked }} || {{ gs }}.includes(el.value)"
+                               data-on:change="const all = {{ allSources }}; const picked = {{ gs }}.includes('any') ? all : all.filter(s => {{ gs }}.includes(s)); const next = el.checked ? all.filter(s => s === el.value || picked.includes(s)) : picked.filter(s => s !== el.value); next.length ? ({{ gs }} = next) : (el.checked = true)">
+                        {{ source }}
+                    </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <select id="protocolSelect" class="protocol-select" aria-label="Protocol" title="Protocol"
+                {{ bind(protocol) }} data-on:change="@post('{{ applyGlobals.url() }}')">
+            {% for p in range.protocols %}
+                <option value="{{ p.id }}"{% if p.id == protocol.string() %} selected{% endif %}>{{ p.label }}</option>
+            {% endfor %}
+        </select>
+
+        <div class="segmented unit-toggle" role="radiogroup" aria-label="Unit">
+            {% for value, label in {'bits': 'Bits', 'bytes': 'Bytes'} %}
+                <input type="radio" name="globalUnit" id="unit{{ label }}" value="{{ value }}"
+                       {% if graph_trafficUnit.string() == value %}checked{% endif %}
+                       {{ bind(graph_trafficUnit) }} data-on:change="@post('{{ applyGlobals.url() }}')">
+                <label for="unit{{ label }}">{{ label }}</label>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="controls-end">
+        {# Neutral while an import runs; levelled only when it falls behind or failed (2.1). #}
+        <div class="controls-status" {% if not chip.visible %}hidden{% endif %}>
+            <a class="chip" id="importChip" href="#/health" title="Open Health"
+               {% if chip.running %}data-state="running"{% endif %}
+               {% if chip.level %}data-level="{{ chip.level }}"{% endif %}>
+                <span class="chip-dot" aria-hidden="true"></span>
+                {{ chip.label }}
+                {% if chip.running %}
+                    <span>{{ chip.progress }}%{% if chip.eta %} · {{ chip.eta }}{% endif %}</span>
+                {% endif %}
+            </a>
+        </div>
         <span class="spinner reconnecting" hidden data-attr:hidden="!$_disconnected" data-preserve-attr="hidden">
             <span class="visually-hidden">Reconnecting</span>
         </span>
@@ -53,3 +199,16 @@
                 data-on:click="window.location.reload()">{{ icons.icon('reload') }}</button>
     </div>
 </div>
+
+{# Range icons on the 16px grid of shell/icons.html.twig; the traffic graph header imports them too. #}
+{% macro icon(name) %}
+    {%- set paths = {
+        'clock': '<circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 1.5"/>',
+        'back': '<path d="M13.5 8H3"/><path d="M6.5 4.5 3 8l3.5 3.5"/>',
+        'forward': '<path d="M2.5 8H13"/><path d="M9.5 4.5 13 8l-3.5 3.5"/>',
+        'now': '<path d="M2 8h9"/><path d="M8 5l3 3-3 3"/><path d="M14 2.5v11"/>',
+        'undo': '<path d="M3 6.5h7a3.5 3.5 0 0 1 0 7H6"/><path d="M6 3.5 3 6.5l3 3"/>',
+        'zoom-out': '<circle cx="7" cy="7" r="4.75"/><path d="M4.75 7h4.5M10.5 10.5 14 14"/>',
+    } -%}
+    <svg class="icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">{{ (paths[name] ?? '')|raw }}</svg>
+{%- endmacro %}

@@ -1,222 +1,416 @@
-{#
-    Settings (4.8), interim: the preferences form and the read-only deployment of the old
-    Settings view.
-#}
-<div class="stack">
-    <div class="card">
-        <div class="card-header strong">User Preferences</div>
-        <div class="card-body">
-            <p class="muted">
-                These settings are saved to <code>preferences.json</code> and applied on top of
-                your deployment configuration. They take effect immediately across all open tabs.
-            </p>
+{# Settings (4.8). Controls take their value from data-bind, never from selected or checked,
+   so a morph cannot reset an unsaved edit. #}
+{% set s = pages.settings %}
+{% set g = s.general %}
+{% set tabs = {general: 'General', sources: 'Sources', storage: 'Storage', integrations: 'Integrations', system: 'System'} %}
+{% macro status(level, text) %}
+    <p class="settings-status"><span class="status-dot"{% if level %} data-level="{{ level }}"{% endif %}></span> {{ text }}</p>
+{% endmacro %}
+{% macro origin(from) %}
+    {% if from == 'default' %}<small>default</small>{% else %}<small>from <code>{{ from }}</code></small>{% endif %}
+{% endmacro %}
+{% import _self as ui %}
+<div class="settings stack"
+     data-init="['general', 'sources', 'storage', 'integrations', 'system'].includes($_settings_tab) || ($_settings_tab = 'general')">
+    <div class="tabs" role="tablist" aria-label="Settings sections">
+        {% for id, label in tabs %}
+            <button type="button" role="tab" id="settingsTab-{{ id }}" aria-controls="settingsPanel-{{ id }}"
+                    aria-selected="{{ loop.first ? 'true' : 'false' }}" tabindex="{{ loop.first ? '0' : '-1' }}"
+                    data-attr:aria-selected="$_settings_tab === '{{ id }}' ? 'true' : 'false'"
+                    data-preserve-attr="aria-selected tabindex"
+                    data-on:click="$_settings_tab = '{{ id }}'">{{ label }}</button>
+        {% endfor %}
+    </div>
 
-            <div class="grid">
-
-                {# Default view #}
-                <div>
-                    <label class="strong muted">Default view</label>
-                    {% set _v = settings_defaultView.string() %}
-                    <select  {{ bind(settings_defaultView) }}>
-                        <option value="graphs" {{ _v == 'graphs' ? 'selected' : '' }}>Graphs</option>
-                        <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
-                        <option value="statistics" {{ _v == 'statistics' ? 'selected' : '' }}>Statistics</option>
-                    </select>
-                </div>
-
-                {# Default log level #}
-                <div>
-                    <label class="strong muted">Log level</label>
-                    {% set _v = settings_logPriority.string() %}
-                    <select  {{ bind(settings_logPriority) }}>
-                        <option value="debug" {{ _v == 'debug' ? 'selected' : '' }}>Debug</option>
-                        <option value="info" {{ _v == 'info' ? 'selected' : '' }}>Info</option>
-                        <option value="notice" {{ _v == 'notice' ? 'selected' : '' }}>Notice</option>
-                        <option value="warning" {{ _v == 'warning' ? 'selected' : '' }}>Warning</option>
-                        <option value="error" {{ _v == 'error' ? 'selected' : '' }}>Error</option>
-                    </select>
-                </div>
-
-            </div>{# /row #}
-
-            <hr>
-            <h6 class="muted upper">Graph defaults</h6>
-
-            <div class="grid">
-
-                {# Default graph display #}
-                <div>
-                    <label class="strong muted">Display</label>
-                    {% set _v = settings_graphDisplay.string() %}
-                    <select  {{ bind(settings_graphDisplay) }}>
-                        <option value="sources" {{ _v == 'sources' ? 'selected' : '' }}>Sources</option>
-                        <option value="ports" {{ _v == 'ports' ? 'selected' : '' }}>Ports</option>
-                        <option value="protocols" {{ _v == 'protocols' ? 'selected' : '' }}>Protocols</option>
-                    </select>
-                </div>
-
-                {# Default graph datatype #}
-                <div>
-                    <label class="strong muted">Datatype</label>
-                    {% set _v = settings_graphDatatype.string() %}
-                    <select  {{ bind(settings_graphDatatype) }}>
-                        <option value="traffic" {{ _v == 'traffic' ? 'selected' : '' }}>Traffic (bits/s)</option>
-                        <option value="packets" {{ _v == 'packets' ? 'selected' : '' }}>Packets/s</option>
-                        <option value="bytes" {{ _v == 'bytes' ? 'selected' : '' }}>Bytes</option>
-                        <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
-                    </select>
-                </div>
-
-                {# Default graph protocols #}
-                <div>
-                    <label class="strong muted">Protocols</label>
-                    {% set _protos = settings_graphProtocols.array() %}
-                    <select  {{ bind(settings_graphProtocols) }} multiple>
-                        <option value="any" {{ 'any' in _protos ? 'selected' : '' }}>Any</option>
-                        <option value="tcp" {{ 'tcp' in _protos ? 'selected' : '' }}>TCP</option>
-                        <option value="udp" {{ 'udp' in _protos ? 'selected' : '' }}>UDP</option>
-                        <option value="icmp" {{ 'icmp' in _protos ? 'selected' : '' }}>ICMP</option>
-                        <option value="other" {{ 'other' in _protos ? 'selected' : '' }}>Other</option>
-                    </select>
-                    <div class="help">Hold Ctrl/⌘ to select multiple.</div>
-                </div>
-
-            </div>{# /row #}
-
-            <hr>
-            <h6 class="muted upper">Flow &amp; statistics defaults</h6>
-
-            <div class="grid">
-
-                {# Default flow limit #}
-                <div>
-                    <label class="strong muted">Flow limit</label>
-                    {% set _v = settings_flowLimit.int() %}
-                    <select  {{ bind(settings_flowLimit) }}>
-                        {% for n in [20, 50, 100, 500, 1000, 10000] %}
-                        <option value="{{ n }}" {{ _v == n ? 'selected' : '' }}>{{ n }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                {# Default stats order-by #}
-                <div>
-                    <label class="strong muted">Statistics order by</label>
-                    {% set _v = settings_statsOrderBy.string() %}
-                    <select  {{ bind(settings_statsOrderBy) }}>
-                        <option value="bytes" {{ _v == 'bytes' ? 'selected' : '' }}>Bytes</option>
-                        <option value="packets" {{ _v == 'packets' ? 'selected' : '' }}>Packets</option>
-                        <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
-                        <option value="pps" {{ _v == 'pps' ? 'selected' : '' }}>Packets/s</option>
-                        <option value="bps" {{ _v == 'bps' ? 'selected' : '' }}>Bits/s</option>
-                        <option value="bpp" {{ _v == 'bpp' ? 'selected' : '' }}>Bytes/packet</option>
-                    </select>
-                </div>
-
-            </div>{# /row #}
-
-            <hr>
-            <h6 class="muted upper">Date &amp; time display</h6>
-
-            <div class="grid">
-                <div>
-                    <label class="strong muted">Timezone</label>
-                    <div class="help">Choose which timezone to use when displaying dates in charts and timestamps.</div>
-                    <div class="choice">
-                        <input  type="radio" name="displayTz" id="displayTz_browser"
-                               value="browser"
-                               {{ bind(displayTz) }}>
-                        <label  for="displayTz_browser">
-                            Browser timezone <span class="muted">(your local time)</span>
-                        </label>
+    <div role="tabpanel" id="settingsPanel-general" aria-labelledby="settingsTab-general" tabindex="0"
+         data-attr:hidden="$_settings_tab !== 'general'" data-preserve-attr="hidden">
+        <form class="card settings-form" id="settingsForm" aria-labelledby="settingsPreferencesTitle"
+              data-indicator:_settings_saving
+              data-on:submit__prevent="@post('{{ saveSettings.url() }}?scope=general')">
+            <header>
+                <h2 id="settingsPreferencesTitle">Preferences</h2>
+                <span class="card-meta">Saved to <code>preferences.json</code> for everyone who uses this instance.</span>
+            </header>
+            <div class="card-body stack">
+                <fieldset>
+                    <legend>Display</legend>
+                    <div class="grid">
+                        <div class="field">
+                            <label for="settingsDefaultView">Default view</label>
+                            <select id="settingsDefaultView" aria-describedby="settingsDefaultViewHelp" {{ bind(settings_defaultView) }}>
+                                {% for value, label in g.views %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                            </select>
+                            <p class="help" id="settingsDefaultViewHelp">The page the bare address opens.</p>
+                        </div>
+                        <div class="field">
+                            <label for="settingsDefaultRange">Default time range</label>
+                            <select id="settingsDefaultRange" {{ bind(settings_defaultRange) }}>
+                                {% for value, label in g.ranges %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="field">
+                            <span class="field-label" id="settingsDefaultUnitLabel">Default unit</span>
+                            <div class="segmented" role="radiogroup" aria-labelledby="settingsDefaultUnitLabel">
+                                {% for value, label in g.units %}
+                                    <input type="radio" name="settingsDefaultUnit" id="settingsDefaultUnit-{{ value }}" value="{{ value }}" {{ bind(settings_defaultUnit) }}>
+                                    <label for="settingsDefaultUnit-{{ value }}">{{ label }}</label>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="settingsTheme">Theme</label>
+                            <select id="settingsTheme" aria-describedby="settingsThemeHelp" {{ bind(settings_theme) }}>
+                                {% for value, label in g.themes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                            </select>
+                            <p class="help" id="settingsThemeHelp">Default for browsers that have not picked their own theme.</p>
+                        </div>
+                        <div class="field">
+                            <span class="field-label">Tables</span>
+                            <label class="switch">
+                                <input type="checkbox" role="switch" id="settingsCompactTables" aria-describedby="settingsCompactTablesHelp" {{ bind(settings_compactTables) }}>
+                                Compact tables
+                            </label>
+                            <p class="help" id="settingsCompactTablesHelp">Tighter rows, so more of a result fits on screen.</p>
+                        </div>
+                        <div class="field">
+                            <span class="field-label" id="settingsTimezoneLabel">Timezone display</span>
+                            <div class="segmented" role="radiogroup" aria-labelledby="settingsTimezoneLabel" aria-describedby="settingsTimezoneHelp">
+                                {% for value, label in g.timezones %}
+                                    <input type="radio" name="settingsDisplayTz" id="settingsDisplayTz-{{ value }}" value="{{ value }}" {{ bind(displayTz) }}>
+                                    <label for="settingsDisplayTz-{{ value }}">{{ label }}</label>
+                                {% endfor %}
+                            </div>
+                            <p class="help" id="settingsTimezoneHelp">Capture timezone: <code>{{ s.captureTz }}</code>. Browser: this computer's clock.</p>
+                        </div>
                     </div>
-                    <div class="choice">
-                        <input  type="radio" name="displayTz" id="displayTz_server"
-                               value="server"
-                               {{ bind(displayTz) }}>
-                        <label  for="displayTz_server">
-                            Capture timezone (<span data-text="${{ nfcapdTz.id() }}"></span>)
-                        </label>
+                </fieldset>
+
+                <fieldset>
+                    <legend>Graph defaults</legend>
+                    <div class="grid">
+                        <div class="field">
+                            <label for="settingsGraphDisplay">Display by</label>
+                            <select id="settingsGraphDisplay" {{ bind(settings_graphDisplay) }}>
+                                {% for value, label in g.graphDisplays %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="settingsGraphDatatype">Data type</label>
+                            <select id="settingsGraphDatatype" {{ bind(settings_graphDatatype) }}>
+                                {% for value, label in g.datatypes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="settingsGraphProtocol">Protocol</label>
+                            <select id="settingsGraphProtocol" {{ bind(settings_graphProtocols) }}>
+                                {% for value, label in g.protocols %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                            </select>
+                        </div>
                     </div>
-                </div>
-            </div>{# /row #}
+                </fieldset>
 
-            <hr>
-            <h6 class="muted upper">Filter presets</h6>
+                <fieldset>
+                    <legend>Query defaults</legend>
+                    <div class="grid">
+                        <div class="field">
+                            <label for="settingsFlowLimit">Flow limit</label>
+                            <select id="settingsFlowLimit" aria-describedby="settingsFlowLimitHelp" {{ bind(settings_flowLimit) }}>
+                                {% for n in g.flowLimits %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+                            </select>
+                            <p class="help" id="settingsFlowLimitHelp">Flow records a Flows query returns at most.</p>
+                        </div>
+                        <div class="field">
+                            <label for="settingsStatsOrderBy">Statistics order by</label>
+                            <select id="settingsStatsOrderBy" {{ bind(settings_statsOrderBy) }}>
+                                {% for value, label in g.orderBy %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </fieldset>
 
-            <div class="grid">
-                <div>
-                    <label class="strong muted">
-                        nfdump filter presets
-                        <span class="muted">(one per line, offered as quick picks on the Flows and Top Talkers pages)</span>
-                    </label>
-                    <textarea id="settings-filters-textarea"
-                              class="mono"
-                              {{ bind(settings_filtersText) }}
-                              rows="5"
-                              placeholder="proto tcp&#10;dst port 443&#10;host 192.168.1.1"></textarea>
-                </div>
-            </div>{# /row #}
-
-            <div class="cluster cluster-end">
-                <button data-variant="primary" data-size="sm"
-                        data-indicator:_settings_saving
-                        data-on:click="document.dispatchEvent(new CustomEvent('nfsen-global-filters-updated',{detail:{filters:(document.getElementById('settings-filters-textarea')?.value||'').split('\n').map(s=>s.trim()).filter(s=>s)}})); window.showMessage('success', 'Preferences saved.', true); @post('{{ saveSettings.url() }}')">
-                    <span data-show="$_settings_saving" style="display:none;"
-                          class="spinner" role="status" aria-hidden="true"></span>
-                    Save preferences
-                </button>
+                <fieldset>
+                    <legend>Logging</legend>
+                    <div class="grid">
+                        <div class="field">
+                            <label for="settingsLogPriority">Log level</label>
+                            <select id="settingsLogPriority" aria-describedby="settingsLogPriorityHelp" {{ bind(settings_logPriority) }}>
+                                {% for value, label in g.logLevels %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                            </select>
+                            <p class="help" id="settingsLogPriorityHelp">Messages below this level are not logged. Health shows the recent ones.</p>
+                        </div>
+                    </div>
+                </fieldset>
             </div>
+            <footer>
+                <small>New defaults apply to pages opened after the save.</small>
+                <button type="submit" id="settingsSave" data-variant="primary"
+                        data-attr:disabled="$_settings_saving" data-preserve-attr="disabled">Save settings</button>
+            </footer>
+        </form>
+    </div>
 
-        </div>{# /card-body #}
-    </div>{# /card #}
+    {% set src = s.sources %}
+    <div role="tabpanel" id="settingsPanel-sources" aria-labelledby="settingsTab-sources" tabindex="0" hidden
+         data-attr:hidden="$_settings_tab !== 'sources'" data-preserve-attr="hidden">
+        <section class="card" aria-labelledby="settingsSourcesTitle">
+            <header>
+                <h2 id="settingsSourcesTitle">Sources</h2>
+                <span class="badge">Read-only</span>
+            </header>
+            <div class="card-body stack">
+                <p class="help">Set through environment variables or <code>settings.php</code>. Restart the container to apply changes.</p>
+                <dl class="settings-facts">
+                    <dt>Sources</dt>
+                    <dd>
+                        {% if src.sources is empty %}None configured{% else %}
+                            <ul class="settings-values">{% for source in src.sources %}<li><code>{{ source }}</code></li>{% endfor %}</ul>
+                        {% endif %}
+                        {{ ui.origin(src.sourcesOrigin) }}
+                    </dd>
+                    <dt>Ports</dt>
+                    <dd>
+                        {% if src.ports is empty %}None tracked{% else %}
+                            <ul class="settings-values">{% for port in src.ports %}<li><code>{{ port }}</code></li>{% endfor %}</ul>
+                        {% endif %}
+                        {{ ui.origin(src.portsOrigin) }}
+                    </dd>
+                    <dt>Port direction</dt>
+                    <dd>
+                        <code>{{ src.portDirection }}</code>
+                        {{ {dst: 'A port series counts flows to the port.', src: 'A port series counts flows from the port.', any: 'A port series counts flows to or from the port.'}[src.portDirection] ?? '' }}
+                        {{ ui.origin(src.portDirectionOrigin) }}
+                    </dd>
+                    <dt>Profiles data</dt>
+                    <dd>
+                        <code>{{ src.profilesData }}</code>
+                        {% if not src.profilesDataExists %}<span class="status-text" data-level="error">missing</span>{% endif %}
+                        {{ ui.origin(src.profilesDataOrigin) }}
+                    </dd>
+                    <dt>Default profile</dt>
+                    <dd><code>{{ src.defaultProfile }}</code> {{ ui.origin(src.defaultProfileOrigin) }}</dd>
+                    <dt>Detected profiles</dt>
+                    <dd><ul class="settings-values">{% for profile in src.profiles %}<li><code>{{ profile }}</code></li>{% endfor %}</ul></dd>
+                </dl>
 
-    <div class="card">
-        <div class="cluster card-header strong cluster-between">
-            Deployment configuration
-            <span class="badge">read-only</span>
-        </div>
-        <div class="card-body">
-            <p class="muted">
-                These values come from environment variables or <code>settings.php</code>.
-                Restart the container to apply changes.
-            </p>
-            <table class="muted">
-                <tbody>
-                    <tr>
-                        <td class="muted" style="width:40%">Sources</td>
-                        <td><code>{{ sources|join(', ') ?: '(none configured)' }}</code></td>
-                    </tr>
-                    <tr>
-                        <td class="muted">Ports</td>
-                        <td><code>{{ ports|join(', ') ?: '(none configured)' }}</code></td>
-                    </tr>
-                    <tr>
-                        <td class="muted">Datasource</td>
-                        <td><code>{{ deployDatasource }}</code></td>
-                    </tr>
-                    <tr>
-                        <td class="muted">Import years</td>
-                        <td><code>{{ deployImportYears }}</code></td>
-                    </tr>
-                    <tr>
-                        <td class="muted">Default theme</td>
-                        <td><code>{{ deployDefaultTheme }}</code>{% if deployDefaultTheme == 'auto' %} <span class="muted">(follows browser)</span>{% endif %}</td>
-                    </tr>
-                    <tr>
-                        <td class="muted">nfdump binary</td>
-                        <td><code>{{ deployNfdumpBinary }}</code></td>
-                    </tr>
-                    <tr>
-                        <td class="muted">Profiles data path</td>
-                        <td><code>{{ deployNfdumpProfiles }}</code></td>
-                    </tr>
-                    <tr>
-                        <td class="muted">Preferences file</td>
-                        <td><code>{{ deployPrefsFile }}</code></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+                <h3 id="settingsCaptureDirsTitle">Capture directories</h3>
+                {% if src.captureDirs is empty %}
+                    <p>No sources are configured, so there is nothing to capture into.</p>
+                {% else %}
+                    <div class="table-wrap">
+                        <table aria-labelledby="settingsCaptureDirsTitle" id="settingsCaptureDirs">
+                            <thead>
+                                <tr><th scope="col">Profile</th><th scope="col">Source</th><th scope="col">Directory</th><th scope="col">State</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for dir in src.captureDirs %}
+                                    <tr{% if not dir.exists %} data-level="error"{% endif %}>
+                                        <td><code>{{ dir.profile }}</code></td>
+                                        <td><code>{{ dir.source }}</code></td>
+                                        <td data-kind="address">{{ dir.path }}</td>
+                                        <td>
+                                            <span class="status-dot" data-level="{{ dir.exists ? 'success' : 'error' }}"></span>
+                                            {{ dir.exists ? 'Exists' : 'Missing' }}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+
+    {% set st = s.storage %}
+    <div role="tabpanel" id="settingsPanel-storage" aria-labelledby="settingsTab-storage" tabindex="0" hidden
+         data-attr:hidden="$_settings_tab !== 'storage'" data-preserve-attr="hidden">
+        <section class="card" aria-labelledby="settingsStorageTitle">
+            <header>
+                <h2 id="settingsStorageTitle">Storage</h2>
+                <span class="badge">Read-only</span>
+            </header>
+            <div class="card-body stack">
+                <p class="help">Set through environment variables or <code>settings.php</code>. Restart the container to apply changes.</p>
+                <dl class="settings-facts">
+                    <dt>Datasource</dt>
+                    <dd><code>{{ st.datasource }}</code> {{ ui.origin(st.datasourceOrigin) }}</dd>
+                    <dt>{{ st.location.label }}</dt>
+                    <dd>
+                        <code>{{ st.location.value }}</code>
+                        {% if st.location.exists is same as(false) %}<span class="status-text" data-level="error">missing</span>{% endif %}
+                        {{ ui.origin(st.location.origin) }}
+                    </dd>
+                    <dt>Import years</dt>
+                    <dd>{{ st.importYears }} {{ ui.origin(st.importYearsOrigin) }}</dd>
+                    <dt>State directory</dt>
+                    <dd>
+                        <code>{{ st.stateDir }}</code>
+                        {% if not st.stateDirWritable %}<span class="status-text" data-level="error">not writable</span>{% endif %}
+                    </dd>
+                    <dt>Preferences file</dt>
+                    <dd>
+                        <code>{{ st.prefsFile }}</code>
+                        {% if not st.prefsFileExists %}<small>not written yet</small>{% endif %}
+                    </dd>
+                    <dt>Settings file</dt>
+                    <dd>{% if st.settingsFile %}<code>{{ st.settingsFile }}</code>{% else %}None: configured by environment variables{% endif %}</dd>
+                    <dt>Top-N retention</dt>
+                    <dd>
+                        {% if st.topnRetentionDays > 0 %}{{ st.topnRetentionDays }} {{ st.topnRetentionDays == 1 ? 'day' : 'days' }}{% else %}0 days: collection disabled{% endif %}
+                        {{ ui.origin(st.topnRetentionOrigin) }}
+                    </dd>
+                </dl>
+
+                <h3 id="settingsSqliteTitle">SQLite store</h3>
+                <p class="help">Saved filters, alert history, query timings and the per-interval top-N data.</p>
+                <dl class="settings-facts">
+                    <dt>File</dt>
+                    <dd>
+                        <code>{{ st.sqlite.path }}</code>
+                        {% if not st.sqlite.exists %}<small>not created yet</small>{% elseif not st.sqlite.writable %}<span class="status-text" data-level="error">not writable</span>{% endif %}
+                    </dd>
+                    {% if st.sqlite.exists %}
+                        <dt>Size</dt>
+                        <dd>{{ st.sqlite.size }}</dd>
+                        <dt>Journal mode</dt>
+                        <dd>{{ st.sqlite.journalMode ?: 'unknown' }}</dd>
+                        <dt>Schema version</dt>
+                        <dd>{{ st.sqlite.schemaVersion }} <small>of {{ st.sqlite.latestVersion }}</small></dd>
+                    {% endif %}
+                    {% if st.sqlite.error %}
+                        <dt>Problem</dt>
+                        <dd><span class="status-text" data-level="error">{{ st.sqlite.error }}</span></dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </section>
+    </div>
+
+    {% set integ = s.integrations %}
+    <div role="tabpanel" id="settingsPanel-integrations" aria-labelledby="settingsTab-integrations" tabindex="0" hidden
+         data-attr:hidden="$_settings_tab !== 'integrations'" data-preserve-attr="hidden">
+        <section class="card" aria-labelledby="settingsIntegrationsTitle">
+            <header><h2 id="settingsIntegrationsTitle">Integrations</h2></header>
+            <div class="card-body settings-integrations">
+                <section class="integration" id="integrationRdns" aria-labelledby="integrationRdnsTitle">
+                    <h3 id="integrationRdnsTitle">Reverse DNS</h3>
+                    <form class="cluster" data-indicator:_settings_rdns_saving
+                          data-on:submit__prevent="@post('{{ saveSettings.url() }}?scope=rdns')">
+                        <label class="switch">
+                            <input type="checkbox" role="switch" id="settingsRdnsEnabled" aria-describedby="integrationRdnsHelp" {{ bind(settings_rdnsEnabled) }}>
+                            Reverse DNS lookups
+                        </label>
+                        <button type="submit" id="settingsRdnsSave" data-size="sm"
+                                data-attr:disabled="$_settings_rdns_saving" data-preserve-attr="disabled">Save</button>
+                    </form>
+                    <p class="help" id="integrationRdnsHelp">The IP info dialog asks DNS for the host name of an address.</p>
+                </section>
+
+                <section class="integration" id="integrationNetbox" aria-labelledby="integrationNetboxTitle">
+                    <h3 id="integrationNetboxTitle">Netbox</h3>
+                    {{ ui.status(integ.netbox.configured ? 'success' : '', integ.netbox.configured ? 'Configured' : 'Not configured') }}
+                    <dl class="settings-facts">
+                        <dt>URL</dt>
+                        <dd>{% if integ.netbox.url %}<code>{{ integ.netbox.url }}</code>{% else %}Not set <small>(<code>NFSEN_NETBOX_URL</code>)</small>{% endif %}</dd>
+                        <dt>Token</dt>
+                        <dd>{% if integ.netbox.token %}<code>{{ integ.netbox.token }}</code>{% else %}Not set <small>(<code>NFSEN_NETBOX_TOKEN</code>)</small>{% endif %}</dd>
+                    </dl>
+                </section>
+
+                <section class="integration" id="integrationGeoip" aria-labelledby="integrationGeoipTitle">
+                    <h3 id="integrationGeoipTitle">GeoIP (MaxMind)</h3>
+                    {% if integ.geoip.active %}
+                        {{ ui.status('success', 'Active: IP lookups use this database, not the web service') }}
+                    {% elseif integ.geoip.configured %}
+                        {{ ui.status('error', integ.geoip.error ?: 'The database could not be opened.') }}
+                    {% else %}
+                        {{ ui.status('', 'Not configured') }}
+                    {% endif %}
+                    <dl class="settings-facts">
+                        <dt>Database</dt>
+                        <dd>{% if integ.geoip.path %}<code>{{ integ.geoip.path }}</code>{% else %}Not set <small>(<code>NFSEN_GEOIP_DB</code>)</small>{% endif %}</dd>
+                        {% if integ.geoip.active %}
+                            <dt>Type</dt>
+                            <dd>{{ integ.geoip.type ?: 'unknown' }}</dd>
+                            <dt>Built</dt>
+                            <dd>{{ integ.geoip.built ?: 'unknown' }}</dd>
+                        {% endif %}
+                    </dl>
+                </section>
+
+                <section class="integration" id="integrationWebService" aria-labelledby="integrationWebServiceTitle">
+                    <h3 id="integrationWebServiceTitle">IP geolocation web service</h3>
+                    {{ ui.status(integ.webService.inUse ? 'success' : '', integ.webService.inUse ? 'In use' : 'Standing by while the GeoIP database answers') }}
+                    <p class="help">Used for public IPs when no GeoIP database is set.</p>
+                    <dl class="settings-facts">
+                        <dt>URL</dt>
+                        <dd><code>{{ integ.webService.url }}</code></dd>
+                        <dt>Token</dt>
+                        <dd>{% if integ.webService.token %}<code>{{ integ.webService.token }}</code>{% else %}Not set <small>(<code>NFSEN_IPINFO_TOKEN</code>)</small>{% endif %}</dd>
+                    </dl>
+                </section>
+
+                <section class="integration" id="integrationEmail" aria-labelledby="integrationEmailTitle">
+                    <h3 id="integrationEmailTitle">Alert email sender</h3>
+                    {% if integ.email.from %}
+                        {{ ui.status('success', 'Configured') }}
+                        <dl class="settings-facts">
+                            <dt>From</dt>
+                            <dd><code>{{ integ.email.from }}</code></dd>
+                        </dl>
+                    {% else %}
+                        {{ ui.status('', 'Not configured (email notifications disabled)') }}
+                    {% endif %}
+                </section>
+            </div>
+        </section>
+    </div>
+
+    <div role="tabpanel" id="settingsPanel-system" aria-labelledby="settingsTab-system" tabindex="0" hidden
+         data-attr:hidden="$_settings_tab !== 'system'" data-preserve-attr="hidden">
+        <section class="card" aria-labelledby="settingsSystemTitle">
+            <header>
+                <h2 id="settingsSystemTitle">System</h2>
+                <span class="badge">Read-only</span>
+            </header>
+            <div class="card-body stack">
+                <p class="help">These values come from environment variables or <code>settings.php</code>. Restart the container to apply changes.</p>
+                {% if st.settingsFile %}
+                    <p class="notice">
+                        <span><code>{{ st.settingsFile }}</code> is loaded. Where it sets a value, that value is used instead of the
+                        variable's. The values in use are listed under In effect below and on the Sources, Storage and Integrations tabs.</span>
+                    </p>
+                {% endif %}
+                <h3 id="settingsInEffectTitle">In effect</h3>
+                <dl class="settings-facts" id="settingsInEffect">
+                    {% for row in s.deployment %}
+                        <dt>{{ row.label }}</dt>
+                        <dd>{% if row.code %}<code>{{ row.value }}</code>{% else %}{{ row.value }}{% endif %} {{ ui.origin(row.origin) }}</dd>
+                    {% endfor %}
+                </dl>
+
+                <h3 id="settingsEnvTitle">Environment variables</h3>
+                <div class="table-wrap">
+                    <table class="settings-env" id="settingsEnv" aria-labelledby="settingsEnvTitle">
+                        <thead>
+                            <tr><th scope="col">Variable</th><th scope="col">Value</th><th scope="col">Source</th><th scope="col">Description</th></tr>
+                        </thead>
+                        {% for group in s.system %}
+                            <tbody>
+                                <tr class="row-group"><th colspan="4" scope="rowgroup">{{ group.label }}</th></tr>
+                                {% for var in group.vars %}
+                                    <tr>
+                                        <th scope="row"><code>{{ var.name }}</code></th>
+                                        <td><code>{{ var.value }}</code></td>
+                                        <td>{{ var.set ? 'Set' : 'Default' }}</td>
+                                        <td>{{ var.doc }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+        </section>
     </div>
 </div>

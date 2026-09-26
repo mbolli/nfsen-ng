@@ -82,7 +82,7 @@ describe('Settings::fromArray()', function (): void {
             ->and($s->filters)->toBe([])
             ->and($s->datasourceName)->toBe('RRD')
             ->and($s->processorName)->toBe('NfDump')
-            ->and($s->defaultView)->toBe('graphs')
+            ->and($s->defaultView)->toBe('overview')
             ->and($s->defaultGraphDisplay)->toBe('sources')
             ->and($s->defaultGraphDatatype)->toBe('traffic')
             ->and($s->defaultGraphProtocols)->toBe(['any'])
@@ -199,7 +199,7 @@ describe('Settings::fromEnv()', function (): void {
             ->and($s->nfdumpMaxProcesses)->toBeGreaterThanOrEqual(1)
             ->and($s->sources)->toBe([])
             ->and($s->ports)->toBe([])
-            ->and($s->defaultView)->toBe('graphs')
+            ->and($s->defaultView)->toBe('overview')
             ->and($s->defaultGraphDatatype)->toBe('traffic')
             ->and($s->defaultRange)->toBe('24h')
             ->and($s->defaultUnit)->toBe('bits')
@@ -409,9 +409,24 @@ describe('redesign settings (preferences and environment)', function (): void {
         ;
     });
 
-    test('defaultView keeps the legacy view ids for now', function (): void {
-        expect(Settings::fromArray(['frontend' => ['defaults' => ['view' => 'statistics']]])->defaultView)->toBe('statistics')
-            ->and(Settings::fromEnv()->withDefaultView('sankey')->defaultView)->toBe('sankey')
+    test('defaultView holds a page id, mapped from the legacy view ids (D2)', function (): void {
+        expect(Settings::fromArray(['frontend' => ['defaults' => ['view' => 'statistics']]])->defaultView)->toBe('talkers')
+            ->and(Settings::fromEnv()->withDefaultView('sankey')->defaultView)->toBe('conversations')
+            ->and(Settings::fromEnv()->withDefaultView('graphs')->defaultView)->toBe('overview')
+            ->and(Settings::fromEnv()->withDefaultView('investigate')->defaultView)->toBe('flows')
+            ->and(Settings::fromEnv()->withDefaultView('Health')->defaultView)->toBe('health')
+            ->and(Settings::fromEnv()->withDefaultView('dashboard')->defaultView)->toBe('overview')
+            ->and(Settings::fromEnv()->defaultView)->toBe('overview')
+        ;
+    });
+
+    test('normalizeView maps every view id and rejects anything else', function (): void {
+        expect(array_map(Settings::normalizeView(...), ['graphs', 'flows', 'statistics', 'sankey', 'settings', 'investigate']))
+            ->toBe(['overview', 'flows', 'talkers', 'conversations', 'settings', 'flows'])
+            ->and(array_map(Settings::normalizeView(...), ['overview', 'talkers', 'flows', 'conversations', 'alerts', 'health', 'settings']))
+            ->toBe(['overview', 'talkers', 'flows', 'conversations', 'alerts', 'health', 'settings'])
+            ->and(Settings::normalizeView(null))->toBe('overview')
+            ->and(Settings::normalizeView(['graphs']))->toBe('overview')
         ;
     });
 });

@@ -2,85 +2,44 @@
 <?php
 
 /**
- * HTTP Server for nfsen-ng, built on mbolli/php-via (OpenSwoole).
- *
- * Architecture: single page + single SSE connection per tab (CQRS / immediate mode).
- *
- *  Browser  ──GET /──────────────────► page handler  (create signals, actions, view)
- *  Browser  ──GET /_sse─────────────► SseHandler     (one persistent SSE per tab)
- *  Browser  ──POST /_action/:id─────► ActionHandler  (inject signals → run handler → sync)
- *                                          │
- *                                     $c->sync()     (re-render full page → push via SSE)
- *
- * RRD import broadcasts hit ALL tabs subscribed to the 'rrd:live' scope and
- * trigger the same view re-render, so the graph updates automatically without
- * any extra streaming infrastructure.
- *
- * The import daemon (formerly listen.php) runs as a startup coroutine +
- * $app->setInterval() poll: SWOOLE_HOOK_ALL makes sleep() non-blocking.
+ * HTTP server for nfsen-ng on mbolli/php-via (OpenSwoole): one page and one SSE stream per
+ * tab, composed in backend/pages from the Shell, its modules and one class per page.
  */
 
 declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use mbolli\nfsen_ng\actions\AlertActions;
-use mbolli\nfsen_ng\actions\FlowActions;
-use mbolli\nfsen_ng\actions\FlowGraphActions;
-use mbolli\nfsen_ng\actions\GraphActions;
-use mbolli\nfsen_ng\actions\Helpers;
-use mbolli\nfsen_ng\actions\ImportActions;
-use mbolli\nfsen_ng\actions\SankeyActions;
-use mbolli\nfsen_ng\actions\SettingsActions;
-use mbolli\nfsen_ng\actions\StatsActions;
-use mbolli\nfsen_ng\actions\UtilityActions;
-use mbolli\nfsen_ng\common\AlertManager;
 use mbolli\nfsen_ng\common\AppStartup;
 use mbolli\nfsen_ng\common\Config;
-use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\EnvRegistry;
-use mbolli\nfsen_ng\common\HealthChecker;
-use mbolli\nfsen_ng\common\ImportDaemon;
-use mbolli\nfsen_ng\common\Settings;
-use mbolli\nfsen_ng\common\UserPreferences;
 use mbolli\nfsen_ng\mcp\HttpEndpoint;
+use mbolli\nfsen_ng\pages\PageRegistry;
+use mbolli\nfsen_ng\pages\PageStates;
+use mbolli\nfsen_ng\pages\Shell;
 use Mbolli\PhpVia\Config as ViaConfig;
 use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
 
-// ─── Via configuration ───────────────────────────────────────────────────────
-
 $isDev = (bool) EnvRegistry::value('NFSEN_DEV_MODE');
-$workerNum = (int) EnvRegistry::value('SWOOLE_WORKER_NUM');  // php-via is single-worker
-$maxRequest = (int) EnvRegistry::value('SWOOLE_MAX_REQUEST');    // 0 = unlimited (default for long-lived SSE servers)
-$maxCoroutine = (int) EnvRegistry::value('SWOOLE_MAX_COROUTINE');
-$logLevel = (string) EnvRegistry::value('NFSEN_LOG_LEVEL');
-$logLevel = preg_replace('/^log_/i', '', $logLevel) ?: 'info';
+$logLevel = preg_replace('/^log_/i', '', (string) EnvRegistry::value('NFSEN_LOG_LEVEL')) ?: 'info';
 
 $viaConfig = (new ViaConfig())
     ->withHost('0.0.0.0')
     ->withPort(9000)
     ->withDevMode($isDev)
     ->withTemplateDir(__DIR__ . '/templates')
-    // Scoped to frontend/ only, NOT the project root. withStaticDir() has no
-    // extension allowlist, so pointing it at the repo root would serve
-    // composer.json, backend/**/*.php, and even .git/* over plain HTTP.
+    // frontend/ only: withStaticDir() has no extension allowlist, so the repo root would
+    // serve composer.json, backend/**/*.php and .git/* over plain HTTP.
     ->withStaticDir(__DIR__ . '/../frontend')
     ->withStaticCacheControl(static function (string $filePath, string $mimeType) use ($isDev): string {
-        // Always revalidate in devMode so local edits under frontend/ show up on
-        // the next reload instead of being cached for up to a year (see below).
         if ($isDev) {
             return 'no-cache';
         }
 
-        // nfsen-ng's own JS/CSS is requested with a `?v={{ assetVersion }}` cache-busting
-        // query string (Config::assetVersion(), derived from frontend/ mtimes, see
-        // its docblock for why this isn't Config::VERSION), so a long cache is safe:
-        // any change to those files changes the URL, not just the file contents. The
-        // vendored third-party libs below are NOT versioned in the template, so they
-        // stay on a shorter, revalidated cache instead.
-        $unversioned = ['nouislider.min.js', 'echarts.min.js'];
-        if (in_array(basename($filePath), $unversioned, true)) {
+        // Our own JS/CSS carry ?v={{ assetVersion }}, so a changed file gets a new URL; the
+        // vendored libraries are not versioned in the template and revalidate weekly.
+        if (in_array(basename($filePath), ['nouislider.min.js', 'echarts.min.js'], true)) {
             return 'public, max-age=604800, must-revalidate';
         }
 
@@ -90,22 +49,11 @@ $viaConfig = (new ViaConfig())
     ->withH2c()
     ->withBrotli()
     ->withSwooleSettings([
-        'worker_num' => $workerNum,
-        'max_request' => $maxRequest,
-        'max_coroutine' => $maxCoroutine,
-        // openswoole 26.2's native-curl hook segfaults the worker as soon as a curl
-        // request needs a name lookup, once libcurl is 8.20.0 or newer. Bisected by
-        // building each release and preloading it: 8.4.0/8.7.1/8.11.1/8.14.1/8.16.0/
-        // 8.19.0 all fine, 8.20.0 and everything after crash. libcurl 8.20.0 changed
-        // how its threaded resolver drives curl_multi_socket_action (curl#21558), and
-        // openswoole's reactor bridge doesn't cope: a hostname kills the worker whether
-        // or not it resolves, a literal IP is fine, and pre-seeding CURLOPT_RESOLVE
-        // avoids it. Nothing to do with the PHP version: 8.4 is affected the same way
-        // once its libcurl is new enough.
-        //
-        // Drop that one hook and keep the rest, so stream-wrapper IO (IpLookup, the
-        // nfdump pipes) stays non-blocking; curl calls (VictoriaMetrics queries and
-        // alert webhooks) just block the worker until openswoole fixes it.
+        'worker_num' => (int) EnvRegistry::value('SWOOLE_WORKER_NUM'), // php-via is single-worker
+        'max_request' => (int) EnvRegistry::value('SWOOLE_MAX_REQUEST'), // 0 = unlimited, for long-lived SSE
+        'max_coroutine' => (int) EnvRegistry::value('SWOOLE_MAX_COROUTINE'),
+        // openswoole 26.2's native-curl hook segfaults on any name lookup with libcurl >= 8.20.0
+        // (curl#21558), so curl calls block instead; stream IO stays hooked.
         'hook_flags' => (curl_version()['version_number'] ?? 0) >= 0x08_14_00
             ? SWOOLE_HOOK_ALL & ~SWOOLE_HOOK_NATIVE_CURL
             : SWOOLE_HOOK_ALL,
@@ -119,670 +67,44 @@ $viaConfig = (new ViaConfig())
 
 $app = new Via($viaConfig);
 
-// ─── Startup: config + import daemon ─────────────────────────────────────────
-
 $app->onStart(static fn () => AppStartup::boot($app));
 
-// ─── Single-page application ──────────────────────────────────────────────────
-//
-// Everything lives on '/'. All former /api/* routes become $c->action() calls.
-// The browser registers one SSE connection. Every action calls $c->sync() which
-// re-renders the full page and pushes it over the SSE channel. Brotli + DOM
-// morphing keeps the payload and diff cost low.
-//
-// Signal naming mirrors the existing Datastar store keys used in the frontend
-// templates so Phase-4 template migration can happen incrementally.
-
-// MCP over HTTP. Registered unconditionally because routes are built before settings are
-// loaded; the middleware answers 404 when NFSEN_MCP_HTTP is off, which is what an operator who
-// never enabled it should see. It answers every other request to this path itself, so the
-// handler below is unreachable in practice.
+// MCP over HTTP. Registered unconditionally because routes are built before settings load;
+// the middleware answers 404 while NFSEN_MCP_HTTP is off and every request otherwise.
 $app->page(
     HttpEndpoint::PATH,
     static fn (Context $c) => $c->renderString('MCP endpoint')
 )->middleware(new HttpEndpoint(Config::VERSION));
 
-$app->page('/', function (Context $c) use ($app): void {
-    $debug = Debug::getInstance();
-    $fatalError = $app->globalState('_fatalError', null);
+$app->page('/', static function (Context $c) use ($app): void {
+    $states = new PageStates();
 
-    // ── Signals ─────────────────────────────────────────────────────────────
-    // clientWritable: true  → browser may update this signal via data-bind / data-on
-    // clientWritable: false → server-owned; browser reads but never writes
-
-    // _currentView is a browser-local signal (underscore prefix = never posted to server).
-    // It is initialised client-side via data-signals in the template; no server registration.
-    $datestart = $c->signal(time() - 86400, 'datestart', clientWritable: true);
-    $dateend = $c->signal(time(), 'dateend', clientWritable: true);
-    // Actual data range, derived from RRD first/last timestamps, updated on every render.
-    // Server-owned (never client-writable), used to bound the date-range slider.
-    $dataRangeMin = $c->signal(time() - Config::$settings->importYears * 365 * 86400, 'data_range_min');
-    $dataRangeMax = $c->signal(time(), 'data_range_max');
-    $error = $c->signal('', '_error');
-
-    // Graph filter signals (client-writable: filter UI updates these)
-    $graphDisplay = $c->signal(
-        Config::$settings->defaultGraphDisplay,
-        'graph_display',
-        clientWritable: true
-    );
-    // Seed the selection the way the Sources <select> presents itself in each
-    // display mode: multi-select of every source for "sources", a single source
-    // for "protocols", the "Any" aggregate for "ports" (see graph-filters.html.twig).
-    $graphSources = $c->signal(match (Config::$settings->defaultGraphDisplay) {
-        'ports' => ['any'],
-        'protocols' => array_slice(Config::$settings->sources, 0, 1),
-        default => Config::$settings->sources,
-    }, 'graph_sources', clientWritable: true);
-    $graphPorts = $c->signal(Config::$settings->ports, 'graph_ports', clientWritable: true);
-    $graphProtocols = $c->signal(
-        Config::$settings->defaultGraphProtocols,
-        'graph_protocols',
-        clientWritable: true
-    );
-    $graphDatatype = $c->signal(
-        Config::$settings->defaultGraphDatatype,
-        'graph_datatype',
-        clientWritable: true
-    );
-    $graphTrafficUnit = $c->signal(Config::$settings->defaultUnit, 'graph_trafficUnit', clientWritable: true);
-    $graphResolution = $c->signal(500, 'graph_resolution', clientWritable: true);
-    // Filtered-graph mode (#166). 'stored' plots the pre-aggregated datasource series
-    // (RRD or VictoriaMetrics, whichever NFSEN_DATASOURCE selects);
-    // 'filtered' re-reads the nfcapd files through an nfdump filter, which only the
-    // run-filtered-graph action may do, never the render path.
-    $graphMode = $c->signal('stored', 'graph_mode', clientWritable: true);
-    $graphFilter = $c->signal('', 'graph_filter', clientWritable: true);
-    // Server-side graph metadata (read-only for browser)
-    $graphIsLive = $c->signal(false, 'graph_isLive');
-    $graphActualRes = $c->signal(0, 'graph_actualResolution');
-    $graphLastUpdate = $c->signal(0, 'graph_lastUpdate');
-    // Query progress, server-owned. Updated from the worker coroutine via syncSignals()
-    // so a long build reports per-mille progress without re-rendering the page each tick.
-    // query_exact distinguishes the filtered graph's known bin count from the byte-sampled
-    // estimate a single-shot nfdump can offer.
-    $queryRunning = $c->signal(false, 'query_running');
-    $queryPermille = $c->signal(0, 'query_permille');
-    $queryStatus = $c->signal('', 'query_status');
-    $queryEta = $c->signal('', 'query_eta');
-    $queryExact = $c->signal(true, 'query_exact');
-    // Which panel the running query belongs to ('graph'|'flows'|'stats'). The Investigate
-    // view shows the graph and flows panels at once, so without this each would render the
-    // other's progress on its own button.
-    $queryKind = $c->signal('', 'query_kind');
-
-    // Flow signals
-    $flowFilter = $c->signal('', 'flows_filter', clientWritable: true);
-    // Traffic-over-time panel on the Flows tab (#166). Hidden until asked for, because
-    // building it reads capture files.
-    $flowsGraphShown = $c->signal(false, 'flows_graph_shown', clientWritable: true);
-    $flowsGraphUnit = $c->signal('bytes', 'flows_graph_unit', clientWritable: true);
-    // Which series the panel is showing: the cache key of the last build, so a moving
-    // window does not blank a graph someone waited for.
-    $flowsGraphKey = $c->signal('', 'flows_graph_key');
-    $flowsGraphFingerprint = $c->signal('', 'flows_graph_fingerprint');
-    $flowLimit = $c->signal(
-        Config::$settings->defaultFlowLimit,
-        'flows_limit',
-        clientWritable: true
-    );
-    $flowAggBidirectional = $c->signal(false, 'flows_agg_bidirectional', clientWritable: true);
-    $flowAggProto = $c->signal(false, 'flows_agg_proto', clientWritable: true);
-    $flowAggSrcPort = $c->signal(false, 'flows_agg_srcport', clientWritable: true);
-    $flowAggDstPort = $c->signal(false, 'flows_agg_dstport', clientWritable: true);
-    $flowAggSrcIp = $c->signal('none', 'flows_agg_srcip', clientWritable: true);
-    $flowAggSrcIpPrefix = $c->signal('', 'flows_agg_srcip_prefix', clientWritable: true);
-    $flowAggDstIp = $c->signal('none', 'flows_agg_dstip', clientWritable: true);
-    $flowAggDstIpPrefix = $c->signal('', 'flows_agg_dstip_prefix', clientWritable: true);
-    $flowOrderByTstart = $c->signal(false, 'flows_orderByTstart', clientWritable: true);
-    // Byte thresholds for flows, prepended as filter expressions (bytes > / bytes <)
-    $flowLowerLimit = $c->signal('', 'flows_lower_limit', clientWritable: true);
-    $flowUpperLimit = $c->signal('', 'flows_upper_limit', clientWritable: true);
-    $flowCount = $c->signal(0, 'flows_count');
-
-    // Stats signals
-    $statsFilter = $c->signal('', 'stats_filter', clientWritable: true);
-    $statsCount = $c->signal(10, 'stats_count', clientWritable: true);
-    $statsFor = $c->signal('record', 'stats_for', clientWritable: true);
-    $statsOrderBy = $c->signal(
-        Config::$settings->defaultStatsOrderBy,
-        'stats_orderBy',
-        clientWritable: true
-    );
-    // Byte thresholds applied as nfdump filter expressions prepended to $statsFilter.
-    // nfdump -l/-L flags are only valid for line/packed output, not for -s statistics mode.
-    $statsLowerLimit = $c->signal('', 'stats_lower_limit', clientWritable: true);
-    $statsUpperLimit = $c->signal('', 'stats_upper_limit', clientWritable: true);
-    // Aggregation for the Flow Records statistic (#174). Separate from the Flows tab's own
-    // set: the two panels are configured independently and one is often left alone for a
-    // while, so sharing the signals would silently re-shape the other tab's next query.
-    $statsAggBidirectional = $c->signal(false, 'stats_agg_bidirectional', clientWritable: true);
-    $statsAggProto = $c->signal(false, 'stats_agg_proto', clientWritable: true);
-    $statsAggSrcPort = $c->signal(false, 'stats_agg_srcport', clientWritable: true);
-    $statsAggDstPort = $c->signal(false, 'stats_agg_dstport', clientWritable: true);
-    $statsAggSrcIp = $c->signal('none', 'stats_agg_srcip', clientWritable: true);
-    $statsAggSrcIpPrefix = $c->signal('', 'stats_agg_srcip_prefix', clientWritable: true);
-    $statsAggDstIp = $c->signal('none', 'stats_agg_dstip', clientWritable: true);
-    $statsAggDstIpPrefix = $c->signal('', 'stats_agg_dstip_prefix', clientWritable: true);
-    // nfcapd file count, updated by count-files action and on initial render
-    $nfcapdFileCount = $c->signal(0, 'nfcapd_file_count');
-    // Bytes behind that file count, so the filtered graph can say what a build will cost
-    // before it starts rather than only warning that cost grows with the window.
-    $nfcapdTotalBytes = $c->signal(0, 'nfcapd_total_bytes');
-    // Inputs the counts above were measured for, so the scan is skipped when nothing changed.
-    $nfcapdMeasured = $c->signal('', 'nfcapd_measured');
-
-    // Sankey signals
-    $sankeyFilter = $c->signal('', 'sankey_filter', clientWritable: true);
-    $sankeyTopN = $c->signal(20, 'sankey_topN', clientWritable: true);
-    $sankeyMetric = $c->signal('bytes', 'sankey_metric', clientWritable: true);
-    // Optional middle column: src IP -> dst L4 port -> dst IP (three-column Sankey)
-    $sankeyShowPorts = $c->signal(false, 'sankey_show_ports', clientWritable: true);
-    // Byte thresholds for sankey, prepended as filter expressions (bytes > / bytes <)
-    $sankeyLowerLimit = $c->signal('', 'sankey_lower_limit', clientWritable: true);
-    $sankeyUpperLimit = $c->signal('', 'sankey_upper_limit', clientWritable: true);
-
-    // Admin / import signals
-    /** @var null|ImportDaemon $daemon */
-    $daemon = $app->globalState('daemon', null);
-
-    /** @var array<string, ImportDaemon> $daemons */
-    $daemons = $app->globalState('daemons', []);
-
-    // Profiles: detect available profiles and restore selected profile from prefs.
-    $availableProfilesList = Config::detectProfiles();
-    $loadedPrefs = UserPreferences::load(Config::$prefsFile);
-    $defaultSelectedProfile = $loadedPrefs !== null
-        ? $loadedPrefs->selectedProfile
-        : Config::$settings->nfdumpProfile;
-    if (!in_array($defaultSelectedProfile, $availableProfilesList, true)) {
-        $defaultSelectedProfile = $availableProfilesList[0] ?? 'live';
+    // Signals and actions all exist before the first render, which freezes Twig's auto-data.
+    Shell::signals($c);
+    foreach (PageRegistry::MODULES as $module) {
+        $module::signals($c);
     }
-    $selectedProfile = $c->signal($defaultSelectedProfile, 'selected_profile', clientWritable: true);
-    $availableProfilesSignal = $c->signal($availableProfilesList, 'available_profiles');
+    foreach (PageRegistry::PAGES as $page) {
+        $page::signals($c);
+    }
 
-    // adminTargetProfile: which profile the admin action buttons target
-    $firstProfile = array_key_first($daemons) ?? Config::$settings->nfdumpProfile;
-    $adminTargetProfile = $c->signal($firstProfile, 'admin_target_profile', clientWritable: true);
+    foreach (['admin:import', 'rrd:live', 'settings:saved', 'alerts:fired'] as $scope) {
+        $c->addScope($scope);
+    }
 
-    // importRunning: true when any daemon is locked
-    $anyLocked = array_reduce($daemons, fn ($carry, $d) => $carry || $d->isLocked(), false);
-    $importRunning = $c->signal($anyLocked, 'import_running');
-    // Client-writable: browser toggles confirm panel without a round-trip
-    $confirmRescan = $c->signal(false, 'confirm_rescan', clientWritable: true);
-    // Whether ports should be scanned during import (combined and per-source)
-    $importScanPorts = $c->signal(true, 'import_scan_ports', clientWritable: true);
+    Shell::register($c, $app, $states);
+    foreach (PageRegistry::MODULES as $module) {
+        $module::register($c, $app, $states);
+    }
+    foreach (PageRegistry::PAGES as $page) {
+        $page::register($c, $app, $states);
+    }
 
-    // Settings signals: user preferences editable in the Settings tab
-    $settingsDefaultView = $c->signal(Config::$settings->defaultView, 'settings_defaultView', clientWritable: true);
-    $settingsGraphDisplay = $c->signal(Config::$settings->defaultGraphDisplay, 'settings_graphDisplay', clientWritable: true);
-    // The old form still offers the legacy 'bytes' datatype, so a traffic default in bytes shows as that.
-    $settingsGraphDatatype = $c->signal(
-        Config::$settings->defaultGraphDatatype === 'traffic' && Config::$settings->defaultUnit === 'bytes'
-            ? 'bytes'
-            : Config::$settings->defaultGraphDatatype,
-        'settings_graphDatatype',
-        clientWritable: true
-    );
-    $settingsGraphProtocols = $c->signal(Config::$settings->defaultGraphProtocols, 'settings_graphProtocols', clientWritable: true);
-    $settingsFlowLimit = $c->signal(Config::$settings->defaultFlowLimit, 'settings_flowLimit', clientWritable: true);
-    $settingsStatsOrderBy = $c->signal(Config::$settings->defaultStatsOrderBy, 'settings_statsOrderBy', clientWritable: true);
-    // Filters stored as newline-separated text (easier for a textarea; parsed on save)
-    $settingsFiltersText = $c->signal(
-        implode("\n", Config::$settings->filters),
-        'settings_filtersText',
-        clientWritable: true
-    );
-    $settingsLogPriority = $c->signal(
-        Settings::logLevelToString(Config::$settings->logPriority),
-        'settings_logPriority',
-        clientWritable: true
-    );
-    // Global default notification templates: fall back to AlertManager's built-in
-    // defaults when empty; per-rule templates (below) override these in turn.
-    $settingsDefaultEmailSubjectTemplate = $c->signal(Config::$settings->defaultEmailSubjectTemplate, 'settings_defaultEmailSubjectTemplate', clientWritable: true);
-    $settingsDefaultEmailBodyTemplate = $c->signal(Config::$settings->defaultEmailBodyTemplate, 'settings_defaultEmailBodyTemplate', clientWritable: true);
-    $settingsDefaultWebhookTitleTemplate = $c->signal(Config::$settings->defaultWebhookTitleTemplate, 'settings_defaultWebhookTitleTemplate', clientWritable: true);
-    $settingsDefaultWebhookMessageTemplate = $c->signal(Config::$settings->defaultWebhookMessageTemplate, 'settings_defaultWebhookMessageTemplate', clientWritable: true);
-
-    // Timezone signals: both server-owned (read-only for browser)
-    // serverTz: PHP/container operating timezone (TZ env, typically UTC in Docker)
-    // nfcapdTz: timezone nfcapd writes filenames in (NFCAPD_TZ env, e.g. Europe/Berlin)
-    $serverTz = $c->signal(date_default_timezone_get(), 'serverTz');
-    $nfcapdTz = $c->signal(Config::nfcapdTimezone()->getName(), 'nfcapdTz');
-    $displayTz = $c->signal(Config::$settings->displayTimezone, 'displayTz', clientWritable: true);
-
-    // Alert rule form signals: used to create/edit individual alert rules in Settings
-    $alertFormId = $c->signal('', 'alert_form_id', clientWritable: true);
-    $alertFormName = $c->signal('', 'alert_form_name', clientWritable: true);
-    $alertFormEnabled = $c->signal(true, 'alert_form_enabled', clientWritable: true);
-    $alertFormProfile = $c->signal(Config::$settings->nfdumpProfile, 'alert_form_profile', clientWritable: true);
-    $alertFormSources = $c->signal(Config::$settings->sources, 'alert_form_sources', clientWritable: true);
-    $alertFormMetric = $c->signal('bytes', 'alert_form_metric', clientWritable: true);
-    $alertFormOperator = $c->signal('>', 'alert_form_operator', clientWritable: true);
-    $alertFormThresholdType = $c->signal('absolute', 'alert_form_thresholdType', clientWritable: true);
-    $alertFormThresholdValue = $c->signal(0, 'alert_form_thresholdValue', clientWritable: true);
-    $alertFormAvgWindow = $c->signal('1h', 'alert_form_avgWindow', clientWritable: true);
-    $alertFormCooldownSlots = $c->signal(3, 'alert_form_cooldownSlots', clientWritable: true);
-    $alertFormNotifyEmail = $c->signal('', 'alert_form_notifyEmail', clientWritable: true);
-    $alertFormEmailSubjectTemplate = $c->signal('', 'alert_form_emailSubjectTemplate', clientWritable: true);
-    $alertFormEmailBodyTemplate = $c->signal('', 'alert_form_emailBodyTemplate', clientWritable: true);
-    $alertFormNotifyWebhook = $c->signal('', 'alert_form_notifyWebhook', clientWritable: true);
-    $alertFormWebhookTitleTemplate = $c->signal('', 'alert_form_webhookTitleTemplate', clientWritable: true);
-    $alertFormWebhookMessageTemplate = $c->signal('', 'alert_form_webhookMessageTemplate', clientWritable: true);
-    $alertFormNfdumpFilter = $c->signal('', 'alert_form_nfdumpFilter', clientWritable: true);
-
-    // ── State containers (plain PHP, NOT signals, not sent to browser) ──────
-    // These carry large result sets between the action and the view closure.
-    $flowTableHtml = '';
-    $statsTableHtml = '';
-    $sankeyData = '';
-    // Notifications persist across broadcasts until explicitly dismissed server-side.
-    // Each entry: ['id' => hex_string, 'type' => 'success'|'warning'|'error', 'message' => html_string]
-    $flowNotifications = [];
-    $statsNotifications = [];
-    $sankeyNotifications = [];
-
-    // ── Subscribe to import and RRD broadcasts ──────────────────────────────
-    // admin:import - live progress pushed from the import coroutine to all admin tabs
-    // rrd:live     - graph refresh after any import completes
-    // settings:saved - preferences updated; all tabs re-render with new defaults
-    $c->addScope('admin:import');
-    $c->addScope('rrd:live');
-    $c->addScope('settings:saved');
-    $c->addScope('alerts:fired');
-
-    // ── Actions ──────────────────────────────────────────────────────────────
-    GraphActions::register($c);
-    FlowActions::register($c, $flowNotifications, $flowTableHtml);
-    FlowGraphActions::register($c);
-    StatsActions::register($c, $flowNotifications, $statsNotifications, $statsTableHtml);
-    SankeyActions::register($c, $sankeyNotifications, $sankeyData);
-    ImportActions::register($c, $app);
-    SettingsActions::register($c, $app);
-    AlertActions::register($c, $app);
-    UtilityActions::register($c, $flowNotifications, $statsNotifications);
-
-    // ── View ─────────────────────────────────────────────────────────────────
-    // Re-renders the full page on every $c->sync() (actions) and every
-    // $app->broadcast('rrd:live') (import daemon). Brotli + Datastar DOM morphing
-    // keeps the wire cost low.
-    //
-    // cacheUpdates: false: each tab has independent filter state, no sharing.
-
-    // Throttle: last timestamp fetchGraphData() was actually called for this tab.
-    // Allows graph refreshes every 10s during import instead of per-file.
-    // Cached values are reused between refreshes so chart and timestamps stay visible.
-    $lastGraphFetch = 0;
-    $cachedGraphData = '[]';
-
-    /** @var array<array{name: string, last_update: int}> $cachedImportSources */
-    $cachedImportSources = [];
-
-    // Health checks: cached per-tab; re-run at most every 30 s (or when not importing).
-    $lastHealthFetch = 0;
-
-    /** @var list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}> */
-    $cachedHealthChecks = [];
-
-    // Alert toast: track the last alert_fired ts shown by this tab to avoid duplicate toasts.
-    $lastAlertShown = 0;
-
-    $c->view(function (bool $isUpdate) use (
-        $c,
-        $app,
-        &$flowNotifications,
-        &$statsNotifications,
-        &$sankeyNotifications,
-        &$flowTableHtml,
-        &$statsTableHtml,
-        &$sankeyData,
-        &$lastGraphFetch,
-        &$cachedGraphData,
-        &$cachedImportSources,
-        &$lastHealthFetch,
-        &$cachedHealthChecks,
-        &$lastAlertShown,
-        $flowsGraphShown
-    ): string {
-        // ── Result-panel revival snapshot (issue #151) ────────────────────────
-        // Flow/stats/sankey results live in plain-PHP containers, not signals, so a
-        // context revival (which re-runs this page handler and re-inits those
-        // containers to '') blanks the results panel while the tab otherwise
-        // survives (empty #flowTable, lost nfdump notification). Keep a per-context
-        // snapshot in app-global state: a revived context reuses the same id, so it
-        // restores exactly what was showing; a genuine reload gets a new id and
-        // starts clean. Dismiss/re-query naturally refresh it via the changed-check.
-        $ctxId = $c->getId();
-
-        /** @var array<string, array<string, mixed>> $snapshots */
-        $snapshots = $app->globalState('revive_snapshots', []);
-        $snap = $snapshots[$ctxId] ?? null;
-        if ($snap !== null) {
-            if ($flowTableHtml === '' && ($snap['flowHtml'] ?? '') !== '') {
-                $flowTableHtml = $snap['flowHtml'];
-                $flowNotifications = $snap['flowNotifications'] ?? [];
-                $c->getSignal('flows_count')?->setValue($snap['flowCount'] ?? 0, broadcast: false);
-            }
-            if ($statsTableHtml === '' && ($snap['statsHtml'] ?? '') !== '') {
-                $statsTableHtml = $snap['statsHtml'];
-                $statsNotifications = $snap['statsNotifications'] ?? [];
-            }
-            if ($sankeyData === '' && ($snap['sankeyData'] ?? '') !== '') {
-                $sankeyData = $snap['sankeyData'];
-                $sankeyNotifications = $snap['sankeyNotifications'] ?? [];
-            }
-        }
-        // Persist current results for a later revival. Guarded by a changed-check so
-        // rrd:live broadcasts (which don't touch these panels) don't rewrite the map.
-        if ($flowTableHtml !== '' || $statsTableHtml !== '' || $sankeyData !== '') {
-            $current = [
-                'flowHtml' => $flowTableHtml,
-                'flowNotifications' => $flowNotifications,
-                'flowCount' => $c->getSignal('flows_count')?->int() ?? 0,
-                'statsHtml' => $statsTableHtml,
-                'statsNotifications' => $statsNotifications,
-                'sankeyData' => $sankeyData,
-                'sankeyNotifications' => $sankeyNotifications,
-            ];
-            if ($snap !== $current) {
-                $snapshots[$ctxId] = $current;
-                // Bound memory: cap distinct-context snapshots (mirrors php-via's own
-                // revivable-context cap). Oldest inserts are evicted first.
-                if (count($snapshots) > 200) {
-                    $snapshots = array_slice($snapshots, -200, null, true);
-                }
-                $app->setGlobalState('revive_snapshots', $snapshots);
-            }
-        }
-
-        $datestart = $c->getSignal('datestart');
-        $dateend = $c->getSignal('dateend');
-        $graphSources = $c->getSignal('graph_sources');
-        $importRunning = $c->getSignal('import_running');
-        $selectedProfile = $c->getSignal('selected_profile');
-        $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
-        $graphMode = $c->getSignal('graph_mode');
-        assert(
-            $datestart !== null
-            && $dateend !== null
-            && $graphSources !== null
-            && $importRunning !== null
-            && $selectedProfile !== null
-            && $nfcapdFileCount !== null
-            && $graphMode !== null
-        );
-
-        // Sync importRunning signal to daemon lock state so all tabs reflect the
-        // correct value when re-rendered by an admin:import or rrd:live broadcast.
-        /** @var array<string, ImportDaemon> $allDaemons */
-        $allDaemons = $app->globalState('daemons', []);
-        $isImporting = array_reduce($allDaemons, fn ($carry, $d) => $carry || $d->isLocked(), false);
-        $importRunning->setValue($isImporting, broadcast: false);
-
-        // Skip all data fetches when Config failed to initialize (fatal error path).
-        // The template will render the error banner and nothing else needs DB access.
-        $hasFatalError = $app->globalState('_fatalError', null) !== null;
-
-        // On the initial render (not an SSE update), compute the nfcapd file count
-        // so the Flows/Statistics tabs show it without needing user interaction.
-        // Subsequent changes are handled by countFilesAction triggered from the browser.
-        if (!$hasFatalError && !$isUpdate) {
-            $srcs = Helpers::resolveSources($graphSources->array());
-            Helpers::measureNfcapdFiles(
-                $c,
-                $datestart->int(),
-                $dateend->int(),
-                $srcs,
-                $selectedProfile->string(),
-                $graphMode->string() === 'filtered'
-            );
-        }
-
-        // During import, throttle fetchGraphData() to at most once every 10 seconds
-        // per tab; avoids N×files×RRD-reads while still refreshing the graph live.
-        // Between intervals, reuse the last cached result so chart and timestamps stay visible.
-        $now = time();
-        if (!$hasFatalError && (!$isImporting || ($now - $lastGraphFetch) >= 10)) {
-            GraphActions::updateDataRange($c);
-
-            // Auto-advance the selected window when the user is in "live" mode
-            // (dateend within 10 min of now). This runs on every rrd:live broadcast
-            // so the selection tracks new data even when the graph refresh interval
-            // has stopped (graphIsLive=false after the 5-min SSE liveness window).
-            //
-            // Never in filtered mode: the window is part of the filtered series' cache key,
-            // so sliding it by a second (which this does on every render while the window
-            // ends near now) leaves the freshly built series unreachable and the graph
-            // permanently empty. A filtered build is a snapshot of one explicit window.
-            // A built flows traffic series is a snapshot of one explicit window, for the same
-            // reason a filtered graph is: slide the window under it and the series no longer
-            // matches the query, so the panel calls itself stale within minutes. Keyed on
-            // having built something, not on the panel being open: expanding a disclosure
-            // should not freeze the live window for the whole tab.
-            // Open *and* built: the key is never cleared, so keying on it alone froze the
-            // live window for the rest of the session: the Graphs tab stopped tracking now
-            // and only a reload recovered. Collapsing the panel releases it.
-            $flowsGraphPinned = $flowsGraphShown->bool()
-                && ($c->getSignal('flows_graph_key')?->string() ?? '') !== '';
-
-            $de = $dateend->int();
-            if ($graphMode->string() === 'stored' && !$flowsGraphPinned && $now - $de < 600) {
-                $window = $de - $datestart->int();
-                $dateend->setValue($now, broadcast: false);
-                $datestart->setValue($now - $window, broadcast: false);
-            }
-
-            // Anything thrown here is swallowed by php-via's action handler, which leaves
-            // the graph silently frozen on its previous data: the user changes a filter and
-            // nothing happens, with no error anywhere in the UI (#160). Only get_graph_data()
-            // was guarded before; catch the rest of the fetch (and the encode, which rejects
-            // non-finite floats) so a failure shows up as a banner and the next change retries.
-            try {
-                $cachedGraphData = json_encode(GraphActions::fetchGraphData($c), JSON_THROW_ON_ERROR);
-            } catch (Throwable $e) {
-                $c->getSignal('_error')?->setValue('Graph error: ' . $e->getMessage(), broadcast: false);
-                $cachedGraphData = '[]';
-            }
-            $lastGraphFetch = $now;
-
-            $cachedImportSources = [];
-            foreach (Config::$settings->sources as $source) {
-                $cachedImportSources[] = [
-                    'name' => $source,
-                    'last_update' => Config::$db->last_update($source, 0, $selectedProfile->string()),
-                ];
-            }
-        }
-        $graphData = $cachedGraphData;
-        $importSources = $cachedImportSources;
-
-        // Health checks, throttled to at most once every 30 s per tab
-        if (!$hasFatalError && (!$isImporting || ($now - $lastHealthFetch) >= 30)) {
-            $hcDaemonsInfo = [];
-            foreach ($allDaemons as $prof => $d) {
-                $hcDaemonsInfo[$prof] = [
-                    'ready' => $d->isDaemonReady(),
-                    'watchCount' => $d->getWatchCount(),
-                    'lastAutoImport' => $d->getLastAutoImportTime(),
-                ];
-            }
-            $cachedHealthChecks = HealthChecker::run(
-                (bool) $app->globalState('daemon_disabled', false),
-                $hcDaemonsInfo,
-            );
-            $lastHealthFetch = $now;
-        }
-        $healthChecks = $cachedHealthChecks;
-
-        // Build daemonsInfo map: profile → status array (for admin panel)
-        $daemonsInfo = [];
-        foreach ($allDaemons as $profile => $d) {
-            $daemonsInfo[$profile] = [
-                'ready' => $d->isDaemonReady(),
-                'watchCount' => $d->getWatchCount(),
-                'lastAutoImport' => $d->getLastAutoImportTime(),
-            ];
-        }
-
-        // ── Status indicator computation ──────────────────────────────────
-        // Capture health: infer nfcapd activity from most recent RRD last_update
-        $maxLastUpdate = empty($importSources) ? 0 : max(array_column($importSources, 'last_update'));
-        $captureAge = $maxLastUpdate > 0 ? (time() - $maxLastUpdate) : PHP_INT_MAX;
-        if ($maxLastUpdate === 0) {
-            $captureStatus = 'secondary';
-            $captureLabel = 'nfcapd: no data yet';
-        } elseif ($captureAge < 600) {
-            $captureStatus = 'success';
-            $captureLabel = 'nfcapd: last capture ' . HealthChecker::ageStr($captureAge) . ' ago';
-        } elseif ($captureAge < 3600) {
-            $captureStatus = 'warning';
-            $captureLabel = 'nfcapd: no capture in ' . HealthChecker::ageStr($captureAge);
-        } else {
-            $captureStatus = 'danger';
-            $captureLabel = 'nfcapd: no capture in ' . HealthChecker::ageStr($captureAge);
-        }
-
-        // Daemon health: aggregate across all daemons
-        $d2 = $app->globalState('daemon', null);
-        if ((bool) $app->globalState('daemon_disabled', false) || empty($allDaemons)) {
-            $daemonStatus = 'danger';
-            $daemonLabel = 'Import daemon: disabled (NFSEN_SKIP_DAEMON)';
-        } else {
-            $allReady = array_reduce($allDaemons, fn ($carry, $d) => $carry && $d->isDaemonReady(), true);
-            $totalWatches = array_sum(array_map(fn ($d) => $d->getWatchCount(), $allDaemons));
-            $profileCount = count($allDaemons);
-            if (!$allReady) {
-                $daemonStatus = 'warning';
-                $daemonLabel = 'Import daemon: initializing…';
-            } else {
-                $daemonStatus = 'success';
-                $daemonLabel = "Import daemon: {$profileCount} profile" . ($profileCount !== 1 ? 's' : '') . ", watching {$totalWatches} dir" . ($totalWatches !== 1 ? 's' : '');
-            }
-        }
-
-        // ── Alert toast (via execScript, bypasses data-ignore-morph) ─────
-        // Only show once per tab per fired event.
-        $alertFiredHtml = ''; // kept for template variable; delivery is via execScript
-        $alertFiredInfo = $app->globalState('alert_fired', null);
-        if (
-            $alertFiredInfo !== null
-            && is_array($alertFiredInfo)
-            && ($alertFiredTs = (int) ($alertFiredInfo['ts'] ?? 0)) > $lastAlertShown
-            && (time() - $alertFiredTs) < 300
-        ) {
-            foreach ((array) ($alertFiredInfo['names'] ?? []) as $firedName) {
-                $msgJs = json_encode('Alert fired: ' . (string) $firedName, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
-                $c->execScript("window.showMessage('warning', {$msgJs}, true)");
-            }
-            $lastAlertShown = $alertFiredTs;
-        }
-
-        /** @var null|AlertManager $alertMgrView */
-        $alertMgrView = $app->globalState('alertManager', null);
-        $alertLog = $alertMgrView !== null ? $alertMgrView->getRecentLog(10) : [];
-
-        return $c->render('layout.html.twig', [
-            // ── App metadata ──────────────────────────────────────────────
-            'version' => Config::VERSION,
-            'assetVersion' => Config::assetVersion(),
-            'fatalError' => $app->globalState('_fatalError', null),
-            'connections' => count($app->getClients()),
-            'importYears' => Config::$settings->importYears,
-
-            // ── Static config (non-reactive, drives option lists) ─────────
-            'sources' => Config::$settings->sources,
-            'ports' => Config::$settings->ports,
-            'filters' => Config::$settings->filters,
-            'defaults' => ['view' => Config::$settings->defaultView, 'theme' => Config::$settings->defaultTheme],
-
-            // ── Deployment config (read-only display in Settings tab) ─────
-            'deployDatasource' => Config::$settings->datasourceName,
-            // Decides whether the Import tab offers a non-destructive backfill or the
-            // rebuild that RRD needs to fill in history (#171).
-            'datasourceAcceptsHistoricWrites' => Config::$db->acceptsHistoricWrites(),
-            'deployImportYears' => Config::$settings->importYears,
-            'deployDefaultTheme' => Config::$settings->deploymentTheme,
-            'deployNfdumpBinary' => Config::$settings->nfdumpBinary,
-            'deployNfdumpProfiles' => Config::$settings->nfdumpProfilesData,
-            'deployPrefsFile' => Config::$prefsFile,
-
-            // ── Computed / pre-rendered data ──────────────────────────────
-            'graphData' => $graphData,
-            // Only in filtered mode: the Apply button's projected cost (see filteredCost()).
-            'filteredCost' => (!$hasFatalError && $graphMode->string() === 'filtered')
-                ? GraphActions::filteredCost($c)
-                : null,
-            'flowTableHtml' => $flowTableHtml,
-            // The Flows tab's own traffic panel: the series if it has been built for the
-            // current query, and what building it would cost if it has not (#166).
-            // Computed whether or not the panel is open, because opening it is a client-side
-            // toggle with no round trip, and gating on the signal left the cost line blank until
-            // something else happened to re-render. Both are cheap: a cache lookup and
-            // arithmetic over counts another action already maintains.
-            // The whole series object, not just its rows: nfsen-chart reads {data, legend, …}
-            // and falls back to an unlabelled, empty render when the legend is missing.
-            'flowsGraphData' => !$hasFatalError
-                ? json_encode(FlowGraphActions::cached($c) ?? [], JSON_THROW_ON_ERROR)
-                : '[]',
-            'flowsGraphBuilt' => !$hasFatalError && FlowGraphActions::cached($c) !== null,
-            'flowsGraphCost' => !$hasFatalError ? FlowGraphActions::cost($c) : null,
-            'flowsGraphStale' => !$hasFatalError && FlowGraphActions::isStale($c),
-            'flowNotifications' => $flowNotifications,
-            'statsTableHtml' => $statsTableHtml,
-            'statsNotifications' => $statsNotifications,
-            'sankeyData' => $sankeyData !== '' ? $sankeyData : '{"nodes":[],"links":[]}',
-            'sankeyNotifications' => $sankeyNotifications,
-
-            // ── Admin / import ────────────────────────────────────────────
-            'hasPorts' => !empty(Config::$settings->ports),
-            'importSources' => $importSources,
-            'importProgress' => $app->globalState('import_progress', 0),
-            'importCurrentFile' => $app->globalState('import_current_file', ''),
-            'importStatusText' => $app->globalState('import_status_text', ''),
-            'importEta' => $app->globalState('import_eta', ''),
-            'importLog' => $app->globalState('import_log', []),
-            'importActiveProfile' => $app->globalState('import_active_profile', ''),
-            'daemonDisabled' => (bool) $app->globalState('daemon_disabled', false),
-            'daemonsInfo' => $daemonsInfo,
-            'daemonInfo' => ($d = $app->globalState('daemon', null)) !== null ? [
-                'ready' => $d->isDaemonReady(),
-                'watchCount' => $d->getWatchCount(),
-                'lastAutoImport' => $d->getLastAutoImportTime(),
-            ] : null,
-
-            // ── Status indicators ─────────────────────────────────────────
-            'captureStatus' => $captureStatus,
-            'captureLabel' => $captureLabel,
-            'daemonStatus' => $daemonStatus,
-            'daemonLabel' => $daemonLabel,
-
-            // ── Health checks ─────────────────────────────────────────────
-            'healthChecks' => $healthChecks,
-
-            // ── Alerts ───────────────────────────────────────────────────
-            'alerts' => Config::$settings->alerts,
-            'alertLog' => $alertLog,
-            'alertFiredHtml' => $alertFiredHtml,
-            'alertEmailEnabled' => Config::$settings->alertEmailFrom !== '',
-
-            // Built-in defaults (bottom of the fallback chain), shown in the global
-            // template card's placeholders.
-            'alertBuiltinEmailSubject' => AlertManager::DEFAULT_EMAIL_SUBJECT,
-            'alertBuiltinEmailBody' => AlertManager::DEFAULT_EMAIL_BODY,
-            'alertBuiltinWebhookTitle' => AlertManager::DEFAULT_WEBHOOK_TITLE,
-            'alertBuiltinWebhookMessage' => AlertManager::DEFAULT_WEBHOOK_MESSAGE,
-
-            // Currently-effective global-or-builtin templates, shown as placeholders
-            // on the per-rule override fields, so users see what they'd actually inherit.
-            'alertEffectiveEmailSubject' => AlertManager::resolveTemplate(null, Config::$settings->defaultEmailSubjectTemplate, AlertManager::DEFAULT_EMAIL_SUBJECT),
-            'alertEffectiveEmailBody' => AlertManager::resolveTemplate(null, Config::$settings->defaultEmailBodyTemplate, AlertManager::DEFAULT_EMAIL_BODY),
-            'alertEffectiveWebhookTitle' => AlertManager::resolveTemplate(null, Config::$settings->defaultWebhookTitleTemplate, AlertManager::DEFAULT_WEBHOOK_TITLE),
-            'alertEffectiveWebhookMessage' => AlertManager::resolveTemplate(null, Config::$settings->defaultWebhookMessageTemplate, AlertManager::DEFAULT_WEBHOOK_MESSAGE),
-        ]);
-    }, cacheUpdates: false);
+    // Tabs keep independent state, so update renders are never shared.
+    $c->view(static fn (bool $isUpdate): string => $c->render(
+        'layout.html.twig',
+        Shell::render($c, $app, $states, $isUpdate),
+    ), cacheUpdates: false);
 });
-
-// ─── Start ────────────────────────────────────────────────────────────────────
 
 $app->start();

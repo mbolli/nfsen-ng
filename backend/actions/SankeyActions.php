@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\QueryCancel;
+use mbolli\nfsen_ng\pages\PageStates;
+use mbolli\nfsen_ng\pages\RangeControls;
+use mbolli\nfsen_ng\pages\state\ConversationsState;
 use mbolli\nfsen_ng\query\MatrixQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
 
 /**
- * Sankey-diagram action registration — aggregates flows into top-N src/dst pairs
+ * Sankey-diagram action registration: aggregates flows into top-N src/dst pairs
  * and renders them as a {nodes, links} payload for the nfsen-sankey chart component.
  */
 final class SankeyActions {
@@ -28,17 +32,11 @@ final class SankeyActions {
         'fl' => 'flows',
     ];
 
-    /**
-     * Register the sankey-actions action.
-     *
-     * @param list<array{id: string, type: string, message: string}> $sankeyNotifications
-     */
-    public static function register(
-        Context $c,
-        array &$sankeyNotifications,
-        string &$sankeyData
-    ): void {
-        $c->action(static function (Context $c) use (&$sankeyNotifications, &$sankeyData): void {
+    /** Register the sankey-actions action. */
+    public static function register(Context $c, PageStates $states): void {
+        $conversations = $states->conversations;
+
+        $c->action(static function (Context $c) use ($conversations): void {
             $datestart = $c->getSignal('datestart');
             $dateend = $c->getSignal('dateend');
             $selectedProfile = $c->getSignal('selected_profile');
@@ -63,7 +61,14 @@ final class SankeyActions {
             );
 
             $time = microtime(true);
-            $sankeyNotifications = [];
+            $contextId = $c->getId();
+            // Routes a Kill notice to this page (1.6), unless another run of this tab owns the
+            // kind and the cancel flag.
+            $ownsKind = $c->getSignal('query_running')?->bool() !== true;
+            if ($ownsKind) {
+                $c->getSignal('query_kind')?->setValue('conversations', broadcast: false);
+                QueryCancel::clear($contextId);
+            }
 
             try {
                 $query = new MatrixQuery(
@@ -76,52 +81,36 @@ final class SankeyActions {
                     filter: $sankeyFilter->string(),
                     lowerLimit: $sankeyLowerLimit->string(),
                     upperLimit: $sankeyUpperLimit->string(),
-                    handle: $c->getId(),
+                    handle: $contextId,
+                    protocol: RangeControls::protocol($c),
                 );
-                $metric = $query->metric();
-                $showPorts = $query->showPorts;
-
-                if ($query->window->clamped) {
-                    $sankeyNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $query->window->clampNotice()];
-                }
+                $clampNotice = $query->window->clamped ? $query->window->clampNotice() : '';
 
                 $result = $query->run();
-                $sankeyData = json_encode(self::buildSankeyPayload($result->rows, $metric, $showPorts), JSON_THROW_ON_ERROR);
-
-                $elapsed = round(microtime(true) - $time, 3);
-                $cmd = htmlspecialchars($result->command, ENT_QUOTES | ENT_HTML5);
-                $sankeyNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
-                    ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
-                    : "Sankey data processed in {$elapsed}s."];
-
-                if ($result->stderr !== '') {
-                    $sankeyNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars($result->stderr, ENT_QUOTES | ENT_HTML5)];
+                $conversations->setResult(json_encode(self::buildSankeyPayload($result->rows, $query->metric(), $query->showPorts), JSON_THROW_ON_ERROR));
+                $conversations->notifyResult($result, round(microtime(true) - $time, 3), 'Sankey data');
+                if ($clampNotice !== '') {
+                    $conversations->notify('warning', $clampNotice);
                 }
             } catch (\Throwable $e) {
-                Debug::getInstance()->log('Sankey action error: ' . $e->getMessage(), LOG_ERR);
-                $sankeyNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
-                $sankeyData = json_encode(['nodes' => [], 'links' => []], JSON_THROW_ON_ERROR);
+                if (!QueryRunner::wasCancelled($e, $ownsKind && QueryCancel::isRequested($contextId))) {
+                    Debug::getInstance()->log('Sankey action error: ' . $e->getMessage(), LOG_ERR);
+                    $conversations->notifyFailure($e);
+                }
+                $conversations->setResult(ConversationsState::EMPTY_PAYLOAD);
+            }
+            if ($ownsKind) {
+                QueryCancel::clear($contextId);
             }
 
             $c->sync();
         }, 'sankey-actions');
-
-        // Dismiss a Sankey notification by ID. Kept separate from StatsActions'
-        // shared dismiss-notification action to avoid coupling that class to Sankey.
-        $c->action(static function (Context $c) use (&$sankeyNotifications): void {
-            $id = $c->input('id') ?? '';
-            if (empty($id)) {
-                return;
-            }
-            $sankeyNotifications = array_values(array_filter($sankeyNotifications, fn ($n) => $n['id'] !== $id));
-            $c->sync();
-        }, 'dismiss-sankey-notification');
     }
 
     /**
      * Transform decoded aggregated rows (sa/da/ibyt/ipkt/fl, or their `-o csv` column-name
-     * equivalents — see self::CSV_COLUMNS) into a {nodes, links} payload for a strict
-     * two-column bipartite Sankey — all sources on the left, all destinations on the right,
+     * equivalents, see self::CSV_COLUMNS) into a {nodes, links} payload for a strict
+     * two-column bipartite Sankey: all sources on the left, all destinations on the right,
      * matching "source -> destination traffic" rather than a general flow graph.
      *
      * Self-loops (sa === da) are dropped; these do occasionally show up in real captures
@@ -129,7 +118,7 @@ final class SankeyActions {
      *
      * Node ids are prefixed with 'src:'/'dst:' so the same IP appearing as both a source
      * (in one pair) and a destination (in another pair) becomes two distinct nodes, one per
-     * column — ECharts requires unique node names, and this sidesteps reconciling which
+     * column. ECharts requires unique node names, and this sidesteps reconciling which
      * column a given IP "belongs" to.
      *
      * When $showPorts is true the payload gains a middle column: each row carries a
@@ -137,7 +126,7 @@ final class SankeyActions {
      * self::buildPortSankeyPayload() for that three-column variant.
      *
      * @param array<array<string, string>> $rows
-     * @param string                       $metric    'bytes' or 'packets' — selects the link value field
+     * @param string                       $metric    'bytes' or 'packets', selects the link value field
      * @param bool                         $showPorts add a dst-port middle column (three-column layout)
      *
      * @return array{nodes: list<array{name: string, label: string}>, links: list<array{source: string, target: string, value: int, flows: int}>}
@@ -180,7 +169,7 @@ final class SankeyActions {
      * equivalent `-o csv` column name.
      *
      * Rows arrive in either shape depending on the nfdump version the deployment runs (see
-     * the `-o` selection in register()), and only the names differ — the values are identical.
+     * the `-o` selection in register()), and only the names differ; the values are identical.
      *
      * @param array<string, mixed> $row
      */
@@ -193,8 +182,8 @@ final class SankeyActions {
     /**
      * Three-column variant of buildSankeyPayload(): src IP -> dst port -> dst IP.
      *
-     * Each aggregated row (sa/da/dp/…) is split into two links — src->port and
-     * port->dst — that share the middle 'port:<dp>' node. Unlike the strictly
+     * Each aggregated row (sa/da/dp/…) is split into two links, src->port and
+     * port->dst, that share the middle 'port:<dp>' node. Unlike the strictly
      * bipartite two-column case, neither half is unique per row (one source hits a
      * port across many destinations, and one port is reached by many sources), so
      * both link halves are summed per (source, target) pair to avoid stacking

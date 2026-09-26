@@ -5,22 +5,25 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\common\Table;
+use mbolli\nfsen_ng\pages\PageStates;
+use mbolli\nfsen_ng\pages\RangeControls;
+use mbolli\nfsen_ng\pages\state\FlowsState;
 use mbolli\nfsen_ng\query\FlowsQuery;
+use mbolli\nfsen_ng\query\QueryResult;
 use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
 
 /**
- * Flow-actions action registration — runs nfdump and renders the flow result table.
+ * Flow-actions action registration: runs nfdump and renders the flow result table.
  */
 final class FlowActions {
-    /**
-     * Register the flow-actions action.
-     *
-     * @param list<array{id: string, type: string, message: string}> $flowNotifications
-     */
-    public static function register(Context $c, array &$flowNotifications, string &$flowTableHtml): void {
-        $c->action(static function (Context $c) use (&$flowNotifications, &$flowTableHtml): void {
+    /** Register the flow-actions action. */
+    public static function register(Context $c, PageStates $states): void {
+        $flows = $states->flows;
+
+        $c->action(static function (Context $c) use ($flows): void {
             $datestart = $c->getSignal('datestart');
             $dateend = $c->getSignal('dateend');
             $selectedProfile = $c->getSignal('selected_profile');
@@ -46,6 +49,7 @@ final class FlowActions {
                 && $graphSources !== null
             );
             $time = microtime(true);
+            $contextId = $c->getId();
 
             try {
                 $query = new FlowsQuery(
@@ -59,7 +63,8 @@ final class FlowActions {
                     upperLimit: $flowUpperLimit->string(),
                     aggregation: $aggregation,
                     orderByStart: $flowOrderByTstart->bool(),
-                    handle: $c->getId(),
+                    handle: $contextId,
+                    protocol: RangeControls::protocol($c),
                 );
 
                 // Denominator for the progress estimate, deferred so the walk runs inside the
@@ -75,34 +80,17 @@ final class FlowActions {
                     $ipInfoAction,
                     $flowCount,
                     $time,
-                    &$flowNotifications,
-                    &$flowTableHtml
+                    $contextId,
+                    $flows
                 ): void {
                     try {
                         $result = $query->run($processor);
-                        $flowData = $result->rows;
-
                         $flowCount->setValue($result->count(), broadcast: false);
-                        $elapsed = round(microtime(true) - $time, 3);
-                        $cmd = htmlspecialchars($result->command, ENT_QUOTES | ENT_HTML5);
-                        $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
-                            ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
-                            : "Flows processed in {$elapsed}s."]];
-
-                        if ($result->stderr !== '') {
-                            $flowNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars($result->stderr, ENT_QUOTES | ENT_HTML5)];
-                        }
-
-                        $flowTableHtml = Table::generate($flowData, 'flowTable', [
-                            'hiddenFields' => [],
-                            'linkIpAddresses' => true,
-                            'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
-                            'originalData' => $result->rawOutput,
-                        ]);
+                        self::storeResult($flows, $result, round(microtime(true) - $time, 3), $ipInfoAction?->url() ?? '');
                     } catch (\Throwable $e) {
-                        Debug::getInstance()->log('Flow action error: ' . $e->getMessage(), LOG_ERR);
-                        $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
-                        $flowTableHtml = '';
+                        // The cancel flag is read here because QueryRunner clears it after the work.
+                        self::storeFailure($flows, $e, QueryRunner::wasCancelled($e, QueryCancel::isRequested($contextId)));
+                        $flowCount->setValue(0, broadcast: false);
 
                         // Rethrow: QueryRunner owns the status line, and swallowing here left it
                         // reading "Done in 0.4s." beside the red error notification.
@@ -110,12 +98,32 @@ final class FlowActions {
                     }
                 });
             } catch (\Throwable $e) {
-                // Failure while *building* the command — nothing started, report synchronously.
-                Debug::getInstance()->log('Flow action error: ' . $e->getMessage(), LOG_ERR);
-                $flowNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
-                $flowTableHtml = '';
+                // Failure while building the command: nothing started, report synchronously.
+                self::storeFailure($flows, $e, false);
+                $flowCount->setValue(0, broadcast: false);
                 $c->sync();
             }
         }, 'flow-actions');
+    }
+
+    /** Stores a finished run: the table, and a notice with the command that ran. */
+    public static function storeResult(FlowsState $state, QueryResult $result, float $elapsed, string $ipInfoUrl): void {
+        $state->setResult(Table::generate($result->rows, 'flowTable', [
+            'hiddenFields' => [],
+            'linkIpAddresses' => true,
+            'ipInfoActionUrl' => $ipInfoUrl,
+            'originalData' => $result->rawOutput,
+        ]), $result->count());
+
+        $state->notifyResult($result, $elapsed, 'Flows');
+    }
+
+    /** Stores a failed run. A cancelled run keeps kill-nfdump's notice instead of an error. */
+    public static function storeFailure(FlowsState $state, \Throwable $e, bool $cancelled): void {
+        if (!$cancelled) {
+            Debug::getInstance()->log('Flow action error: ' . $e->getMessage(), LOG_ERR);
+            $state->notifyFailure($e);
+        }
+        $state->clearResult();
     }
 }

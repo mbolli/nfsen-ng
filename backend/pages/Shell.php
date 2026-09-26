@@ -1,0 +1,342 @@
+<?php
+
+declare(strict_types=1);
+
+namespace mbolli\nfsen_ng\pages;
+
+use mbolli\nfsen_ng\actions\Helpers;
+use mbolli\nfsen_ng\actions\ShellActions;
+use mbolli\nfsen_ng\actions\UtilityActions;
+use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\HealthChecker;
+use mbolli\nfsen_ng\common\ImportDaemon;
+use mbolli\nfsen_ng\pages\state\ShellState;
+use Mbolli\PhpVia\Context;
+use Mbolli\PhpVia\Via;
+
+/**
+ * The frame around every page: shell signals and actions, and the render array of 1.5
+ * built from the shell, its modules and the pages.
+ */
+final class Shell {
+    /** Key under which a page or module returns top-level keys the old partials still read. */
+    public const string LEGACY = 'legacy';
+
+    /** App-global cache of the footer's capture status, per profile. */
+    public const string STATUS_CACHE = 'status_cache';
+
+    public const int STATUS_TTL = 30;
+
+    /** A last capture older than this is a warning, older than an hour an error. */
+    private const int CAPTURE_FRESH = 600;
+
+    /** Top-level Twig key of each shell module. */
+    private const array MODULE_KEYS = [
+        RangeControls::class => 'range',
+        TrafficGraph::class => 'graph',
+        QueryKit::class => 'querykit',
+        FilterDrawer::class => 'drawer',
+    ];
+
+    public static function signals(Context $c): void {
+        // New signals are pushed on the first sync; the client seeds this one itself (1.2).
+        $c->signal(self::defaultPage(), 'page', clientWritable: true)->markSynced();
+        $c->signal('', '_error');
+        $c->signal(false, 'import_running');
+
+        // serverTz: the container's timezone; nfcapdTz: the one nfcapd names its files in.
+        $c->signal(date_default_timezone_get(), 'serverTz');
+        $c->signal(Config::nfcapdTimezone()->getName(), 'nfcapdTz');
+        $c->signal(Config::$settings->displayTimezone, 'displayTz', clientWritable: true);
+
+        // One query per tab. query_exact tells a known bin count from a byte-sampled
+        // estimate; query_kind names the page the query belongs to (1.6).
+        $c->signal(false, 'query_running');
+        $c->signal(0, 'query_permille');
+        $c->signal('', 'query_status');
+        $c->signal('', 'query_eta');
+        $c->signal(true, 'query_exact');
+        $c->signal('', 'query_kind');
+
+        // Files and bytes a capture-reading query would cover, and the inputs they were
+        // measured for, so an unchanged selection skips the scan.
+        $c->signal(0, 'nfcapd_file_count');
+        $c->signal(0, 'nfcapd_total_bytes');
+        $c->signal('', 'nfcapd_measured');
+    }
+
+    public static function register(Context $c, Via $app, PageStates $states): void {
+        ShellActions::register($c, $states);
+        UtilityActions::register($c, $states);
+    }
+
+    /**
+     * The render array of 1.5, plus the top-level keys the old partials still read.
+     *
+     * @return array<string, mixed>
+     */
+    public static function render(Context $c, Via $app, PageStates $states, bool $isUpdate): array {
+        Revival::restore($c, $app, $states);
+
+        $fatal = self::fatal($app);
+        $importing = self::syncImportRunning($c, $app);
+        $activePage = self::activePage($c);
+        $now = time();
+
+        // The first render shows the file count before anyone touches a control.
+        if (!$fatal && !$isUpdate) {
+            self::measureFiles($c);
+        }
+        self::alertToast($c, $app, $states->shell, $now);
+
+        $sources = $fatal ? [] : self::captureSources($app, self::profile($c), $now);
+        $capture = self::captureStatus($sources, $now);
+        $daemon = self::daemonStatus($app);
+        $defaultView = PageRegistry::lazy() ? self::defaultPage() : PageRegistry::toLegacy(self::defaultPage());
+
+        $data = [
+            'shell' => [
+                'version' => Config::VERSION,
+                'assetVersion' => Config::assetVersion(),
+                'fatalError' => $fatal ? (string) $app->globalState('_fatalError') : null,
+                'connections' => \count($app->getClients()),
+                'activePage' => $activePage,
+                'isAnalysis' => PageRegistry::isAnalysis($activePage),
+                'pagesMeta' => PageRegistry::meta(),
+                'defaults' => [
+                    'view' => $defaultView,
+                    'theme' => Config::$settings->defaultTheme,
+                    'density' => Config::$settings->compactTables ? 'compact' : 'comfortable',
+                ],
+                'sources' => Config::$settings->sources,
+                'ports' => Config::$settings->ports,
+                'status' => [
+                    'captureLevel' => $capture['level'],
+                    'captureLabel' => $capture['label'],
+                    'daemonLevel' => $daemon['level'],
+                    'daemonLabel' => $daemon['label'],
+                ],
+                'import' => [
+                    'running' => $importing,
+                    'progress' => (int) $app->globalState('import_progress', 0),
+                    'currentFile' => (string) $app->globalState('import_current_file', ''),
+                    'statusText' => (string) $app->globalState('import_status_text', ''),
+                    'eta' => (string) $app->globalState('import_eta', ''),
+                    'profile' => (string) $app->globalState('import_active_profile', ''),
+                ],
+                'alertsFiring' => 0,
+                'healthLevel' => 'unknown',
+                'modalHtml' => $states->shell->modalHtml,
+            ],
+        ];
+
+        $legacy = [
+            'version' => Config::VERSION,
+            'assetVersion' => Config::assetVersion(),
+            'fatalError' => $app->globalState('_fatalError', null),
+            'connections' => \count($app->getClients()),
+            'importYears' => Config::$settings->importYears,
+            'sources' => Config::$settings->sources,
+            'ports' => Config::$settings->ports,
+            'filters' => Config::$settings->filters,
+            'defaults' => ['view' => $defaultView, 'theme' => Config::$settings->defaultTheme],
+            'importSources' => $sources,
+            'importProgress' => $app->globalState('import_progress', 0),
+            'importCurrentFile' => $app->globalState('import_current_file', ''),
+            'importStatusText' => $app->globalState('import_status_text', ''),
+            'importEta' => $app->globalState('import_eta', ''),
+            'captureStatus' => $capture['legacy'],
+            'captureLabel' => $capture['label'],
+            'daemonStatus' => $daemon['legacy'],
+            'daemonLabel' => $daemon['label'],
+            // Toasts are delivered through execScript; the key stays for the old layout.
+            'alertFiredHtml' => '',
+        ];
+
+        foreach (PageRegistry::MODULES as $module) {
+            $moduleData = $module::viewData($c, $app, $states, $isUpdate, $activePage);
+            $legacy = [...$legacy, ...self::liftLegacy($moduleData)];
+            $data[self::MODULE_KEYS[$module]] = $moduleData;
+        }
+
+        $pages = [];
+        foreach (PageRegistry::PAGES as $page) {
+            $id = $page::id();
+            $active = $id === $activePage;
+            $pageData = !PageRegistry::lazy() || $active ? $page::viewData($c, $app, $states, $isUpdate) : [];
+            $legacy = [...$legacy, ...self::liftLegacy($pageData)];
+            $pages[$id] = ['active' => $active, ...$pageData];
+        }
+        $data['pages'] = $pages;
+        // After the pages: an open Health page has just refreshed the shared checks.
+        $data['shell']['healthLevel'] = HealthPage::level($app, $now);
+
+        // Without lazy rendering every page's content is in the document on every render.
+        foreach ($states->all() as $id => $state) {
+            $state->markRendered($id === 'shell' || !PageRegistry::lazy() || $id === $activePage);
+        }
+
+        Revival::persist($c, $app, $states);
+
+        return [...$legacy, ...$data];
+    }
+
+    /** The page bare `/` opens: the default view preference, as a page id. */
+    public static function defaultPage(): string {
+        $page = PageRegistry::fromLegacy(Config::$settings->defaultView);
+
+        return $page !== '' ? $page : OverviewPage::id();
+    }
+
+    /** The page the `page` signal names, or the default one when it names none. */
+    public static function activePage(Context $c): string {
+        $page = $c->getSignal('page')?->string() ?? '';
+
+        return PageRegistry::find($page) !== null ? $page : self::defaultPage();
+    }
+
+    /** Config failed to initialise: renders show the banner and touch no datasource. */
+    public static function fatal(Via $app): bool {
+        return $app->globalState('_fatalError', null) !== null;
+    }
+
+    /**
+     * Moves the legacy keys out of a module's or page's data.
+     *
+     * @param array<string, mixed> $data
+     *
+     * @return array<string, mixed>
+     */
+    private static function liftLegacy(array &$data): array {
+        $legacy = $data[self::LEGACY] ?? [];
+        unset($data[self::LEGACY]);
+
+        /** @var array<string, mixed> */
+        return \is_array($legacy) ? $legacy : [];
+    }
+
+    /** Mirrors the daemons' import locks into import_running for every tab a broadcast reaches. */
+    private static function syncImportRunning(Context $c, Via $app): bool {
+        /** @var array<string, ImportDaemon> $daemons */
+        $daemons = $app->globalState('daemons', []);
+        $importing = array_any($daemons, static fn (ImportDaemon $d): bool => $d->isLocked());
+        $c->getSignal('import_running')?->setValue($importing, broadcast: false);
+
+        return $importing;
+    }
+
+    private static function measureFiles(Context $c): void {
+        $datestart = $c->getSignal('datestart');
+        $dateend = $c->getSignal('dateend');
+        $graphSources = $c->getSignal('graph_sources');
+        $graphMode = $c->getSignal('graph_mode');
+        if ($datestart === null || $dateend === null || $graphSources === null) {
+            return;
+        }
+
+        Helpers::measureNfcapdFiles(
+            $c,
+            $datestart->int(),
+            $dateend->int(),
+            Helpers::resolveSources($graphSources->array()),
+            self::profile($c),
+            $graphMode?->string() === 'filtered',
+        );
+    }
+
+    private static function profile(Context $c): string {
+        return $c->getSignal('selected_profile')?->string() ?? Config::$settings->nfdumpProfile;
+    }
+
+    /** Shows each fired alert once per tab, through execScript so the toast container's ignore-morph holds. */
+    private static function alertToast(Context $c, Via $app, ShellState $shell, int $now): void {
+        $fired = $app->globalState('alert_fired', null);
+        if (!\is_array($fired)) {
+            return;
+        }
+        $firedTs = (int) ($fired['ts'] ?? 0);
+        if ($firedTs <= $shell->lastAlertShown || $now - $firedTs >= 300) {
+            return;
+        }
+
+        foreach ((array) ($fired['names'] ?? []) as $name) {
+            $message = json_encode(
+                'Alert fired: ' . (\is_scalar($name) ? (string) $name : ''),
+                JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR,
+            );
+            $c->execScript("window.showMessage('warning', {$message}, true)");
+        }
+        $shell->lastAlertShown = $firedTs;
+    }
+
+    /**
+     * Last datasource update per configured source, shared by every tab of a profile.
+     *
+     * @return list<array{name: string, last_update: int}>
+     */
+    private static function captureSources(Via $app, string $profile, int $now): array {
+        $cache = $app->globalState(self::STATUS_CACHE, []);
+        $cache = \is_array($cache) ? $cache : [];
+        $entry = $cache[$profile] ?? null;
+        if (\is_array($entry) && \is_int($entry['ts'] ?? null) && $now - $entry['ts'] < self::STATUS_TTL && \is_array($entry['sources'] ?? null)) {
+            /** @var list<array{name: string, last_update: int}> */
+            return $entry['sources'];
+        }
+
+        $sources = [];
+        foreach (Config::$settings->sources as $source) {
+            $sources[] = ['name' => $source, 'last_update' => Config::$db->last_update($source, 0, $profile)];
+        }
+        // selected_profile is client-writable: expired entries go, so posted names cannot pile up.
+        $cache = array_filter($cache, static fn (mixed $e): bool => \is_array($e) && \is_int($e['ts'] ?? null) && $now - $e['ts'] < self::STATUS_TTL);
+        $cache[$profile] = ['ts' => $now, 'sources' => $sources];
+        $app->setGlobalState(self::STATUS_CACHE, $cache);
+
+        return $sources;
+    }
+
+    /**
+     * Capture health, inferred from the newest datasource update of any source.
+     *
+     * @param list<array{name: string, last_update: int}> $sources
+     *
+     * @return array{level: 'error'|'neutral'|'success'|'warning', legacy: string, label: string}
+     */
+    private static function captureStatus(array $sources, int $now): array {
+        $last = $sources === [] ? 0 : max(array_column($sources, 'last_update'));
+        if ($last === 0) {
+            return ['level' => 'neutral', 'legacy' => 'secondary', 'label' => 'nfcapd: no data yet'];
+        }
+
+        $age = $now - $last;
+        if ($age < self::CAPTURE_FRESH) {
+            return ['level' => 'success', 'legacy' => 'success', 'label' => 'nfcapd: last capture ' . HealthChecker::ageStr($age) . ' ago'];
+        }
+
+        return $age < 3600
+            ? ['level' => 'warning', 'legacy' => 'warning', 'label' => 'nfcapd: no capture in ' . HealthChecker::ageStr($age)]
+            : ['level' => 'error', 'legacy' => 'danger', 'label' => 'nfcapd: no capture in ' . HealthChecker::ageStr($age)];
+    }
+
+    /** @return array{level: 'error'|'success'|'warning', legacy: string, label: string} */
+    private static function daemonStatus(Via $app): array {
+        /** @var array<string, ImportDaemon> $daemons */
+        $daemons = $app->globalState('daemons', []);
+        if ((bool) $app->globalState('daemon_disabled', false) || $daemons === []) {
+            return ['level' => 'error', 'legacy' => 'danger', 'label' => 'Import daemon: disabled (NFSEN_SKIP_DAEMON)'];
+        }
+
+        if (!array_all($daemons, static fn (ImportDaemon $d): bool => $d->isDaemonReady())) {
+            return ['level' => 'warning', 'legacy' => 'warning', 'label' => 'Import daemon: initializing…'];
+        }
+
+        $profiles = \count($daemons);
+        $watches = array_sum(array_map(static fn (ImportDaemon $d): int => $d->getWatchCount(), $daemons));
+
+        return [
+            'level' => 'success',
+            'legacy' => 'success',
+            'label' => "Import daemon: {$profiles} profile" . ($profiles !== 1 ? 's' : '') . ", watching {$watches} dir" . ($watches !== 1 ? 's' : ''),
+        ];
+    }
+}

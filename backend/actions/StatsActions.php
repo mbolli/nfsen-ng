@@ -5,28 +5,25 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\common\Table;
+use mbolli\nfsen_ng\pages\PageStates;
+use mbolli\nfsen_ng\pages\RangeControls;
+use mbolli\nfsen_ng\pages\state\TalkersState;
+use mbolli\nfsen_ng\query\QueryResult;
 use mbolli\nfsen_ng\query\StatsQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
 
 /**
- * Stats, dismiss-notification, and count-files action registrations.
+ * Stats-actions action registration: runs an nfdump statistic and renders its table.
  */
 final class StatsActions {
-    /**
-     * Register stats-actions, dismiss-notification, and count-files actions.
-     *
-     * @param list<array{id: string, type: string, message: string}> $flowNotifications
-     * @param list<array{id: string, type: string, message: string}> $statsNotifications
-     */
-    public static function register(
-        Context $c,
-        array &$flowNotifications,
-        array &$statsNotifications,
-        string &$statsTableHtml
-    ): void {
-        $c->action(static function (Context $c) use (&$statsNotifications, &$statsTableHtml): void {
+    /** Register the stats-actions action. */
+    public static function register(Context $c, PageStates $states): void {
+        $talkers = $states->talkers;
+
+        $c->action(static function (Context $c) use ($talkers): void {
             $datestart = $c->getSignal('datestart');
             $dateend = $c->getSignal('dateend');
             $selectedProfile = $c->getSignal('selected_profile');
@@ -52,8 +49,8 @@ final class StatsActions {
                 && $graphSources !== null
             );
             $time = microtime(true);
-            $forParam = $statsFor->string() . '/' . $statsOrderBy->string();
-            $statsNotifications = [];
+            $contextId = $c->getId();
+            $talkers->clearNotifications();
 
             try {
                 $query = new StatsQuery(
@@ -67,11 +64,13 @@ final class StatsActions {
                     lowerLimit: $statsLowerLimit->string(),
                     upperLimit: $statsUpperLimit->string(),
                     aggregation: $aggregation,
-                    handle: $c->getId(),
+                    handle: $contextId,
+                    protocol: RangeControls::protocol($c),
                 );
 
-                if ($query->window->clamped) {
-                    $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => $query->window->clampNotice()];
+                $clampNotice = $query->window->clamped ? $query->window->clampNotice() : '';
+                if ($clampNotice !== '') {
+                    $talkers->notify('warning', $clampNotice);
                 }
 
                 // Denominator for the progress estimate, deferred so the walk runs inside the
@@ -86,32 +85,16 @@ final class StatsActions {
                     $processor,
                     $ipInfoAction,
                     $time,
-                    &$statsNotifications,
-                    &$statsTableHtml
+                    $contextId,
+                    $clampNotice,
+                    $talkers
                 ): void {
                     try {
                         $result = $query->run($processor);
-
-                        $elapsed = round(microtime(true) - $time, 3);
-                        $cmd = htmlspecialchars($result->command, ENT_QUOTES | ENT_HTML5);
-                        $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'success', 'message' => $cmd
-                            ? "<b>nfdump:</b> <code>{$cmd}</code> ({$elapsed}s)"
-                            : "Statistics processed in {$elapsed}s."];
-
-                        if ($result->stderr !== '') {
-                            $statsNotifications[] = ['id' => bin2hex(random_bytes(4)), 'type' => 'warning', 'message' => '<b>nfdump warning:</b> ' . htmlspecialchars($result->stderr, ENT_QUOTES | ENT_HTML5)];
-                        }
-
-                        $statsTableHtml = Table::generate($result->rows, 'statsTable', [
-                            'hiddenFields' => [],
-                            'linkIpAddresses' => true,
-                            'ipInfoActionUrl' => $ipInfoAction !== null ? $ipInfoAction->url() : '',
-                            'originalData' => $result->rawOutput,
-                        ]);
+                        self::storeResult($talkers, $result, round(microtime(true) - $time, 3), $ipInfoAction?->url() ?? '', $clampNotice);
                     } catch (\Throwable $e) {
-                        Debug::getInstance()->log('Stats action error: ' . $e->getMessage(), LOG_ERR);
-                        $statsNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
-                        $statsTableHtml = '';
+                        // The cancel flag is read here because QueryRunner clears it after the work.
+                        self::storeFailure($talkers, $e, QueryRunner::wasCancelled($e, QueryCancel::isRequested($contextId)));
 
                         // Rethrow: QueryRunner owns the status line, and swallowing here left it
                         // reading "Done in 0.4s." beside the red error notification.
@@ -119,49 +102,35 @@ final class StatsActions {
                     }
                 });
             } catch (\Throwable $e) {
-                // Failure while *building* the command (bad window, unreadable profile) —
+                // Failure while building the command (bad window, unreadable profile):
                 // nothing was started, so report it synchronously.
-                Debug::getInstance()->log('Stats action error: ' . $e->getMessage(), LOG_ERR);
-                $statsNotifications = [['id' => bin2hex(random_bytes(4)), 'type' => 'error', 'message' => 'Error: ' . $e->getMessage()]];
-                $statsTableHtml = '';
+                self::storeFailure($talkers, $e, false);
                 $c->sync();
             }
         }, 'stats-actions');
+    }
 
-        // Dismiss a notification by ID from either tab
-        $c->action(static function (Context $c) use (&$flowNotifications, &$statsNotifications): void {
-            $id = $c->input('id') ?? '';
-            if (empty($id)) {
-                return;
-            }
-            $flowNotifications = array_values(array_filter($flowNotifications, fn ($n) => $n['id'] !== $id));
-            $statsNotifications = array_values(array_filter($statsNotifications, fn ($n) => $n['id'] !== $id));
-            $c->sync();
-        }, 'dismiss-notification');
+    /** Stores a finished run: the table, the command that ran, and the clamp notice on top. */
+    public static function storeResult(TalkersState $state, QueryResult $result, float $elapsed, string $ipInfoUrl, string $clampNotice = ''): void {
+        $state->setResult(Table::generate($result->rows, 'statsTable', [
+            'hiddenFields' => [],
+            'linkIpAddresses' => true,
+            'ipInfoActionUrl' => $ipInfoUrl,
+            'originalData' => $result->rawOutput,
+        ]));
 
-        // Count nfcapd files — lightweight scan triggered by date/source filter changes
-        $c->action(static function (Context $c): void {
-            $datestart = $c->getSignal('datestart');
-            $dateend = $c->getSignal('dateend');
-            $graphSources = $c->getSignal('graph_sources');
-            $selectedProfile = $c->getSignal('selected_profile');
-            $nfcapdFileCount = $c->getSignal('nfcapd_file_count');
-            \assert($datestart !== null && $dateend !== null && $graphSources !== null && $selectedProfile !== null && $nfcapdFileCount !== null);
+        $state->notifyResult($result, $elapsed, 'Statistics');
+        if ($clampNotice !== '') {
+            $state->notify('warning', $clampNotice);
+        }
+    }
 
-            // Never clamped. One count serves Flows, Statistics, Sankey and the filtered
-            // graph, and only some of those clamp their window, so keying the clamp on the
-            // Graphs tab's mode made the Flows count under-report whenever that tab happened
-            // to be in filtered mode. It describes the selected range; a consumer that reads a
-            // shorter one says so itself.
-            $srcs = Helpers::resolveSources($graphSources->array());
-            Helpers::measureNfcapdFiles(
-                $c,
-                $datestart->int(),
-                $dateend->int(),
-                $srcs,
-                $selectedProfile->string(),
-            );
-            $c->sync();
-        }, 'count-files');
+    /** Stores a failed run. A cancelled run keeps kill-nfdump's notice instead of an error. */
+    public static function storeFailure(TalkersState $state, \Throwable $e, bool $cancelled): void {
+        if (!$cancelled) {
+            Debug::getInstance()->log('Stats action error: ' . $e->getMessage(), LOG_ERR);
+            $state->notifyFailure($e);
+        }
+        $state->clearResult();
     }
 }

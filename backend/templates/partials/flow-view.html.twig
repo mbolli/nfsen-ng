@@ -3,14 +3,15 @@
     flowNotifications and flowTableHtml are rendered server-side on every sync.
     The dismiss button posts back to remove a notification server-side, so
     broadcasts re-render only the notifications still active on the server.
+    A notification's message and code are plain text, escaped here (D21).
 #}
 {#
     Traffic over time for the flow query described above (#166).
 
     Hidden until asked for, and never rebuilt on its own: plotting a filter means one nfdump
     run per time bin, so it happens on an explicit click and says what that will cost first.
-    The row limit and the aggregation options above do not apply here — they truncate and
-    regroup the table, they do not change which records match — which the caption says out
+    The row limit and the aggregation options above do not apply here (they truncate and
+    regroup the table, they do not change which records match), which the caption says out
     loud, because a table of 100 rows beside a graph of everything reads as a bug otherwise.
 #}
 {#
@@ -137,7 +138,7 @@
 
 <div  data-signals__ifmissing='{"_flows_queried": false}'>
     <div>
-        {# Empty state — shown until the user submits the first query #}
+        {# Empty state: shown until the user submits the first query #}
         <div data-show="!$_flows_queried" class="center muted">
             <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor"  viewBox="0 0 16 16">
                 <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2z"/>
@@ -145,7 +146,7 @@
             <p class="strong">No results yet</p>
             <p class="muted">Configure filters above and click <strong>Process data</strong> to query flows.</p>
         </div>
-        {# Results card — shown after the first query #}
+        {# Results card: shown after the first query #}
         <div data-show="$_flows_queried">
         <div class="card" data-class:loading="${{ query_running.id() }}">
             <div class="card-body stack">
@@ -159,8 +160,8 @@
                 <div id="flowMessage">
                     {% for n in flowNotifications %}
                     <div class="notice dismissible" data-level="{{ n.type }}" role="alert">
-                        {{ n.message|raw }}
-                        <button type="button" data-variant="close" data-on:click="@post('{{ dismissNotification.url() }}?id={{ n.id }}')" aria-label="Close"></button>
+                        {{ n.message }}{% if n.code %} <code>{{ n.code }}</code>{% endif %}
+                        <button type="button" data-variant="close" data-on:click="@post('{{ dismissNotification.url() }}?page=flows&id={{ n.id }}')" aria-label="Close"></button>
                     </div>
                     {% endfor %}
                 </div>

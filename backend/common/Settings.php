@@ -66,6 +66,24 @@ final class Settings {
 
     private const GRAPH_DATATYPES = ['traffic', 'packets', 'flows'];
 
+    /**
+     * Default view preference => page id. The page ids map to themselves; the old view ids
+     * follow D2. Kept here rather than in the pages layer, which common must not use.
+     */
+    private const VIEWS = [
+        'overview' => 'overview',
+        'talkers' => 'talkers',
+        'flows' => 'flows',
+        'conversations' => 'conversations',
+        'alerts' => 'alerts',
+        'health' => 'health',
+        'settings' => 'settings',
+        'graphs' => 'overview',
+        'statistics' => 'talkers',
+        'sankey' => 'conversations',
+        'investigate' => 'flows',
+    ];
+
     /** The theme settings.php or NFSEN_DEFAULT_THEME chose; withDefaultTheme() leaves it alone. */
     public private(set) string $deploymentTheme;
 
@@ -83,6 +101,7 @@ final class Settings {
         public private(set) array $filters,
         public private(set) string $datasourceName,
         public private(set) string $processorName,
+        /** Page bare `/` opens: overview, talkers, flows, conversations, alerts, health or settings. */
         public private(set) string $defaultView,
         public private(set) string $defaultGraphDisplay,
         public private(set) string $defaultGraphDatatype,
@@ -157,7 +176,7 @@ final class Settings {
             filters: self::stringList($raw['general']['filters'] ?? EnvRegistry::value('NFSEN_FILTERS')),
             datasourceName: $datasourceName,
             processorName: (string) ($raw['general']['processor'] ?? EnvRegistry::value('NFSEN_PROCESSOR')),
-            defaultView: (string) ($raw['frontend']['defaults']['view'] ?? 'graphs'),
+            defaultView: self::normalizeView($raw['frontend']['defaults']['view'] ?? 'overview'),
             defaultGraphDisplay: (string) ($raw['frontend']['defaults']['graphs']['display'] ?? 'sources'),
             defaultGraphDatatype: self::normalizeGraphDatatype($datatype),
             defaultGraphProtocols: self::stringList($raw['frontend']['defaults']['graphs']['protocols'] ?? ['any']),
@@ -221,7 +240,7 @@ final class Settings {
             filters: self::stringList(EnvRegistry::value('NFSEN_FILTERS')),
             datasourceName: (string) EnvRegistry::value('NFSEN_DATASOURCE'),
             processorName: (string) EnvRegistry::value('NFSEN_PROCESSOR'),
-            defaultView: 'graphs',
+            defaultView: 'overview',
             defaultGraphDisplay: 'sources',
             defaultGraphDatatype: 'traffic',
             defaultGraphProtocols: ['any'],
@@ -369,7 +388,7 @@ final class Settings {
 
     public function withDefaultView(string $view): self {
         $clone = clone $this;
-        $clone->defaultView = $view;
+        $clone->defaultView = self::normalizeView($view);
 
         return $clone;
     }
@@ -559,6 +578,13 @@ final class Settings {
         $t = strtolower(trim($theme));
 
         return \in_array($t, self::THEMES, true) ? $t : 'auto';
+    }
+
+    /** A page id; the old view ids map to theirs (D2) and anything else becomes 'overview'. */
+    public static function normalizeView(mixed $view): string {
+        $v = \is_string($view) ? strtolower(trim($view)) : '';
+
+        return self::VIEWS[$v] ?? 'overview';
     }
 
     /** '1h'|'24h'|'7d'|'30d'|'1y'; anything else becomes '24h'. */

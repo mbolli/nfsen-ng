@@ -1,0 +1,30 @@
+/* Global controls bar (spec 4.0.2). The frame only: sticky, one surface, controls wrap. */
+
+.controls-bar {
+    position: sticky;
+    z-index: var(--layer-sticky);
+    inset-block-start: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2) var(--size-3);
+    padding: var(--size-2) var(--size-4);
+    border-block-end: 1px solid var(--border);
+    background: var(--surface-2);
+}
+
+.controls-range {
+    flex: 1 1 32rem;
+    min-inline-size: 0;
+}
+
+.controls-bar .controls-end {
+    margin-inline-start: auto;
+}
+
+/* Until the bar folds into one row on phones (4.9) it is too tall to stay pinned there. */
+@media (max-width: 47.98em) {
+    .controls-bar {
+        position: static;
+    }
+}

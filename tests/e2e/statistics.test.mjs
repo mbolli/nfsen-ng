@@ -7,10 +7,11 @@ import { withPage, BASE } from './lib/cdp.mjs';
 export default async function statisticsTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
-        await page.clickToPanel(`_currentView = 'statistics'`, '$_currentView', 'statistics');
+        await page.waitForBoot();
+        await page.gotoPage('talkers');
 
-        await page.clickByText('Year', 'button');
-        await page.processData();
+        await page.setRangePreset('1y');
+        await page.runQuery('talkers');
 
         const notificationHtml = await page.evaluate(`document.getElementById('statsMessage').textContent`);
         assert.match(

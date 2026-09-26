@@ -1,0 +1,380 @@
+/* The page frame (spec 2.6, 4.0). Breakpoints are literals: custom properties do not work in
+   media queries. */
+
+/* Page sections, headings and banners are shown and hidden through the attribute, and a
+   component's own display rule must not bring them back. */
+[hidden] {
+    display: none !important;
+}
+
+.icon {
+    flex-shrink: 0;
+}
+
+/* ── Frame ──────────────────────────────────────────────────────────────── */
+
+body.app {
+    display: grid;
+    grid-template-columns: var(--sidebar-size) minmax(0, 1fr);
+    align-items: start;
+}
+
+body.app[data-sidebar='collapsed'] {
+    grid-template-columns: var(--sidebar-collapsed-size) minmax(0, 1fr);
+}
+
+/* Only the sidebar and the main column take grid cells; the rest is fixed or in the top layer. */
+#modal-root,
+#nfsen-tip-container {
+    display: contents;
+}
+
+.app-main {
+    display: flex;
+    flex-direction: column;
+    grid-column: 2;
+    grid-row: 1;
+    min-block-size: 100dvb;
+    min-inline-size: 0;
+}
+
+.shell-notices:not(:has(> :not([hidden]))) {
+    display: none;
+}
+
+.shell-notices {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-2);
+    padding: var(--size-3) var(--size-4) 0;
+}
+
+#page-content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--size-4);
+    padding: var(--size-4);
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+
+.sidebar {
+    position: sticky;
+    z-index: var(--layer-sidebar);
+    inset-block-start: 0;
+    display: flex;
+    flex-direction: column;
+    grid-column: 1;
+    grid-row: 1;
+    block-size: 100dvb;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-inline-end: 1px solid var(--border);
+    background: var(--surface-sidebar);
+}
+
+.sidebar-brand {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--size-2);
+    padding: var(--size-4);
+    color: var(--text-1);
+    font-weight: var(--font-weight-semibold);
+    text-decoration: none;
+}
+
+.sidebar-brand > .icon {
+    align-self: center;
+}
+
+.sidebar-brand small {
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-normal);
+}
+
+.sidebar-nav {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 var(--size-2) var(--size-2);
+}
+
+.nav-group {
+    margin-block: var(--size-4) var(--size-1);
+    padding-inline: var(--size-2);
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.nav-item,
+.sidebar-action {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--size-3);
+    min-block-size: 2.25rem;
+    padding: var(--size-1) var(--size-2);
+    border: none;
+    border-radius: var(--radius-2);
+    background: none;
+    color: var(--text-1);
+    font-size: var(--font-size-0);
+    text-align: start;
+    text-decoration: none;
+}
+
+.nav-item:hover,
+.sidebar-action:hover {
+    background: var(--surface-3);
+}
+
+.nav-item[aria-current='page'] {
+    background: var(--surface-4);
+    font-weight: var(--font-weight-semibold);
+    box-shadow: inset 3px 0 0 var(--text-1);
+}
+
+.nav-item[aria-current='page']:dir(rtl) {
+    box-shadow: inset -3px 0 0 var(--text-1);
+}
+
+.sidebar-nav .nav-item[data-slot='end'] {
+    margin-block-start: auto;
+}
+
+.nav-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nav-badge {
+    min-inline-size: 1.25rem;
+    margin-inline-start: auto;
+    padding: 0 var(--size-1);
+    border-radius: var(--radius-round);
+    background: var(--surface-4);
+    color: var(--text-1);
+    font-size: var(--font-size-00);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--font-weight-semibold);
+    text-align: center;
+}
+
+.nav-badge[data-level='error'] {
+    background: var(--danger);
+    color: var(--on-danger);
+}
+
+.nav-item .nav-dot {
+    margin-inline-start: auto;
+}
+
+.nav-import {
+    display: inline-flex;
+    color: var(--text-2);
+    animation: glyph-pulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nav-import {
+        animation: none;
+    }
+}
+
+.sidebar-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--size-2);
+    border-block-start: 1px solid var(--border);
+}
+
+.sidebar-action {
+    justify-content: flex-start;
+    inline-size: 100%;
+    cursor: pointer;
+}
+
+/* The theme switch shows the theme it switches to; the head script sets data-theme before paint. */
+:root[data-theme='dark'] [data-theme-icon='light'],
+:root:not([data-theme='dark']) [data-theme-icon='dark'] {
+    display: none;
+}
+
+.theme-icon {
+    display: inline-flex;
+}
+
+/* Collapsed: icons only. Every item keeps its name, visually hidden, and a title. */
+body.app[data-sidebar='collapsed'] .sidebar :is(.nav-label, .nav-group) {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+body.app[data-sidebar='collapsed'] :is(.nav-item, .sidebar-action, .sidebar-brand) {
+    justify-content: center;
+}
+
+body.app[data-sidebar='collapsed'] .sidebar-brand {
+    padding-inline: 0;
+}
+
+body.app[data-sidebar='collapsed'] .nav-item :is(.nav-badge, .nav-dot, .nav-import) {
+    position: absolute;
+    inset-block-start: 0.125rem;
+    inset-inline-end: 0.125rem;
+    margin: 0;
+}
+
+body.app[data-sidebar='collapsed'] .nav-badge {
+    min-inline-size: 1rem;
+    font-size: 0.625rem;
+    line-height: 1rem;
+}
+
+/* ── Page header and sections ───────────────────────────────────────────── */
+
+.page-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--size-3);
+}
+
+.page-heading h1 {
+    font-size: var(--font-size-3);
+}
+
+.page-heading h1:focus {
+    outline: none;
+}
+
+.page-heading h1:focus-visible {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+}
+
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4);
+}
+
+.page .card > header h2 {
+    font-size: var(--font-size-1);
+}
+
+/* Query cards collapse their fields behind "Show filters" on small screens; the run row stays. */
+.options-toggle {
+    display: none;
+    margin-inline-start: auto;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+
+.status-footer {
+    justify-content: center;
+    padding: var(--size-3) var(--size-4);
+    border-block-start: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+}
+
+.status-footer a {
+    color: var(--text-2);
+}
+
+.status-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-1);
+    cursor: help;
+}
+
+/* ── Mobile tab bar ─────────────────────────────────────────────────────── */
+
+.tabbar {
+    display: none;
+}
+
+@media (max-width: 47.98em) {
+    body.app,
+    body.app[data-sidebar='collapsed'] {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .sidebar {
+        display: none;
+    }
+
+    .app-main {
+        grid-column: 1;
+        padding-block-end: calc(var(--tabbar-size) + env(safe-area-inset-bottom));
+    }
+
+    #page-content {
+        padding: var(--size-3);
+    }
+
+    .options-toggle {
+        display: inline-flex;
+    }
+
+    .query-card[data-collapsed] .query-fields {
+        display: none;
+    }
+
+    .tabbar {
+        position: fixed;
+        z-index: var(--layer-sidebar);
+        inset-inline: 0;
+        inset-block-end: 0;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        block-size: calc(var(--tabbar-size) + env(safe-area-inset-bottom));
+        padding-block-end: env(safe-area-inset-bottom);
+        border-block-start: 1px solid var(--border);
+        background: var(--surface-sidebar);
+    }
+
+    .tabbar-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        inline-size: 100%;
+        block-size: 100%;
+        border: none;
+        background: none;
+        color: var(--text-2);
+        font-size: var(--font-size-00);
+        text-decoration: none;
+    }
+
+    .tabbar-item[aria-current='page'] {
+        color: var(--text-1);
+        font-weight: var(--font-weight-semibold);
+        box-shadow: inset 0 3px 0 var(--text-1);
+    }
+
+    .tabbar-more {
+        display: block;
+    }
+
+    .tabbar-more > .menu-toggle::after {
+        content: none;
+    }
+}

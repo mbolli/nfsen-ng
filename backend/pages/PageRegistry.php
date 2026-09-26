@@ -6,8 +6,8 @@ namespace mbolli\nfsen_ng\pages;
 
 /** Ordered pages and shell modules, and the id maps around them (1.4.2, D2). */
 final class PageRegistry {
-    /** False while the old layout renders every page at once: every page's viewData() runs. */
-    public const bool LAZY = false;
+    /** Only the active page renders in full; the others render a skeleton (1.2). */
+    public const bool LAZY = true;
 
     /** @var list<class-string<Page>> in sidebar order */
     public const array PAGES = [OverviewPage::class, TalkersPage::class, FlowsPage::class,
@@ -45,7 +45,7 @@ final class PageRegistry {
         'conversations' => 'conversations',
     ];
 
-    /** The view id the old layout shows for a page, while it still renders by `_currentView`. */
+    /** The old view id of a page, which the old Settings form's Default view select still lists. */
     private const array TO_LEGACY = [
         'overview' => 'graphs',
         'talkers' => 'statistics',
@@ -101,7 +101,7 @@ final class PageRegistry {
         return self::LEGACY[$view] ?? '';
     }
 
-    /** The old layout's view id for a page id (or a legacy id), 'graphs' when unknown. */
+    /** The old view id for a page id (or a legacy id), 'graphs' when unknown. */
     public static function toLegacy(string $pageId): string {
         return self::TO_LEGACY[self::fromLegacy($pageId)] ?? 'graphs';
     }

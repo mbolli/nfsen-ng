@@ -7,6 +7,7 @@ namespace mbolli\nfsen_ng\pages;
 use mbolli\nfsen_ng\actions\Helpers;
 use mbolli\nfsen_ng\actions\ShellActions;
 use mbolli\nfsen_ng\actions\UtilityActions;
+use mbolli\nfsen_ng\common\AlertManager;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\ImportDaemon;
@@ -92,7 +93,6 @@ final class Shell {
         $sources = $fatal ? [] : self::captureSources($app, self::profile($c), $now);
         $capture = self::captureStatus($sources, $now);
         $daemon = self::daemonStatus($app);
-        $defaultView = PageRegistry::lazy() ? self::defaultPage() : PageRegistry::toLegacy(self::defaultPage());
 
         $data = [
             'shell' => [
@@ -104,7 +104,7 @@ final class Shell {
                 'isAnalysis' => PageRegistry::isAnalysis($activePage),
                 'pagesMeta' => PageRegistry::meta(),
                 'defaults' => [
-                    'view' => $defaultView,
+                    'view' => self::defaultPage(),
                     'theme' => Config::$settings->defaultTheme,
                     'density' => Config::$settings->compactTables ? 'compact' : 'comfortable',
                 ],
@@ -124,33 +124,24 @@ final class Shell {
                     'eta' => (string) $app->globalState('import_eta', ''),
                     'profile' => (string) $app->globalState('import_active_profile', ''),
                 ],
-                'alertsFiring' => 0,
+                'alertsFiring' => self::alertsFiring($app),
                 'healthLevel' => 'unknown',
+                'healthIssues' => 0,
                 'modalHtml' => $states->shell->modalHtml,
             ],
         ];
 
+        // Top-level keys the old partials inside the page templates still read (1.5).
         $legacy = [
-            'version' => Config::VERSION,
-            'assetVersion' => Config::assetVersion(),
-            'fatalError' => $app->globalState('_fatalError', null),
-            'connections' => \count($app->getClients()),
-            'importYears' => Config::$settings->importYears,
             'sources' => Config::$settings->sources,
             'ports' => Config::$settings->ports,
             'filters' => Config::$settings->filters,
-            'defaults' => ['view' => $defaultView, 'theme' => Config::$settings->defaultTheme],
-            'importSources' => $sources,
+            // The Rescan confirmation on Health names the datasource.
+            'deployDatasource' => Config::$settings->datasourceName,
             'importProgress' => $app->globalState('import_progress', 0),
             'importCurrentFile' => $app->globalState('import_current_file', ''),
             'importStatusText' => $app->globalState('import_status_text', ''),
             'importEta' => $app->globalState('import_eta', ''),
-            'captureStatus' => $capture['legacy'],
-            'captureLabel' => $capture['label'],
-            'daemonStatus' => $daemon['legacy'],
-            'daemonLabel' => $daemon['label'],
-            // Toasts are delivered through execScript; the key stays for the old layout.
-            'alertFiredHtml' => '',
         ];
 
         foreach (PageRegistry::MODULES as $module) {
@@ -170,6 +161,7 @@ final class Shell {
         $data['pages'] = $pages;
         // After the pages: an open Health page has just refreshed the shared checks.
         $data['shell']['healthLevel'] = HealthPage::level($app, $now);
+        $data['shell']['healthIssues'] = self::healthIssues($app, $data['shell']['healthLevel'], $now);
 
         // Without lazy rendering every page's content is in the document on every render.
         foreach ($states->all() as $id => $state) {
@@ -193,6 +185,25 @@ final class Shell {
         $page = $c->getSignal('page')?->string() ?? '';
 
         return PageRegistry::find($page) !== null ? $page : self::defaultPage();
+    }
+
+    /** Rules firing right now, for the sidebar's Alerts count; read from memory, never from disk. */
+    public static function alertsFiring(Via $app): int {
+        $manager = $app->globalState('alertManager', null);
+
+        return $manager instanceof AlertManager ? $manager->firingCount() : 0;
+    }
+
+    /** How many checks sit at the sidebar's Health level, for its accessible text ("Health: 2 warnings"). */
+    public static function healthIssues(Via $app, string $level, int $now): int {
+        if (!\in_array($level, ['warning', 'error'], true)) {
+            return 0;
+        }
+
+        return \count(array_filter(
+            HealthPage::checks($app, false, $now),
+            static fn (array $check): bool => $check['status'] === $level,
+        ));
     }
 
     /** Config failed to initialise: renders show the banner and touch no datasource. */
@@ -300,34 +311,34 @@ final class Shell {
      *
      * @param list<array{name: string, last_update: int}> $sources
      *
-     * @return array{level: 'error'|'neutral'|'success'|'warning', legacy: string, label: string}
+     * @return array{level: 'error'|'neutral'|'success'|'warning', label: string}
      */
     private static function captureStatus(array $sources, int $now): array {
         $last = $sources === [] ? 0 : max(array_column($sources, 'last_update'));
         if ($last === 0) {
-            return ['level' => 'neutral', 'legacy' => 'secondary', 'label' => 'nfcapd: no data yet'];
+            return ['level' => 'neutral', 'label' => 'nfcapd: no data yet'];
         }
 
         $age = $now - $last;
         if ($age < self::CAPTURE_FRESH) {
-            return ['level' => 'success', 'legacy' => 'success', 'label' => 'nfcapd: last capture ' . HealthChecker::ageStr($age) . ' ago'];
+            return ['level' => 'success', 'label' => 'nfcapd: last capture ' . HealthChecker::ageStr($age) . ' ago'];
         }
 
         return $age < 3600
-            ? ['level' => 'warning', 'legacy' => 'warning', 'label' => 'nfcapd: no capture in ' . HealthChecker::ageStr($age)]
-            : ['level' => 'error', 'legacy' => 'danger', 'label' => 'nfcapd: no capture in ' . HealthChecker::ageStr($age)];
+            ? ['level' => 'warning', 'label' => 'nfcapd: no capture in ' . HealthChecker::ageStr($age)]
+            : ['level' => 'error', 'label' => 'nfcapd: no capture in ' . HealthChecker::ageStr($age)];
     }
 
-    /** @return array{level: 'error'|'success'|'warning', legacy: string, label: string} */
+    /** @return array{level: 'error'|'success'|'warning', label: string} */
     private static function daemonStatus(Via $app): array {
         /** @var array<string, ImportDaemon> $daemons */
         $daemons = $app->globalState('daemons', []);
         if ((bool) $app->globalState('daemon_disabled', false) || $daemons === []) {
-            return ['level' => 'error', 'legacy' => 'danger', 'label' => 'Import daemon: disabled (NFSEN_SKIP_DAEMON)'];
+            return ['level' => 'error', 'label' => 'Import daemon: disabled (NFSEN_SKIP_DAEMON)'];
         }
 
         if (!array_all($daemons, static fn (ImportDaemon $d): bool => $d->isDaemonReady())) {
-            return ['level' => 'warning', 'legacy' => 'warning', 'label' => 'Import daemon: initializing…'];
+            return ['level' => 'warning', 'label' => 'Import daemon: initializing…'];
         }
 
         $profiles = \count($daemons);
@@ -335,7 +346,6 @@ final class Shell {
 
         return [
             'level' => 'success',
-            'legacy' => 'success',
             'label' => "Import daemon: {$profiles} profile" . ($profiles !== 1 ? 's' : '') . ", watching {$watches} dir" . ($watches !== 1 ? 's' : ''),
         ];
     }

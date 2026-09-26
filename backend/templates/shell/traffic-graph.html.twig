@@ -1,0 +1,56 @@
+{# The persistent traffic graph (1.8). Off the analysis pages: hidden, no data, ignored by
+   morphs; the chart keeps its last drawing for the way back. #}
+{% set analysisIds = shell.pagesMeta|filter(m => m.analysis)|map(m => m.id)|json_encode %}
+<section class="traffic-graph" id="trafficGraphSection" aria-labelledby="trafficGraphTitle"
+         data-attr:hidden="!{{ analysisIds }}.includes(${{ page.id() }})" data-preserve-attr="hidden"
+         {% if graph.mode == 'none' %}hidden data-ignore-morph{% endif %}
+         data-computed:graph._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ${{ graph_protocols.id() }}, ports: ${{ graph_ports.id() }}, display: ${{ graph_display.id() }}, type: ${{ graph_datatype.id() }}, trafficUnit: ${{ graph_trafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}"
+         data-indicator:graph._connecting
+         {# Live tick (1.7): stored series only, every 15 s on Overview and every 60 s on the other analysis pages. #}
+         data-on-interval__duration.15s.leading="!$_disconnected && ${{ page.id() }} === 'overview' && ${{ graph_mode.id() }} === 'stored' && ${{ range_live.id() }} && @post('{{ refreshGraphs.url() }}')"
+         data-on-interval__duration.60s="!$_disconnected && ${{ page.id() }} !== 'overview' && {{ analysisIds }}.includes(${{ page.id() }}) && ${{ graph_mode.id() }} === 'stored' && ${{ range_live.id() }} && @post('{{ refreshGraphs.url() }}')"
+         data-on:change__window__throttle.250ms="{{ analysisIds }}.includes(${{ page.id() }}) && evt.target.closest('nfsen-daterange, .date-range-controls') && @post('{{ refreshGraphs.url() }}')">
+
+    <header class="traffic-graph-header cluster">
+        <h2 id="trafficGraphTitle">{{ graph.title }}</h2>
+        <span class="traffic-graph-mode">{{ graph.modeLabel }}</span>
+        {% if graph.filtered %}
+            <span class="badge" title="Series built by re-reading the capture files through an nfdump filter">FILTERED</span>
+        {% elseif graph.live %}
+            <span class="badge" data-level="success" title="The graph follows the newest data">
+                LIVE
+                {% if graph.lastUpdate > 0 %}
+                    <span>updated <span data-text="new Date(${{ graph_lastUpdate.id() }} * 1000).toLocaleString(undefined, tzOptions(${{ displayTz.id() }}, ${{ nfcapdTz.id() }}))"></span></span>
+                {% endif %}
+            </span>
+        {% else %}
+            <span class="badge" title="The graph shows a fixed window">HISTORICAL</span>
+        {% endif %}
+        {% if graph.points > 0 %}
+            <span class="badge" title="Number of data points">{{ graph.points }} points</span>
+        {% endif %}
+    </header>
+
+    {# An unbuilt filtered series says so instead of drawing an empty chart; Apply filter is on Overview only. #}
+    {% if shell.activePage == 'overview' and graph_mode.string() == 'filtered' and graph_actualResolution.int() == 0 and not query_running.bool() %}
+        <p class="notice" data-show="${{ page.id() }} === 'overview'">Set an nfdump filter below and press <strong>Apply filter</strong> to build the graph from the capture files.</p>
+    {% endif %}
+
+    <div class="traffic-graph-body">
+        <nfsen-chart id="trafficGraph" data-ref="graph._widget" data-external-prefix="trafficGraph"
+                     data-mode="{{ graph.mode }}" role="img" aria-label="{{ graph.ariaLabel }}"
+                     data-attr:data-chart-config="$graph._config"
+                     {% if graph.mode != 'none' %}data-chart-data="{{ graph.data }}"{% endif %}>
+            <div class="chart-container" data-ignore-morph data-ignore>
+                <div class="chart-canvas"></div>
+            </div>
+        </nfsen-chart>
+        {# Filled by nfsen-chart; ignored by morphs, which would otherwise wipe them after load. #}
+        <aside class="traffic-graph-side" aria-label="Series and legend">
+            <h3>Series</h3>
+            <div id="trafficGraph-series" data-ignore-morph data-ignore></div>
+            <h3>Legend</h3>
+            <div id="trafficGraph-legend" data-ignore-morph data-ignore></div>
+        </aside>
+    </div>
+</section>

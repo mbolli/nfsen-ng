@@ -1,0 +1,55 @@
+{# Global controls bar (4.0.2), interim. Seeds what the traffic graph reads, ahead of every
+   bind that would otherwise invent it. #}
+{% import 'shell/icons.html.twig' as icons %}
+{% set countingPages = ['flows', 'talkers', 'conversations'] %}
+{% set seeds = {
+    (graph_sources.id()): graph_sources.array(),
+    (graph_protocols.id()): graph_protocols.array(),
+    (graph_ports.id()): graph_ports.array(),
+    (graph_display.id()): graph_display.string(),
+    (graph_datatype.id()): graph_datatype.string(),
+    (graph_trafficUnit.id()): graph_trafficUnit.string(),
+    (displayTz.id()): displayTz.string(),
+    (nfcapdTz.id()): nfcapdTz.string(),
+} %}
+<div class="controls-bar" role="region" aria-label="Range and profile"
+     data-signals__ifmissing="{{ seeds|json_encode }}"
+     data-indicator:nfcapd._counting
+     data-on:change__window__throttle.1000ms="({{ countingPages|json_encode }}.includes(${{ page.id() }}) || (${{ page.id() }} === 'overview' && ${{ graph_mode.id() }} === 'filtered')) && evt.target.closest('nfsen-daterange') && @post('{{ countFiles.url() }}')">
+
+    {% if available_profiles.array()|length > 1 %}
+        <select id="profileSelect" class="profile-select" aria-label="Profile" data-size="sm"
+                {{ bind(selected_profile) }}
+                data-on:change="@post('{{ changeProfile.url() }}')">
+            {% for group in range.profiles %}
+                {% if group.group != '' %}
+                    <optgroup label="{{ group.group }}">
+                        {% for p in group.profiles %}<option value="{{ p.id }}">{{ p.label }}</option>{% endfor %}
+                    </optgroup>
+                {% else %}
+                    {% for p in group.profiles %}<option value="{{ p.id }}">{{ p.label }}</option>{% endfor %}
+                {% endif %}
+            {% endfor %}
+        </select>
+    {% endif %}
+
+    <div class="controls-range">
+        {% include 'partials/date-range.html.twig' %}
+    </div>
+
+    <div class="controls-end cluster">
+        <a class="chip" id="importChip" href="#/health" data-state="running"
+           {% if not shell.import.running %}hidden{% endif %}
+           data-attr:hidden="!${{ import_running.id() }}">
+            <span class="chip-dot"></span>
+            Import running
+            <span>{{ shell.import.progress }}%{% if shell.import.eta %} · {{ shell.import.eta }}{% endif %}</span>
+        </a>
+        <span class="spinner reconnecting" hidden data-attr:hidden="!$_disconnected" data-preserve-attr="hidden">
+            <span class="visually-hidden">Reconnecting</span>
+        </span>
+        <button type="button" id="reloadButton" data-variant="ghost" data-size="sm"
+                title="Reload page" aria-label="Reload page"
+                data-on:click="window.location.reload()">{{ icons.icon('reload') }}</button>
+    </div>
+</div>

@@ -11,8 +11,9 @@ const columnsOf = `[...document.querySelectorAll('#statsTable thead th')].map((t
 export default async function statisticsAggregationTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
-        await page.clickToPanel(`_currentView = 'statistics'`, '$_currentView', 'statistics');
-        await page.clickByText('Year', 'button');
+        await page.waitForBoot();
+        await page.gotoPage('talkers');
+        await page.setRangePreset('1y');
 
         // Only nfdump's record statistic takes an aggregation, so the controls belong to it.
         const visibleFor = async (statistic) => {
@@ -25,7 +26,7 @@ export default async function statisticsAggregationTest() {
         assert.equal(await visibleFor('record'), true, 'aggregation controls should be shown for Flow Records');
 
         await page.clickByText('Destination', 'label');
-        await page.processData();
+        await page.runQuery('talkers');
 
         const notification = await page.evaluate(`document.getElementById('statsMessage').textContent`);
         assert.match(notification, /-Adstport/, `expected the aggregation in the nfdump command, got: ${notification}`);
@@ -35,10 +36,7 @@ export default async function statisticsAggregationTest() {
         // the unaggregated statistic lists a full 5-tuple per row.
         const columns = await page.evaluate(columnsOf);
         assert.ok(columns.length > 0, 'expected the statistics table to have columns');
-        assert.ok(
-            columns.includes('Destination Port'),
-            `expected a destination port column, got: ${columns.join(', ')}`
-        );
+        assert.ok(columns.includes('Destination Port'), `expected a destination port column, got: ${columns.join(', ')}`);
         assert.ok(
             !columns.some((c) => /source/i.test(c)),
             `expected the source address column to be aggregated away, got: ${columns.join(', ')}`

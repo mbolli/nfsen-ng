@@ -1,18 +1,15 @@
-// Alerts: the one test in this suite that mutates persisted state
-// (backend/settings/preferences.json) -- create a uniquely-named rule,
-// toggle it, then delete it, asserting the rule count returns to baseline
-// so the run doesn't leave test artifacts behind in a real preferences file.
+// Alerts: mutates persisted state (backend/settings/preferences.json) -- create a
+// uniquely-named rule, toggle it, then delete it, asserting the rule count returns to
+// baseline so the run doesn't leave test artifacts behind in a real preferences file.
 //
-// All row/table queries are scoped to the alerts section's own container
-// ([data-show="$_settingsSection == 'alerts'"]) rather than a bare "table
-// tbody" -- every settings sub-section's markup stays in the DOM at once
-// (data-show only toggles CSS visibility), so an unscoped query matches
-// whichever table happens to come first in document order (the Import
-// section's profiles table), not the alerts table.
+// Every query is scoped to the Alerts page section, so another table on the page (the
+// rule history) can never match first.
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
 
-const ALERTS_SECTION = `[data-show="$_settingsSection == 'alerts'"]`;
+export const MUTATING = true;
+
+const ALERTS_SECTION = '#page-alerts';
 
 async function getRuleCount(page) {
     const text = await page.evaluate(`(function(){
@@ -42,8 +39,8 @@ export default async function alertsTest() {
         page.autoAcceptDialogs(); // the delete button gates on a native confirm()
 
         await page.navigate(BASE + '/');
-        await page.clickToPanel(`_currentView = 'settings'`, '$_currentView', 'settings');
-        await page.clickToPanel(`_settingsSection = 'alerts'`, '$_settingsSection', 'alerts');
+        await page.waitForBoot();
+        await page.gotoPage('alerts');
 
         const baseline = await getRuleCount(page);
         assert.notEqual(baseline, null, 'expected to find the "N rules" badge');

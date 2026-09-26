@@ -6,7 +6,8 @@
     (hardcoded to JSON); it is kept as a client-local signal initialised here so the UI state
     is preserved across re-renders.
 #}
-<div class="filter-grid">
+<div class="stack">
+<div class="filter-grid query-fields" id="flowsQueryFields">
 
     {# Limit #}
     <div id="filterFlowsLimit" class="filter-cell">
@@ -42,13 +43,7 @@
         <p class="filter-label">NFDUMP filter
             <nfsen-tooltip data-ignore-morph text="Filter syntax similar to tcpdump/pcap. Example: dst port 80" placement="right"></nfsen-tooltip>
         </p>
-        <textarea  id="filterNfdumpTextarea"
-                  {{ bind(flows_filter) }} rows="3" autocomplete="on"></textarea>
-        <nfsen-filter-manager
-            data-ignore-morph
-            data-target-textarea="filterNfdumpTextarea"
-            data-default-filters="{{ filters|json_encode }}">
-        </nfsen-filter-manager>
+        {% include 'components/filter-field.html.twig' with {target: 'flows', signal: flows_filter, textareaId: 'filterNfdumpTextarea'} %}
         </div>
     </div>
 
@@ -108,15 +103,12 @@
         </div>
         </div>
     </div>
+</div>
 
     {# Submit. Flex, because the progress button's own root is a block-level flex container:
        left to itself it drops below any sibling control on this row. #}
     <div class="cluster filter-submit">
-        {#
-            The query runs in a coroutine now, so query_running (server-owned) is what says
-            whether it is still going — not Datastar's request indicator, which clears the
-            moment the action returns. Progress is a byte-read estimate, hence exact=false.
-        #}
+        {# The query runs in a coroutine, so query_running says whether it is still going. #}
         <nfsen-tooltip data-ignore-morph text="Execute nfdump query with current filters" placement="top" no-icon>
             {% include 'partials/progress-button.html.twig' with {
                 id: 'flowsRun',
@@ -130,9 +122,11 @@
                 exact: query_exact.id(),
                 kindSignal: query_kind.id(),
                 kind: 'flows',
+                run: 'flows',
                 onClick: '$_flows_queried = true; ',
             } only %}
         </nfsen-tooltip>
+        {% include 'components/query-estimate.html.twig' with {target: 'flows'} %}
     </div>
 
 </div>

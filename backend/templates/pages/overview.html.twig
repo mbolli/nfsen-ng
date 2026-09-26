@@ -1,0 +1,38 @@
+{#
+    Overview (4.1), interim: the graph filters and options of the old Graphs view. The chart
+    is the shell's traffic graph above this page. Notices come from Kill on a graph run.
+#}
+<div class="stack">
+    {% if pages.overview.notifications is not empty %}
+        <div id="overviewMessage" class="stack">
+            {% for n in pages.overview.notifications %}
+                <div class="notice dismissible" data-level="{{ n.type }}" role="alert">
+                    {{ n.message }}{% if n.code %} <code>{{ n.code }}</code>{% endif %}
+                    <button type="button" data-variant="close" aria-label="Dismiss"
+                            data-on:click="@post('{{ dismissNotification.url() }}?page=overview&id={{ n.id }}')"></button>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <section class="card query-card" aria-labelledby="overviewQueryTitle"
+             data-collapsed data-attr:data-collapsed="!$_optionsOpen_overview" data-preserve-attr="data-collapsed">
+        <header>
+            <h2 id="overviewQueryTitle">Graph filters</h2>
+            <button type="button" class="options-toggle" data-size="sm" aria-controls="overviewQueryFields"
+                    aria-expanded="false" data-attr:aria-expanded="$_optionsOpen_overview ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+                    data-on:click="$_optionsOpen_overview = !$_optionsOpen_overview"
+                    data-text="$_optionsOpen_overview ? 'Hide filters' : 'Show filters'">Show filters</button>
+        </header>
+        <div class="card-body">
+            {% include 'partials/graph-filters.html.twig' %}
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="overviewOptionsTitle">
+        <header><h2 id="overviewOptionsTitle">Graph options</h2></header>
+        <div class="card-body">
+            {% include 'partials/graph-view.html.twig' %}
+        </div>
+    </section>
+</div>

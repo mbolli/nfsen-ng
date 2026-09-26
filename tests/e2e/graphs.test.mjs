@@ -1,4 +1,4 @@
-// Graphs tab: codifies the manual verification done for the Dygraphs -> ECharts
+// Overview's traffic graph: codifies the manual verification done for the Dygraphs -> ECharts
 // migration as a repeatable regression check -- chart mounts at the real
 // container size (not the stale 100px-measured-while-hidden bug that shipped
 // once), zoom fires the sync button + graph-zoom wiring date-range.html.twig
@@ -18,8 +18,10 @@
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
 
+const CHART = "document.getElementById('trafficGraph')";
+
 async function selectMostLikelyToHaveData(page) {
-    await page.clickByText('Year', 'button');
+    await page.setRangePreset('1y');
     for (const label of ['Flows', 'Packets', 'Traffic']) {
         await page.evaluate(`(function(){
             var els = document.querySelectorAll('#filterTypes label');
@@ -27,7 +29,7 @@ async function selectMostLikelyToHaveData(page) {
             if (lbl) lbl.click();
         })()`);
         await new Promise((resolve) => setTimeout(resolve, 1500));
-        const hasData = await page.evaluate(`!!document.querySelector('nfsen-chart').chart`);
+        const hasData = await page.evaluate(`!!${CHART}.chart`);
         if (hasData) return label;
     }
     return null;
@@ -36,12 +38,14 @@ async function selectMostLikelyToHaveData(page) {
 export default async function graphsTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
-        await page.waitFor(`document.querySelector('nfsen-chart')`, { label: 'chart element to exist' });
+        await page.waitForBoot();
+        await page.gotoPage('overview');
+        await page.waitFor(CHART, { label: 'chart element to exist' });
 
         const dataType = await selectMostLikelyToHaveData(page);
         if (!dataType) {
             console.log('  (graphs: no data in any datatype across the widest available range -- verifying empty state only)');
-            const emptyText = await page.evaluate(`document.querySelector('.chart-canvas').textContent.trim()`);
+            const emptyText = await page.evaluate(`${CHART}.querySelector('.chart-canvas').textContent.trim()`);
             assert.equal(emptyText, 'No data available for the selected range.');
             assert.deepEqual(page.realErrors(), []);
             return;
@@ -52,7 +56,7 @@ export default async function graphsTest() {
         // real rendered width, not a stale/undersized snapshot from before the
         // results card finished laying out.
         const sizes = await page.evaluate(`(function(){
-            var el = document.querySelector('nfsen-chart');
+            var el = document.getElementById('trafficGraph');
             var rect = el.querySelector('.chart-canvas').getBoundingClientRect();
             return { chartWidth: el.chart.getWidth(), containerWidth: rect.width };
         })()`);
@@ -66,7 +70,7 @@ export default async function graphsTest() {
         // Zoom -> sync button should enable, data-zoom-* attrs should be set, and
         // getCurrentRange() should reflect the zoomed (not full) range.
         await page.evaluate(`(function(){
-            var el = document.querySelector('nfsen-chart');
+            var el = document.getElementById('trafficGraph');
             var src = el.chart.getOption().dataset[0].source;
             var first = src[0][0], mid = src[Math.floor(src.length / 3)][0];
             var toTs = function(d){ return d instanceof Date ? d.getTime() : d; };
@@ -75,7 +79,7 @@ export default async function graphsTest() {
         await page.waitFor(`document.querySelector('#date_syncing button.sync-date').disabled === false`, {
             label: 'sync button to enable after zoom',
         });
-        const range = await page.evaluate(`document.querySelector('nfsen-chart').getCurrentRange()`);
+        const range = await page.evaluate(`${CHART}.getCurrentRange()`);
         assert.ok(range && range.from < range.to, `expected a valid {from,to} range, got ${JSON.stringify(range)}`);
 
         // "Sync now" should move the date-range slider to match the chart's current range.
@@ -98,7 +102,7 @@ export default async function graphsTest() {
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
         // Series-display / scale toggles should apply without throwing.
-        const chartEl = "document.querySelector('nfsen-chart')";
+        const chartEl = CHART;
         await page.evaluate(`document.getElementById('graph_linestacked_stacked').click()`);
         const series0 = await page.evaluate(`${chartEl}.chart.getOption().series[0]`);
         assert.equal(series0.stack, 'total', 'expected stack:"total" after clicking Stacked');
@@ -110,12 +114,14 @@ export default async function graphsTest() {
 
         // Reset back to defaults so this test doesn't leave client-local UI state
         // behind for whatever runs next against the same dev server.
-        await page.evaluate(`document.getElementById('graph_linestacked_line').click(); document.getElementById('graph_linlog_linear').click();`);
+        await page.evaluate(
+            `document.getElementById('graph_linestacked_line').click(); document.getElementById('graph_linlog_linear').click();`
+        );
 
         // Dark mode should re-theme without throwing.
-        await page.clickByAttr(`_darkMode = !`);
+        await page.chooseTheme('dark');
         await page.waitFor(`document.documentElement.getAttribute('data-theme') === 'dark'`, { label: 'dark theme to apply' });
-        await page.clickByAttr(`_darkMode = !`); // leave in light mode for whatever runs next
+        await page.chooseTheme('light'); // leave in light mode for whatever runs next
 
         const errors = page.realErrors();
         assert.deepEqual(errors, [], `expected no console errors during the Graphs test, got:\n${errors.join('\n')}`);

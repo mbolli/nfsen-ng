@@ -1,0 +1,33 @@
+{# Bottom tab bar below 48em (2.7.11). More is a popover so it opens above the bar;
+   nfsen-controls.js drives it. #}
+{% import 'shell/icons.html.twig' as icons %}
+{% set tabLabels = {overview: 'Overview', flows: 'Flows', conversations: 'Pairs', alerts: 'Alerts'} %}
+<nav class="tabbar" aria-label="Main">
+    {% for meta in shell.pagesMeta|filter(m => tabLabels[m.id] is defined) %}
+        <a class="tabbar-item" href="#/{{ meta.id }}"
+           title="{{ meta.title }}"
+           data-attr:aria-current="${{ page.id() }} === '{{ meta.id }}' ? 'page' : false"
+           data-preserve-attr="aria-current">
+            {{ icons.icon(meta.icon) }}
+            <span>{{ tabLabels[meta.id] }}</span>
+        </a>
+    {% endfor %}
+    <div class="menu tabbar-more">
+        <button type="button" class="menu-toggle tabbar-item" aria-controls="tabbarMore"
+                aria-expanded="false" data-preserve-attr="aria-expanded">
+            {{ icons.icon('more') }}
+            <span>More</span>
+        </button>
+        <div class="menu-list" id="tabbarMore" popover data-preserve-attr="style">
+            {% for meta in shell.pagesMeta|filter(m => tabLabels[m.id] is not defined) %}
+                <a class="menu-item" href="#/{{ meta.id }}"
+                   data-attr:aria-current="${{ page.id() }} === '{{ meta.id }}' ? 'page' : false"
+                   data-preserve-attr="aria-current">{{ meta.title }}</a>
+            {% endfor %}
+            <div class="menu-sep" role="separator"></div>
+            <button type="button" class="menu-item"
+                    data-on:click="$_darkMode = !$_darkMode; window.__nfsenTheme.choose($_darkMode)"
+                    data-text="$_darkMode ? 'Light theme' : 'Dark theme'">Dark theme</button>
+        </div>
+    </div>
+</nav>

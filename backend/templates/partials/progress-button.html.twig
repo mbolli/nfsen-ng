@@ -1,40 +1,34 @@
 {#
-    Submit button with a real progress bar, shared by every panel that runs a query.
-
-    The backend knows how far along it is — exactly for the filtered graph (bins done /
-    bins total), approximately for a single-shot nfdump (bytes read / bytes to read) — so
-    the button shows per-mille progress and an ETA instead of an indeterminate spinner.
-
-    Falls back to the spinner automatically: when `permille` is 0 and no status text has
-    arrived, there is nothing meaningful to draw yet.
+    Run button with a real progress bar, shared by every panel that runs a query: per-mille
+    progress and an ETA, exact for the filtered graph, estimated from bytes read otherwise.
 
     Params:
-      label      — idle button text
-      action     — action URL to POST on click
-      running    — server-owned bool signal, true while the query runs
-      permille   — server-owned int signal, 0..1000
-      status     — server-owned string signal, e.g. "Scanning 42 / 288 intervals"
-      eta        — server-owned string signal, e.g. "~1m 30s"
-      exact      — server-owned bool signal; false renders the figure as an estimate
-      kindSignal — server-owned string signal naming the panel that owns the running query
-      kind       — this panel's name; progress renders only when kindSignal matches it
-      killAction — action URL for the Kill button
-      id         — DOM id prefix, so several of these can coexist
-      onClick    — optional extra JS to run before the POST
+      label      idle button text
+      action     action URL to POST on click
+      running    server-owned bool signal, true while the query runs
+      permille   server-owned int signal, 0..1000
+      status     server-owned string signal, e.g. "Scanning 42 / 288 intervals"
+      eta        server-owned string signal, e.g. "~1m 30s"
+      exact      server-owned bool signal; false renders the figure as an estimate
+      kindSignal server-owned string signal naming the panel that owns the running query
+      kind       this panel's name; progress renders only when kindSignal matches it
+      killAction action URL for the Kill button
+      id         DOM id prefix, so several of these can coexist
+      run        optional query target, rendered as data-run on the button (e2e runQuery())
+      onClick    optional extra JS to run before the POST
 #}
 {#
-    Only this panel's own query drives its button. Panels sharing a screen share the query_*
-    signals — the Flows tab carries both Process data and the traffic panel's Build graph — so
-    without the kind check one query would light up the other's button.
-
-    `disabled` still keys off the bare running flag: only one query runs at a time, so a
-    click on another panel's button would be silently dropped.
+    Only this panel's own query drives its progress: panels on one page share the query_*
+    signals. `disabled` keys off the bare running flag, since one query runs at a time.
 #}
 {% set here = '$' ~ running ~ " && $" ~ kindSignal ~ " === '" ~ kind ~ "'" %}
-<div class="cluster" id="{{ id }}">
+<div class="query-control cluster" id="{{ id }}"
+     data-query-state="idle" data-attr:data-query-state="({{ here }}) ? 'running' : 'idle'"
+     data-preserve-attr="data-query-state">
     <button type="button"
             data-variant="primary"
-            id="{{ id }}Submit"
+            id="{{ id }}Submit"{% if run is defined and run %}
+            data-run="{{ run }}"{% endif %}
             data-attr:disabled="${{ running }}"
             data-on:click="{{ onClick|default('') }}@post('{{ action }}')">
         <span data-show="!({{ here }})">{{ label }}</span>
@@ -49,22 +43,14 @@
             data-show="{{ here }}"
             data-on:click="@post('{{ killAction }}')">Kill</button>
 
-    {#
-        Progress readout. The *bar* only exists while the query runs, but the status line
-        outlives it — otherwise the closing "Done in 1.2s." / "Cancelled" message is set and
-        hidden in the same breath, and the user never sees how the run ended.
-    #}
+    {# The bar exists only while the query runs; the status line outlives it, so the closing
+       "Done in 1.2s." or "Cancelled" stays readable. #}
     <div class="query-progress" style="display:none"
          data-show="({{ here }}) || (${{ status }} !== '' && ${{ kindSignal }} === '{{ kind }}')">
         <progress max="1000" style="display:none"
              data-show="{{ here }}"
              data-attr:data-indeterminate="!${{ exact }}"
              data-attr:value="${{ permille }}">
-            {#
-                Driven straight off the signal, so a syncSignals() patch moves it without the
-                page being re-rendered. A native <progress> takes the permille as its value,
-                which also gives assistive tech the reading for free.
-            #}
         </progress>
         <div class="cluster cluster-between muted query-progress-line">
             <span data-text="${{ status }}"></span>

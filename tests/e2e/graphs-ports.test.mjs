@@ -1,4 +1,4 @@
-// Graphs tab, Ports display: the failure mode reported in #160 -- the ports view
+// Overview graph, Ports display: the failure mode reported in #160 -- the ports view
 // dying on a filter change and staying dead until a full page reload.
 //
 // Two independent regressions are covered here, because either one alone was
@@ -19,7 +19,7 @@
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
 
-const CHART = "document.querySelector('nfsen-chart')";
+const CHART = "document.getElementById('trafficGraph')";
 const settle = () => new Promise((resolve) => setTimeout(resolve, 2500));
 
 /** Merge a raw value into a context-scoped signal the way a stray client write would. */
@@ -39,6 +39,8 @@ async function pokeSignal(page, name, value) {
 export default async function graphsPortsTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
+        await page.waitForBoot();
+        await page.gotoPage('overview');
         await page.waitFor(`${CHART}`, { label: 'chart element to exist' });
 
         await page.setSelectValue('#filterDisplaySelect', 'ports');
@@ -51,17 +53,19 @@ export default async function graphsPortsTest() {
             return;
         }
 
-        // 1. A scalar port must not take the view down.
-        await pokeSignal(page, 'graph_ports', '25');
+        // 1. A scalar port must not take the view down. The first configured port has a stored series.
+        const port = Number(await page.evaluate(`document.querySelector('#filterPortsSelect option')?.value`));
+        assert.ok(port > 0, 'expected at least one configured port');
+        await pokeSignal(page, 'graph_ports', String(port));
         await page.setSelectValue('#filterDisplaySelect', 'ports'); // re-fire the refresh
         await settle();
 
         assert.ok(await page.evaluate(`!!${CHART}.chart`), 'chart should survive a scalar graph_ports');
         const ports = await page.evaluate(`JSON.parse(${CHART}.dataset.chartConfig).ports`);
-        assert.deepEqual(ports, [25], `expected the server to normalize graph_ports back to [25], got ${JSON.stringify(ports)}`);
+        assert.deepEqual(ports, [port], `expected the server to normalize graph_ports back to [${port}], got ${JSON.stringify(ports)}`);
         assert.match(
             await page.evaluate(`${CHART}.chart.getOption().title[0].text`),
-            /port 25$/,
+            new RegExp(`port ${port}$`),
             'expected the title to name the single selected port'
         );
 
@@ -74,7 +78,7 @@ export default async function graphsPortsTest() {
         await settle();
         assert.ok(await page.evaluate(`!!${CHART}.chart`), 'chart should rebuild on the next update after an error');
         assert.ok(
-            await page.evaluate(`!!document.querySelector('.chart-canvas canvas')`),
+            await page.evaluate(`!!${CHART}.querySelector('.chart-canvas canvas')`),
             'expected a real canvas back in the container after recovery'
         );
 

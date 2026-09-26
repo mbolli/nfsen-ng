@@ -1,190 +1,72 @@
-{#
-    Graph view panel.
+{# Overview graph options; the chart is the shell's traffic graph, reached as $graph._widget. #}
+<div id="graphOptions" class="filter-grid">
 
-    graph_isLive / graph_actualResolution / graph_lastUpdate are server-pushed signals with
-    underscore-prefixed IDs (graph_isLive_CTXID etc.). The browser never sends them
-    back; the server sets them in fetchGraphData() on every re-render.
-
-    graphData is JSON-encoded server-side and embedded directly into data-chart-data.
-    Twig's default HTML escaping converts " to &quot; which the browser decodes back
-    before JSON.parse() runs, so attribute-safe encoding is used.
-
-    nfsen-chart observes data-chart-data and data-chart-config attribute changes and
-    re-renders the chart. DOM morphing updates data-chart-data on every SSE push
-    without recreating the element (inner chart canvas has data-ignore-morph).
-#}
-<div>
-
-    {# Live / historical badge row #}
-    <div class="cluster cluster-end">
+    {# Resolution slider #}
+    <div class="filter-cell filter-cell--wide">
+        <div class="filter-group">
+        <p class="filter-label">Resolution</p>
         <div>
-            {# Filtered mode has no live/historical distinction — it is a one-off build. #}
-            <span class="badge" data-level="warning"
-                  style="display:none"
-                  data-show="${{ graph_mode.id() }} === 'filtered'"
-                  title="Series built by re-reading the capture files through an nfdump filter">
-                FILTERED
-            </span>
-            <span class="badge live-badge" data-level="success"
-                  data-show="${{ graph_mode.id() }} === 'stored' && ${{ graph_isLive.id() }}"
-                  title="Graph is showing real-time data">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor"  viewBox="0 0 16 16"><circle cx="8" cy="8" r="8"/></svg>
-                LIVE
-                <span  data-show="${{ graph_lastUpdate.id() }} > 0">
-                     last update: <span data-text="new Date(${{ graph_lastUpdate.id() }} * 1000).toLocaleString(undefined, tzOptions(${{ displayTz.id() }}, ${{ nfcapdTz.id() }}))"></span>
-                </span>
-            </span>
-            <span class="badge"
-                  data-show="${{ graph_mode.id() }} === 'stored' && !${{ graph_isLive.id() }}"
-                  title="Graph is showing historical data">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor"  viewBox="0 0 16 16">
-                    <path d="M8.515 1.019A7 7 0 0 0 8 1V0a8 8 0 0 1 .589.022zm2.004.45a7 7 0 0 0-.985-.299l.219-.976q.576.129 1.126.342zm1.37.71a7 7 0 0 0-.439-.27l.493-.87a8 8 0 0 1 .979.654l-.615.789a7 7 0 0 0-.418-.302zm1.834 1.79a7 7 0 0 0-.653-.796l.724-.69q.406.443.747.933zm.744 1.352a7 7 0 0 0-.214-.468l.893-.45a8 8 0 0 1 .45 1.088l-.95.313a7 7 0 0 0-.179-.483m.53 2.507a7 7 0 0 0-.1-1.025l.985-.17q.1.58.116 1.17zm-.131 1.538q.05-.254.081-.51l.993.123a8 8 0 0 1-.23 1.155l-.964-.267q.069-.247.12-.501m-.952 2.379q.276-.436.486-.908l.914.405q-.24.54-.555 1.038zm-.964 1.205q.183-.183.35-.378l.758.653a8 8 0 0 1-.401.432z"/>
-                    <path d="M8 1a7 7 0 1 0 4.95 11.95l.707.707A8.001 8.001 0 1 1 8 0z"/>
-                    <path d="M7.5 3a.5.5 0 0 1 .5.5v5.21l3.248 1.856a.5.5 0 0 1-.496.868l-3.5-2A.5.5 0 0 1 7 9V3.5a.5.5 0 0 1 .5-.5"/>
-                </svg>
-                HISTORICAL
-            </span>
-            <span class="badge text-info" data-level="info"
-                  data-show="${{ graph_actualResolution.id() }} > 0"
-                  title="Number of data points">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor"  viewBox="0 0 16 16">
-                    <path d="M11 2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12h.5a.5.5 0 0 1 0 1H.5a.5.5 0 0 1 0-1H1v-3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3h1V7a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7h1zm1 12h2V2h-2zm-3 0V7H7v7zm-5 0v-3H2v3z"/>
-                </svg>
-                <span data-text="${{ graph_actualResolution.id() }}"></span> points
-            </span>
+            <label for="resolutionSlider">
+                Data Points: <strong data-text="${{ graph_resolution.id() }}"></strong>
+            </label>
+            <input type="range"
+                   id="resolutionSlider"
+                   min="50" max="2000" step="50"
+                   {{ bind(graph_resolution) }}
+                   title="Number of data points (higher = more detail)"
+                   data-on:change__stop="@post('{{ refreshGraphs.url() }}')">
+            <div class="cluster cluster-between muted">
+                <span>50</span><span>2000</span>
+            </div>
+        </div>
         </div>
     </div>
 
-    {# Chart element
-       data-chart-data:   server-rendered JSON (updated on every full-page SSE push)
-       data-attr:data-chart-config: Datastar-computed from client-local graph._config
-       data-ref:          sets browser-local $_graphWidget so the sync button works
-       data-ignore-morph: prevents Datastar from diffing the canvas internals
-    #}
-    {#
-        Filtered mode renders nothing until Apply has been pressed: fetchGraphData() only
-        ever reads the cache, so an unbuilt query is an empty series rather than a stale
-        or accidental one. Say so instead of showing a blank chart.
-
-        Rendered server-side rather than with a data-show expression. As a client
-        expression this stayed visible over a graph that had just been built: after the
-        build's sync the element is morphed and its data-show re-initialises, and it did
-        not pick up the new signal values (reproduced with two different signals, so it is
-        the re-evaluation and not the signal). Every path that changes the mode or builds a
-        series ends in a full re-render anyway, so deciding it here is both simpler and
-        immune to that ordering.
-    #}
-    {% if graph_mode.string() == 'filtered' and graph_actualResolution.int() == 0 and not query_running.bool() %}
-    <div class="cluster notice" data-level="info">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"  viewBox="0 0 16 16">
-            <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2z"/>
-        </svg>
-        <span>Set an nfdump filter above and press <strong>Apply filter</strong> to build the graph from the capture files.</span>
-    </div>
-    {% endif %}
-
-    <div id="graph">
-        <nfsen-chart
-            data-ref="graph._widget"
-            data-attr:data-chart-config="$graph._config"
-            data-chart-data="{{ graphData }}">
-            <div class="chart-container" data-ignore-morph data-ignore style="view-transition-name: nfsen-chart">
-                <div class="chart-canvas" style="width: 100%; height: 400px;"></div>
-            </div>
-        </nfsen-chart>
+    {# Graph scale #}
+    <div class="filter-cell">
+        <div class="filter-group">
+        <p class="filter-label">Graph Scale</p>
+        <div class="segmented" role="group" id="graph_linlog">
+            <input type="radio" name="scale" value="linear" checked
+                   data-effect="el.checked = $_graph_logscale == false"
+                   id="graph_linlog_linear"
+                   data-on:change__stop="$_graph_logscale = false; $graph._widget.updateOptions({logscale: false})">
+            <label for="graph_linlog_linear" data-size="sm">Linear</label>
+            <input type="radio" name="scale" value="logarithmic"
+                   data-effect="el.checked = $_graph_logscale == true"
+                   id="graph_linlog_log"
+                   data-on:change__stop="$_graph_logscale = true; $graph._widget.updateOptions({logscale: true})">
+            <label for="graph_linlog_log" data-size="sm">Logarithmic</label>
+        </div>
+        </div>
     </div>
 
-    {# Graph options panel #}
-    <div id="graphOptions" class="filter-grid">
-
-        {# Resolution slider #}
-        <div class="filter-cell filter-cell--wide">
-            <div class="filter-group">
-            <p class="filter-label">Resolution</p>
-            <div>
-                <label for="resolutionSlider" >
-                    Data Points: <strong data-text="${{ graph_resolution.id() }}"></strong>
-                </label>
-                <input type="range"
-                       
-                       id="resolutionSlider"
-                       min="50" max="2000" step="50"
-                       {{ bind(graph_resolution) }}
-                       title="Number of data points (higher = more detail)"
-                       data-on:change__stop="@post('{{ refreshGraphs.url() }}')">
-                <div class="cluster cluster-between muted">
-                    <span>50</span><span>2000</span>
-                </div>
-            </div>
-            </div>
+    {# Series display #}
+    <div class="filter-cell">
+        <div class="filter-group">
+        <p class="filter-label">Series Display</p>
+        <div class="segmented" role="group"
+             data-on:change__stop="const stacked = evt.target.value === 'stacked'; $_graph_stacked = stacked; $graph._widget.updateOptions({stackedGraph: stacked, fillGraph: stacked})">
+            <input type="radio" name="type" value="stacked" id="graph_linestacked_stacked"
+                   data-effect="el.checked = $_graph_stacked == true">
+            <label data-size="sm" for="graph_linestacked_stacked">Stacked</label>
+            <input type="radio" name="type" value="line" id="graph_linestacked_line" checked
+                   data-effect="el.checked = $_graph_stacked == false">
+            <label data-size="sm" for="graph_linestacked_line">Line</label>
+        </div><br>
+        <div class="segmented" role="group" id="graph_lineplot">
+            <input type="radio" name="lineplot" value="step" checked
+                   data-effect="el.checked = $_graph_stepplot == true"
+                   id="graph_lineplot_step"
+                   data-on:change__stop="$_graph_stepplot = true; $graph._widget.updateOptions({stepPlot: true})">
+            <label data-size="sm" for="graph_lineplot_step">Step plot</label>
+            <input type="radio" name="lineplot" value="curve"
+                   data-effect="el.checked = $_graph_stepplot == false"
+                   id="graph_lineplot_curve"
+                   data-on:change__stop="$_graph_stepplot = false; $graph._widget.updateOptions({stepPlot: false})">
+            <label data-size="sm" for="graph_lineplot_curve">Curve plot</label>
         </div>
-
-        {# Graph scale #}
-        <div class="filter-cell">
-            <div class="filter-group">
-            <p class="filter-label">Graph Scale</p>
-            <div class="segmented"  role="group" id="graph_linlog">
-                <input type="radio"  name="scale" value="linear" checked
-                       data-effect="el.checked = $_graph_logscale == false"
-                       id="graph_linlog_linear"
-                       data-on:change__stop="$_graph_logscale = false; $graph._widget.updateOptions({logscale: false})">
-                <label for="graph_linlog_linear" data-size="sm">Linear</label>
-                <input type="radio"  name="scale" value="logarithmic"
-                       data-effect="el.checked = $_graph_logscale == true"
-                       id="graph_linlog_log"
-                       data-on:change__stop="$_graph_logscale = true; $graph._widget.updateOptions({logscale: true})">
-                <label for="graph_linlog_log" data-size="sm">Logarithmic</label>
-            </div>
-            </div>
         </div>
-
-        {# Series display #}
-        <div class="filter-cell">
-            <div class="filter-group">
-            <p class="filter-label">Series Display</p>
-            <div class="segmented"  role="group"
-                 data-on:change__stop="const stacked = evt.target.value === 'stacked'; $_graph_stacked = stacked; $graph._widget.updateOptions({stackedGraph: stacked, fillGraph: stacked})">
-                <input type="radio"  name="type" value="stacked" id="graph_linestacked_stacked"
-                       data-effect="el.checked = $_graph_stacked == true">
-                <label data-size="sm" for="graph_linestacked_stacked">Stacked</label>
-                <input type="radio"  name="type" value="line" id="graph_linestacked_line" checked
-                       data-effect="el.checked = $_graph_stacked == false">
-                <label data-size="sm" for="graph_linestacked_line">Line</label>
-            </div><br>
-            <div class="segmented"  role="group" id="graph_lineplot">
-                <input type="radio"  name="lineplot" value="step" checked
-                       data-effect="el.checked = $_graph_stepplot == true"
-                       id="graph_lineplot_step"
-                       data-on:change__stop="$_graph_stepplot = true; $graph._widget.updateOptions({stepPlot: true})">
-                <label data-size="sm" for="graph_lineplot_step">Step plot</label>
-                <input type="radio"  name="lineplot" value="curve"
-                       data-effect="el.checked = $_graph_stepplot == false"
-                       id="graph_lineplot_curve"
-                       data-on:change__stop="$_graph_stepplot = false; $graph._widget.updateOptions({stepPlot: false})">
-                <label data-size="sm" for="graph_lineplot_curve">Curve plot</label>
-            </div>
-            </div>
-        </div>
-
-        {# Series visibility checkboxes — populated by nfsen-chart when it renders.
-           data-ignore-morph/data-ignore: this div is empty in the server-rendered HTML and
-           filled in entirely by JS; without these, an SSE-pushed morph shortly after load
-           wipes the checkboxes back out before the user ever sees them. #}
-        <div class="filter-cell">
-            <div class="filter-group">
-            <p class="filter-label">Series Visibility</p>
-            <div id="series" data-ignore-morph data-ignore></div>
-            </div>
-        </div>
-
-        {# Chart legend — populated by nfsen-chart on hover; same data-ignore-morph reasoning as #series #}
-        <div class="filter-cell">
-            <div class="filter-group">
-            <p class="filter-label">Legend</p>
-            <div id="legend" data-ignore-morph data-ignore></div>
-            </div>
-        </div>
-
     </div>
 
 </div>

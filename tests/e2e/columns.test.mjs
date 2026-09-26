@@ -14,11 +14,11 @@ export default async function columnsTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
         await page.waitForBoot();
-        await page.clickToPanel(`_currentView = 'flows'`, '$_currentView', 'flows');
+        await page.gotoPage('flows');
 
-        await page.clickByText('Year', 'button');
+        await page.setRangePreset('1y');
         await page.setSelectValue('#filterFlowsLimit select', 20);
-        await page.processData();
+        await page.runQuery('flows');
 
         await page.waitFor(`!!document.querySelector('${BTN}')`, { label: 'column selector button' });
         assert.equal(await page.evaluate(MENU_OPEN), false, 'the menu should start closed');
@@ -79,17 +79,16 @@ export default async function columnsTest() {
         await page.evaluate(`document.body.click()`);
         await page.waitFor(`!${MENU_OPEN}`, { label: 'menu to close again' });
 
-        // Both tables live on the page at once, so the open state has to be
-        // per-table -- one shared signal would open both menus at a time.
-        await page.clickToPanel(`_currentView = 'statistics'`, '$_currentView', 'statistics');
-        await page.clickByText('Year', 'button');
-        await page.processData();
+        // The open state is per table -- one shared signal would open the Flows menu too,
+        // were its table still in the document.
+        await page.gotoPage('talkers');
+        await page.setRangePreset('1y');
+        await page.runQuery('talkers');
         await page.waitFor(`!!document.querySelector('#statsTable .column-selector button')`, { label: 'stats column selector' });
         await page.evaluate(`document.querySelector('#statsTable .column-selector button').click()`);
-        await page.waitFor(
-            `document.querySelector('#statsTable .column-selector-menu').hasAttribute('data-open')`,
-            { label: 'stats menu to open' }
-        );
+        await page.waitFor(`document.querySelector('#statsTable .column-selector-menu').hasAttribute('data-open')`, {
+            label: 'stats menu to open',
+        });
         assert.equal(await page.evaluate(MENU_OPEN), false, "the Statistics menu should not open the Flows table's menu");
 
         const errors = page.realErrors();

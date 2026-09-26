@@ -84,8 +84,8 @@
         </button>
     </div>
 
-    {# Sync graph zoom range to the date slider (graphs view only) #}
-    <div class="button-group" id="date_syncing" role="group" data-show="$_currentView == 'graphs'">
+    {# Sync graph zoom range to the date slider (analysis pages, where the traffic graph is) #}
+    <div class="button-group" id="date_syncing" role="group" data-show="{{ shell.pagesMeta|filter(m => m.analysis)|map(m => m.id)|json_encode }}.includes(${{ page.id() }})">
         <button type="button" class="sync-date"
                 disabled
                 title="Copy current graph zoom/pan range to the date slider once"

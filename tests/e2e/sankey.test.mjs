@@ -8,10 +8,11 @@ import { withPage, BASE } from './lib/cdp.mjs';
 export default async function sankeyTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
-        await page.clickToPanel(`_currentView = 'sankey'`, '$_currentView', 'sankey');
+        await page.waitForBoot();
+        await page.gotoPage('conversations');
 
-        await page.clickByText('Year', 'button');
-        await page.processData();
+        await page.setRangePreset('1y');
+        await page.runQuery('conversations');
 
         const notificationHtml = await page.evaluate(`document.getElementById('sankeyMessage').textContent`);
         assert.match(

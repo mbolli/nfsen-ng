@@ -1,7 +1,8 @@
 {#
     Statistics filter controls.
 #}
-<div class="filter-grid">
+<div class="stack">
+<div class="filter-grid query-fields" id="talkersQueryFields">
     {# Top N #}
     <div id="filterStatisticsTop" class="filter-cell">
         <div class="filter-group">
@@ -38,13 +39,7 @@
         <p class="filter-label">NFDUMP filter
             <nfsen-tooltip data-ignore-morph text="Filter syntax like tcpdump. Examples: 'dst port 80', 'bytes > 10M'" placement="right"></nfsen-tooltip>
         </p>
-        <textarea  id="filterNfdumpTextareaStats"
-                  {{ bind(stats_filter) }} rows="3" autocomplete="on"></textarea>
-        <nfsen-filter-manager
-            data-ignore-morph
-            data-target-textarea="filterNfdumpTextareaStats"
-            data-default-filters="{{ filters|json_encode }}">
-        </nfsen-filter-manager>
+        {% include 'components/filter-field.html.twig' with {target: 'talkers', signal: stats_filter, textareaId: 'filterNfdumpTextareaStats'} %}
         </div>
     </div>
 
@@ -181,15 +176,12 @@
         </div>
         </div>
     </div>
+</div>
 
     {# Submit #}
     <div class="filter-submit">
         <div class="cluster">
-        {#
-            The query runs in a coroutine now, so query_running (server-owned) is what says
-            whether it is still going — not Datastar's request indicator, which clears the
-            moment the action returns. Progress is a byte-read estimate, hence exact=false.
-        #}
+        {# The query runs in a coroutine, so query_running says whether it is still going. #}
         <nfsen-tooltip data-ignore-morph text="Generate statistics using nfdump -s with current filters" placement="top" no-icon>
             {% include 'partials/progress-button.html.twig' with {
                 id: 'statsRun',
@@ -203,29 +195,11 @@
                 exact: query_exact.id(),
                 kindSignal: query_kind.id(),
                 kind: 'stats',
+                run: 'talkers',
                 onClick: '$_stats_queried = true; ',
             } only %}
         </nfsen-tooltip>
-        {# nfcapd file count info — reactive to date range and source changes #}
-        <span class="cluster muted" style="display: flex" data-show="$nfcapd._counting">
-            <span class="spinner" role="status" aria-hidden="true"></span>
-            Calculating…
-        </span>
-        {# The visibility wrapper sets no display of its own, so the inline display:none that
-           data-show writes still wins, so a d-flex element here never hid — it
-           sat next to "Calculating…" while counting, and read "0 nfcapd files" when empty. #}
-        <span data-show="!$nfcapd._counting && ${{ nfcapd_file_count.id() }} > 0">
-        <span class="cluster muted">
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor"  viewBox="0 0 16 16">
-                <path d="M4.318 2.687C5.234 2.271 6.536 2 8 2s2.766.27 3.682.687C12.644 3.125 13 3.627 13 4c0 .374-.356.875-1.318 1.313C10.766 5.729 9.464 6 8 6s-2.766-.27-3.682-.687C3.356 4.875 3 4.373 3 4c0-.374.356-.875 1.318-1.313M13 5.698V7c0 .374-.356.875-1.318 1.313C10.766 8.729 9.464 9 8 9s-2.766-.27-3.682-.687C3.356 7.875 3 7.373 3 7V5.698c.271.202.58.378.904.525C5.034 6.771 6.432 7 8 7s2.966-.23 4.096-.777A5 5 0 0 0 13 5.698M3 8.698V10c0 .374.356.875 1.318 1.313C5.234 11.729 6.536 12 8 12s2.766-.27 3.682-.687C12.644 10.875 13 10.373 13 10V8.698c-.271.202-.58.378-.904.525C11.966 9.771 10.568 10 9 10s-2.966-.23-4.096-.777A5 5 0 0 1 3 8.698m0 3V13c0 .374.356.875 1.318 1.313C5.234 14.729 6.536 15 8 15s2.766-.27 3.682-.687C12.644 13.875 13 13.373 13 13v-1.302c-.271.202-.58.378-.904.525C11.966 12.771 10.568 13 9 13s-2.966-.23-4.096-.777A5 5 0 0 1 3 11.698"/>
-            </svg>
-            <span data-text="${{ nfcapd_file_count.id() }}"></span> nfcapd files
-            <span class="badge text-warning" data-level="warning"
-                  data-show="${{ nfcapd_file_count.id() }} >= 576 && ${{ nfcapd_file_count.id() }} < 8640">may take a moment</span>
-            <span class="badge" data-level="error"
-                  data-show="${{ nfcapd_file_count.id() }} >= 8640">may take several minutes</span>
-        </span>
-        </span>
+        {% include 'components/query-estimate.html.twig' with {target: 'talkers'} %}
         </div>
     </div>
 

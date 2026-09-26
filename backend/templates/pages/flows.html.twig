@@ -1,0 +1,20 @@
+{#
+    Flows (4.3), interim: the query card and results of the old Flows view.
+#}
+<div class="stack">
+    <section class="card query-card" aria-labelledby="flowsQueryTitle"
+             data-collapsed data-attr:data-collapsed="!$_optionsOpen_flows" data-preserve-attr="data-collapsed">
+        <header>
+            <h2 id="flowsQueryTitle">Query</h2>
+            <button type="button" class="options-toggle" data-size="sm" aria-controls="flowsQueryFields"
+                    aria-expanded="false" data-attr:aria-expanded="$_optionsOpen_flows ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+                    data-on:click="$_optionsOpen_flows = !$_optionsOpen_flows"
+                    data-text="$_optionsOpen_flows ? 'Hide filters' : 'Show filters'">Show filters</button>
+        </header>
+        <div class="card-body">
+            {% include 'partials/flow-filters.html.twig' %}
+        </div>
+    </section>
+
+    {% include 'partials/flow-view.html.twig' %}
+</div>

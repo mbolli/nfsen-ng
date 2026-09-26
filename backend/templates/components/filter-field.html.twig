@@ -1,0 +1,11 @@
+{# Filter field (2.5), interim: textarea and saved-filter picker in one place for validation.
+   Params: target, signal, textareaId, label ('nfdump filter'), rows (3). #}
+<div class="filter-field" data-filter-field="{{ target }}">
+    <label class="visually-hidden" for="{{ textareaId }}">{{ label ?? 'nfdump filter' }}</label>
+    <textarea id="{{ textareaId }}" {{ bind(signal) }} rows="{{ rows ?? 3 }}" autocomplete="on"></textarea>
+    <nfsen-filter-manager
+        data-ignore-morph
+        data-target-textarea="{{ textareaId }}"
+        data-default-filters="{{ filters|json_encode }}">
+    </nfsen-filter-manager>
+</div>

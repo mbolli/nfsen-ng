@@ -9,12 +9,13 @@ import { withPage, BASE } from './lib/cdp.mjs';
 export default async function flowsTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
-        await page.clickToPanel(`_currentView = 'flows'`, '$_currentView', 'flows');
+        await page.waitForBoot();
+        await page.gotoPage('flows');
 
-        await page.clickByText('Year', 'button');
+        await page.setRangePreset('1y');
         // Cap the result count -- a wide range can mean hundreds of rows.
         await page.setSelectValue('#filterFlowsLimit select', 20);
-        await page.processData();
+        await page.runQuery('flows');
 
         const notificationHtml = await page.evaluate(`document.getElementById('flowMessage').textContent`);
         assert.match(

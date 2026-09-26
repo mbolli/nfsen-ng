@@ -1,0 +1,12 @@
+{# Page header (4.0.4): the client switch shows the right heading at once; the navigate sync
+   moves id="pageTitle", the sections' label. #}
+<header class="page-header">
+    {% for meta in shell.pagesMeta %}
+        <div class="page-heading" data-page-heading="{{ meta.id }}"
+             data-attr:hidden="${{ page.id() }} !== '{{ meta.id }}'" data-preserve-attr="hidden"
+             {% if meta.id != shell.activePage %}hidden{% endif %}>
+            <h1 tabindex="-1" {% if meta.id == shell.activePage %}id="pageTitle"{% endif %}>{{ meta.title }}</h1>
+            <p class="page-lede">{{ meta.lede }}</p>
+        </div>
+    {% endfor %}
+</header>

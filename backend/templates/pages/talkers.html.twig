@@ -1,0 +1,20 @@
+{#
+    Top Talkers (4.2), interim: the query card and results of the old Statistics view.
+#}
+<div class="stack">
+    <section class="card query-card" aria-labelledby="talkersQueryTitle"
+             data-collapsed data-attr:data-collapsed="!$_optionsOpen_talkers" data-preserve-attr="data-collapsed">
+        <header>
+            <h2 id="talkersQueryTitle">Query</h2>
+            <button type="button" class="options-toggle" data-size="sm" aria-controls="talkersQueryFields"
+                    aria-expanded="false" data-attr:aria-expanded="$_optionsOpen_talkers ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+                    data-on:click="$_optionsOpen_talkers = !$_optionsOpen_talkers"
+                    data-text="$_optionsOpen_talkers ? 'Hide filters' : 'Show filters'">Show filters</button>
+        </header>
+        <div class="card-body">
+            {% include 'partials/stats-filters.html.twig' %}
+        </div>
+    </section>
+
+    {% include 'partials/stats-view.html.twig' %}
+</div>

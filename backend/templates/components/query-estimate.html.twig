@@ -1,0 +1,15 @@
+{# Query estimate (2.5), interim: the capture file count that count-files keeps. Param: target. #}
+{% set files = '$' ~ nfcapd_file_count.id() %}
+<span class="estimate cluster" data-estimate="{{ target }}">
+    <span class="cluster" hidden data-attr:hidden="!$nfcapd._counting" data-preserve-attr="hidden">
+        <span class="spinner" aria-hidden="true"></span>
+        Calculating…
+    </span>
+    <span class="cluster" hidden data-attr:hidden="$nfcapd._counting || !({{ files }} > 0)" data-preserve-attr="hidden">
+        <span><span data-text="{{ files }}"></span> nfcapd files</span>
+        <span class="badge" data-level="warning" hidden data-preserve-attr="hidden"
+              data-attr:hidden="!({{ files }} >= 576 && {{ files }} < 8640)">may take a moment</span>
+        <span class="badge" data-level="error" hidden data-preserve-attr="hidden"
+              data-attr:hidden="!({{ files }} >= 8640)">may take several minutes</span>
+    </span>
+</span>

@@ -1,0 +1,222 @@
+{#
+    Settings (4.8), interim: the preferences form and the read-only deployment of the old
+    Settings view.
+#}
+<div class="stack">
+    <div class="card">
+        <div class="card-header strong">User Preferences</div>
+        <div class="card-body">
+            <p class="muted">
+                These settings are saved to <code>preferences.json</code> and applied on top of
+                your deployment configuration. They take effect immediately across all open tabs.
+            </p>
+
+            <div class="grid">
+
+                {# Default view #}
+                <div>
+                    <label class="strong muted">Default view</label>
+                    {% set _v = settings_defaultView.string() %}
+                    <select  {{ bind(settings_defaultView) }}>
+                        <option value="graphs" {{ _v == 'graphs' ? 'selected' : '' }}>Graphs</option>
+                        <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
+                        <option value="statistics" {{ _v == 'statistics' ? 'selected' : '' }}>Statistics</option>
+                    </select>
+                </div>
+
+                {# Default log level #}
+                <div>
+                    <label class="strong muted">Log level</label>
+                    {% set _v = settings_logPriority.string() %}
+                    <select  {{ bind(settings_logPriority) }}>
+                        <option value="debug" {{ _v == 'debug' ? 'selected' : '' }}>Debug</option>
+                        <option value="info" {{ _v == 'info' ? 'selected' : '' }}>Info</option>
+                        <option value="notice" {{ _v == 'notice' ? 'selected' : '' }}>Notice</option>
+                        <option value="warning" {{ _v == 'warning' ? 'selected' : '' }}>Warning</option>
+                        <option value="error" {{ _v == 'error' ? 'selected' : '' }}>Error</option>
+                    </select>
+                </div>
+
+            </div>{# /row #}
+
+            <hr>
+            <h6 class="muted upper">Graph defaults</h6>
+
+            <div class="grid">
+
+                {# Default graph display #}
+                <div>
+                    <label class="strong muted">Display</label>
+                    {% set _v = settings_graphDisplay.string() %}
+                    <select  {{ bind(settings_graphDisplay) }}>
+                        <option value="sources" {{ _v == 'sources' ? 'selected' : '' }}>Sources</option>
+                        <option value="ports" {{ _v == 'ports' ? 'selected' : '' }}>Ports</option>
+                        <option value="protocols" {{ _v == 'protocols' ? 'selected' : '' }}>Protocols</option>
+                    </select>
+                </div>
+
+                {# Default graph datatype #}
+                <div>
+                    <label class="strong muted">Datatype</label>
+                    {% set _v = settings_graphDatatype.string() %}
+                    <select  {{ bind(settings_graphDatatype) }}>
+                        <option value="traffic" {{ _v == 'traffic' ? 'selected' : '' }}>Traffic (bits/s)</option>
+                        <option value="packets" {{ _v == 'packets' ? 'selected' : '' }}>Packets/s</option>
+                        <option value="bytes" {{ _v == 'bytes' ? 'selected' : '' }}>Bytes</option>
+                        <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
+                    </select>
+                </div>
+
+                {# Default graph protocols #}
+                <div>
+                    <label class="strong muted">Protocols</label>
+                    {% set _protos = settings_graphProtocols.array() %}
+                    <select  {{ bind(settings_graphProtocols) }} multiple>
+                        <option value="any" {{ 'any' in _protos ? 'selected' : '' }}>Any</option>
+                        <option value="tcp" {{ 'tcp' in _protos ? 'selected' : '' }}>TCP</option>
+                        <option value="udp" {{ 'udp' in _protos ? 'selected' : '' }}>UDP</option>
+                        <option value="icmp" {{ 'icmp' in _protos ? 'selected' : '' }}>ICMP</option>
+                        <option value="other" {{ 'other' in _protos ? 'selected' : '' }}>Other</option>
+                    </select>
+                    <div class="help">Hold Ctrl/⌘ to select multiple.</div>
+                </div>
+
+            </div>{# /row #}
+
+            <hr>
+            <h6 class="muted upper">Flow &amp; statistics defaults</h6>
+
+            <div class="grid">
+
+                {# Default flow limit #}
+                <div>
+                    <label class="strong muted">Flow limit</label>
+                    {% set _v = settings_flowLimit.int() %}
+                    <select  {{ bind(settings_flowLimit) }}>
+                        {% for n in [20, 50, 100, 500, 1000, 10000] %}
+                        <option value="{{ n }}" {{ _v == n ? 'selected' : '' }}>{{ n }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {# Default stats order-by #}
+                <div>
+                    <label class="strong muted">Statistics order by</label>
+                    {% set _v = settings_statsOrderBy.string() %}
+                    <select  {{ bind(settings_statsOrderBy) }}>
+                        <option value="bytes" {{ _v == 'bytes' ? 'selected' : '' }}>Bytes</option>
+                        <option value="packets" {{ _v == 'packets' ? 'selected' : '' }}>Packets</option>
+                        <option value="flows" {{ _v == 'flows' ? 'selected' : '' }}>Flows</option>
+                        <option value="pps" {{ _v == 'pps' ? 'selected' : '' }}>Packets/s</option>
+                        <option value="bps" {{ _v == 'bps' ? 'selected' : '' }}>Bits/s</option>
+                        <option value="bpp" {{ _v == 'bpp' ? 'selected' : '' }}>Bytes/packet</option>
+                    </select>
+                </div>
+
+            </div>{# /row #}
+
+            <hr>
+            <h6 class="muted upper">Date &amp; time display</h6>
+
+            <div class="grid">
+                <div>
+                    <label class="strong muted">Timezone</label>
+                    <div class="help">Choose which timezone to use when displaying dates in charts and timestamps.</div>
+                    <div class="choice">
+                        <input  type="radio" name="displayTz" id="displayTz_browser"
+                               value="browser"
+                               {{ bind(displayTz) }}>
+                        <label  for="displayTz_browser">
+                            Browser timezone <span class="muted">(your local time)</span>
+                        </label>
+                    </div>
+                    <div class="choice">
+                        <input  type="radio" name="displayTz" id="displayTz_server"
+                               value="server"
+                               {{ bind(displayTz) }}>
+                        <label  for="displayTz_server">
+                            Capture timezone (<span data-text="${{ nfcapdTz.id() }}"></span>)
+                        </label>
+                    </div>
+                </div>
+            </div>{# /row #}
+
+            <hr>
+            <h6 class="muted upper">Filter presets</h6>
+
+            <div class="grid">
+                <div>
+                    <label class="strong muted">
+                        nfdump filter presets
+                        <span class="muted">(one per line, offered as quick picks on the Flows and Top Talkers pages)</span>
+                    </label>
+                    <textarea id="settings-filters-textarea"
+                              class="mono"
+                              {{ bind(settings_filtersText) }}
+                              rows="5"
+                              placeholder="proto tcp&#10;dst port 443&#10;host 192.168.1.1"></textarea>
+                </div>
+            </div>{# /row #}
+
+            <div class="cluster cluster-end">
+                <button data-variant="primary" data-size="sm"
+                        data-indicator:_settings_saving
+                        data-on:click="document.dispatchEvent(new CustomEvent('nfsen-global-filters-updated',{detail:{filters:(document.getElementById('settings-filters-textarea')?.value||'').split('\n').map(s=>s.trim()).filter(s=>s)}})); window.showMessage('success', 'Preferences saved.', true); @post('{{ saveSettings.url() }}')">
+                    <span data-show="$_settings_saving" style="display:none;"
+                          class="spinner" role="status" aria-hidden="true"></span>
+                    Save preferences
+                </button>
+            </div>
+
+        </div>{# /card-body #}
+    </div>{# /card #}
+
+    <div class="card">
+        <div class="cluster card-header strong cluster-between">
+            Deployment configuration
+            <span class="badge">read-only</span>
+        </div>
+        <div class="card-body">
+            <p class="muted">
+                These values come from environment variables or <code>settings.php</code>.
+                Restart the container to apply changes.
+            </p>
+            <table class="muted">
+                <tbody>
+                    <tr>
+                        <td class="muted" style="width:40%">Sources</td>
+                        <td><code>{{ sources|join(', ') ?: '(none configured)' }}</code></td>
+                    </tr>
+                    <tr>
+                        <td class="muted">Ports</td>
+                        <td><code>{{ ports|join(', ') ?: '(none configured)' }}</code></td>
+                    </tr>
+                    <tr>
+                        <td class="muted">Datasource</td>
+                        <td><code>{{ deployDatasource }}</code></td>
+                    </tr>
+                    <tr>
+                        <td class="muted">Import years</td>
+                        <td><code>{{ deployImportYears }}</code></td>
+                    </tr>
+                    <tr>
+                        <td class="muted">Default theme</td>
+                        <td><code>{{ deployDefaultTheme }}</code>{% if deployDefaultTheme == 'auto' %} <span class="muted">(follows browser)</span>{% endif %}</td>
+                    </tr>
+                    <tr>
+                        <td class="muted">nfdump binary</td>
+                        <td><code>{{ deployNfdumpBinary }}</code></td>
+                    </tr>
+                    <tr>
+                        <td class="muted">Profiles data path</td>
+                        <td><code>{{ deployNfdumpProfiles }}</code></td>
+                    </tr>
+                    <tr>
+                        <td class="muted">Preferences file</td>
+                        <td><code>{{ deployPrefsFile }}</code></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

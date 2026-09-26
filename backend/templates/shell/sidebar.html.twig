@@ -1,0 +1,63 @@
+{# Sidebar (4.0.1): real links, so middle click works; the current item follows $page on the
+   client, so a click switches it instantly. #}
+{% import 'shell/icons.html.twig' as icons %}
+{% set groups = {analysis: 'Analysis', monitor: 'Monitor'} %}
+<aside class="sidebar" aria-label="Main">
+    <a class="sidebar-brand" href="#/{{ shell.defaults.view }}" title="nfsen-ng home">
+        {{ icons.icon('logo') }}
+        <span class="nav-label">nfsen-ng</span>
+        <small class="nav-label">{{ shell.version }}</small>
+    </a>
+
+    <nav class="sidebar-nav" id="sidebarNav" aria-label="Pages">
+        {% for group, groupLabel in groups %}
+            <p class="nav-group">{{ groupLabel }}</p>
+            {% for meta in shell.pagesMeta|filter(m => m.group == group) %}
+                <a class="nav-item" href="#/{{ meta.id }}" title="{{ meta.title }}"
+                   data-attr:aria-current="${{ page.id() }} === '{{ meta.id }}' ? 'page' : false"
+                   data-preserve-attr="aria-current">
+                    {{ icons.icon(meta.icon) }}
+                    <span class="nav-label">{{ meta.title }}</span>
+                    {% if meta.id == 'alerts' and shell.alertsFiring > 0 %}
+                        <span class="nav-badge" data-level="error">{{ shell.alertsFiring }}<span class="visually-hidden"> {{ shell.alertsFiring == 1 ? 'rule' : 'rules' }} firing</span></span>
+                    {% endif %}
+                    {% if meta.id == 'health' %}
+                        {% if shell.healthLevel in ['warning', 'error'] %}
+                            <span class="nav-dot" data-level="{{ shell.healthLevel }}"><span class="visually-hidden">Health: {{ shell.healthIssues }} {{ shell.healthLevel }}{{ shell.healthIssues == 1 ? '' : 's' }}</span></span>
+                        {% elseif shell.healthLevel == 'ok' %}
+                            <span class="nav-dot" data-level="success"><span class="visually-hidden">Health: all checks passed</span></span>
+                        {% endif %}
+                        <span class="nav-import" {% if not shell.import.running %}hidden{% endif %}
+                              data-attr:hidden="!${{ import_running.id() }}">{{ icons.icon('import') }}<span class="visually-hidden">Import running</span></span>
+                    {% endif %}
+                </a>
+            {% endfor %}
+        {% endfor %}
+        {% for meta in shell.pagesMeta|filter(m => m.group == 'system') %}
+            <a class="nav-item" href="#/{{ meta.id }}" title="{{ meta.title }}" data-slot="end"
+               data-attr:aria-current="${{ page.id() }} === '{{ meta.id }}' ? 'page' : false"
+               data-preserve-attr="aria-current">
+                {{ icons.icon(meta.icon) }}
+                <span class="nav-label">{{ meta.title }}</span>
+            </a>
+        {% endfor %}
+    </nav>
+
+    <div class="sidebar-footer">
+        {# Interim theme switch until the theme menu (4.0.7) lands; stores the explicit choice (#167). #}
+        <a href="#" role="button" class="sidebar-action" title="Toggle dark mode"
+           aria-pressed="false" data-attr:aria-pressed="$_darkMode ? 'true' : 'false'" data-preserve-attr="aria-pressed"
+           data-on:click__prevent="$_darkMode = !$_darkMode; window.__nfsenTheme.choose($_darkMode)">
+            <span class="theme-icon" data-theme-icon="light">{{ icons.icon('moon') }}</span>
+            <span class="theme-icon" data-theme-icon="dark">{{ icons.icon('sun') }}</span>
+            <span class="nav-label">Dark theme</span>
+        </a>
+        <button type="button" class="sidebar-action sidebar-toggle" aria-controls="sidebarNav"
+                aria-expanded="true" data-attr:aria-expanded="$_sidebarCollapsed ? 'false' : 'true'" data-preserve-attr="aria-expanded"
+                data-attr:title="$_sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+                data-on:click="$_sidebarCollapsed = !$_sidebarCollapsed">
+            {{ icons.icon('sidebar') }}
+            <span class="nav-label" data-text="$_sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">Collapse sidebar</span>
+        </button>
+    </div>
+</aside>

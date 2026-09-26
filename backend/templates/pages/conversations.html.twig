@@ -1,0 +1,20 @@
+{#
+    Conversations (4.4), interim: the query card and results of the old Sankey view.
+#}
+<div class="stack">
+    <section class="card query-card" aria-labelledby="conversationsQueryTitle"
+             data-collapsed data-attr:data-collapsed="!$_optionsOpen_conversations" data-preserve-attr="data-collapsed">
+        <header>
+            <h2 id="conversationsQueryTitle">Query</h2>
+            <button type="button" class="options-toggle" data-size="sm" aria-controls="conversationsQueryFields"
+                    aria-expanded="false" data-attr:aria-expanded="$_optionsOpen_conversations ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+                    data-on:click="$_optionsOpen_conversations = !$_optionsOpen_conversations"
+                    data-text="$_optionsOpen_conversations ? 'Hide filters' : 'Show filters'">Show filters</button>
+        </header>
+        <div class="card-body">
+            {% include 'partials/sankey-filters.html.twig' %}
+        </div>
+    </section>
+
+    {% include 'partials/sankey-view.html.twig' %}
+</div>

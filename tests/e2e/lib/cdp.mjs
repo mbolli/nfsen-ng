@@ -90,6 +90,9 @@ class Page {
                 while (this.loadWaiters.length) this.loadWaiters.shift()();
             } else if (msg.method === 'Page.javascriptDialogOpening' && this._autoAcceptDialogs) {
                 this.send('Page.handleJavaScriptDialog', { accept: true });
+            } else if (msg.method === 'Network.requestWillBeSent' && this._requests) {
+                const { request } = msg.params;
+                if (request.method === 'POST') this._requests.push(request.url);
             }
         });
     }
@@ -123,6 +126,12 @@ class Page {
         await loaded;
     }
 
+    async reload() {
+        const loaded = new Promise((resolve) => this.loadWaiters.push(resolve));
+        await this.send('Page.reload');
+        await loaded;
+    }
+
     /** Real, non-benign errors only -- filters BENIGN_ERROR_PATTERNS out. */
     realErrors() {
         return this.errors.filter((e) => !isBenignError(e));
@@ -131,7 +140,9 @@ class Page {
     async evaluate(expression) {
         const r = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
         if (r.exceptionDetails) {
-            throw new Error('page eval failed: ' + (r.exceptionDetails.exception?.description || r.exceptionDetails.text) + '\n  expr: ' + expression);
+            throw new Error(
+                'page eval failed: ' + (r.exceptionDetails.exception?.description || r.exceptionDetails.text) + '\n  expr: ' + expression
+            );
         }
         return r.result.value;
     }
@@ -150,52 +161,48 @@ class Page {
         throw new Error('timeout waiting for: ' + label);
     }
 
-    /**
-     * Wait until some element has a `data-show` attribute exactly equal to
-     * `signal == 'value'` (nfsen-ng's Datastar view-switch convention, e.g.
-     * `$_currentView == 'flows'`) and is actually visible (offsetParent !==
-     * null). Matches a whole clause rather than a substring -- `[data-show*="import"]`
-     * looks tempting but nfsen-ng's hashed signal ids (e.g.
-     * `import_running____<hash>`) routinely contain unrelated tab/section names
-     * as substrings, silently matching the wrong (often hidden) element.
-     *
-     * A panel may serve more than one view, e.g. the flow table is shown for both
-     * Flows and Investigate (`$_currentView == 'flows' || $_currentView ==
-     * 'investigate'`), so the attribute is split on `||` and each clause compared
-     * exactly. An equality test against the whole attribute missed those panels.
-     */
-    async waitForPanel(signal, value, opts = {}) {
-        const attr = `${signal} == '${value}'`;
+    /** Wait until Datastar has booted: only it marks the current sidebar item from `page`. */
+    async waitForBoot(opts = {}) {
+        await this.waitFor(`!!document.querySelector('.sidebar-nav a[aria-current="page"]')`, { label: 'Datastar to boot', ...opts });
+    }
+
+    /** Whether the viewport is below the 48em breakpoint, where the tab bar replaces the sidebar. */
+    async isMobile() {
+        return this.evaluate(`window.matchMedia('(max-width: 47.98em)').matches`);
+    }
+
+    /** The page's section has arrived (`data-ready`) and is visible. */
+    async waitForPage(id, opts = {}) {
         await this.waitFor(
-            `[...document.querySelectorAll('[data-show]')].some(function(e){
-                return e.getAttribute('data-show').split('||').map(function(c){ return c.trim(); })
-                    .indexOf(${JSON.stringify(attr)}) !== -1 && e.offsetParent !== null;
-            })`,
-            { label: `a visible panel with data-show clause "${attr}"`, ...opts }
+            `(function(){ var s = document.querySelector('#page-' + ${JSON.stringify(id)} + '[data-ready]'); return !!s && !s.hidden && s.getClientRects().length > 0; })()`,
+            { label: `page "${id}" to be ready and visible`, ...opts }
         );
     }
 
-    /**
-     * Wait until Datastar has applied its first binding. navigate() resolves on
-     * the load event, which is well before the module scripts have booted, so
-     * anything that reads a Datastar-driven class/visibility (or clicks a
-     * data-on:click element) has to wait for this first.
-     */
-    async waitForBoot(opts = {}) {
-        await this.waitFor(`!!document.querySelector('.tabs a.active')`, { label: 'Datastar to boot', ...opts });
-    }
-
-    /**
-     * clickByAttr + waitForPanel, retrying the click. A nav click that lands in
-     * the window between the load event and Datastar wiring `data-on:click` is
-     * swallowed by a dead `<a href="#">`, and nothing retries it -- the single
-     * most common source of flake in this suite.
-     */
-    async clickToPanel(sub, signal, value, { attempts = 10, timeout = 2000 } = {}) {
+    /** Click the page's link (tab bar or More menu on phones) and wait for its content. Retries:
+        a click before Datastar is wired changes the hash with nobody listening. */
+    async gotoPage(id, { attempts = 10, timeout = 3000 } = {}) {
+        const href = JSON.stringify(`#/${id}`);
         for (let attempt = 1; ; attempt++) {
-            await this.clickByAttr(sub);
+            const clicked = await this.evaluate(`(function(){
+                var href = ${href};
+                var visible = function(el){ return !!el && el.getClientRects().length > 0; };
+                var link = [...document.querySelectorAll('.sidebar-nav a, .tabbar a')].find(function(a){ return a.getAttribute('href') === href && visible(a); });
+                if (!link) {
+                    var more = document.querySelector('.tabbar .menu-toggle');
+                    var item = [...document.querySelectorAll('.tabbar .menu-list a')].find(function(a){ return a.getAttribute('href') === href; });
+                    if (visible(more) && item) {
+                        if (!visible(item)) more.click();
+                        link = item;
+                    }
+                }
+                if (!link) return false;
+                link.click();
+                return true;
+            })()`);
+            if (!clicked) throw new Error(`no navigation link to #/${id}`);
             try {
-                await this.waitForPanel(signal, value, { timeout });
+                await this.waitForPage(id, { timeout });
                 return;
             } catch (e) {
                 if (attempt >= attempts) throw e;
@@ -203,11 +210,145 @@ class Page {
         }
     }
 
+    /** The page of an old view id (D2), for the legacy wrappers below (until WP-I1). */
+    static legacyPage(signal, value) {
+        if (signal.includes('_settingsSection')) {
+            return (
+                { import: 'health', health: 'health', alerts: 'alerts', preferences: 'settings', system: 'settings' }[value] ?? 'settings'
+            );
+        }
+        return { graphs: 'overview', statistics: 'talkers', sankey: 'conversations', investigate: 'flows' }[value] ?? value;
+    }
+
+    /** Legacy wrapper: `waitForPanel('$_currentView', 'flows')` waits for the Flows page. */
+    async waitForPanel(signal, value, opts = {}) {
+        await this.waitForPage(Page.legacyPage(signal, value), opts);
+    }
+
+    /** Legacy wrapper: `clickToPanel("_currentView = 'flows'", '$_currentView', 'flows')` goes to the Flows page. */
+    async clickToPanel(_sub, signal, value, { attempts = 10, timeout = 3000 } = {}) {
+        await this.gotoPage(Page.legacyPage(signal, value), { attempts, timeout });
+    }
+
+    /** A signal's value from Datastar's own store, by wire id prefix `<name>____` or exact name. */
+    async signalValue(name) {
+        return this.evaluate(`(async function(){
+            var src = document.querySelector('script[type=module][src*="/js/datastar.js"]').src;
+            var root = (await import(src)).root;
+            var key = Object.keys(root).find(function(k){ return k === ${JSON.stringify(name)} || k.startsWith(${JSON.stringify(`${name}____`)}); });
+            return key === undefined ? undefined : JSON.parse(JSON.stringify(root[key]));
+        })()`);
+    }
+
+    /** Pick a range preset and wait for its width. Without #rangeMenu the old slider's button is
+        used, which clamps to the data range, so a clamped window counts too. */
+    async setRangePreset(id, { timeout = 8000 } = {}) {
+        const seconds = { '1h': 3600, '24h': 86400, '7d': 604800, '30d': 2592000, '1y': 31536000 }[id];
+        if (!seconds) throw new Error('unknown range preset: ' + id);
+        const hasMenu = await this.evaluate(`!!document.getElementById('rangeMenu')`);
+        if (hasMenu) {
+            await this.evaluate(`(function(){
+                var toggle = document.querySelector('#rangeMenu .menu-toggle');
+                if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+            })()`);
+            await this.waitFor(`!!document.querySelector('[data-range-preset="${id}"]')?.getClientRects().length`, {
+                label: `preset ${id} in the range menu`,
+            });
+            await this.evaluate(`document.querySelector('[data-range-preset="${id}"]').click()`);
+        } else {
+            const label = { '1h': '1 hour', '24h': '24 hours', '7d': 'Week', '30d': 'Month', '1y': 'Year' }[id];
+            await this.clickByText(label, 'button');
+        }
+        const start = Date.now();
+        for (;;) {
+            const [from, to, min] = await Promise.all([
+                this.signalValue('datestart'),
+                this.signalValue('dateend'),
+                this.signalValue('data_range_min'),
+            ]);
+            if (Math.abs(to - from - seconds) <= 300 || (!hasMenu && to - from < seconds && from <= min + 300)) return;
+            if (Date.now() - start > timeout) throw new Error(`range preset ${id}: window is ${to - from} s, expected ${seconds} s`);
+            await sleep(150);
+        }
+    }
+
+    /** Click `button[data-run=<target>]`, wait for its query control to go running (a fast query
+        may skip that) and back to idle. */
+    async runQuery(target, { timeout = 20000 } = {}) {
+        const control = `document.querySelector('button[data-run="${target}"]')?.closest('.query-control')`;
+        await this.waitFor(`!!document.querySelector('button[data-run="${target}"]:not(:disabled)')`, {
+            label: `run button for ${target}`,
+        });
+        await this.evaluate(`document.querySelector('button[data-run="${target}"]').click()`);
+        await this.waitFor(`${control}?.dataset.queryState === 'running'`, { timeout: 5000, label: `${target} query to start` }).catch(
+            () => {}
+        );
+        await this.waitFor(`${control}?.dataset.queryState === 'idle'`, { timeout, label: `${target} query to finish` });
+    }
+
+    /** Choose a theme. Without #themeMenu the old toggle sets light or dark, and system/default
+        drop the stored choice. */
+    async chooseTheme(choice) {
+        const hasMenu = await this.evaluate(`!!document.getElementById('themeMenu')`);
+        if (hasMenu) {
+            await this.evaluate(`(function(){
+                var toggle = document.querySelector('#themeMenu .menu-toggle');
+                if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+            })()`);
+            await this.waitFor(`!!document.querySelector('[data-theme-choice="${choice}"]')`, { label: `theme choice ${choice}` });
+            await this.evaluate(`document.querySelector('[data-theme-choice="${choice}"]').click()`);
+            return;
+        }
+        if (choice === 'light' || choice === 'dark') {
+            await this.evaluate(`(function(){
+                if (document.documentElement.dataset.theme !== ${JSON.stringify(choice)}) document.querySelector("[title='Toggle dark mode']").click();
+            })()`);
+            await this.waitFor(`document.documentElement.dataset.theme === ${JSON.stringify(choice)}`, {
+                label: `${choice} theme to apply`,
+            });
+            return;
+        }
+        await this.evaluate(`(function(){
+            try { localStorage.removeItem('nfsen-theme'); } catch (e) {}
+            var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            window.__nfsenTheme.dark = dark;
+            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+            window.dispatchEvent(new CustomEvent('nfsen-colorscheme', { detail: { dark: dark } }));
+        })()`);
+    }
+
+    /** Record the POSTs sent from now on; names() gives action names without the random suffix. */
+    async requestLog() {
+        await this.send('Network.enable');
+        this._requests = [];
+        const nameOf = (url) => {
+            const path = new URL(url).pathname;
+            const i = path.indexOf('/_action/');
+            return i === -1 ? null : path.slice(i + '/_action/'.length).replace(/-[0-9a-f]{8,}$/, '');
+        };
+        return {
+            names: () => this._requests.map(nameOf).filter((n) => n !== null),
+            count: (name) => this._requests.map(nameOf).filter((n) => n === name).length,
+            clear: () => {
+                this._requests.length = 0;
+            },
+        };
+    }
+
+    /** Run `fn` with forced colors emulated, then restore the media features. */
+    async withForcedColors(fn) {
+        await this.send('Emulation.setEmulatedMedia', { features: [{ name: 'forced-colors', value: 'active' }] });
+        try {
+            return await fn(this);
+        } finally {
+            await this.send('Emulation.setEmulatedMedia', { features: [] });
+        }
+    }
+
     /**
      * Click the first element whose `data-on:click*` attribute contains `sub`
-     * -- this is how nav tabs / sub-nav links are wired (see nav.html.twig,
-     * settings.html.twig), so it exercises the exact path a real user click
-     * would, the same technique book/_capture.mjs uses.
+     * -- the exact path a real user click takes, the same technique
+     * book/_capture.mjs uses.
      */
     async clickByAttr(sub) {
         const clicked = await this.evaluate(`(function(){
@@ -265,16 +406,19 @@ class Page {
         if (!ok) throw new Error('input not found: ' + selector);
     }
 
-    /**
-     * Click the tab's own "Process data" button and wait for its spinner to
-     * appear then clear -- Flows/Statistics/Sankey don't auto-run their
-     * nfdump query on filter/date change (see flow-filters.html.twig et al),
-     * so a query has to be explicitly triggered and awaited before the
-     * results table/chart exists to assert on.
-     */
+    /** Legacy wrapper until WP-I1: click the first visible Run or Process data button and wait
+        for the spinners in #page-content to clear. */
     async processData({ timeout = 20000 } = {}) {
-        await this.clickByText('Process data', 'button');
-        const isVisible = `(function(){return [...document.querySelectorAll('.spinner')].some(s => s.offsetParent !== null);})()`;
+        const clicked = await this.evaluate(`(function(){
+            var b = [...document.querySelectorAll('#page-content button')].find(function(e){
+                var t = e.textContent.trim();
+                return e.getClientRects().length > 0 && (t.includes('Process data') || t === 'Run');
+            });
+            if (b) { b.click(); return true; }
+            return false;
+        })()`);
+        if (!clicked) throw new Error('no visible Run or Process data button in #page-content');
+        const isVisible = `(function(){return [...document.querySelectorAll('#page-content .spinner')].some(s => s.getClientRects().length > 0);})()`;
         await this.waitFor(isVisible, { timeout: 5000, label: 'query to start' }).catch(() => {});
         await this.waitFor(`!(${isVisible})`, { timeout, label: 'query to finish' });
     }
@@ -293,9 +437,10 @@ class Page {
 /**
  * Launch headless Chrome, open one page, and hand it to `fn`. Always tears
  * the browser down afterwards, even on failure, so a failing test doesn't
- * leak a Chrome process.
+ * leak a Chrome process. `mobile: true` emulates a phone at width x height
+ * (device metrics with mobile: true, and touch).
  */
-export async function withPage(fn, { width = 1400, height = 1100, port } = {}) {
+export async function withPage(fn, { width = 1400, height = 1100, port, mobile = false } = {}) {
     const chromePort = port || 9400 + Math.floor(Math.random() * 500);
     const userDataDir = mkdtempSync(join(tmpdir(), 'nfsen-e2e-'));
     const chrome = spawn(
@@ -332,6 +477,10 @@ export async function withPage(fn, { width = 1400, height = 1100, port } = {}) {
 
         page = new Page(ws, chrome);
         await page.init();
+        if (mobile) {
+            await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: true });
+            await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        }
         return await fn(page);
     } finally {
         if (page) {

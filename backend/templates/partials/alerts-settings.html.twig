@@ -1,7 +1,6 @@
 {#
-    Alert Rules settings card — shown in the Settings tab.
-    Allows creating, editing, enabling/disabling, and deleting threshold-based alert rules.
-    Notifications: in-app SSE toast, optional email, optional HTTP webhook.
+    Alert rules, their form and the default notification templates, shown on the Alerts page.
+    Notifications: in-app toast, optional email, optional HTTP webhook.
 #}
 
 {% set templateTokens = ['{rule}', '{metric}', '{value}', '{threshold}', '{operator}', '{condition}', '{flows}', '{packets}', '{bytes}', '{profile}', '{sources}', '{time}'] %}
@@ -14,8 +13,8 @@
         Default Notification Templates
         <button type="button" data-size="sm"
                 data-on:click="$_alertGlobalTplExpanded = !$_alertGlobalTplExpanded">
-            <span data-show="!$_alertGlobalTplExpanded">▸ Customize</span>
-            <span data-show="$_alertGlobalTplExpanded" style="display:none">▾ Collapse</span>
+            <span data-show="!$_alertGlobalTplExpanded">Customize</span>
+            <span data-show="$_alertGlobalTplExpanded" style="display:none">Collapse</span>
         </button>
     </div>
     <div class="card-body" data-show="$_alertGlobalTplExpanded" style="display:none">
@@ -91,7 +90,7 @@
         <div class="cluster">
             <button type="button" data-size="sm"
                     title="Send a test toast to verify the notification UI works"
-                    data-on:click="window.showMessage('warning', '🔔 Test alert toast — in-app notifications are working!', true, '#alerts-toast-container')">
+                    data-on:click="window.showMessage('warning', 'Test alert toast: in-app notifications are working.', true, '#alerts-toast-container')">
                 Test Toast
             </button>
             <span class="badge">{{ alerts|length }} rule{{ alerts|length != 1 ? 's' : '' }}</span>
@@ -129,12 +128,12 @@
                             {{ rule.thresholdValue|number_format(0) }}% of {{ rule.avgWindow }} avg
                         {% endif %}
                         {% if rule.nfdumpFilter %}
-                            <br><span class="muted" title="nfdump filter">⊂ {{ rule.nfdumpFilter|e }}</span>
+                            <br><span class="muted" title="nfdump filter">filter: {{ rule.nfdumpFilter|e }}</span>
                         {% endif %}
                     </td>
                     <td>
-                        {% if rule.notifyEmail %}<span title="{{ rule.notifyEmail|e }}" >✉</span>{% endif %}
-                        {% if rule.notifyWebhook %}<span title="{{ rule.notifyWebhook|e }}">🔗</span>{% endif %}
+                        {% if rule.notifyEmail %}<span title="{{ rule.notifyEmail|e }}">email</span>{% endif %}
+                        {% if rule.notifyWebhook %}<span title="{{ rule.notifyWebhook|e }}">webhook</span>{% endif %}
                         {% if not rule.notifyEmail and not rule.notifyWebhook %}<span class="muted">in-app only</span>{% endif %}
                     </td>
                     <td class="text-end">
@@ -145,7 +144,7 @@
                                 data-on:click="@post('{{ testAlert.url() }}?id={{ rule.id }}')">
                             <span data-show="$_alert_testing_{{ rule.id|replace({'-': '_'}) }}" style="display:none"
                                   class="spinner" role="status" aria-hidden="true"></span>
-                            <span data-show="!$_alert_testing_{{ rule.id|replace({'-': '_'}) }}">▶ Test</span>
+                            <span data-show="!$_alert_testing_{{ rule.id|replace({'-': '_'}) }}">Test</span>
                         </button>
                         {# Edit: populate form signals client-side without a round-trip #}
                         <button data-size="sm"
@@ -168,19 +167,19 @@
                                     ${{ alert_form_webhookTitleTemplate.id() }} = '{{ rule.webhookTitleTemplate|default('')|e('js') }}';
                                     ${{ alert_form_webhookMessageTemplate.id() }} = '{{ rule.webhookMessageTemplate|default('')|e('js') }}';
                                     document.getElementById('alert-form-card').scrollIntoView({behavior:'smooth'})">
-                            ✏
+                            Edit
                         </button>
                         {# Toggle enabled #}
                         <button data-size="sm"
                                 title="{{ rule.enabled ? 'Disable' : 'Enable' }}"
                                 data-on:click="@post('{{ toggleAlert.url() }}?id={{ rule.id }}')">
-                            {{ rule.enabled ? '⏸' : '▶' }}
+                            {{ rule.enabled ? 'Disable' : 'Enable' }}
                         </button>
                         {# Delete #}
                         <button class="kill" data-size="sm"
                                 title="Delete"
                                 data-on:click="if(confirm('Delete rule \'{{ rule.name|e('js') }}\'?')) @post('{{ deleteAlert.url() }}?id={{ rule.id }}')">
-                            🗑
+                            Delete
                         </button>
                     </td>
                 </tr>
@@ -281,7 +280,7 @@
                 <div class="help">Tip: use <code>&lt; 1</code> to fire even on empty data.</div>
             </div>
 
-            {# Avg window — only relevant for percent_of_avg #}
+            {# Avg window, only for percent_of_avg #}
             <div  data-show="${{ alert_form_thresholdType.id() }} == 'percent_of_avg'" style="display:none">
                 <label class="strong muted">Avg window</label>
                 {% set _aw = alert_form_avgWindow.string() %}
@@ -351,8 +350,8 @@
 
                 <button type="button" data-size="sm"
                         data-on:click="$_alertEmailTplExpanded = !$_alertEmailTplExpanded">
-                    <span data-show="!$_alertEmailTplExpanded">▸ Customize email message</span>
-                    <span data-show="$_alertEmailTplExpanded" style="display:none">▾ Collapse</span>
+                    <span data-show="!$_alertEmailTplExpanded">Customize email message</span>
+                    <span data-show="$_alertEmailTplExpanded" style="display:none">Collapse</span>
                 </button>
 
                 <div id="alert-form-email-template" class="surface" data-show="$_alertEmailTplExpanded" style="display:none">
@@ -396,8 +395,8 @@
 
                 <button type="button" data-size="sm"
                         data-on:click="$_alertWebhookTplExpanded = !$_alertWebhookTplExpanded">
-                    <span data-show="!$_alertWebhookTplExpanded">▸ Customize webhook message</span>
-                    <span data-show="$_alertWebhookTplExpanded" style="display:none">▾ Collapse</span>
+                    <span data-show="!$_alertWebhookTplExpanded">Customize webhook message</span>
+                    <span data-show="$_alertWebhookTplExpanded" style="display:none">Collapse</span>
                 </button>
 
                 <div id="alert-form-webhook-template" class="surface" data-show="$_alertWebhookTplExpanded" style="display:none">

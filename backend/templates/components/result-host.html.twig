@@ -1,0 +1,5 @@
+{# Result host (D26, 1.7): full only when the client lacks this result id, else an empty
+   placeholder that morphs skip; a new id replaces the element. #}
+{% macro host(id, resultId, send, content) -%}
+    <div class="result-host" id="{{ id }}-{{ resultId }}" data-ignore-morph>{% if send %}{{ content|raw }}{% endif %}</div>
+{%- endmacro %}

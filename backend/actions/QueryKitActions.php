@@ -130,8 +130,7 @@ final class QueryKitActions {
                     return;
                 }
                 $signal->setValue(self::estimatePayload($estimate), broadcast: false);
-                // The legacy cost lines are rendered from nfcapd_*, so new counts need a render.
-                self::push($c, $app, full: self::publishCounts($c, $estimate));
+                self::push($c, $app);
             } catch (\Throwable $e) {
                 if (self::isNewest($c, $key, $ticket)) {
                     $signal->setValue([...self::current($signal), 'pending' => false], broadcast: false);
@@ -173,7 +172,7 @@ final class QueryKitActions {
             'sources' => $sources,
             'profile' => self::profile($c),
             'points' => $points > 0 ? $points : self::DEFAULT_POINTS,
-            // As GraphActions::filteredCost(): one series per source, else one in total.
+            // The filtered graph builds one series per source in the Sources display, else one.
             'groups' => $display === 'sources' ? max(1, \count($sources)) : 1,
         ];
     }
@@ -260,31 +259,6 @@ final class QueryKitActions {
         return \is_array($value) ? [...QueryKit::ESTIMATE_DEFAULT, ...$value] : QueryKit::ESTIMATE_DEFAULT;
     }
 
-    /**
-     * Keeps nfcapd_file_count and nfcapd_total_bytes in step for the legacy cost lines, which
-     * describe the selected window and hide the counts of a clamped one. True when they changed.
-     */
-    private static function publishCounts(Context $c, Estimate $estimate): bool {
-        $count = $c->getSignal('nfcapd_file_count');
-        $bytes = $c->getSignal('nfcapd_total_bytes');
-        if ($estimate->clamped || $count === null || $bytes === null) {
-            return false;
-        }
-        if ($count->int() === $estimate->files && $bytes->int() === $estimate->bytes) {
-            return false;
-        }
-
-        $count->setValue($estimate->files, broadcast: false);
-        $bytes->setValue($estimate->bytes, broadcast: false);
-        // Helpers::measureNfcapdFiles() skips its walk for a matching signature; it no longer matches.
-        $measured = $c->getSignal('nfcapd_measured');
-        if ($measured !== null && $measured->string() !== '') {
-            $measured->setValue('', broadcast: false);
-        }
-
-        return true;
-    }
-
     private static function nextTicket(Context $c, string $signal): int {
         self::$tickets ??= new \WeakMap();
         $tickets = self::$tickets[$c] ?? [];
@@ -302,11 +276,11 @@ final class QueryKitActions {
      * Before this tab's SSE stream is up its patch channel is replaced on connect, which would
      * drop the patch; the changed signals then go out with the connect sync instead.
      */
-    private static function push(Context $c, ?Via $app, bool $full = false): void {
+    private static function push(Context $c, ?Via $app): void {
         if ($app !== null && ($app->activeSseCount[$c->getId()] ?? 0) === 0) {
             return;
         }
-        $full ? $c->sync() : $c->syncSignals();
+        $c->syncSignals();
     }
 
     private static function fail(Context $c, string $what, \Throwable $e): void {

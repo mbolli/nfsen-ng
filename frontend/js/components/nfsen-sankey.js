@@ -196,9 +196,8 @@ window.nfsenConversations ??= {
     },
     exportPairs(kind) {
         const table = document.querySelector('#convPanel-pairs nfsen-table');
-        if (!table) return;
-        const run = kind === 'json' ? (table.exportJson ?? table.exportToJSON) : (table.exportCsv ?? table.exportToCSV);
-        run?.call(table);
+        if (kind === 'json') table?.exportJson();
+        else table?.exportCsv();
     },
     exportPng(view) {
         document.querySelector(`#convPanel-${view} :is(nfsen-sankey, nfsen-matrix)`)?.downloadPng();

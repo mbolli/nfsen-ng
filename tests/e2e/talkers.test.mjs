@@ -221,6 +221,17 @@ export default async function talkersTest() {
             true,
             'Escape returns the focus to the Export toggle'
         );
+        await page.evaluate(`(function(){
+            window.__downloads = [];
+            HTMLAnchorElement.prototype.click = function(){ window.__downloads.push(this.download); };
+        })()`);
+        for (const kind of ['csv', 'json']) {
+            await page.evaluate(`document.querySelector('#statsExportMenu [data-export="${kind}"]').click()`);
+        }
+        await page.waitFor(`window.__downloads.length === 2`, { label: 'the CSV and JSON downloads' });
+        const files = (await page.evaluate('window.__downloads')).sort();
+        assert.match(files[0], /^top-talkers-\w+\.csv$/, 'CSV exports the table');
+        assert.match(files[1], /^top-talkers-\w+\.json$/, 'JSON exports the table');
 
         // A statistic without a direction takes the direction radios out of the tab order.
         await page.evaluate(`document.getElementById('talkersTab-talkers').focus()`);
@@ -243,8 +254,8 @@ export default async function talkersTest() {
         const GRAPH = "document.getElementById('trafficGraph')";
         await page.waitFor(`!!${GRAPH}?.chart`, { label: 'the picker graph' });
         log.clear();
-        const before = await page.signalValue('datestart');
-        const min = (await page.signalValue('data_range_min')) ?? 0;
+        const { datestart: before, data_range_min: dataMin } = await page.signalValues(['datestart', 'data_range_min']);
+        const min = dataMin ?? 0;
         const brush = await page.evaluate(`(function(){
             var src = ${GRAPH}.chart.getOption().dataset[0].source;
             var first = Math.max(src[0][0], ${min} * 1000), last = src[src.length - 1][0];
@@ -257,9 +268,9 @@ export default async function talkersTest() {
         }
         const start = Date.now();
         while ((await page.signalValue('datestart')) === before && Date.now() - start < 8000) await sleep(200);
-        const from = await page.signalValue('datestart');
+        const { datestart: from, range_live: live } = await page.signalValues(['datestart', 'range_live']);
         assert.ok(Math.abs(from - brush[0] / 1000) <= 300, `the brush set the range: ${from} for ${brush[0] / 1000}`);
-        assert.equal(await page.signalValue('range_live'), false, 'a brushed range is fixed');
+        assert.equal(live, false, 'a brushed range is fixed');
         await sleep(800);
         assert.deepEqual(queries(log), [], `the brush ran no query, got ${log.names().join(', ')}`);
 

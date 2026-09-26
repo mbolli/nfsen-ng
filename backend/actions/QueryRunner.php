@@ -109,6 +109,9 @@ final class QueryRunner {
 
                 /** The first nfdump sampled; a graph run in the same tab registers under the same handle. */
                 public ?int $pid = null;
+
+                /** When that nfdump was first seen: a wait for a slot before it is no read time. */
+                public ?float $seenAt = null;
             };
 
             // Everything in here is caught: a throw out of a coroutine takes the whole worker down,
@@ -122,6 +125,7 @@ final class QueryRunner {
                     static fn (): ?int => NfdumpSlots::pidFor($contextId),
                     static function (int $pid) use ($lastRead): ?int {
                         $read = Misc::processReadBytes($pid);
+                        $lastRead->seenAt ??= microtime(true);
                         $lastRead->pid ??= $pid;
                         if ($read !== null && $pid === $lastRead->pid) {
                             $lastRead->sample = ['bytes' => $read, 'at' => microtime(true)];
@@ -134,11 +138,16 @@ final class QueryRunner {
                 // Stops once the work is finished, or for good the first time the platform
                 // cannot report bytes read.
                 Coroutine::create(static function () use ($progress, $watcher): void {
-                    while (!$progress->isFinished() && $watcher->isTrackable()) {
-                        Coroutine::usleep(self::POLL_INTERVAL_US);
-                        if (!$watcher->tick()) {
-                            return;
+                    try {
+                        while (!$progress->isFinished() && $watcher->isTrackable()) {
+                            Coroutine::usleep(self::POLL_INTERVAL_US);
+                            if (!$watcher->tick()) {
+                                return;
+                            }
                         }
+                    } catch (\Throwable $e) {
+                        // The run goes on without a progress bar.
+                        Debug::getInstance()->log('Query progress sampling stopped: ' . $e->getMessage(), LOG_WARNING);
                     }
                 });
 
@@ -156,11 +165,13 @@ final class QueryRunner {
                 // has to run before the outcome is written.
                 $progress->finish($sizeInBytes);
                 $sample = $lastRead->sample;
+                // nfdump started at most one poll interval before it was first seen.
+                $readFrom = max($workStartedAt, ($lastRead->seenAt ?? $workStartedAt) - self::POLL_INTERVAL_US / 1e6);
                 $read = self::recordedRead(
                     $kind,
                     $sizeInBytes,
                     $workSeconds,
-                    $sample === null ? null : ['bytes' => $sample['bytes'], 'seconds' => $sample['at'] - $workStartedAt],
+                    $sample === null ? null : ['bytes' => $sample['bytes'], 'seconds' => $sample['at'] - $readFrom],
                 );
                 $finalStatus = self::finish($kind, $read['bytes'], $read['seconds'], $progress->elapsed(), $error, QueryCancel::isRequested($contextId));
                 $status->setValue($finalStatus, broadcast: false);

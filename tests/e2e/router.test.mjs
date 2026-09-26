@@ -36,7 +36,59 @@ async function load(page, url) {
     await page.waitForBoot();
 }
 
+/**
+ * The signal keys of every datastar-patch-signals event in the first 2.5 s of a fresh tab's SSE
+ * stream (the first sync), and the tab's signal suffix.
+ */
+async function firstSyncSignals() {
+    const res = await fetch(BASE + '/');
+    const html = await res.text();
+    const cookie = res.headers
+        .getSetCookie()
+        .map((c) => c.split(';')[0])
+        .join('; ');
+    const ctx = html.match(/via_ctx":"([^"]+)"/)?.[1];
+    const suffix = html.match(/\bpage(____[0-9a-f]+)/)?.[1];
+    assert.ok(ctx && suffix, 'the page carries its context and page signal ids');
+
+    const abort = new AbortController();
+    const stop = setTimeout(() => abort.abort(), 2500);
+    const sse = await fetch(`${BASE}/_sse?datastar=${encodeURIComponent(JSON.stringify({ via_ctx: ctx }))}`, {
+        headers: { cookie, accept: 'text/event-stream', 'accept-encoding': 'identity' },
+        signal: abort.signal,
+    });
+    assert.equal(sse.status, 200, 'the SSE stream opens');
+    const decoder = new TextDecoder();
+    let text = '';
+    try {
+        for await (const chunk of sse.body) text += decoder.decode(chunk, { stream: true });
+    } catch (e) {
+        if (e.name !== 'AbortError') throw e;
+    } finally {
+        clearTimeout(stop);
+    }
+
+    const keys = text
+        .split('\n\n')
+        .filter((event) => event.startsWith('event: datastar-patch-signals'))
+        .flatMap((event) => {
+            const json = event
+                .split('\n')
+                .filter((line) => line.startsWith('data: signals '))
+                .map((line) => line.slice('data: signals '.length))
+                .join('');
+            return Object.keys(JSON.parse(json));
+        });
+    return { keys, suffix };
+}
+
 export default async function routerTest() {
+    // Appendix A: the first sync pushes the new signals but not page, which the client seeds
+    // itself (1.2); an echo would send a tab back to the server's page.
+    const { keys, suffix } = await firstSyncSignals();
+    assert.ok(keys.includes(`query_running${suffix}`), `the first sync pushes the shell signals: ${keys.slice(0, 5).join(', ')}`);
+    assert.ok(!keys.includes(`page${suffix}`), 'the first sync does not contain page');
+
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
         await page.evaluate(`localStorage.clear()`);

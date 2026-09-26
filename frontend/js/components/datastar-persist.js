@@ -3,17 +3,17 @@
  *
  * Restores each named signal from localStorage once on load (unconditional
  * set, so a stored value always wins over whatever default a
- * `data-signals__ifmissing` block on the same element assigned — order
+ * `data-signals__ifmissing` block on the same element assigned; order
  * between the two doesn't matter), then keeps it saved on every change.
  *
  * Deliberately uses the plain *value* form (one attribute, an object-literal
  * expression), not `data-persist:_signalName="..."` (colon-key form): HTML
  * attribute *names* are lowercased by the parser, so a colon-key of
- * `_darkMode` silently arrives as `_darkmode` — a different, bogus signal
+ * `_darkMode` silently arrives as `_darkmode`, a different, bogus signal
  * path. Attribute *values* preserve case, so the signal names belong there.
  *
  * Imports 'datastar' via the bare specifier (see the import map in
- * layout.html.twig), not a relative `../datastar.js` path — a relative import
+ * layout.html.twig), not a relative `../datastar.js` path: a relative import
  * resolves to a URL without the main script tag's `?v=` cache-busting query
  * string, which the module loader treats as a second, entirely separate
  * Datastar instance (its own signal store, its own MutationObserver on
@@ -33,7 +33,7 @@ attribute({
         const initial = rx();
         for (const name of Object.keys(initial)) {
             const stored = localStorage.getItem(persistKey(name));
-            // '' is not a value any persisted signal legitimately holds — it's what
+            // '' is not a value any persisted signal legitimately holds; it's what
             // reading an undefined path yields. Skipping it on both sides keeps a signal
             // whose seed hadn't run yet from being written out as '' and then restored as
             // '' forever after, which is how _graph_stepplot (default true) ended up

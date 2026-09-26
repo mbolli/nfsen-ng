@@ -286,6 +286,7 @@ final class TalkersPage implements Page {
             'stale' => $stored !== null && $stored['fingerprint'] !== StatsActions::panelFingerprint($params, $panel),
             'scopeStale' => $stored !== null && $stored['scope'] !== $scope,
             'inputs' => $stored['inputs'] ?? ['filter' => '', 'lower' => '', 'upper' => ''],
+            'clamp' => $stored['clamp'] ?? '',
             'bars' => array_map(static fn (array $bar): array => [
                 'label' => $bar['label'],
                 'series' => $bar['series'],

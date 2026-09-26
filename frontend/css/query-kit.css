@@ -199,6 +199,17 @@
     white-space: nowrap;
 }
 
+/* Kill reads as destructive without the full danger fill of a primary action. */
+.kill {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.kill:hover:not(:disabled) {
+    background: var(--danger-subtle);
+    color: var(--danger-emphasis);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .filter-status[data-state='checking'] .filter-status-glyph {
         animation-duration: 2s;

@@ -246,4 +246,6 @@
         </div>
         <button type="button" data-on:click="{{ dismiss }} el.closest('dialog').close(); {{ close }}">Cancel</button>
     </footer>
+    {# A modal makes the rest of the page inert, so a toast shown meanwhile lands here (nfsen-toast.js). #}
+    <div class="toast-stack" data-ignore-morph></div>
 </dialog>

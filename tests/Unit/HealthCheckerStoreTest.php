@@ -5,13 +5,16 @@ declare(strict_types=1);
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\Settings;
+use mbolli\nfsen_ng\common\TopNCollector;
 use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\pages\HealthPage;
 use mbolli\nfsen_ng\query\Estimate;
 use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\Migrator;
+use mbolli\nfsen_ng\store\TopNRepository;
 use Mbolli\PhpVia\Config as ViaConfig;
 use Mbolli\PhpVia\Via;
+use OpenSwoole\Coroutine;
 
 /**
  * The facts of Database::inspect() for an existing, writable WAL store at the current schema.
@@ -295,6 +298,39 @@ describe('HealthChecker::run without a writable state directory', function (): v
         ;
     });
 
+    test('a render reads a stale cache as it is and the refresh lands afterwards', function (): void {
+        $app = new Via(new ViaConfig());
+        $app->setGlobalState(HealthPage::CACHE, ['ts' => time() - 3600, 'checks' => [], 'level' => 'warning', 'metrics' => null]);
+        $seen = '';
+        Coroutine::run(static function () use ($app, &$seen): void {
+            $seen = HealthPage::level($app, time());
+        });
+        $cache = $app->globalState(HealthPage::CACHE);
+
+        // The store cannot be created here, so the refreshed checks carry an error.
+        expect($seen)->toBe('warning')
+            ->and($cache['ts'])->toBeGreaterThan(time() - 60)
+            ->and($cache['level'])->toBe('error')
+            ->and($cache['metrics'])->toBeNull()
+        ;
+    });
+
+    test('invalidate() keeps the checks on screen but makes both parts due', function (): void {
+        $app = new Via(new ViaConfig());
+        $metrics = ['ts' => time(), 'sources' => [], 'disks' => [], 'versions' => ['php' => '', 'openswoole' => '', 'sqlite' => '', 'nfdump' => ''], 'journalMode' => 'wal'];
+        $app->setGlobalState(HealthPage::CACHE, ['ts' => time(), 'checks' => [], 'level' => 'warning', 'metrics' => $metrics]);
+        HealthPage::invalidate($app);
+        $cache = $app->globalState(HealthPage::CACHE);
+
+        expect($cache['ts'])->toBe(0)
+            ->and($cache['level'])->toBe('warning')
+            ->and($cache['metrics']['ts'])->toBe(0)
+            ->and($cache['metrics']['journalMode'])->toBe('wal')
+            // Outside a coroutine the next read refreshes inline.
+            ->and(HealthPage::level($app, time()))->toBe('error')
+        ;
+    });
+
     test('names NFSEN_SKIP_DAEMON when it is what disabled the daemon', function (): void {
         putenv('NFSEN_SKIP_DAEMON=1');
         $row = array_column(HealthChecker::run(true), null, 'id')['daemon_status'];
@@ -314,5 +350,26 @@ describe('HealthPage::topnOff', function (): void {
 
         $app->setGlobalState('daemon_disabled', true);
         expect(HealthPage::topnOff($app, false))->toBe('Off: the import daemon is disabled (NFSEN_SKIP_DAEMON).');
+    });
+
+    test('says so when boot() failed, and nothing once the collector runs', function (): void {
+        $settingsBefore = Config::$settings;
+        Config::$settings = Settings::fromArray(['general' => ['sources' => ['gw']]]);
+        Database::useShared(Database::open(':memory:'));
+        TopNCollector::reset();
+        $app = new Via(new ViaConfig());
+
+        try {
+            $unbooted = HealthPage::topnOff($app, false);
+            TopNCollector::start(new TopNRepository(Database::shared()), 31, time());
+
+            expect($unbooted)->toBe('Off: the collector did not start, see the log.')
+                ->and(HealthPage::topnOff($app, false))->toBe('')
+            ;
+        } finally {
+            TopNCollector::reset();
+            Database::resetShared();
+            Config::$settings = $settingsBefore;
+        }
     });
 });

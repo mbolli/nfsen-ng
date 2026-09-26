@@ -9,8 +9,8 @@ declare(strict_types=1);
  * Generates 90 days (default) of diurnal traffic with TCP/UDP/ICMP/Other
  * protocol breakdown, suitable for screenshot-quality graphs in nfsen-ng.
  *
- * Uses Config::initialize() and Rrd::write() directly — the same code path
- * as the live import daemon — so the resulting RRD structure is identical
+ * Uses Config::initialize() and Rrd::write() directly (the same code path
+ * as the live import daemon), so the resulting RRD structure is identical
  * to real imported data.
  *
  * Usage (run from the nfsen-ng repository root):
@@ -70,7 +70,7 @@ printf(
 
 // ─── Traffic model ───────────────────────────────────────────────────────────
 
-// Peak flows per 5-min interval at the busiest hour (Mon–Fri, ~13:00 UTC).
+// Peak flows per 5-min interval at the busiest hour (Mon to Fri, ~13:00 UTC).
 // Realistic enterprise uplink: ~25 k flows/5 min at peak.
 const PEAK_FLOWS = 25_000;
 
@@ -170,7 +170,7 @@ while ($dayStart < $now) {
             ++$totalErrors;
         }
 
-        // Port data — each configured port gets ~10 % of source traffic with a TCP-dominant mix.
+        // Port data: each configured port gets ~10 % of source traffic with a TCP-dominant mix.
         $portRatios = ['tcp' => 0.82, 'udp' => 0.10, 'icmp' => 0.02, 'other' => 0.06];
         foreach ($ports as $port) {
             $portShare = max(0.01, gauss(0.10, 0.30));

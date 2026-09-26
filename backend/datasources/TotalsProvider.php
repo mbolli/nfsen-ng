@@ -23,6 +23,7 @@ interface TotalsProvider {
      * @return Totals
      *
      * @throws \InvalidArgumentException for a protocol outside PROTOCOLS
+     * @throws \RuntimeException         when the store does not answer
      */
     public function fetchTotals(array $sources, string $profile, int $start, int $end, string $protocol = 'any'): array;
 
@@ -32,6 +33,8 @@ interface TotalsProvider {
      * @param list<string> $sources [] or ['any'] for every configured source
      *
      * @return ProtocolTotals
+     *
+     * @throws \RuntimeException when the store does not answer
      */
     public function fetchProtocolTotals(array $sources, string $profile, int $start, int $end): array;
 }

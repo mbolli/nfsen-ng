@@ -14,8 +14,7 @@ interface ShellModule {
     public static function register(Context $c, Via $app, PageStates $states): void;
 
     /**
-     * Data for this module's top-level Twig key (range, graph, querykit, drawer), on every
-     * render. Keys under Shell::LEGACY are lifted to the top level for the old partials.
+     * Data for this module's top-level Twig key (range, graph, querykit, drawer), on every render.
      *
      * @return array<string, mixed>
      */

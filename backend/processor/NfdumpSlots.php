@@ -36,8 +36,8 @@ final class NfdumpSlots {
     /**
      * @var array<string, list<int>> query handle => the pids it currently owns
      *
-     * A list, not one pid: concurrent runs can share a handle — the import daemon and every
-     * MCP call use the default one — and a scalar meant the second run overwrote the first and
+     * A list, not one pid: concurrent runs can share a handle (the import daemon and every
+     * MCP call use the default one), and a scalar meant the second run overwrote the first and
      * then erased it on exit, so a kill found nothing while a process was still going
      */
     private static array $pids = [];

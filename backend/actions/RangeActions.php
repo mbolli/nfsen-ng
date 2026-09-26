@@ -53,7 +53,6 @@ final class RangeActions {
                     $c->getSignal('data_range_min')?->int() ?? 0,
                 );
                 self::apply($c, $next);
-                GraphActions::measureFilteredCost($c);
                 $states->shell->graphFetchedAt = 0;
                 if (str_starts_with($error?->string() ?? '', self::ERROR_PREFIX)) {
                     $error?->setValue('', broadcast: false);
@@ -70,7 +69,6 @@ final class RangeActions {
         $c->action(static function (Context $c) use ($states): void {
             try {
                 self::applyGlobals($c);
-                GraphActions::measureFilteredCost($c);
                 $states->shell->graphFetchedAt = 0;
             } catch (\Throwable $e) {
                 Debug::getInstance()->log('apply-globals failed: ' . $e->getMessage(), LOG_ERR);
@@ -85,7 +83,6 @@ final class RangeActions {
                 if (!self::changeProfile($c, $now)) {
                     return;
                 }
-                GraphActions::measureFilteredCost($c);
                 $states->shell->rangeFetchedAt = $now;
                 $states->shell->graphFetchedAt = 0;
             } catch (\Throwable $e) {

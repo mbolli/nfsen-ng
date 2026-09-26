@@ -236,7 +236,7 @@ describe('FilteredSeries::build', function (): void {
     // timestamp and ECharts draws straight across, so a collection outage looked like
     // steady traffic. Stored mode shows a real gap for the same window.
     test('emits bins without capture files as null rows, not as missing rows', function () use ($base): void {
-        // Files at 00:00 and 00:10 — the 00:05 bin has none.
+        // Files at 00:00 and 00:10: the 00:05 bin has none.
         $root = withFakeNfdump(['gateway'], [$base, $base + 600]);
         FakeProcessor::$defaultResponse = [statRow('TCP', 300, 0, 0)];
 
@@ -264,7 +264,7 @@ describe('FilteredSeries::build', function (): void {
         removeTree($root);
     });
 
-    // A failed invocation is a gap, not a zero — reporting 0 would render a truncated
+    // A failed invocation is a gap, not a zero: reporting 0 would render a truncated
     // capture or an nfdumpMaxProcesses rejection as "no traffic here".
     test('keeps going when a bin fails, and leaves it a gap rather than a zero', function () use ($base): void {
         $root = withFakeNfdump(['gateway'], [$base, $base + 300]);
@@ -281,7 +281,7 @@ describe('FilteredSeries::build', function (): void {
     });
 
     // The first bin starts at the floored window start, so the capture covering it must be
-    // included — listing from the raw start dropped it and under-reported that bin.
+    // included; listing from the raw start dropped it and under-reported that bin.
     test('includes the capture covering the first partial bin', function () use ($base): void {
         $root = withFakeNfdump(['gateway'], [$base]);
         FakeProcessor::$defaultResponse = [statRow('TCP', 300, 0, 0)];
@@ -370,7 +370,7 @@ describe('FilteredSeries::normalizeProtocolSelection', function (): void {
 describe('FilteredSeries protocol selection', function (): void {
     $base = 1704067200;
 
-    // Regression: the Protocols buttons used to be inert in filtered mode — every
+    // Regression: the Protocols buttons used to be inert in filtered mode: every
     // selection produced the same four series.
     test('protocols display emits only the selected series', function () use ($base): void {
         $root = withFakeNfdump(['gateway'], [$base]);
@@ -511,8 +511,7 @@ describe('FilteredSeries row guards', function (): void {
 });
 
 describe('FilteredSeries::binWidth termination', function (): void {
-    // graph_sources is client-writable, and binWidth() is reached from filteredCost() on
-    // the render path — a source list longer than MAX_RUNS used to spin the worker forever.
+    // graph_sources is client-writable: a source list longer than MAX_RUNS used to spin the worker forever.
     test('terminates when the group count alone exceeds the run ceiling', function (): void {
         $step = FilteredSeries::binWidth(0, 86400, 500, FilteredSeries::MAX_RUNS + 1);
 

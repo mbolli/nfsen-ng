@@ -89,6 +89,7 @@ function parsePayload(text) {
  */
 export function matrixGrid(payload) {
     const metric = payload.meta?.metric === 'packets' ? 'packets' : 'bytes';
+    const both = payload.meta?.direction === 'both';
     const total = payload.totals?.[metric] ?? null;
     const cells = new Map();
     const bySource = new Map();
@@ -114,9 +115,10 @@ export function matrixGrid(payload) {
     sources.forEach((src, y) => {
         destinations.forEach((dst, x) => {
             const value = cells.get(`${src}\u0000${dst}`);
-            // The heatmap skips a cell without a value, so the hatched ones carry a 0.
-            if (value === undefined) missing.push([x, y, 0]);
-            else data.push([x, y, value, total > 0 ? value / total : null]);
+            // The heatmap skips a cell without a value, so the hatched ones carry a 0. In Both,
+            // B -> A is part of the merged A <-> B cell: known, so left blank rather than hatched.
+            if (value !== undefined) data.push([x, y, value, total > 0 ? value / total : null]);
+            else if (!both || !cells.has(`${dst}\u0000${src}`)) missing.push([x, y, 0]);
         });
     });
 

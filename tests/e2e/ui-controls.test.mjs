@@ -65,10 +65,10 @@ const FIXTURE = `
     <button role="tab" id="ta3" aria-selected="false" aria-controls="pa">Three</button>
   </div>
   <div role="tabpanel" id="pa" tabindex="0" aria-labelledby="ta2">panel</div>
-  <div class="tabs" role="tablist" aria-label="Legacy" id="tlLeg">
-    <a role="tab" href="#" id="tl1" class="active">L1</a>
-    <a role="tab" href="#" id="tl2">L2</a>
-    <a role="tab" href="#" id="tl3">L3</a>
+  <div class="tabs" role="tablist" aria-label="Unmarked" id="tlLeg">
+    <button role="tab" id="tl1">L1</button>
+    <button role="tab" id="tl2">L2</button>
+    <button role="tab" id="tl3">L3</button>
   </div>
   <div class="tabs" role="tablist" aria-label="Manual" data-activation="manual" data-size="sm" id="tlMan">
     <button role="tab" id="tm1" aria-selected="true" tabindex="0">M1</button>
@@ -110,7 +110,7 @@ const FIXTURE = `
       <input type="radio" name="fxUnit" id="sg1" checked><label for="sg1">Bytes</label>
       <input type="radio" name="fxUnit" id="sg2"><label for="sg2">Packets</label>
     </div>
-    <nav class="tabs"><a href="#" class="active" id="navActive">Active link</a></nav>
+    <a href="#" aria-current="page" id="navActive">Current link</a>
     <button class="kill" id="kill">Kill</button>
     <label class="switch"><input type="checkbox" role="switch" id="sw"> Live</label>
   </div>
@@ -566,4 +566,13 @@ export default async function uiControlsTest() {
         assert.equal(await attr(page, 'ta3', 'aria-selected'), 'true');
         assert.equal(await active(page), 'ta3', 'a tap from outside the tablist keeps focus on the tapped tab');
     });
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+    uiControlsTest()
+        .then(() => console.log('ui-controls: PASS'))
+        .catch((e) => {
+            console.error('ui-controls: FAIL\n', e);
+            process.exit(1);
+        });
 }

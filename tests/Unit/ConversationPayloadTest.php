@@ -479,7 +479,7 @@ describe('ConversationsPage', function (): void {
     test('names what the pairs leave over, and nothing when that is nothing', function (): void {
         $info = ['topN' => 20, 'metric' => 'bytes', 'others' => ['bytes' => 1_288_490_189, 'packets' => 4512, 'flows' => 310, 'share' => 0.36]];
 
-        expect(ConversationsPage::others($info))->toBe('Others (not in top 20): 1.200 GB, 4,512 packets, 310 flows, 36% of bytes')
+        expect(ConversationsPage::others($info))->toBe('Others (not in top 20): 1.200 GiB, 4,512 packets, 310 flows, 36% of bytes')
             ->and(ConversationsPage::others(['others' => ['bytes' => 0, 'packets' => 0, 'flows' => 0, 'share' => 0.0]] + $info))->toBe('')
             ->and(ConversationsPage::others(['others' => null] + $info))->toBe('')
         ;

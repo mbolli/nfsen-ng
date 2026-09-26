@@ -2,18 +2,6 @@
     Alerts (4.6): the rules beside the recent alerts (stacked below 90rem), the rule form and the
     default notification templates. Data: pages.alerts (AlertsPage::viewData).
 #}
-{% macro icon(name) %}
-    {%- set paths = {
-        'plus': '<path d="M8 3v10M3 8h10"/>',
-        'edit': '<path d="M10.25 2.75 13.25 5.75 5.5 13.5h-3v-3z"/><path d="m8.75 4.25 3 3"/>',
-        'play': '<path d="M4.75 2.75v10.5L13 8z"/>',
-        'trash': '<path d="M2.5 4.25h11"/><path d="M6.25 4.25v-1.5h3.5v1.5"/><path d="m3.75 4.25.75 9h7l.75-9"/><path d="M6.75 7v3.5M9.25 7v3.5"/>',
-        'bell': '<path d="M3.5 11.5V7a4.5 4.5 0 0 1 9 0v4.5l1 1.25h-11z"/><path d="M6.5 14.25a1.5 1.5 0 0 0 3 0"/>',
-        'clock': '<circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 1.5"/>',
-    } -%}
-    <svg class="icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">{{ (paths[name] ?? '')|raw }}</svg>
-{%- endmacro %}
-
 {# A row of {token} buttons; alert-template-preview.js inserts the token into the scope's last focused field. #}
 {% macro tokenBar(tokens) %}
     <div class="token-bar" role="group" aria-label="Insert a variable into the last field you edited">
@@ -25,6 +13,7 @@
 {% endmacro %}
 
 {% import _self as ui %}
+{% import 'shell/icons.html.twig' as icons %}
 {% set a = pages.alerts %}
 {% set f = a.form %}
 {% set t = a.templates %}
@@ -48,17 +37,17 @@
                 <span class="badge">{{ a.rules|length }} rule{{ a.rules|length != 1 ? 's' }}</span>
                 <button type="button" class="alert-new-rule" data-size="sm"
                         data-on:click="{{ resetForm }}window.alertForm.open()">
-                    {{ ui.icon('plus') }} New rule
+                    {{ icons.icon('plus') }} New rule
                 </button>
             </header>
             <div class="card-body">
                 {% if a.rules is empty %}
                     <div class="empty-state">
-                        {{ ui.icon('bell') }}
+                        {{ icons.icon('bell') }}
                         <h2>No alert rules yet</h2>
                         <p>A rule checks the traffic after each import and notifies by email or webhook.</p>
                         <button type="button" data-on:click="{{ resetForm }}window.alertForm.open()">
-                            {{ ui.icon('plus') }} New rule
+                            {{ icons.icon('plus') }} New rule
                         </button>
                     </div>
                 {% else %}
@@ -116,7 +105,7 @@
                                                         aria-label="Edit {{ row.name }}" title="Edit {{ row.name }}"
                                                         data-rule="{{ row.form|json_encode }}"
                                                         data-on:click="const r = JSON.parse(el.dataset.rule); {{ fillForm }}window.alertForm.open()">
-                                                    {{ ui.icon('edit') }}
+                                                    {{ icons.icon('edit') }}
                                                 </button>
                                                 <button type="button" data-size="sm" data-variant="ghost"
                                                         data-signals__ifmissing="{_alert_testing_{{ row.key }}: false}"
@@ -128,12 +117,12 @@
                                                         data-on:click="!{{ testing }} && @post('{{ testAlert.url() }}?id={{ row.id|url_encode }}')">
                                                     <span class="spinner" aria-hidden="true" hidden
                                                           data-attr:hidden="!{{ testing }}" data-preserve-attr="hidden"></span>
-                                                    <span class="alert-action-icon" data-attr:hidden="{{ testing }}" data-preserve-attr="hidden">{{ ui.icon('play') }}</span>
+                                                    <span class="alert-action-icon" data-attr:hidden="{{ testing }}" data-preserve-attr="hidden">{{ icons.icon('play') }}</span>
                                                 </button>
                                                 <button type="button" data-size="sm" data-variant="ghost"
                                                         aria-label="Delete {{ row.name }}" title="Delete {{ row.name }}"
                                                         data-on:click="confirm('{{ ('Delete the rule ' ~ row.name ~ '?')|e('js') }}') && @post('{{ deleteAlert.url() }}?id={{ row.id|url_encode }}')">
-                                                    {{ ui.icon('trash') }}
+                                                    {{ icons.icon('trash') }}
                                                 </button>
                                             </div>
                                         </td>
@@ -155,7 +144,7 @@
                     <p class="notice" data-level="warning">History unavailable: {{ a.history.error }}</p>
                 {% elseif a.history.events is empty %}
                     <div class="empty-state">
-                        {{ ui.icon('clock') }}
+                        {{ icons.icon('clock') }}
                         <h2>No alerts yet</h2>
                         <p>Fired, resolved and test events appear here.</p>
                     </div>

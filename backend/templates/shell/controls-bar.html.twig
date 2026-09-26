@@ -1,7 +1,6 @@
 {# Global controls bar (4.0.2): profile, range, sources, protocol and unit for every page. The
    seeds cover what this bar and the traffic graph read until the first sync delivers it. #}
 {% import 'shell/icons.html.twig' as icons %}
-{% import _self as bar %}
 {% set sources = range.sources %}
 {% set seeds = {
     (datestart.id()): datestart.int(),
@@ -59,7 +58,7 @@
     <div class="menu range-menu" id="rangeMenu">
         <button type="button" class="menu-toggle" data-size="sm" aria-controls="rangeMenuList"
                 aria-expanded="false" data-preserve-attr="aria-expanded" title="Time range">
-            {{ bar.icon('clock') }}
+            {{ icons.icon('clock') }}
             <span data-ignore-morph data-text="window.nfsenTime.rangeLabel({{ preset }}, {{ live }}, {{ ds }}, {{ de }}, {{ labels|json_encode }})">{{ range_live.bool() ? (labels[range_preset.string()] ?? 'Custom range') : 'Custom range' }}</span>
         </button>
         <div class="menu-list range-menu-list" id="rangeMenuList" popover data-align="start" data-preserve-attr="style">
@@ -98,12 +97,12 @@
         <div class="button-group range-steps" role="group" aria-label="Step through time">
             <button type="button" id="rangeBack" data-size="sm" title="Previous period" aria-label="Previous period"
                     {% if datestart.int() <= data_range_min.int() %}disabled{% endif %} data-attr:disabled="{{ ds }} <= ${{ data_range_min.id() }}" data-preserve-attr="disabled"
-                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=back')">{{ bar.icon('back') }}</button>
+                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=back')">{{ icons.icon('back') }}</button>
             <button type="button" id="rangeForward" data-size="sm" title="Next period" aria-label="Next period"
                     {% if range_live.bool() %}disabled{% endif %} data-attr:disabled="{{ live }}"
-                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=forward')">{{ bar.icon('forward') }}</button>
+                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=forward')">{{ icons.icon('forward') }}</button>
             <button type="button" id="rangeNow" data-size="sm" title="Jump to now" aria-label="Jump to now"
-                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=now')">{{ bar.icon('now') }}</button>
+                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=now')">{{ icons.icon('now') }}</button>
         </div>
 
         {# Where the window is, in the display timezone, and an entry for an absolute one. #}
@@ -137,7 +136,7 @@
         <div class="menu sources-menu" id="sourcesMenu">
             <button type="button" class="menu-toggle" data-size="sm" aria-controls="sourcesMenuList"
                     aria-expanded="false" data-preserve-attr="aria-expanded" title="Sources">
-                <span data-ignore-morph data-text="{{ allPicked }} ? 'All sources' : ({{ allSources }}.filter(s => {{ gs }}.includes(s)).length === 1 ? {{ allSources }}.find(s => {{ gs }}.includes(s)) : {{ allSources }}.filter(s => {{ gs }}.includes(s)).length + ' of {{ sources|length }} sources')">All sources</span>
+                <span data-ignore-morph data-text="{{ allPicked }} ? 'All sources' : {{ allSources }}.filter(s => {{ gs }}.includes(s)).length + ' of {{ sources|length }} sources'">All sources</span>
             </button>
             <div class="menu-list sources-list" id="sourcesMenuList" popover data-align="start" data-preserve-attr="style"
                  data-on:change__debounce.400ms="@post('{{ applyGlobals.url() }}')">
@@ -198,16 +197,3 @@
                 data-on:click="window.location.reload()">{{ icons.icon('reload') }}</button>
     </div>
 </div>
-
-{# Range icons on the 16px grid of shell/icons.html.twig; the traffic graph header imports them too. #}
-{% macro icon(name) %}
-    {%- set paths = {
-        'clock': '<circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 1.5"/>',
-        'back': '<path d="M13.5 8H3"/><path d="M6.5 4.5 3 8l3.5 3.5"/>',
-        'forward': '<path d="M2.5 8H13"/><path d="M9.5 4.5 13 8l-3.5 3.5"/>',
-        'now': '<path d="M2 8h9"/><path d="M8 5l3 3-3 3"/><path d="M14 2.5v11"/>',
-        'undo': '<path d="M3 6.5h7a3.5 3.5 0 0 1 0 7H6"/><path d="M6 3.5 3 6.5l3 3"/>',
-        'zoom-out': '<circle cx="7" cy="7" r="4.75"/><path d="M4.75 7h4.5M10.5 10.5 14 14"/>',
-    } -%}
-    <svg class="icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">{{ (paths[name] ?? '')|raw }}</svg>
-{%- endmacro %}

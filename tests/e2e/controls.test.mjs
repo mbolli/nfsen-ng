@@ -280,10 +280,10 @@ export default async function controlsTest() {
         for (const name of [
             'stats-actions',
             'flow-actions',
-            'sankey-actions',
             'conversations-run',
             'run-filtered-graph',
             'talkers-panel',
+            'overview-topn-run',
         ]) {
             assert.equal(log.count(name), 0, `${name} was never posted`);
         }

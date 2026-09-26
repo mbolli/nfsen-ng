@@ -16,13 +16,13 @@ use mbolli\nfsen_ng\datasources\Datasource;
  * The RRD/VictoriaMetrics datasources store pre-aggregated flows/packets/bytes per
  * 5-minute slot, so an nfdump filter cannot be applied to them after the fact (#166).
  * The only way to plot "traffic matching this filter over time" is to go back to the
- * capture files — which is exactly what Import::writePortData() already does for the
+ * capture files, which is exactly what Import::writePortData() already does for the
  * per-port RRDs, just with a filter hardcoded to `dst port N`. This generalises that
  * to an arbitrary filter and assembles a GraphData series instead of an RRD write.
  *
  * Cost model: one nfdump invocation per *bin* (not per file), so the number of
  * processes is bounded by the requested resolution rather than by the window width.
- * The bytes read off disk still scale with the window — the same bytes the Flows tab
+ * The bytes read off disk still scale with the window: the same bytes the Flows tab
  * already reads for the same range in a single pass.
  *
  * @phpstan-import-type GraphData from Datasource
@@ -37,7 +37,7 @@ final class FilteredSeries {
 
     /**
      * Upper bound on nfdump invocations for one build. Each bin costs a process, and
-     * 'sources' display multiplies that by the source count — without a ceiling a wide
+     * 'sources' display multiplies that by the source count; without a ceiling a wide
      * window at high resolution would fork thousands of times.
      */
     public const MAX_RUNS = 600;
@@ -117,7 +117,7 @@ final class FilteredSeries {
 
         // Walk every bin in the range, not only the ones that have captures. Omitting an
         // empty bin leaves no row at that timestamp at all, and ECharts draws a straight
-        // line across it — so a collection outage looked like steady traffic, while the
+        // line across it, so a collection outage looked like steady traffic, while the
         // same window in Stored mode shows a real gap.
         $seriesCount = \count($legend);
         $binTimestamps = [];
@@ -150,7 +150,7 @@ final class FilteredSeries {
 
                 ++$done;
                 if ($groupFiles === []) {
-                    // No capture covers this bin for this group — leave the gap.
+                    // No capture covers this bin for this group: leave the gap.
                     if ($onProgress !== null) {
                         $onProgress($done, $total);
                     }
@@ -161,7 +161,7 @@ final class FilteredSeries {
                 $stats = self::runBin($group, $groupFiles, $filter, $profile, $handle);
 
                 if ($stats === null) {
-                    // nfdump failed for this bin — leave the seeded null so it draws as a
+                    // nfdump failed for this bin: leave the seeded null so it draws as a
                     // gap. Reporting 0 here would render a truncated capture or a rejected
                     // invocation as "no traffic", which is a different and wrong claim.
                     if ($onProgress !== null) {
@@ -172,7 +172,7 @@ final class FilteredSeries {
                 }
 
                 if ($display === 'sources') {
-                    // Deliberately not $total — that name is the progress denominator
+                    // Deliberately not $total: that name is the progress denominator
                     // in this scope, and shadowing it silently breaks progress reporting.
                     $value = $sourceProtocol === null
                         ? self::sumAll($stats, $unit)
@@ -191,7 +191,7 @@ final class FilteredSeries {
 
             // array_values() keeps this a list for the GraphData contract: $row is seeded
             // by array_fill() and only ever has existing indices overwritten, so the order
-            // is already correct — this just makes the list-ness provable.
+            // is already correct; this just makes the list-ness provable.
             $data[$binTs] = array_values($row);
         }
 
@@ -241,11 +241,8 @@ final class FilteredSeries {
         $step = (int) (ceil($span / $points / self::MIN_BIN) * self::MIN_BIN);
         $step = max(self::MIN_BIN, $step);
 
-        // Widen so the projected process count fits under the ceiling. Solved rather than
-        // stepped: the old loop incremented until the product dropped, which never happens
-        // once $groupCount alone exceeds MAX_RUNS (ceil() is at least 1, so the product
-        // cannot fall below $groupCount) — and graph_sources is client-writable, so a long
-        // enough source list hung the single worker from the render path via filteredCost().
+        // Solved, not stepped: graph_sources is client-writable, and a loop could not end once
+        // $groupCount alone exceeds MAX_RUNS.
         $maxBins = max(1, intdiv(self::MAX_RUNS, max(1, $groupCount)));
         $needed = (int) (ceil($span / $maxBins / self::MIN_BIN) * self::MIN_BIN);
 
@@ -257,7 +254,7 @@ final class FilteredSeries {
      *
      * `-s proto` (no orderby) is the generic equivalent of what Import::writePortData()
      * does with `-s dstport:p`: nfdump applies the filter, then reports flows/packets/bytes
-     * grouped by transport protocol — exactly the tcp/udp/icmp/other split the RRD schema
+     * grouped by transport protocol: exactly the tcp/udp/icmp/other split the RRD schema
      * and the chart already use. `:p` would be redundant here (splitting proto by proto).
      *
      * `-n 0` is load-bearing: nfdump defaults `-n` to **10** for `-s` statistics, so
@@ -267,19 +264,19 @@ final class FilteredSeries {
      * @param list<NfcapdFile> $files
      *
      * @return null|array<array<string, mixed>> decoded nfdump rows, or null when the
-     *                                          invocation failed — which is a gap, not a zero
+     *                                          invocation failed, which is a gap, not a zero
      */
     private static function runBin(array $group, array $files, string $filter, string $profile, string $handle = 'default'): ?array {
         // Only the sources that actually have a capture in this bin. nfdump reads the same
         // relative path from every -M directory and aborts one with "stat() error …: File not
-        // found!" when its file has not been rotated into place yet — the same case the import
-        // guards (#173) — which failed the bin and drew it as a gap rather than real traffic.
+        // found!" when its file has not been rotated into place yet (the same case the import
+        // guards, #173), which failed the bin and drew it as a gap rather than real traffic.
         $present = array_values(array_intersect($group, array_unique(array_column($files, 'source'))));
         $sources = $present === [] ? $group : $present;
 
         if (\count($sources) !== \count($group)) {
             Debug::getInstance()->log(
-                'Filtered bin over ' . implode(',', $sources) . ' only — no capture (yet) for '
+                'Filtered bin over ' . implode(',', $sources) . ' only, no capture (yet) for '
                 . implode(',', array_diff($group, $sources)),
                 LOG_DEBUG,
             );
@@ -303,7 +300,7 @@ final class FilteredSeries {
 
         // -r for one file, -R only for a real range. nfdump reads a single-path -R as a
         // *prefix* ("read all files beginning with file"), which happens to select exactly
-        // one file only because every nfcapd name is the same length — a site whose captures
+        // one file only because every nfcapd name is the same length; a site whose captures
         // carry a suffix would silently pull extra files into the bin. -r is the unambiguous
         // form for one file, and is what the import path already uses.
         if ($first === $last) {
@@ -320,7 +317,7 @@ final class FilteredSeries {
         try {
             $result = $nfdump->execute();
         } catch (\Exception $e) {
-            // A single unreadable bin must not sink the whole graph. null, not [] — the
+            // A single unreadable bin must not sink the whole graph. null, not []: the
             // caller renders null as a gap, while [] is the legitimate "filter matched
             // nothing here" answer and must stay a zero.
             Debug::getInstance()->log('FilteredSeries: bin failed: ' . $e->getMessage(), LOG_WARNING);
@@ -392,7 +389,7 @@ final class FilteredSeries {
      * nfdump names the packet/byte columns after the ordering direction: the default
      * `flows` orderby is an IN ordering and yields `ipkt`/`ibyt`, while an INOUT orderby
      * (`-s proto/bytes`) yields `pkt`/`byt` and an OUT one `opkt`/`obyt`. We never pass an
-     * orderby, so `ipkt`/`ibyt` is what arrives — but accepting all three costs nothing
+     * orderby, so `ipkt`/`ibyt` is what arrives, but accepting all three costs nothing
      * and keeps this working if the invocation ever grows one.
      *
      * @param array<string, mixed> $row

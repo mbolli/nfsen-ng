@@ -23,6 +23,16 @@ body.app[data-sidebar='collapsed'] {
     grid-template-columns: var(--sidebar-collapsed-size) minmax(0, 1fr);
 }
 
+/* The sidebar's column keeps its surface below the sticky panel, all the way down a long page. */
+body.app::before {
+    content: '';
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    border-inline-end: 1px solid var(--border);
+    background: var(--surface-sidebar);
+}
+
 /* Only the sidebar and the main column take grid cells; the rest is fixed or in the top layer. */
 #modal-root,
 #nfsen-tip-container {
@@ -237,22 +247,8 @@ body.app[data-sidebar='collapsed'] {
     display: inline-flex;
 }
 
-/* The current choice's check (2.5), drawn as a mask: no font is sure to have U+2713. Restated
-   here because the check column rule in ui.css outranks its own mark. */
-.menu-list:has(.menu-item:is([aria-pressed], [aria-current]))
-.menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page'])::before {
-    content: '';
-    block-size: 0.75rem;
-    background: currentcolor;
-    mask: var(--glyph-success) center / contain no-repeat;
-}
-
 /* Forced colours drop the fill and the bar; the More tab gets the ring its pages get. */
 @media (forced-colors: active) {
-    .menu-item::before {
-        forced-color-adjust: none;
-    }
-
     .tabbar-item[data-current='page'] {
         outline: 2px solid Highlight;
         outline-offset: -2px;
@@ -392,12 +388,11 @@ body.app[data-sidebar='collapsed'] .nav-badge {
 
 /* ── IP info dialog (4.0.6) ─────────────────────────────────────────────── */
 
-/* The tab's modal root (D24): IP info and the alert Test result. The reset's margin: 0 would
-   pin a modal to the corner, and a column lets the body scroll under a fixed header and footer. */
+/* The tab's modal root (D24): IP info and the alert Test result. A column lets the body scroll
+   under a fixed header and footer. */
 [id='modal-root'] > dialog[open] {
     display: flex;
     flex-direction: column;
-    margin: auto;
     overflow: hidden;
 }
 
@@ -460,6 +455,16 @@ dialog.ip-info {
 
 .ip-info-fields dd[data-kind='none'] {
     font-style: italic;
+}
+
+/* A regional-indicator pair, not a CDN image. The colour emoji fonts are named because the
+   body font draws the two letters in a monochrome box on some Linux setups. */
+.flag-emoji {
+    margin-inline-end: var(--size-1);
+    font-family: 'Twemoji Mozilla', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', sans-serif;
+    font-size: 1.25rem;
+    line-height: 1;
+    vertical-align: -0.15em;
 }
 
 dialog.ip-info .dialog-body {
@@ -572,17 +577,14 @@ nfsen-toast:is(:hover, :focus-within) .toast-progress {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .sidebar {
+    .sidebar,
+    body.app::before {
         display: none;
     }
 
-    /* A safety net: stray visually hidden text must not widen a phone's layout viewport and push
-       the tab bar off screen. mobile.test.mjs fails on any visible content this clips. */
     .app-main {
-        position: relative;
         grid-column: 1;
         padding-block-end: calc(var(--tabbar-size) + env(safe-area-inset-bottom));
-        overflow-x: clip;
     }
 
     /* Logo, then the controls bar's own row: range menu and its overflow button (#controlsMore). */
@@ -696,6 +698,15 @@ nfsen-toast:is(:hover, :focus-within) .toast-progress {
     .tabbar-item > .icon {
         inline-size: 1.25rem;
         block-size: 1.25rem;
+    }
+
+    /* "Conversations" fits a fifth of 390 px at this size, semibold too; narrower, it ellipsises. */
+    .tabbar-item > span:not(.visually-hidden, .nav-badge) {
+        max-inline-size: 100%;
+        overflow: hidden;
+        font-size: 0.6875rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .tabbar-item > .nav-badge {

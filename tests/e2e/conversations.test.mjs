@@ -9,7 +9,8 @@ import { BASE, withPage } from './lib/cdp.mjs';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const payload = `JSON.parse(document.querySelector('#convPanel-sankey nfsen-sankey')?.dataset.conversation ?? 'null')`;
-const visible = (selector) => `(function(){ var e = document.querySelector(${JSON.stringify(selector)}); return !!e && e.getClientRects().length > 0; })()`;
+const visible = (selector) =>
+    `(function(){ var e = document.querySelector(${JSON.stringify(selector)}); return !!e && e.getClientRects().length > 0; })()`;
 const sankeyModule = `import(document.querySelector('script[src*="/nfsen-sankey.js"]').src)`;
 const hostId = `document.querySelector('#convPanel-sankey .result-host')?.id ?? ''`;
 const themeText = `import('nfsen/theme-colors').then(function(m){ return m.chartTheme().text; })`;
@@ -64,16 +65,25 @@ function ipv6Payload() {
 
 /** Opens the filter drawer for Conversations, writes `text` and presses Apply. */
 async function applyFromDrawer(page, text) {
-    await page.evaluate(`(function(){ var b = document.querySelector('[data-filter-field="conversations"] [data-open-drawer="builder"]'); b.focus(); b.click(); })()`);
-    await page.waitFor(`document.getElementById('filter-drawer').open && document.getElementById('drawerTitle').textContent.includes('for ') && !!document.getElementById('drawerFilterTextarea')`, {
-        timeout: 10000,
-        label: 'the drawer for Conversations',
-    });
-    await page.evaluate(`(function(){ var t = document.getElementById('drawerFilterTextarea'); t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event('input', {bubbles: true})); })()`);
+    await page.evaluate(
+        `(function(){ var b = document.querySelector('[data-filter-field="conversations"] [data-open-drawer="builder"]'); b.focus(); b.click(); })()`
+    );
+    await page.waitFor(
+        `document.getElementById('filter-drawer').open && document.getElementById('drawerTitle').textContent.includes('for ') && !!document.getElementById('drawerFilterTextarea')`,
+        {
+            timeout: 10000,
+            label: 'the drawer for Conversations',
+        }
+    );
+    await page.evaluate(
+        `(function(){ var t = document.getElementById('drawerFilterTextarea'); t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event('input', {bubbles: true})); })()`
+    );
     await sleep(200);
     await page.evaluate(`document.getElementById('drawerApply').click()`);
     await page.waitFor(`!document.getElementById('filter-drawer').open`, { label: 'the drawer to close' });
-    await page.waitFor(`document.getElementById('filterNfdumpTextareaSankey').value === ${JSON.stringify(text)}`, { label: 'the applied filter' });
+    await page.waitFor(`document.getElementById('filterNfdumpTextareaSankey').value === ${JSON.stringify(text)}`, {
+        label: 'the applied filter',
+    });
 }
 
 async function key(page, name, code = name, keyCode = 0) {
@@ -165,26 +175,44 @@ export default async function conversationsTest() {
         const ends = new Set(first.pairs.flatMap((p) => [`src:${p.src}`, `dst:${p.dst}`]));
         const hasOthers = (first.others?.[first.meta.metric] ?? 0) > 0;
         assert.equal(sankey.nodes, ends.size + (hasOthers ? 2 : 0), 'one node per source and per destination, and Others in each column');
-        assert.deepEqual(sankey.others, hasOthers ? ['Others', 'Others'] : [], 'the traffic outside the top N is an Others node on both sides');
+        assert.deepEqual(
+            sankey.others,
+            hasOthers ? ['Others', 'Others'] : [],
+            'the traffic outside the top N is an Others node on both sides'
+        );
         assert.ok(
             sankey.names.every((n) => n.startsWith('src:') || n.startsWith('dst:')),
             'two columns without the port grouping'
         );
         assert.equal(
-            await page.evaluate(`document.querySelector('nfsen-sankey').getAttribute('role') + '|' + document.querySelector('nfsen-matrix').getAttribute('role')`),
+            await page.evaluate(
+                `document.querySelector('nfsen-sankey').getAttribute('role') + '|' + document.querySelector('nfsen-matrix').getAttribute('role')`
+            ),
             'img|img',
             'both charts are images with a name'
         );
-        assert.match(await page.evaluate(`document.querySelector('nfsen-sankey').getAttribute('aria-label')`), /^Sankey of the top .* The IP pairs view lists the same pairs as a table\.$/);
+        assert.match(
+            await page.evaluate(`document.querySelector('nfsen-sankey').getAttribute('aria-label')`),
+            /^Sankey of the top .* The IP pairs view lists the same pairs as a table\.$/
+        );
 
         // Rates in the traffic graph's units, and long labels shortened from the middle.
         const rate = await page.evaluate(`(function(){
             var s = document.querySelector('nfsen-sankey');
             return { unit: s.dataset.unit, text: s.tooltip({ dataType: 'edge', data: { source: 'a', target: 'b', bytes: 1000000, packets: 1, flows: 1 } }, 'bytes', 8) };
         })()`);
-        assert.match(rate.text, rate.unit === 'bytes' ? /\(122 KiB\/s on average\)/ : /\(1 Mb\/s on average\)/, `the tooltip rate, got ${rate.text}`);
-        const fitted = await page.evaluate(`${sankeyModule}.then(function(m){ return m.fitLabel('2a02:1210:5e0c:f300:1c3d:82ff:fe4b:9a1', 110); })`);
-        assert.ok(fitted.includes('…') && fitted.endsWith('9a1') && fitted.startsWith('2a02'), `an IPv6 label keeps its start and end, got ${fitted}`);
+        assert.match(
+            rate.text,
+            rate.unit === 'bytes' ? /\(122 KiB\/s on average\)/ : /\(1 Mb\/s on average\)/,
+            `the tooltip rate, got ${rate.text}`
+        );
+        const fitted = await page.evaluate(
+            `${sankeyModule}.then(function(m){ return m.fitLabel('2a02:1210:5e0c:f300:1c3d:82ff:fe4b:9a1', 110); })`
+        );
+        assert.ok(
+            fitted.includes('…') && fitted.endsWith('9a1') && fitted.startsWith('2a02'),
+            `an IPv6 label keeps its start and end, got ${fitted}`
+        );
 
         // ── Views switch on the client ───────────────────────────────────────
         await page.evaluate(`document.getElementById('convView-matrix').click()`);
@@ -214,8 +242,15 @@ export default async function conversationsTest() {
             const probe = await page.evaluate(matrixOverlaps('#convProbe nfsen-matrix'));
             await page.evaluate(`document.getElementById('convProbe').remove()`);
             assert.deepEqual(probe.bad, [], `IPv6 labels at ${width} px stay clear of the legend and inside the chart`);
-            assert.ok(probe.labels.some((l) => l.includes('…')), `long IPv6 labels are shortened, got ${probe.labels.slice(0, 3).join(', ')}`);
-            assert.equal(probe.labels.filter((l) => l.startsWith('2001:')).length, new Set(probe.labels.filter((l) => l.startsWith('2001:'))).size, 'and stay distinct');
+            assert.ok(
+                probe.labels.some((l) => l.includes('…')),
+                `long IPv6 labels are shortened, got ${probe.labels.slice(0, 3).join(', ')}`
+            );
+            assert.equal(
+                probe.labels.filter((l) => l.startsWith('2001:')).length,
+                new Set(probe.labels.filter((l) => l.startsWith('2001:'))).size,
+                'and stay distinct'
+            );
             assert.equal(probe.legend, 6, 'every step of the ramp is in the legend');
         }
 
@@ -226,7 +261,9 @@ export default async function conversationsTest() {
         await page.evaluate(`document.getElementById('convView-sankey').click()`);
         await page.waitFor(visible('#convPanel-sankey'), { label: 'the Sankey view' });
         await page.evaluate(`window.__nfsenTheme.choose(${JSON.stringify(themeBefore.dark ? 'light' : 'dark')})`);
-        await page.waitFor(`document.documentElement.dataset.theme === ${JSON.stringify(themeBefore.dark ? 'light' : 'dark')}`, { label: 'the other theme' });
+        await page.waitFor(`document.documentElement.dataset.theme === ${JSON.stringify(themeBefore.dark ? 'light' : 'dark')}`, {
+            label: 'the other theme',
+        });
         const otherText = await page.evaluate(themeText);
         assert.notEqual(otherText, shownColour, 'the two themes have different text colours');
         await sleep(200);
@@ -254,11 +291,16 @@ export default async function conversationsTest() {
             assert.ok(Math.abs(Number(share.cell.raw) - first.pairs[0].share) < 1e-5, `the share exports raw, got ${share.cell.raw}`);
             assert.match(share.cell.text, /^\d+\.\d\d%$/, 'and shows a percentage');
         }
-        const bytesCell = await page.evaluate(`document.querySelector('#conversationsTable td[data-raw="${first.pairs[0].bytes}"]')?.textContent ?? ''`);
+        const bytesCell = await page.evaluate(
+            `document.querySelector('#conversationsTable td[data-raw="${first.pairs[0].bytes}"]')?.textContent ?? ''`
+        );
         const others = await page.evaluate(`document.getElementById('convOthers')?.textContent.trim() ?? ''`);
         if (others !== '') {
-            const unit = (text) => text.match(/\b(B|KB|MB|GB|TB|PB)\b/)?.[1] ?? null;
-            assert.ok(unit(others) !== null && unit(bytesCell) !== null, `the footer prints bytes as the table does, got "${others}" and "${bytesCell}"`);
+            const unit = (text) => text.match(/\b(B|KiB|MiB|GiB|TiB|PiB)\b/)?.[1] ?? null;
+            assert.ok(
+                unit(others) !== null && unit(bytesCell) !== null,
+                `the footer prints bytes as the table does, got "${others}" and "${bytesCell}"`
+            );
         }
         await key(page, 'Home', 'Home', 36);
         await page.waitFor(visible('#convPanel-sankey'), { label: 'back to the Sankey' });
@@ -331,7 +373,10 @@ export default async function conversationsTest() {
         assert.ok(killed.endsWith(keptNotices), `the kept result keeps its notices, got: ${killed}`);
         // Kill before nfdump started leaves no process to name.
         const killNotice = killed.slice(0, killed.length - keptNotices.length).trim();
-        assert.ok(killNotice === '' || /^nfdump process \(PID \d+\) was killed\./.test(killNotice), `only kill-nfdump's notice on top, got: ${killNotice}`);
+        assert.ok(
+            killNotice === '' || /^nfdump process \(PID \d+\) was killed\./.test(killNotice),
+            `only kill-nfdump's notice on top, got: ${killNotice}`
+        );
         console.log(`  (kill: ${killNotice || 'landed before nfdump started'})`);
         assert.equal(await page.evaluate(visible('#convStale')), false, 'the kept result still matches the query');
 
@@ -357,8 +402,12 @@ export default async function conversationsTest() {
         assert.equal(await page.evaluate(`window.__oldSankey.isConnected`), false, 'the second run replaced the Sankey');
         assert.equal(await page.evaluate(visible('#convStale')), false, 'a fresh result is not stale');
         // A subnet node copies its filter instead.
-        await page.evaluate(`document.querySelector('nfsen-sankey').onClick({ dataType: 'node', data: { text: ${JSON.stringify(subnets.pairs[0].src)}, kind: 'source' } })`);
-        await page.waitFor(`window.__copied === ${JSON.stringify(`net ${subnets.pairs[0].src}`)}`, { label: 'the subnet filter to be copied' });
+        await page.evaluate(
+            `document.querySelector('nfsen-sankey').onClick({ dataType: 'node', data: { text: ${JSON.stringify(subnets.pairs[0].src)}, kind: 'source' } })`
+        );
+        await page.waitFor(`window.__copied === ${JSON.stringify(`net ${subnets.pairs[0].src}`)}`, {
+            label: 'the subnet filter to be copied',
+        });
         assert.ok(
             (await page.evaluate(sankeyNames)).every((n) => n.endsWith('/24') || n.endsWith(':*')),
             'the Sankey shows the subnets'

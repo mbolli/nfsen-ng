@@ -102,8 +102,7 @@
 
 /* ── Overview: options and the filtered bar (4.1.4) ─────────────────────── */
 
-/* The id outranks the old #graphOptions rule in nfsen-ng.css, which WP-I1 removes. */
-#graphOptions.graph-options {
+.graph-options {
     display: flex;
     flex-wrap: wrap;
     gap: var(--size-3) var(--size-5);
@@ -112,10 +111,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-2);
     background: var(--surface-3);
-}
-
-#graphOptions.graph-options[hidden] {
-    display: none;
 }
 
 .graph-options-group {
@@ -163,10 +158,6 @@
     background: var(--surface-3);
 }
 
-.graph-filter[hidden] {
-    display: none;
-}
-
 .graph-filter-run {
     display: flex;
     flex-wrap: wrap;
@@ -192,6 +183,27 @@
     .traffic-graph-body[data-side='closed'] {
         grid-template-columns: minmax(0, 1fr) max-content;
     }
+}
+
+/* A redraw crossfades (nfsen-chart.js scopes the view transition to the chart). */
+@keyframes fade-out {
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+    }
+}
+
+::view-transition-old(nfsen-chart) {
+    animation: 150ms ease-in both fade-out;
+}
+
+::view-transition-new(nfsen-chart) {
+    animation: 250ms ease-out both fade-in;
 }
 
 .traffic-graph .chart-container {
@@ -231,10 +243,6 @@
     transform: translateX(-50%);
 }
 
-.chart-hint[hidden] {
-    display: none;
-}
-
 .traffic-graph-side {
     display: flex;
     flex-direction: column;
@@ -266,6 +274,14 @@
 
 .traffic-graph-body[data-side='closed'] .traffic-graph-side-panel {
     display: none;
+}
+
+/* A per-port graph carries a series per configured port, sixty in a real list: both panels
+   scroll at a height that leaves the chart in view. */
+.series-list,
+.cursor-legend {
+    max-block-size: 13rem;
+    overflow-y: auto;
 }
 
 .series-note {

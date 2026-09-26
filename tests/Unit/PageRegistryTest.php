@@ -145,14 +145,6 @@ describe('legacy view ids (D2)', function (): void {
 
         expect(Settings::normalizeView($value))->toBe($page !== '' ? $page : 'overview');
     })->with(['graphs', 'statistics', 'sankey', 'investigate', 'flows', 'settings', 'overview', 'talkers', 'conversations', 'alerts', 'health', 'bogus', '']);
-
-    test('the old layout gets its own view id back', function (): void {
-        expect(array_map(PageRegistry::toLegacy(...), PageRegistry::ids()))
-            ->toBe(['graphs', 'statistics', 'flows', 'sankey', 'settings', 'settings', 'settings'])
-            ->and(PageRegistry::toLegacy('graphs'))->toBe('graphs')
-            ->and(PageRegistry::toLegacy('bogus'))->toBe('graphs')
-        ;
-    });
 });
 
 describe('query kinds', function (): void {
@@ -224,7 +216,7 @@ describe('composition', function (): void {
             'flows_lower_limit', 'flows_upper_limit', 'flows_count', 'stats_filter', 'stats_count', 'stats_for',
             'stats_orderBy', 'stats_lower_limit', 'stats_upper_limit', 'stats_agg_bidirectional', 'stats_agg_proto',
             'stats_agg_srcport', 'stats_agg_dstport', 'stats_agg_srcip', 'stats_agg_srcip_prefix', 'stats_agg_dstip',
-            'stats_agg_dstip_prefix', 'nfcapd_file_count', 'nfcapd_total_bytes', 'nfcapd_measured', 'sankey_filter',
+            'stats_agg_dstip_prefix', 'sankey_filter',
             'sankey_topN', 'sankey_metric', 'sankey_lower_limit', 'sankey_upper_limit',
             'selected_profile', 'available_profiles', 'admin_target_profile', 'import_running', 'confirm_rescan',
             'import_scan_ports', 'settings_defaultView', 'settings_graphDisplay', 'settings_graphDatatype',
@@ -242,6 +234,7 @@ describe('composition', function (): void {
             ->and($signals)->toContain('conv_group', 'conv_direction', '_conv_stale')
             ->and($signals)->not->toContain('_flt_overview_topn', '_est_alert')
             ->and($signals)->not->toContain('sankey_show_ports')
+            ->and($signals)->not->toContain('nfcapd_file_count', 'nfcapd_total_bytes', 'nfcapd_measured')
         ;
     });
 
@@ -358,7 +351,6 @@ describe('composition', function (): void {
         expect($actions)->toContain(
             'navigate',
             'dismiss-notification',
-            'count-files',
             'ip-info',
             'kill-nfdump',
             'change-profile',
@@ -379,15 +371,14 @@ describe('composition', function (): void {
             'force-rescan',
             'cancel-import',
             'save-settings',
-        )->and($actions)->not->toContain('dismiss-sankey-notification', 'sankey-actions');
+        )->and($actions)->not->toContain('dismiss-sankey-notification', 'sankey-actions', 'count-files');
     });
 
-    test('the render array carries the 1.5 contract, and old top-level keys for the shell and the active page only', function (): void {
+    test('the render array carries the 1.5 contract and nothing else at the top level', function (): void {
         [$app, $c, $states] = pageRegistryTestCompose();
         $data = Shell::render($c, $app, $states, false);
 
-        expect($data)->toHaveKeys(['shell', 'range', 'graph', 'querykit', 'drawer', 'pages'])
-            ->and($data)->not->toHaveKey(Shell::LEGACY)
+        expect(array_keys($data))->toEqualCanonicalizing(['shell', 'range', 'graph', 'querykit', 'drawer', 'pages'])
             ->and(array_keys($data['pages']))->toBe(PageRegistry::ids())
             ->and(array_keys(array_filter(array_map(static fn (array $p): bool => $p['active'], $data['pages']))))->toBe(['talkers'])
             ->and($data['pages']['flows'])->toBe(['active' => false])
@@ -402,12 +393,6 @@ describe('composition', function (): void {
             ->and($data['graph']['mode'])->toBe('picker')
             ->and(array_column($data['range']['presets'], 'id'))->toBe(['1h', '24h', '7d', '30d', '1y'])
             ->and($data['querykit']['targets'])->toHaveKeys(['overview', 'overview-topn', 'talkers', 'flows', 'conversations', 'drawer', 'alert'])
-            ->and($data)->toHaveKeys([
-                'sources', 'ports', 'filters', 'deployDatasource', 'importProgress', 'importCurrentFile', 'importStatusText', 'importEta',
-            ])
-            // The shell's own keys moved under `shell`; other pages' keys only come with their page.
-            ->and($data)->not->toHaveKeys(['version', 'defaults', 'captureStatus', 'alertFiredHtml', 'importSources'])
-            ->and($data)->not->toHaveKeys(['flowTableHtml', 'sankeyData', 'filteredCost', 'graphData', 'healthChecks', 'alerts', 'deployImportYears'])
         ;
     });
 
@@ -422,8 +407,7 @@ describe('composition', function (): void {
             ->and($data['graph']['mode'])->toBe('none')
             ->and($data['graph']['data'])->toBe('')
             ->and($data['pages']['health'])->toHaveKeys(['level', 'checks', 'import', 'topn', 'sources', 'disks', 'system', 'log'])
-            ->and($data)->not->toHaveKeys(['healthChecks', 'daemonsInfo', 'importLog'])
-            ->and($data)->not->toHaveKey('statsTableHtml')
+            ->and(array_keys($data))->toEqualCanonicalizing(['shell', 'range', 'graph', 'querykit', 'drawer', 'pages'])
         ;
     });
 
@@ -442,6 +426,18 @@ describe('composition', function (): void {
             )
         ;
     })->with(['flows', 'talkers', 'conversations']);
+
+    // strict_variables is on, so a template reading a key outside 1.5 fails the render.
+    test('the whole layout renders from the 1.5 contract with each page active', function (string $page): void {
+        [$app, $c, $states] = pageRegistryTestCompose();
+        $c->getSignal('page')?->setValue($page, broadcast: false);
+
+        $html = $c->render('layout.html.twig', Shell::render($c, $app, $states, false));
+
+        expect($html)->toContain('id="page-' . $page . '"', 'data-ready')
+            ->and(substr_count($html, 'data-ready'))->toBe(1)
+        ;
+    })->with(PageRegistry::ids());
 
     test('a page render marks every state rendered, so unchanged results are not re-sent', function (): void {
         [$app, $c, $states] = pageRegistryTestCompose();

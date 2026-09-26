@@ -15,7 +15,7 @@ namespace mbolli\nfsen_ng\pages\state;
  * @phpstan-type StatsResultMeta array{command?: string, notes?: list<string>, warnings?: list<Notification>, elapsed?: float, rows?: int, ts?: int, from?: int, to?: int, live?: bool, fingerprint?: string, scope?: string, inputs?: StatsInputs}
  * @phpstan-type PanelInputs array{filter: string, lower: string, upper: string}
  * @phpstan-type PanelBar array{key: string, label: string, bytes: int, share: ?float, series: ?int}
- * @phpstan-type PanelResult array{bars: list<PanelBar>, command: string, error: string, elapsed: float, ts: int, from: int, to: int, live: bool, fingerprint: string, scope: string, inputs: PanelInputs}
+ * @phpstan-type PanelResult array{bars: list<PanelBar>, command: string, error: string, elapsed: float, ts: int, from: int, to: int, live: bool, fingerprint: string, scope: string, inputs: PanelInputs, clamp: string}
  */
 final class TalkersState extends PageState {
     /** Statistics kept per tab; the oldest run goes first. */
@@ -208,6 +208,7 @@ final class TalkersState extends PageState {
                 'lower' => self::stringFrom($inputs['lower'] ?? ''),
                 'upper' => self::stringFrom($inputs['upper'] ?? ''),
             ],
+            'clamp' => self::stringFrom($p['clamp'] ?? ''),
         ];
     }
 

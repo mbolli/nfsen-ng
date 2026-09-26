@@ -35,12 +35,7 @@ final class ShellState extends PageState {
 
     /** Also due after a newer data range read, which may have moved the live window. */
     public function graphDue(bool $importing, int $now): bool {
-        return $this->rangeFetchedAt > $this->graphFetchedAt || self::due($this->graphFetchedAt, $importing, $now);
-    }
-
-    /** @deprecated the data range read is throttled by RangeControls::RANGE_TTL, not by an import */
-    public function rangeDue(bool $importing, int $now): bool {
-        return self::due($this->rangeFetchedAt, $importing, $now);
+        return $this->rangeFetchedAt > $this->graphFetchedAt || !$importing || $now - $this->graphFetchedAt >= self::IMPORT_THROTTLE;
     }
 
     public function snapshot(): array {
@@ -53,9 +48,5 @@ final class ShellState extends PageState {
 
     public function isEmpty(): bool {
         return $this->modalHtml === '';
-    }
-
-    private static function due(int $fetchedAt, bool $importing, int $now): bool {
-        return !$importing || $now - $fetchedAt >= self::IMPORT_THROTTLE;
     }
 }

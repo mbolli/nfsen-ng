@@ -18,13 +18,9 @@ import { join } from 'node:path';
 
 export const BASE = process.env.BASE || 'http://localhost:8080';
 
-// Errors that are known-benign and unrelated to whatever a test is checking --
-// see docs note in nfsen-chart.js / nfsen-sankey.js: rapid programmatic
-// interaction (as E2E tests do) can abort a CSS view-transition mid-flight.
-// This is cosmetic (the DOM update it wraps still applies) and reproducible
-// with real ECharts + view-transition-name usage under fast enough
-// interaction, not a regression to chase to zero.
-const BENIGN_ERROR_PATTERNS = [/AbortError: Transition was skipped/];
+// Errors that are known-benign and unrelated to whatever a test is checking. Empty since every
+// view transition handles its own promises (nfsen-chart.js, layout.html.twig).
+const BENIGN_ERROR_PATTERNS = [];
 
 export function isBenignError(text) {
     return BENIGN_ERROR_PATTERNS.some((re) => re.test(text));
@@ -120,16 +116,30 @@ class Page {
         await this.send('Runtime.enable');
     }
 
-    async navigate(url) {
-        const loaded = new Promise((resolve) => this.loadWaiters.push(resolve));
+    /** Resolves on the load event; a same-document navigation fires none, so it gives up after `timeout`. */
+    async navigate(url, { timeout = 30000 } = {}) {
+        const loaded = this.loaded(timeout);
         await this.send('Page.navigate', { url });
         await loaded;
     }
 
-    async reload() {
-        const loaded = new Promise((resolve) => this.loadWaiters.push(resolve));
+    async reload({ timeout = 30000 } = {}) {
+        const loaded = this.loaded(timeout);
         await this.send('Page.reload');
         await loaded;
+    }
+
+    /** The next load event, or on timeout whatever the document holds by then. */
+    loaded(timeout) {
+        return new Promise((resolve) => {
+            const done = () => {
+                clearTimeout(timer);
+                this.loadWaiters = this.loadWaiters.filter((w) => w !== done);
+                resolve();
+            };
+            const timer = setTimeout(done, timeout);
+            this.loadWaiters.push(done);
+        });
     }
 
     /** Real, non-benign errors only -- filters BENIGN_ERROR_PATTERNS out. */
@@ -210,63 +220,42 @@ class Page {
         }
     }
 
-    /** The page of an old view id (D2), for the legacy wrappers below (until WP-I1). */
-    static legacyPage(signal, value) {
-        if (signal.includes('_settingsSection')) {
-            return (
-                { import: 'health', health: 'health', alerts: 'alerts', preferences: 'settings', system: 'settings' }[value] ?? 'settings'
-            );
-        }
-        return { graphs: 'overview', statistics: 'talkers', sankey: 'conversations', investigate: 'flows' }[value] ?? value;
-    }
-
-    /** Legacy wrapper: `waitForPanel('$_currentView', 'flows')` waits for the Flows page. */
-    async waitForPanel(signal, value, opts = {}) {
-        await this.waitForPage(Page.legacyPage(signal, value), opts);
-    }
-
-    /** Legacy wrapper: `clickToPanel("_currentView = 'flows'", '$_currentView', 'flows')` goes to the Flows page. */
-    async clickToPanel(_sub, signal, value, { attempts = 10, timeout = 3000 } = {}) {
-        await this.gotoPage(Page.legacyPage(signal, value), { attempts, timeout });
-    }
-
     /** A signal's value from Datastar's own store, by wire id prefix `<name>____` or exact name. */
     async signalValue(name) {
+        return (await this.signalValues([name]))[name];
+    }
+
+    /** Several signals read in one evaluate, so a patch between the reads cannot tear them apart. */
+    async signalValues(names) {
         return this.evaluate(`(async function(){
             var src = document.querySelector('script[type=module][src*="/js/datastar.js"]').src;
             var root = (await import(src)).root;
-            var key = Object.keys(root).find(function(k){ return k === ${JSON.stringify(name)} || k.startsWith(${JSON.stringify(`${name}____`)}); });
-            return key === undefined ? undefined : JSON.parse(JSON.stringify(root[key]));
+            var keys = Object.keys(root);
+            var out = {};
+            ${JSON.stringify(names)}.forEach(function(name){
+                var key = keys.find(function(k){ return k === name || k.startsWith(name + '____'); });
+                out[name] = key === undefined ? undefined : JSON.parse(JSON.stringify(root[key]));
+            });
+            return out;
         })()`);
     }
 
-    /** Pick a range preset and wait for its width. Without #rangeMenu the old slider's button is
-        used, which clamps to the data range, so a clamped window counts too. */
+    /** Pick a range preset from #rangeMenu and wait for its width. */
     async setRangePreset(id, { timeout = 8000 } = {}) {
         const seconds = { '1h': 3600, '24h': 86400, '7d': 604800, '30d': 2592000, '1y': 31536000 }[id];
         if (!seconds) throw new Error('unknown range preset: ' + id);
-        const hasMenu = await this.evaluate(`!!document.getElementById('rangeMenu')`);
-        if (hasMenu) {
-            await this.evaluate(`(function(){
-                var toggle = document.querySelector('#rangeMenu .menu-toggle');
-                if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
-            })()`);
-            await this.waitFor(`!!document.querySelector('[data-range-preset="${id}"]')?.getClientRects().length`, {
-                label: `preset ${id} in the range menu`,
-            });
-            await this.evaluate(`document.querySelector('[data-range-preset="${id}"]').click()`);
-        } else {
-            const label = { '1h': '1 hour', '24h': '24 hours', '7d': 'Week', '30d': 'Month', '1y': 'Year' }[id];
-            await this.clickByText(label, 'button');
-        }
+        await this.evaluate(`(function(){
+            var toggle = document.querySelector('#rangeMenu .menu-toggle');
+            if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+        })()`);
+        await this.waitFor(`!!document.querySelector('[data-range-preset="${id}"]')?.getClientRects().length`, {
+            label: `preset ${id} in the range menu`,
+        });
+        await this.evaluate(`document.querySelector('[data-range-preset="${id}"]').click()`);
         const start = Date.now();
         for (;;) {
-            const [from, to, min] = await Promise.all([
-                this.signalValue('datestart'),
-                this.signalValue('dateend'),
-                this.signalValue('data_range_min'),
-            ]);
-            if (Math.abs(to - from - seconds) <= 300 || (!hasMenu && to - from < seconds && from <= min + 300)) return;
+            const { datestart: from, dateend: to } = await this.signalValues(['datestart', 'dateend']);
+            if (Math.abs(to - from - seconds) <= 300) return;
             if (Date.now() - start > timeout) throw new Error(`range preset ${id}: window is ${to - from} s, expected ${seconds} s`);
             await sleep(150);
         }
@@ -383,23 +372,6 @@ class Page {
             return true;
         })()`);
         if (!ok) throw new Error('input not found: ' + selector);
-    }
-
-    /** Legacy wrapper until WP-I1: click the first visible Run or Process data button and wait
-        for the spinners in #page-content to clear. */
-    async processData({ timeout = 20000 } = {}) {
-        const clicked = await this.evaluate(`(function(){
-            var b = [...document.querySelectorAll('#page-content button')].find(function(e){
-                var t = e.textContent.trim();
-                return e.getClientRects().length > 0 && (t.includes('Process data') || t === 'Run');
-            });
-            if (b) { b.click(); return true; }
-            return false;
-        })()`);
-        if (!clicked) throw new Error('no visible Run or Process data button in #page-content');
-        const isVisible = `(function(){return [...document.querySelectorAll('#page-content .spinner')].some(s => s.getClientRects().length > 0);})()`;
-        await this.waitFor(isVisible, { timeout: 5000, label: 'query to start' }).catch(() => {});
-        await this.waitFor(`!(${isVisible})`, { timeout, label: 'query to finish' });
     }
 
     async screenshot(path) {

@@ -16,6 +16,20 @@ use mbolli\nfsen_ng\common\HealthChecker;
  * @phpstan-import-type ProtocolTotals from TotalsProvider
  */
 class Rrd implements Datasource, TotalsProvider {
+    /** Rows of every archive step that divides a day line up with its boundaries. */
+    private const DAY = 86400;
+
+    /** Whole days kept per file and step, more than a year of any step. */
+    private const DAY_CACHE_LIMIT = 400;
+
+    /**
+     * Volume of whole days before a file's last update, by file, step and day. Those rows never
+     * change, so a long window reads only its partial days, in every tab.
+     *
+     * @var array<string, array{inode: int, steps: array<int, array<int, array<string, float>>>}>
+     */
+    private static array $daySums = [];
+
     private readonly Debug $d;
     private readonly int $importYears;
 
@@ -99,6 +113,7 @@ class Rrd implements Datasource, TotalsProvider {
      */
     public function create(string $source, int $port = 0, bool $reset = false, string $profile = ''): bool {
         $rrdFile = $this->get_data_path($source, $port, $profile);
+        unset(self::$daySums[$rrdFile]);
 
         // check if folder exists
         if (!file_exists(\dirname($rrdFile))) {
@@ -596,7 +611,7 @@ WARNING;
                 if (!file_exists($rrdFile)) {
                     $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
                         'status' => 'warning', 'detail' => 'No RRD file yet', 'group' => $group,
-                        'code' => false, 'hint' => 'Go to Admin → click "Initial Import" to populate the database', 'epoch' => 0];
+                        'code' => false, 'hint' => 'Open Health and press Trigger in the Import card to import the capture files', 'epoch' => 0];
 
                     continue;
                 }
@@ -653,7 +668,7 @@ WARNING;
         $path = $rrdPath . \DIRECTORY_SEPARATOR . $p . \DIRECTORY_SEPARATOR . $source . $port . '.rrd';
 
         if (!file_exists($path)) {
-            $this->d->log('Was not able to find ' . $path, LOG_INFO);
+            $this->d->log('Was not able to find ' . $path, LOG_DEBUG);
         }
 
         return $path;
@@ -763,7 +778,8 @@ WARNING;
     }
 
     /**
-     * One fetch per source; a consolidated row (step above 300 s) counts pro rata for its slots in the window.
+     * Per source, the whole days come from the day cache and only the partial days at both
+     * ends are read; a consolidated row (step above 300 s) counts pro rata for its slots.
      *
      * @param list<string> $sources
      *
@@ -786,33 +802,41 @@ WARNING;
                 continue;
             }
 
-            // Rows are keyed by the update (capture file) they hold; the first ends one step after --start.
-            $fetched = $this->rrdFetch($file, ['AVERAGE', '--resolution', '300', '--start', (string) ($firstSlot - 300), '--end', (string) $lastSlot]);
-            if (!\is_array($fetched['data'] ?? null) || !is_numeric($fetched['step'] ?? null)) {
+            $sums = $this->fileTotals($file, $firstSlot, $lastSlot);
+            if ($sums === null) {
                 $this->d->log('Could not read totals from ' . $file . ': ' . rrd_error(), LOG_WARNING);
 
                 continue;
             }
-            $step = max(300, (int) $fetched['step']);
-
-            foreach ($fetched['data'] as $dsName => $rows) {
-                [$metric, $protocol] = array_pad(explode('_', (string) $dsName, 2), 2, 'any');
-                if (!isset($totals[$protocol][$metric]) || !\is_array($rows)) {
-                    continue;
-                }
-                foreach ($rows as $ts => $value) {
-                    if (!\is_float($value) || is_nan($value) || is_infinite($value)) {
-                        continue;
-                    }
-                    $slots = self::slotsInWindow((int) $ts, $step, $firstSlot, $lastSlot);
-                    if ($slots > 0) {
-                        $totals[$protocol][$metric] += $value * 300 * $slots;
-                    }
+            foreach ($sums as $dsName => $sum) {
+                [$metric, $protocol] = array_pad(explode('_', $dsName, 2), 2, 'any');
+                if (isset($totals[$protocol][$metric])) {
+                    $totals[$protocol][$metric] += $sum;
                 }
             }
         }
 
         return $totals;
+    }
+
+    /**
+     * Reads the whole days each archive below a day holds, so the first long range after a
+     * start reads only its partial days.
+     */
+    public function warmTotals(string $source, string $profile = ''): void {
+        $file = $this->get_data_path($source, 0, $profile);
+        $last = file_exists($file) ? intdiv((int) rrd_last($file), 300) * 300 : 0;
+        if ($last <= 0) {
+            return;
+        }
+        foreach ($this->layout as $archive) {
+            [, $perRow, $rows] = array_map(intval(...), explode(':', $archive));
+            $reach = $perRow * 300 * $rows;
+            // A day short of the archive's reach, so rrd_fetch still answers from this archive.
+            if ($perRow * 300 < self::DAY && $reach > 2 * self::DAY) {
+                $this->fileTotals($file, $last - $reach + self::DAY, $last);
+            }
+        }
     }
 
     /**
@@ -905,6 +929,201 @@ WARNING;
         $options[] = "XPORT:{$name}:{$legend}";
 
         return $options;
+    }
+
+    /**
+     * Volume per data source of the slots [$firstSlot, $lastSlot] in one file.
+     *
+     * @return null|array<string, float>
+     */
+    private function fileTotals(string $file, int $firstSlot, int $lastSlot): ?array {
+        // Day $d holds the rows ($d, $d + DAY], which cover the slots $d + 300 to $d + DAY.
+        $firstDay = intdiv($firstSlot - 300 + self::DAY - 1, self::DAY) * self::DAY;
+        $lastDay = intdiv($lastSlot, self::DAY) * self::DAY - self::DAY;
+
+        // The same --start as a read of the whole window, so rrd_fetch picks the same archive.
+        $head = $this->fetchSlots($file, 300, $firstSlot, $lastDay < $firstDay ? $lastSlot : max($firstDay, $firstSlot));
+        if ($head === null) {
+            return null;
+        }
+        [$step, $rows] = $head;
+        if ($lastDay < $firstDay) {
+            return self::sumSlots($rows, $step, $firstSlot, $lastSlot);
+        }
+        if ($step >= self::DAY || self::DAY % $step !== 0) {
+            return $this->wholeWindow($file, $firstSlot, $lastSlot);
+        }
+
+        $inode = (int) @fileinode($file);
+        if ((self::$daySums[$file]['inode'] ?? null) !== $inode) {
+            self::$daySums[$file] = ['inode' => $inode, 'steps' => []];
+        }
+        $cached = self::$daySums[$file]['steps'][$step] ?? [];
+
+        // One read per run of days not cached; the partial day at the end joins the run before it.
+        $spans = [];
+        for ($day = $firstDay; $day <= $lastDay; $day += self::DAY) {
+            if (!isset($cached[$day])) {
+                $spans = self::extendSpans($spans, $day, $day + self::DAY);
+            }
+        }
+        $tailFrom = $lastDay + self::DAY;
+        if ($tailFrom < $lastSlot) {
+            $spans = self::extendSpans($spans, $tailFrom, $lastSlot);
+        }
+        if (\count($spans) > 3) {
+            $spans = [[$spans[0][0], $spans[array_key_last($spans)][1]]];
+        }
+
+        $fresh = [];
+        $tail = [];
+        foreach ($spans as [$from, $to]) {
+            $read = $this->fetchSlots($file, $step, $from + 300, $to);
+            if ($read === null) {
+                return null;
+            }
+            if ($read[0] !== $step) {
+                return $this->wholeWindow($file, $firstSlot, $lastSlot);
+            }
+            [$days, $slots] = self::splitDays($read[1], $step, $from, min($to, $tailFrom), $tailFrom, $lastSlot);
+            $fresh = $days + $fresh;
+            foreach ($slots as $dsName => $sum) {
+                $tail[$dsName] = ($tail[$dsName] ?? 0.0) + $sum;
+            }
+        }
+
+        if ($fresh !== []) {
+            $final = (int) rrd_last($file);
+            foreach ($fresh as $day => $sums) {
+                if ($day + self::DAY <= $final) {
+                    $cached[$day] = $sums;
+                }
+            }
+            if (\count($cached) > self::DAY_CACHE_LIMIT) {
+                ksort($cached);
+                $cached = \array_slice($cached, -self::DAY_CACHE_LIMIT, null, true);
+            }
+            self::$daySums[$file]['steps'][$step] = $cached;
+        }
+
+        $totals = self::sumSlots($rows, $step, $firstSlot, $firstDay);
+        for ($day = $firstDay; $day <= $lastDay; $day += self::DAY) {
+            foreach ($fresh[$day] ?? $cached[$day] ?? [] as $dsName => $sum) {
+                $totals[$dsName] = ($totals[$dsName] ?? 0.0) + $sum;
+            }
+        }
+        foreach ($tail as $dsName => $sum) {
+            $totals[$dsName] = ($totals[$dsName] ?? 0.0) + $sum;
+        }
+
+        return $totals;
+    }
+
+    /** @return null|array<string, float> */
+    private function wholeWindow(string $file, int $firstSlot, int $lastSlot): ?array {
+        $read = $this->fetchSlots($file, 300, $firstSlot, $lastSlot);
+
+        return $read === null ? null : self::sumSlots($read[1], $read[0], $firstSlot, $lastSlot);
+    }
+
+    /**
+     * Appends the span ($from, $to], or extends the last span when it ends at $from.
+     *
+     * @param list<array{int, int}> $spans
+     *
+     * @return list<array{int, int}>
+     */
+    private static function extendSpans(array $spans, int $from, int $to): array {
+        $last = array_key_last($spans);
+        if ($last !== null && $spans[$last][1] === $from) {
+            $spans[$last][1] = $to;
+        } else {
+            $spans[] = [$from, $to];
+        }
+
+        return $spans;
+    }
+
+    /**
+     * Reads the rows holding the slots [$from, $to].
+     *
+     * @return null|array{int, array<mixed>} the step and the rows per data source
+     */
+    private function fetchSlots(string $file, int $resolution, int $from, int $to): ?array {
+        // Rows are keyed by the update (capture file) they hold; the first ends one step after --start.
+        $fetched = $this->rrdFetch($file, ['AVERAGE', '--resolution', (string) $resolution, '--start', (string) ($from - 300), '--end', (string) $to]);
+        if (!\is_array($fetched['data'] ?? null) || !is_numeric($fetched['step'] ?? null)) {
+            return null;
+        }
+
+        return [max(300, (int) $fetched['step']), $fetched['data']];
+    }
+
+    /**
+     * Volume per data source of the slots [$from, $to]; a row wider than a slot counts for its slots inside.
+     *
+     * @param array<mixed> $rows
+     *
+     * @return array<string, float>
+     */
+    private static function sumSlots(array $rows, int $step, int $from, int $to): array {
+        $rowSlots = intdiv($step, 300);
+        $sums = [];
+        foreach ($rows as $dsName => $values) {
+            $sum = 0.0;
+            foreach (\is_array($values) ? $values : [] as $ts => $value) {
+                if (!\is_float($value) || !is_finite($value)) {
+                    continue;
+                }
+                $ts = (int) $ts;
+                // Most rows lie inside; only the rows on an edge pay for slotsInWindow().
+                if ($ts - $step + 300 >= $from && $ts <= $to) {
+                    $sum += $value * 300 * $rowSlots;
+                } elseif (($slots = self::slotsInWindow($ts, $step, $from, $to)) > 0) {
+                    $sum += $value * 300 * $slots;
+                }
+            }
+            $sums[(string) $dsName] = $sum;
+        }
+
+        return $sums;
+    }
+
+    /**
+     * Splits rows read from $from into the sums of the whole days before $daysEnd and the
+     * volume of the slots after $tailFrom up to $lastSlot.
+     *
+     * @param array<mixed> $rows
+     *
+     * @return array{array<int, array<string, float>>, array<string, float>}
+     */
+    private static function splitDays(array $rows, int $step, int $from, int $daysEnd, int $tailFrom, int $lastSlot): array {
+        $rowSlots = intdiv($step, 300);
+        $days = [];
+        $tail = [];
+        foreach ($rows as $dsName => $values) {
+            $dsName = (string) $dsName;
+            for ($day = $from; $day < $daysEnd; $day += self::DAY) {
+                $days[$day][$dsName] = 0.0;
+            }
+            $tail[$dsName] = 0.0;
+            foreach (\is_array($values) ? $values : [] as $ts => $value) {
+                if (!\is_float($value) || !is_finite($value)) {
+                    continue;
+                }
+                $ts = (int) $ts;
+                if ($ts <= $from) {
+                    continue;
+                }
+                if ($ts <= $daysEnd) {
+                    $days[intdiv($ts - 1, self::DAY) * self::DAY][$dsName] += $value * 300 * $rowSlots;
+                } elseif ($ts > $tailFrom && ($slots = self::slotsInWindow($ts, $step, $tailFrom + 300, $lastSlot)) > 0) {
+                    $tail[$dsName] += $value * 300 * $slots;
+                }
+            }
+        }
+
+        return [$days, $tail];
     }
 
     /**

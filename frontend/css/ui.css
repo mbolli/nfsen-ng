@@ -41,11 +41,6 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-/* The shell (body.app) pads its own main column; the pre-shell markup has nothing else. */
-body:not(.app) {
-    padding: var(--size-3) var(--size-4);
-}
-
 img,
 svg,
 video,
@@ -126,8 +121,7 @@ p {
     text-wrap: pretty;
 }
 
-small,
-.muted {
+small {
     font-size: var(--font-size-0);
     color: var(--text-2);
 }
@@ -135,8 +129,7 @@ small,
 code,
 kbd,
 samp,
-pre,
-.mono {
+pre {
     font-family: var(--font-mono);
     font-size: 0.9em;
 }
@@ -177,35 +170,13 @@ a:hover {
     text-decoration-thickness: 2px;
 }
 
-/* Old role helpers, still used by the pre-redesign markup. New markup uses the element or
-   the component rule named in the redesign spec (2.5) instead. */
-.strong {
-    font-weight: var(--font-weight-semibold);
+/* An address that opens the IP info dialog. */
+.ip-link {
+    text-decoration-style: dotted;
 }
 
-.center {
-    text-align: center;
-}
-
-.text-end {
-    text-align: end;
-}
-
-.nowrap {
-    white-space: nowrap;
-}
-
-.italic {
-    font-style: italic;
-}
-
-.upper {
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.lower {
-    text-transform: lowercase;
+.ip-link:hover {
+    text-decoration-style: solid;
 }
 
 /* ── Layout primitives ──────────────────────────────────────────────────── */
@@ -225,13 +196,11 @@ a:hover {
     gap: var(--cluster-gap, var(--size-2));
 }
 
-.cluster[data-justify='between'],
-.cluster-between {
+.cluster[data-justify='between'] {
     justify-content: space-between;
 }
 
-.cluster[data-justify='end'],
-.cluster-end {
+.cluster[data-justify='end'] {
     justify-content: flex-end;
 }
 
@@ -240,10 +209,6 @@ a:hover {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(var(--grid-min, 14rem), 1fr));
     gap: var(--grid-gap, var(--size-3));
-}
-
-.spacer {
-    margin-inline-start: auto;
 }
 
 .visually-hidden:not(:focus-visible) {
@@ -307,6 +272,11 @@ dialog {
     background: var(--surface-2);
     color: var(--text-1);
     box-shadow: var(--shadow-2);
+}
+
+/* The reset's margin: 0 would pin a modal dialog to the corner. */
+dialog:modal {
+    margin: auto;
 }
 
 dialog::backdrop {
@@ -440,7 +410,6 @@ label {
 input[type='text'],
 input[type='search'],
 input[type='number'],
-input[type='password'],
 input[type='email'],
 input[type='url'],
 input[type='date'],
@@ -648,7 +617,6 @@ dd {
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 
 button,
-.button,
 input[type='submit'],
 input[type='reset'] {
     display: inline-flex;
@@ -669,26 +637,23 @@ input[type='reset'] {
         border-color var(--duration-fast) var(--ease-out);
 }
 
-button:hover:not(:disabled),
-.button:hover:not(:disabled) {
+button:hover:not(:disabled, [aria-disabled='true']) {
     background: var(--surface-3);
 }
 
-button:disabled,
-.button[aria-disabled='true'] {
+/* aria-disabled keeps a busy button focusable; its click handler guards the action. */
+button:is(:disabled, [aria-disabled='true']) {
     opacity: 0.55;
     cursor: not-allowed;
 }
 
-button[data-variant='primary'],
-.button[data-variant='primary'] {
+button[data-variant='primary'] {
     border-color: var(--accent);
     background: var(--accent);
     color: var(--on-accent);
 }
 
-button[data-variant='primary']:hover:not(:disabled),
-.button[data-variant='primary']:hover:not(:disabled) {
+button[data-variant='primary']:hover:not(:disabled, [aria-disabled='true']) {
     border-color: var(--accent-hover);
     background: var(--accent-hover);
 }
@@ -727,8 +692,7 @@ button[data-variant='link']:hover:not(:disabled) {
     text-decoration-thickness: 2px;
 }
 
-button[data-size='sm'],
-.button[data-size='sm'] {
+button[data-size='sm'] {
     padding: var(--size-1) var(--size-2);
     font-size: var(--font-size-00);
 }
@@ -845,24 +809,6 @@ button[aria-pressed='true']:hover:not(:disabled) {
     border-end-end-radius: var(--radius-2);
 }
 
-/* Stacked in a narrow column rather than side by side. */
-.segmented[data-orientation='block'] {
-    flex-direction: column;
-}
-
-.segmented[data-orientation='block'] label:not(:first-of-type) {
-    margin-inline-start: 0;
-    margin-block-start: -1px;
-}
-
-.segmented[data-orientation='block'] label:first-of-type {
-    border-radius: var(--radius-2) var(--radius-2) 0 0;
-}
-
-.segmented[data-orientation='block'] label:last-of-type {
-    border-radius: 0 0 var(--radius-2) var(--radius-2);
-}
-
 /* Fills its container instead of hugging its labels. */
 .segmented[data-stretch] {
     display: flex;
@@ -898,7 +844,9 @@ button[aria-pressed='true']:hover:not(:disabled) {
 
 /* ── Tables ─────────────────────────────────────────────────────────────── */
 
+/* Relative, so a visually hidden cell text is clipped here and cannot widen the page. */
 .table-wrap {
+    position: relative;
     overflow-x: auto;
 }
 
@@ -1004,24 +952,17 @@ tbody tr[data-level='error']:hover {
 /* ── Tabs ───────────────────────────────────────────────────────────────── */
 
 /* <div class="tabs" role="tablist"> of <button role="tab" aria-selected>, keyboard from
-   nfsen-controls.js. The <a> rules serve the pre-redesign navigation (a.active). */
+   nfsen-controls.js. */
 .tabs {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: var(--size-1);
-    list-style: none;
-    padding: 0;
-}
-
-.tabs:has(> [role='tab']):not([aria-orientation='vertical']) {
     align-items: stretch;
     gap: var(--size-2);
+    padding: 0;
     box-shadow: inset 0 -1px 0 var(--border);
 }
 
-.tabs [role='tab'],
-.tabs a {
+.tabs [role='tab'] {
     display: inline-flex;
     align-items: center;
     gap: var(--size-2);
@@ -1036,20 +977,13 @@ tbody tr[data-level='error']:hover {
     text-decoration: none;
 }
 
-.tabs a {
-    font-size: inherit;
-}
-
-.tabs [role='tab']:not([aria-selected='true'], .active):hover:not(:disabled),
-.tabs a:not(.active, [aria-current='page']):hover {
+.tabs [role='tab']:not([aria-selected='true']):hover:not(:disabled) {
     border-block-end-color: var(--border-strong);
     background: none;
     color: var(--text-1);
 }
 
-.tabs [role='tab'][aria-selected='true'],
-.tabs a[aria-current='page'],
-.tabs a.active {
+.tabs [role='tab'][aria-selected='true'] {
     border-block-end-color: var(--text-1);
     background: none;
     color: var(--text-1);
@@ -1065,24 +999,6 @@ tbody tr[data-level='error']:hover {
 .tabs[data-size='sm'] [role='tab'] {
     padding: var(--size-1) var(--size-2);
     font-size: var(--font-size-00);
-}
-
-/* A vertical list of sections: the current one gets a bar at its start instead. */
-.tabs[aria-orientation='vertical'] {
-    flex-direction: column;
-    align-items: stretch;
-}
-
-.tabs[aria-orientation='vertical'] :is([role='tab'], a) {
-    justify-content: flex-start;
-    border-block-end: none;
-    border-inline-start: 3px solid transparent;
-    border-radius: 0 var(--radius-2) var(--radius-2) 0;
-}
-
-.tabs[aria-orientation='vertical'] :is([role='tab'][aria-selected='true'], a.active, a[aria-current='page']) {
-    border-inline-start-color: var(--text-1);
-    background: var(--surface-4);
 }
 
 [role='tabpanel'] {
@@ -1185,11 +1101,12 @@ tbody tr[data-level='error']:hover {
     box-shadow: none;
 }
 
-/* The current choice gets a check mark, never a fill: menus stay neutral. */
+/* The current choice gets a check mark, never a fill: menus stay neutral. Every item of such
+   a list keeps the mark's column; the mark is a mask, as no font is sure to have U+2713. */
 .menu-list:has(.menu-item:is([aria-pressed], [aria-current])) .menu-item::before {
     content: '';
     flex: 0 0 1em;
-    text-align: center;
+    block-size: 0.75rem;
 }
 
 .menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page']) {
@@ -1199,8 +1116,9 @@ tbody tr[data-level='error']:hover {
     font-weight: var(--font-weight-semibold);
 }
 
-.menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page'])::before {
-    content: '\2713';
+.menu-list .menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page'])::before {
+    background: currentcolor;
+    mask: var(--glyph-success) center / contain no-repeat;
 }
 
 .menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page']):hover:not(:disabled) {
@@ -1261,6 +1179,11 @@ tbody tr[data-level='error']:hover {
 .notice.is-dismissing {
     opacity: 0;
     transition: opacity var(--duration-normal) var(--ease-out);
+}
+
+/* A quoted nfdump command wraps anywhere, or a phone would cut it off. */
+.notice code {
+    overflow-wrap: anywhere;
 }
 
 /* A notice that can be closed keeps room for the button at its end. */
@@ -1869,23 +1792,26 @@ progress[data-indeterminate]::-webkit-progress-value {
     [aria-pressed='true'],
     [aria-current]:not([aria-current='false']),
     [aria-selected='true'],
-    .segmented :checked + label,
-    .tabs [role='tab'][aria-selected='true'],
-    .tabs a.active {
+    .segmented :checked + label {
         outline: 2px solid Highlight;
         outline-offset: -2px;
     }
 
     /* Focus on a selected control: the state ring stays inside, the focus ring adds one outside. */
-    :is([aria-pressed='true'], [aria-current]:not([aria-current='false']), [aria-selected='true'], .tabs a.active):focus-visible,
+    :is([aria-pressed='true'], [aria-current]:not([aria-current='false']), [aria-selected='true']):focus-visible,
     .segmented :checked:focus-visible + label {
         outline: 6px double Highlight;
         outline-offset: -2px;
     }
 
     /* A transparent border is forced visible; paint the unselected tabs' bars as Canvas. */
-    .tabs :is([role='tab'], a):not([aria-selected='true'], .active, [aria-current='page']) {
+    .tabs [role='tab']:not([aria-selected='true']) {
         border-color: Canvas;
+    }
+
+    /* The menu's check mark is a mask on currentcolor, which forced colours would repaint. */
+    .menu-item::before {
+        forced-color-adjust: none;
     }
 
     .series-swatch,
@@ -1926,27 +1852,20 @@ progress[data-indeterminate]::-webkit-progress-value {
 
 /* ── Status text ────────────────────────────────────────────────────────── */
 
-/*
- * Status colours last: they say what a piece of text means, so they have to win against a
- * component rule that only says where it sits. `.help.text-warning` under a disabled email
- * field was grey because .help came later and both weigh the same.
- */
-.status-text[data-level='success'],
-.text-success {
+/* Status colours last: they say what a piece of text means, so they win against a component
+   rule of the same weight that only says where it sits. */
+.status-text[data-level='success'] {
     color: var(--success-emphasis);
 }
 
-.status-text[data-level='warning'],
-.text-warning {
+.status-text[data-level='warning'] {
     color: var(--warning-emphasis);
 }
 
-.status-text[data-level='error'],
-.text-danger {
+.status-text[data-level='error'] {
     color: var(--danger-emphasis);
 }
 
-.status-text[data-level='info'],
-.text-info {
+.status-text[data-level='info'] {
     color: var(--info-emphasis);
 }

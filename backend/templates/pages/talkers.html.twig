@@ -230,6 +230,9 @@
                                 These results are for an earlier query. Run again to update.
                             </p>
                         {% endif %}
+                        {% if p.clamp and not p.error %}
+                            <p class="notice" data-level="warning">{{ p.clamp }}</p>
+                        {% endif %}
                         {% if p.error %}
                             <div class="notice" data-level="error" role="alert">
                                 Error: {{ p.error }}{% if p.command %} <code>{{ p.command }}</code>{% endif %}
@@ -269,12 +272,12 @@
                     <button type="button" class="menu-toggle" data-size="sm" aria-haspopup="menu" aria-expanded="false"
                             aria-controls="statsExportMenu" data-preserve-attr="aria-expanded">Export</button>
                     <ul role="menu" id="statsExportMenu" aria-label="Export {{ r.caption }}" data-preserve-attr="data-open">
-                        {% for item in [{id: 'csv', label: 'CSV', method: 'exportCsv', legacy: 'exportToCSV'},
-                                        {id: 'json', label: 'JSON', method: 'exportJson', legacy: 'exportToJSON'},
-                                        {id: 'print', label: 'Print', method: 'print', legacy: 'printTable'}] %}
+                        {% for item in [{id: 'csv', label: 'CSV', method: 'exportCsv'},
+                                        {id: 'json', label: 'JSON', method: 'exportJson'},
+                                        {id: 'print', label: 'Print', method: 'print'}] %}
                             <li role="none">
                                 <button type="button" role="menuitem" tabindex="-1" data-export="{{ item.id }}"
-                                        data-on:click="const t = document.getElementById('statsTable'); const f = t && (t.{{ item.method }} ?? t.{{ item.legacy }}); f && f.call(t)">{{ item.label }}</button>
+                                        data-on:click="document.getElementById('statsTable')?.{{ item.method }}()">{{ item.label }}</button>
                             </li>
                         {% endfor %}
                     </ul>

@@ -59,8 +59,8 @@ interface Datasource {
      * Gets data for plotting the graph in the frontend.
      * Each row in $return['data'] will be a time point in the graph.
      * The lines can be
-     *   * protocols - $sources must not contain more than one source (legend e.g. gateway_flows_udp, gateway_flows_tcp)
-     *   * sources - $protocols must not contain more than one protocol (legend e.g. gateway_traffic_icmp, othersource_traffic_icmp)
+     *   * protocols: one series per protocol, summed over $sources (legend e.g. tcp_flows, udp_flows)
+     *   * sources: one series per source; $protocols must hold one protocol (legend e.g. gateway_traffic_icmp)
      *   * ports.
      *
      * @param int          $start     timestamp
@@ -155,7 +155,7 @@ interface Datasource {
     /**
      * Returns the average flows/packets/bytes over a rolling window ending now,
      * summed across the given sources. Returns [0.0, 0.0, 0.0] when no data is
-     * available (cold-start safe — callers must treat 0 as "no baseline yet").
+     * available (cold-start safe: callers must treat 0 as "no baseline yet").
      *
      * @param string[] $sources       Source names to sum over
      * @param string   $profile       Profile name

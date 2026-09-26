@@ -231,17 +231,6 @@ describe('ShellState', function (): void {
         ;
     });
 
-    test('the data range throttle does not depend on a graph fetch', function (): void {
-        $shell = new ShellState();
-        $shell->rangeFetchedAt = 1_000;
-
-        expect($shell->rangeDue(false, 1_001))->toBeTrue()
-            ->and($shell->rangeDue(true, 1_009))->toBeFalse()
-            ->and($shell->rangeDue(true, 1_010))->toBeTrue()
-            ->and($shell->graphDue(true, 1_009))->toBeTrue()
-        ;
-    });
-
     test('a data range read makes the graph due, so it shows the window the read may have moved', function (): void {
         $shell = new ShellState();
         $shell->graphFetchedAt = 1_000;

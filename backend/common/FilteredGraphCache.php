@@ -10,7 +10,7 @@ use mbolli\nfsen_ng\datasources\Datasource;
  * Memoises filtered-graph series keyed by the full query that produced them.
  *
  * This is what keeps a filtered graph off the render path. fetchGraphData() runs on
- * every re-render — every SSE push, every filter change, every live tick — so a
+ * every re-render (every SSE push, every filter change, every live tick), so a
  * filtered series must be looked up, never recomputed, outside the explicit Apply
  * action. A miss renders an empty graph prompting the user to press Apply rather
  * than silently forking several hundred nfdump processes.
@@ -31,7 +31,7 @@ final class FilteredGraphCache {
      * re-renders on every rrd:live broadcast (roughly every import), so a tab left open
      * would drop back to "press Apply" ten minutes after the build with nothing having
      * changed. Touch-on-read makes this "discard if nobody has looked at it" instead,
-     * which is safe here because the window is part of the key — in filtered mode it no
+     * which is safe here because the window is part of the key: in filtered mode it no
      * longer auto-advances, so a given key's data cannot go stale, only unwanted.
      */
     public const TTL = 600;
@@ -41,7 +41,7 @@ final class FilteredGraphCache {
 
     /**
      * Stable key for one filtered query. Every input that changes the resulting series
-     * must appear here — a key that ignores one silently serves the wrong graph.
+     * must appear here: a key that ignores one silently serves the wrong graph.
      *
      * @param list<string> $sources
      * @param list<string> $protocols
@@ -90,7 +90,7 @@ final class FilteredGraphCache {
 
     /**
      * @param GraphData $data
-     * @param bool      $partial series from a cancelled build — displayable, but not a
+     * @param bool      $partial series from a cancelled build: displayable, but not a
      *                           complete answer for this key, so has() disowns it
      */
     public static function put(string $key, array $data, ?int $now = null, bool $partial = false): void {
@@ -107,7 +107,7 @@ final class FilteredGraphCache {
      * Whether a *complete* series for this key is cached.
      *
      * Deliberately false for a partial (cancelled) entry: the Apply action skips the build
-     * when this returns true, so counting a partial would make Apply a permanent no-op —
+     * when this returns true, so counting a partial would make Apply a permanent no-op,
      * and since a read refreshes the TTL, the panel would stay wedged on that partial
      * result for as long as the tab kept rendering. Cancel then re-Apply must rebuild.
      */

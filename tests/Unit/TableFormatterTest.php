@@ -11,34 +11,34 @@ describe('TableFormatter', function (): void {
             expect($result)->toBe('0 B');
         });
 
-        test('formats bytes under 1KB', function (): void {
+        test('formats bytes under 1 KiB', function (): void {
             $result = TableFormatter::formatCellValue(512, 'bytes', ['linkIpAddresses' => false]);
             expect($result)->toContain('B');
         });
 
-        test('formats kilobytes', function (): void {
+        test('formats kibibytes', function (): void {
             $result = TableFormatter::formatCellValue(1024, 'bytes', ['linkIpAddresses' => false]);
-            expect($result)->toContain('KB');
+            expect($result)->toBe('1.000 KiB');
         });
 
-        test('formats megabytes', function (): void {
+        test('formats mebibytes', function (): void {
             $result = TableFormatter::formatCellValue(1048576, 'bytes', ['linkIpAddresses' => false]);
-            expect($result)->toContain('MB');
+            expect($result)->toBe('1.000 MiB');
         });
 
-        test('formats gigabytes', function (): void {
+        test('formats gibibytes', function (): void {
             $result = TableFormatter::formatCellValue(1073741824, 'bytes', ['linkIpAddresses' => false]);
-            expect($result)->toContain('GB');
+            expect($result)->toBe('1.000 GiB');
         });
 
-        test('formats terabytes', function (): void {
+        test('formats tebibytes', function (): void {
             $result = TableFormatter::formatCellValue(1099511627776, 'bytes', ['linkIpAddresses' => false]);
-            expect($result)->toContain('TB');
+            expect($result)->toBe('1.000 TiB');
         });
 
         test('formats bytes field variations', function (string $fieldName): void {
             $result = TableFormatter::formatCellValue(1024, $fieldName, ['linkIpAddresses' => false]);
-            expect($result)->toContain('KB');
+            expect($result)->toBe('1.000 KiB');
         })->with(['bytes', 'ibyt', 'obyt', 'in_bytes', 'out_bytes', 'octets']);
     });
 

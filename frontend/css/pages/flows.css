@@ -1,5 +1,5 @@
 /* Flows (4.3, 2.7.5): the query beside its estimate, traffic over time, the results. The
-   nfsen-table rules at the end serve every result table (Top Talkers and Conversations too). */
+   result table itself is styled in nfsen-ng.css, which every page with a table shares. */
 
 .flows-page {
     container-type: inline-size;
@@ -134,6 +134,8 @@
 }
 
 .flows-graph-legend {
+    max-block-size: 13rem;
+    overflow-y: auto;
     color: var(--text-2);
     font-size: var(--font-size-0);
 }
@@ -157,10 +159,6 @@
 
 .flows-results > header > .menu {
     padding-block-end: var(--size-2);
-}
-
-.flows-results .notice code {
-    overflow-wrap: anywhere;
 }
 
 .flows-results [role='tabpanel']:focus-visible {
@@ -221,142 +219,4 @@
 
 .flows-protocols .series-swatch {
     margin-inline-end: var(--size-2);
-}
-
-/* ── Result tables (nfsen-table.js) ─────────────────────────────────────── */
-
-nfsen-table {
-    display: flex;
-    flex-direction: column;
-    gap: var(--size-2);
-    min-inline-size: 0;
-}
-
-.table-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--size-2) var(--size-3);
-}
-
-.table-toolbar > .column-selector-placeholder {
-    margin-inline-start: auto;
-}
-
-.column-selector-menu {
-    max-block-size: 20rem;
-}
-
-/* A second horizontal scrollbar above a table wider than its card. */
-.table-scrollbar {
-    overflow-x: auto;
-    overflow-y: hidden;
-}
-
-.table-scrollbar > div {
-    inline-size: var(--scroll-width, 100%);
-    block-size: 1px;
-}
-
-nfsen-table:not([data-overflow]) > .table-scrollbar,
-nfsen-table[data-view='original'] > :is(.table-scrollbar, .table-wrap, .table-pager),
-nfsen-table[data-view='original'] .column-selector {
-    display: none;
-}
-
-.sort-button {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--size-1);
-    padding: 0;
-    border: none;
-    background: none;
-    color: inherit;
-    font: inherit;
-    white-space: nowrap;
-}
-
-.sort-button:hover:not(:disabled) {
-    background: none;
-    text-decoration: underline;
-}
-
-th[aria-sort] > .sort-button::after {
-    content: '\25B2' / '';
-    font-size: 0.7em;
-}
-
-th[aria-sort='descending'] > .sort-button::after {
-    content: '\25BC' / '';
-}
-
-/* A wide result scrolls sideways rather than folding every cell onto three lines. */
-:is(nfsen-table, .flows-protocols) :is(th, td) {
-    white-space: nowrap;
-}
-
-td[data-kind='rank'] {
-    inline-size: 1%;
-}
-
-.table-raw pre,
-nfsen-table .original pre {
-    max-block-size: 60vh;
-    overflow: auto;
-    font-size: var(--font-size-00);
-    line-height: 1.35;
-}
-
-.table-pager {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--size-2) var(--size-4);
-    font-size: var(--font-size-0);
-}
-
-.table-pager-status {
-    color: var(--text-2);
-}
-
-.table-pager-controls,
-.table-pager-pages {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--size-1);
-}
-
-.table-pager-pages {
-    padding: 0;
-    list-style: none;
-}
-
-.table-pager-pages > li[aria-hidden] {
-    padding-inline: var(--size-1);
-    color: var(--text-2);
-}
-
-.table-pager-pages button {
-    min-inline-size: 2.25rem;
-    justify-content: center;
-    font-variant-numeric: tabular-nums;
-}
-
-/* The current page reads as a pressed button (2.5). */
-.table-pager-pages button[aria-current='page'] {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--on-accent);
-    font-weight: var(--font-weight-semibold);
-}
-
-.table-pager-size {
-    margin-inline-start: var(--size-2);
-    color: var(--text-2);
-}
-
-.table-pager select {
-    inline-size: auto;
 }

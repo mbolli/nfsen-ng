@@ -31,8 +31,7 @@ interface Page {
     public static function register(Context $c, Via $app, PageStates $states): void;
 
     /**
-     * Data for `pages.<id>` in Twig. Only called while this page is active. Top-level keys
-     * the old partials still read go under Shell::LEGACY; the shell lifts them out.
+     * Data for `pages.<id>` in Twig. Only called while this page is active.
      *
      * @return array<string, mixed>
      */

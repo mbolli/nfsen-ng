@@ -154,7 +154,7 @@ async function setSignal(page, name, value) {
 }
 
 async function buckets(page) {
-    const [from, to] = await Promise.all([page.signalValue('datestart'), page.signalValue('dateend')]);
+    const { datestart: from, dateend: to } = await page.signalValues(['datestart', 'dateend']);
     return { from, to, key: `${Math.floor(from / 300)}:${Math.floor(to / 300)}` };
 }
 
@@ -340,7 +340,8 @@ export default async function filterValidationTest() {
 
         // A range change posts one estimate-query, and the figures follow it. The preset differs
         // from the current window, whatever the default range preference is.
-        const width = (await page.signalValue('dateend')) - (await page.signalValue('datestart'));
+        const current = await page.signalValues(['datestart', 'dateend']);
+        const width = current.dateend - current.datestart;
         const preset = Math.abs(width - 604800) <= 300 ? '30d' : '7d';
         await sleep(500);
         log.clear();

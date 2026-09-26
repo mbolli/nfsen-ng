@@ -553,12 +553,10 @@ class Nfdump implements Processor {
      * @return array<array<string, mixed>>
      */
     public static function normalizeAddressFamilyKeys(array $records): array {
-        $normalized = [];
-
-        foreach ($records as $record) {
+        // Record by record in place: passed a temporary, each old record is freed as it is replaced.
+        foreach (array_keys($records) as $i) {
+            $record = $records[$i];
             if (!\is_array($record)) {
-                $normalized[] = $record;
-
                 continue;
             }
 
@@ -574,10 +572,10 @@ class Nfdump implements Processor {
                 $row[$newKey] = $value;
             }
 
-            $normalized[] = $row;
+            $records[$i] = $row;
         }
 
-        return $normalized;
+        return $records;
     }
 
     /**
@@ -758,51 +756,81 @@ class Nfdump implements Processor {
             }
         }
 
-        $output = explode("\n", $stdout);
-        if (end($output) === '') {
-            array_pop($output);
-        }
-
-        // The usage text is not a result, whatever the exit code says.
-        if (isset($output[0]) && stripos($output[0], 'usage') === 0) {
-            $output = [];
-        }
-
-        $blank = trim(implode("\n", $output)) === '';
+        // The usage text is not a result, whatever the exit code says. No trim() or split here:
+        // either copies stdout, and a 10,000-flow JSON listing is megabytes.
+        $usage = stripos($stdout, 'usage') === 0;
+        $blank = $usage || strspn($stdout, " \t\n\r\0\x0B") === \strlen($stdout);
         if ($exitCode !== 0 && ($blank || \in_array($exitCode, [127, 250, 254, 255], true))) {
-            throw $this->failure($command, $output, $stderr, $stderrRaw, $exitCode);
+            throw $this->failure($command, $usage ? [] : self::lines($stdout), $stderr, $stderrRaw, $exitCode);
         }
 
-        $result = $this->decode($command, $stdout, $output, $stderr, $stderrRaw, $exitCode, $timer);
+        // Nothing printed and no failure: an empty result. Import::start() moves on to the next file on one.
+        $result = $blank
+            ? $this->result($command, '', [], $stderr, [], $exitCode, $timer)
+            : $this->decode($command, $stdout, $stderr, $stderrRaw, $exitCode, $timer);
 
         // A rejected option (`-s nevent`, `-s srcip/foo`) exits 1 with its option table on stdout.
         if ($exitCode !== 0 && $result['decoded'] === []) {
-            throw $this->failure($command, $output, $stderr, $stderrRaw, $exitCode);
+            throw $this->failure($command, self::lines($stdout), $stderr, $stderrRaw, $exitCode);
         }
 
         return $result;
     }
 
     /**
-     * @param list<string> $output stdout split into lines
+     * A JSON array as nfdump printed it, which may lack its closing bracket.
      *
+     * @return array<array<string, mixed>>
+     *
+     * @throws NfdumpException
+     */
+    private static function jsonArray(string $stdout, string $command, string $stderr, int $exitCode): array {
+        $closed = str_ends_with(rtrim(substr($stdout, -32)), ']');
+        $decoded = json_decode($closed ? $stdout : $stdout . ']', true);
+        if (!\is_array($decoded)) {
+            throw new NfdumpException('Invalid JSON from nfdump (' . json_last_error_msg() . '): ' . self::excerpt($stdout), $command, $stderr, $exitCode);
+        }
+
+        /** @var array<array<string, mixed>> */
+        return $decoded;
+    }
+
+    /**
+     * @return list<string> stdout split into lines, without the empty one after the final newline
+     */
+    private static function lines(string $stdout): array {
+        $output = explode("\n", $stdout);
+        if (end($output) === '') {
+            array_pop($output);
+        }
+
+        return $output;
+    }
+
+    /**
      * @return array{command: string, rawOutput: string, decoded: array<array<string, mixed>>, stderr?: string, notes: list<string>, exitCode: int}
      *
      * @throws NfdumpException
      */
-    private function decode(string $command, string $stdout, array $output, string $stderr, string $stderrRaw, int $exitCode, float $timer): array {
+    private function decode(string $command, string $stdout, string $stderr, string $stderrRaw, int $exitCode, float $timer): array {
         /** @var list<string> $notes */
         $notes = [];
         if ($exitCode !== 0) {
             $notes[] = 'nfdump exited with code ' . $exitCode;
         }
 
-        // Nothing printed and no failure: an empty result. Import::start() moves on to the
-        // next file on one.
-        if (trim(implode("\n", $output)) === '') {
-            return $this->result($command, '', [], $stderr, $notes, $exitCode, $timer);
+        // A JSON array (-o json listings) is decoded from stdout as it is, never split into lines.
+        if (isset($this->cfg['format']) && $this->cfg['format'] === 'json' && str_starts_with($stdout, '[')) {
+            if (preg_match('/^\s*No matching flows\s*$/m', $stdout) === 1) {
+                $notes[] = 'No matching flows';
+
+                return $this->result($command, '', [], $stderr, $notes, $exitCode, $timer);
+            }
+
+            return $this->result($command, $stdout, self::normalizeAddressFamilyKeys(self::jsonArray($stdout, $command, $stderr, $exitCode)), $stderr, $notes, $exitCode, $timer);
         }
 
+        $output = self::lines($stdout);
         if (\count($output) === 1) {
             $line = trim($output[0]);
 
@@ -825,43 +853,24 @@ class Nfdump implements Processor {
             }
         }
 
-        if (isset($this->cfg['format']) && $this->cfg['format'] === 'json' && preg_match('/^[\{|\[]/', $output[0])) {
+        // NDJSON, one object per line: what statistics queries (-s) print.
+        if (isset($this->cfg['format']) && $this->cfg['format'] === 'json' && str_starts_with($output[0], '{')) {
+            $decodedData = [];
             foreach ($output as $line) {
-                if (trim($line) === 'No matching flows') {
-                    $notes[] = 'No matching flows';
+                $trimmed = trim($line);
+                if ($trimmed === 'No matching flows') {
+                    $notes[] = $trimmed;
 
                     return $this->result($command, '', [], $stderr, $notes, $exitCode, $timer);
                 }
-            }
-
-            // NDJSON, one object per line: what statistics queries (-s) print.
-            if (str_starts_with($output[0], '{')) {
-                $decodedData = [];
-                foreach ($output as $line) {
-                    $trimmed = trim($line);
-                    if ($trimmed === '') {
-                        continue;
-                    }
-                    $decoded = json_decode($trimmed, true);
-                    if (!\is_array($decoded)) {
-                        throw new NfdumpException('Invalid JSON line from nfdump (' . json_last_error_msg() . '): ' . self::excerpt($trimmed), $command, $stderr, $exitCode);
-                    }
-                    $decodedData[] = $decoded;
+                if ($trimmed === '') {
+                    continue;
                 }
-
-                return $this->result($command, $stdout, self::normalizeAddressFamilyKeys($decodedData), $stderr, $notes, $exitCode, $timer);
-            }
-
-            $jsonOutput = implode("\n", $output);
-
-            // nfdump can end a JSON array without its closing bracket.
-            if (str_starts_with($jsonOutput, '[') && !str_ends_with(trim($jsonOutput), ']')) {
-                $jsonOutput .= ']';
-            }
-
-            $decodedData = json_decode($jsonOutput, true);
-            if (!\is_array($decodedData)) {
-                throw new NfdumpException('Invalid JSON from nfdump (' . json_last_error_msg() . '): ' . self::excerpt($jsonOutput), $command, $stderr, $exitCode);
+                $decoded = json_decode($trimmed, true);
+                if (!\is_array($decoded)) {
+                    throw new NfdumpException('Invalid JSON line from nfdump (' . json_last_error_msg() . '): ' . self::excerpt($trimmed), $command, $stderr, $exitCode);
+                }
+                $decodedData[] = $decoded;
             }
 
             return $this->result($command, $stdout, self::normalizeAddressFamilyKeys($decodedData), $stderr, $notes, $exitCode, $timer);

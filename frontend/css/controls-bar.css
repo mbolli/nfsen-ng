@@ -27,6 +27,14 @@
     font-size: var(--font-size-00);
 }
 
+.controls-bar .profile-select {
+    flex-shrink: 0;
+}
+
+.controls-bar .reconnecting {
+    color: var(--warning);
+}
+
 .controls-bar .menu-toggle {
     font-variant-numeric: tabular-nums;
 }

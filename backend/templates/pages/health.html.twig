@@ -34,7 +34,7 @@
 }[imp.state] %}
 {% set lastImport = max([imp.rate.lastTs] | merge(imp.daemons|map(d => d.lastAutoImport))) %}
 
-<div class="stack health"
+<div class="stack health" {% if h.pending %}aria-busy="true"{% endif %}
      data-on-interval__duration.10s="!document.hidden && !$_disconnected && @post('{{ healthRefresh.url() }}')">
 
     {% if h.fatal %}
@@ -298,7 +298,7 @@
                             </td>
                         </tr>
                     {% else %}
-                        <tr><td colspan="7">{{ h.fatal ? 'Not available.' : 'No sources configured.' }}</td></tr>
+                        <tr><td colspan="7">{{ h.fatal ? 'Not available.' : (h.pending ? 'Checking the sources.' : 'No sources configured.') }}</td></tr>
                     {% endfor %}
                     </tbody>
                 </table>
@@ -336,7 +336,7 @@
                         {% endif %}
                     </li>
                 {% else %}
-                    <li><small>Not available.</small></li>
+                    <li><small>{{ h.pending ? 'Measuring.' : 'Not available.' }}</small></li>
                 {% endfor %}
                 </ul>
             </div>
@@ -385,11 +385,13 @@
         </header>
         <div class="table-wrap">
             <table class="health-checks">
-                <tbody>
+                {# One tbody per group, so its heading row is a rowgroup header. #}
                 {% for check in h.checks %}
                     {% if loop.first or check.group != h.checks[loop.index0 - 1].group %}
+                        {% if not loop.first %}</tbody>{% endif %}
+                        <tbody>
                         <tr class="row-group">
-                            <th colspan="2" scope="colgroup">{{ check.group }}</th>
+                            <th colspan="2" scope="rowgroup">{{ check.group }}</th>
                         </tr>
                     {% endif %}
                     <tr {% if check.status != 'ok' %}data-level="{{ check.status }}"{% endif %}>
@@ -402,10 +404,10 @@
                             </div>
                         </td>
                     </tr>
+                    {% if loop.last %}</tbody>{% endif %}
                 {% else %}
-                    <tr><td colspan="2">{{ h.fatal ? 'The checks need the configuration, which did not load.' : 'No checks available.' }}</td></tr>
+                    <tbody><tr><td colspan="2">{{ h.fatal ? 'The checks need the configuration, which did not load.' : (h.pending ? 'Running the checks.' : 'No checks available.') }}</td></tr></tbody>
                 {% endfor %}
-                </tbody>
             </table>
         </div>
     </section>

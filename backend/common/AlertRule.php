@@ -22,7 +22,7 @@ final class AlertRule {
         /** absolute|percent_of_avg */
         public readonly string $thresholdType,
         public readonly float $thresholdValue,
-        /** 10m|30m|1h|6h|12h|24h — only for percent_of_avg */
+        /** 10m|30m|1h|6h|12h|24h, only for percent_of_avg */
         public readonly string $avgWindow,
         /** Number of 5-min slots to suppress re-triggering after a fire */
         public readonly int $cooldownSlots,

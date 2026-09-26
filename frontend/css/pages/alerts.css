@@ -18,12 +18,6 @@
     font-size: var(--font-size-1);
 }
 
-/* Busy or blocked, a button keeps its focus: ui.css only dims :disabled and .button[aria-disabled]. */
-.alerts-page button[aria-disabled='true'] {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
 .alert-new-rule {
     margin-inline-start: auto;
 }
@@ -250,7 +244,6 @@
 
 .alert-test-result {
     inline-size: min(40rem, 100vw - 2rem);
-    margin: auto;
 }
 
 .alert-test-outcome {

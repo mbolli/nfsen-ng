@@ -154,6 +154,11 @@ final class TopNCollector {
         self::$nextPrune = $now + self::PRUNE_FIRST;
     }
 
+    /** Whether enqueue(), the gap filler and the pruner are armed in this process. */
+    public static function booted(): bool {
+        return self::$booted;
+    }
+
     /** Tests: back to a process that never booted the collector. */
     public static function reset(): void {
         self::$booted = false;

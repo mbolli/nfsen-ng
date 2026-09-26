@@ -503,32 +503,6 @@ final class GraphActions {
         }, 'refresh-graphs');
     }
 
-    /**
-     * Re-counts the capture files for nfcapd_file_count after the window, sources or profile
-     * changed in filtered mode. Names and sizes only, and skipped while nothing changed. The
-     * Overview reads `_est_overview` now; RangeActions still calls this until WP-I1 drops the
-     * nfcapd_* signals.
-     */
-    public static function measureFilteredCost(Context $c): void {
-        $datestart = $c->getSignal('datestart');
-        $dateend = $c->getSignal('dateend');
-        $graphSources = $c->getSignal('graph_sources');
-        $selectedProfile = $c->getSignal('selected_profile');
-        if ($c->getSignal('graph_mode')?->string() !== 'filtered'
-            || $datestart === null || $dateend === null || $graphSources === null || $selectedProfile === null) {
-            return;
-        }
-
-        Helpers::measureNfcapdFiles(
-            $c,
-            $datestart->int(),
-            $dateend->int(),
-            Helpers::resolveSources($graphSources->array()),
-            $selectedProfile->string(),
-            true
-        );
-    }
-
     /** Clears the banner when it holds one of this graph's own failures, and only then. */
     public static function clearOwnError(?Signal $error): void {
         $text = $error?->string() ?? '';

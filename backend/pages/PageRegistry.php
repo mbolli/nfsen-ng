@@ -45,17 +45,6 @@ final class PageRegistry {
         'conversations' => 'conversations',
     ];
 
-    /** The old view id of a page, which the old Settings form's Default view select still lists. */
-    private const array TO_LEGACY = [
-        'overview' => 'graphs',
-        'talkers' => 'statistics',
-        'flows' => 'flows',
-        'conversations' => 'sankey',
-        'alerts' => 'settings',
-        'health' => 'settings',
-        'settings' => 'settings',
-    ];
-
     /** Whether only the active page renders in full; a method so callers do not branch on a literal. */
     public static function lazy(): bool {
         return self::LAZY;
@@ -99,11 +88,6 @@ final class PageRegistry {
         }
 
         return self::LEGACY[$view] ?? '';
-    }
-
-    /** The old view id for a page id (or a legacy id), 'graphs' when unknown. */
-    public static function toLegacy(string $pageId): string {
-        return self::TO_LEGACY[self::fromLegacy($pageId)] ?? 'graphs';
     }
 
     /** Page id that owns a query_kind (1.6), used by kill-nfdump to route its notice. */

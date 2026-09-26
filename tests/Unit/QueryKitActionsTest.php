@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use mbolli\nfsen_ng\actions\QueryKitActions;
-use mbolli\nfsen_ng\actions\ShellActions;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\pages\PageRegistry;
@@ -200,12 +199,6 @@ describe('target table (3.5.3)', function (): void {
         expect(QueryKitActions::estimateTarget($this->c, 'drawer'))->toBeNull();
         $drawerTarget->setValue('drawer');
         expect(QueryKitActions::estimateTarget($this->c, 'drawer'))->toBeNull();
-    });
-
-    test('count-files estimates the active page\'s target', function (): void {
-        expect(array_map(QueryKit::targetForPage(...), PageRegistry::ids()))
-            ->toBe(['overview', 'talkers', 'flows', 'conversations', null, null, null])
-        ;
     });
 });
 
@@ -504,7 +497,7 @@ describe('estimate-query', function (): void {
         $this->c->getSignal('graph_sources')?->setValue(['gw', 'edge'], broadcast: false);
     });
 
-    test('pushes pending, then the estimate, and keeps the legacy file counts in step', function (): void {
+    test('pushes pending, then the estimate, as signal patches', function (): void {
         $this->app->activeSseCount[$this->c->getId()] = 1;
         queryKitSettle($this->c);
         $this->c->setRequestInput(['target' => 'flows'], []);
@@ -522,8 +515,6 @@ describe('estimate-query', function (): void {
                 'measured' => false, 'clamped' => false, 'window' => '2 hours', 'heavy' => false,
             ])
             ->and(array_keys($value))->toBe(array_keys(QueryKit::ESTIMATE_DEFAULT))
-            ->and($this->c->getSignal('nfcapd_file_count')?->int())->toBe(48)
-            ->and($this->c->getSignal('nfcapd_total_bytes')?->int())->toBe(24 * 3072)
         ;
     });
 
@@ -543,13 +534,10 @@ describe('estimate-query', function (): void {
         ;
     });
 
-    test('a clamped window estimates the recent end and leaves the counts of the selected window alone', function (): void {
-        $this->c->getSignal('nfcapd_file_count')?->setValue(7, broadcast: false);
+    test('a clamped window estimates the recent end', function (): void {
         queryKitRun(fn () => QueryKitActions::estimate($this->c, 'talkers'));
 
-        expect($this->c->getSignal('_est_talkers')?->getValue())->toMatchArray(['files' => 24, 'clamped' => true, 'window' => '1 hour', 'pending' => false])
-            ->and($this->c->getSignal('nfcapd_file_count')?->int())->toBe(7)
-        ;
+        expect($this->c->getSignal('_est_talkers')?->getValue())->toMatchArray(['files' => 24, 'clamped' => true, 'window' => '1 hour', 'pending' => false]);
     });
 
     test('the filtered graph counts its nfdump runs', function (): void {
@@ -582,17 +570,9 @@ describe('estimate-query', function (): void {
         ;
     });
 
-    test('count-files is estimate-query for the active page, and nothing on the other pages', function (): void {
-        queryKitRun(function (): void {
-            $this->c->getSignal('page')?->setValue('conversations', broadcast: false);
-            ShellActions::countFiles($this->c);
-            $this->c->getSignal('page')?->setValue('health', broadcast: false);
-            ShellActions::countFiles($this->c);
-        });
-
-        expect($this->c->getSignal('_est_conversations')?->getValue())->toMatchArray(['files' => 24, 'pending' => false, 'clamped' => true])
-            ->and($this->c->getSignal('_est_flows')?->getValue())->toBe(QueryKit::ESTIMATE_DEFAULT)
-            ->and($this->c->getNamedActions())->toHaveKeys(['count-files', 'estimate-query', 'validate-filter'])
+    test('the kit answers through estimate-query and validate-filter; count-files is gone', function (): void {
+        expect($this->c->getNamedActions())->toHaveKeys(['estimate-query', 'validate-filter'])
+            ->and($this->c->getNamedActions())->not->toHaveKey('count-files')
         ;
     });
 

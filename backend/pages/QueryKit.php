@@ -22,14 +22,6 @@ final class QueryKit implements ShellModule {
         'alert' => ['filter' => 'alert_form_nfdumpFilter', 'kind' => '', 'clamped' => false],
     ];
 
-    /** The target whose estimate count-files refreshes, per page (1.6). */
-    public const array PAGE_TARGETS = [
-        'overview' => 'overview',
-        'talkers' => 'talkers',
-        'flows' => 'flows',
-        'conversations' => 'conversations',
-    ];
-
     /** @var array{status: ''|'invalid'|'valid', message: string, checked: string} */
     public const array FILTER_DEFAULT = ['status' => '', 'message' => '', 'checked' => ''];
 
@@ -104,10 +96,5 @@ final class QueryKit implements ShellModule {
     /** `_est_<target>`, with '_' for '-'. */
     public static function estimateSignal(string $target): string {
         return '_est_' . str_replace('-', '_', $target);
-    }
-
-    /** The estimate target of a page, or null for a page that runs no capture query. */
-    public static function targetForPage(string $page): ?string {
-        return self::PAGE_TARGETS[$page] ?? null;
     }
 }

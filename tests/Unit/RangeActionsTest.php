@@ -373,7 +373,7 @@ describe('the range actions never read capture files', function (): void {
         expect(RangeActions::changeProfile($c, $now))->toBeFalse();
     });
 
-    test('in filtered mode a range op re-counts the capture files a build would read, by name and size only', function (): void {
+    test('in filtered mode with real capture files, range ops and apply-globals read none of them', function (): void {
         $root = sys_get_temp_dir() . '/nfsen-range-capture-' . bin2hex(random_bytes(4));
         $now = time();
         foreach ([2, 3, 4, 30] as $intervalsAgo) {
@@ -393,16 +393,23 @@ describe('the range actions never read capture files', function (): void {
         OverviewPage::signals($c);
         $c->getSignal('graph_mode')?->setValue('filtered', broadcast: false);
         $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
-        $counts = static function (array $query) use ($c): array {
+        $width = static function (string $action, array $query) use ($c): int {
             $c->setRequestInput($query, []);
-            $c->executeAction((string) $c->getAction('set-range')?->id());
+            $c->executeAction((string) $c->getAction($action)?->id());
 
-            return [$c->getSignal('nfcapd_file_count')?->int(), $c->getSignal('nfcapd_total_bytes')?->int()];
+            return (int) $c->getSignal('dateend')?->int() - (int) $c->getSignal('datestart')?->int();
         };
 
         try {
-            expect($counts(['op' => 'preset', 'v' => '1h']))->toBe([3, 300])
-                ->and($counts(['op' => 'preset', 'v' => '24h']))->toBe([4, 400])
+            expect($width('set-range', ['op' => 'preset', 'v' => '1h']))->toBe(3600)
+                ->and($width('set-range', ['op' => 'preset', 'v' => '24h']))->toBe(86400)
+                ->and($width('set-range', ['op' => 'back']))->toBe(86400)
+            ;
+            $c->getSignal('graph_sources')?->setValue(['gw', 'nope'], broadcast: false);
+            $c->getSignal('protocol')?->setValue('udp', broadcast: false);
+            expect($width('apply-globals', []))->toBe(86400)
+                ->and($c->getSignal('graph_sources')?->array())->toBe(['gw'])
+                ->and($c->getSignal('_error')?->string())->toBe('')
                 ->and(FakeProcessor::$calls)->toBe([])
             ;
         } finally {

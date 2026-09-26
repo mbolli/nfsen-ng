@@ -134,6 +134,55 @@ function rrdSlotTotals(array $multipliers, string $protocol = 'any'): array {
     ];
 }
 
+/**
+ * Writes slots $first to $last (from $from, 300 s apart) in one rrd_update; slot i holds
+ * multiplier $multiplier(i). The first write into a fresh RRD stays unknown.
+ *
+ * @param callable(int): int $multiplier
+ */
+function rrdWriteSlotRange(Rrd $rrd, string $source, int $from, int $first, int $last, callable $multiplier): void {
+    $file = $rrd->get_data_path($source);
+    if (!file_exists($file)) {
+        $rrd->create($source);
+    }
+    $updates = [];
+    for ($i = $first; $i <= $last; ++$i) {
+        $fields = rrdSlotFields($multiplier($i));
+        $updates[] = ($from + $i * 300) . ':' . implode(':', $fields);
+    }
+    expect(rrd_update($file, ['--template', implode(':', array_keys(rrdSlotFields(1))), ...$updates]))->toBeTrue();
+}
+
+/**
+ * Totals of the slots $first to $last.
+ *
+ * @param callable(int): int $multiplier
+ *
+ * @return array<string, array{flows: float, packets: float, bytes: float}>
+ */
+function rrdRangeTotals(int $first, int $last, callable $multiplier): array {
+    $multipliers = array_map($multiplier, range($first, $last));
+
+    return array_combine(['any', 'tcp', 'udp', 'icmp', 'other'], array_map(
+        static fn (string $protocol): array => rrdSlotTotals($multipliers, $protocol),
+        ['any', 'tcp', 'udp', 'icmp', 'other'],
+    ));
+}
+
+/** An Rrd that records the --start and --end of every read. */
+function rrdRecordingReads(): Rrd {
+    return new class extends Rrd {
+        /** @var list<array{int, int}> */
+        public array $reads = [];
+
+        protected function rrdFetch(string $file, array $options): array|false {
+            $this->reads[] = [(int) $options[array_search('--start', $options, true) + 1], (int) $options[array_search('--end', $options, true) + 1]];
+
+            return parent::rrdFetch($file, $options);
+        }
+    };
+}
+
 // ── create / validateStructure ────────────────────────────────────────────────
 
 describe('Rrd file creation and structure validation', function (): void {
@@ -517,6 +566,103 @@ describe('Rrd::fetchTotals() and fetchProtocolTotals() over [start, end)', funct
 
         expect($totals['flows'])->toBe(27000.0);
         expect($totals['bytes'])->toBe(0.0);
+    });
+});
+
+// ── Stored totals over whole days (day cache) ─────────────────────────────────
+
+describe('Rrd totals over windows longer than a day', function (): void {
+    beforeEach(function (): void {
+        $this->dir = makeRrdFeatureSettings(3, ['gw']);
+        $this->rrd = rrdRecordingReads();
+        // Five days back, on a day boundary; slot i starts at base + 300 i.
+        $this->base = intdiv(time(), 86400) * 86400 - 5 * 86400;
+        $this->m = static fn (int $i): int => 1 + $i % 7;
+    });
+
+    afterEach(function (): void {
+        cleanRrdDir($this->dir);
+    });
+
+    test('whole days read once, then only the partial days at both ends', function (): void {
+        rrdWriteSlotRange($this->rrd, 'gw', $this->base, 0, 4 * 288 + 20, $this->m);
+        // From inside slot 40 to inside slot 1000: slots 41 to 1000, days 1 to 2 whole.
+        $start = $this->base + 40 * 300 + 1;
+        $end = $this->base + 1000 * 300 + 1;
+        $expected = rrdRangeTotals(41, 1000, $this->m);
+
+        expect($this->rrd->fetchProtocolTotals(['gw'], '', $start, $end))->toBe($expected);
+
+        $this->rrd->reads = [];
+        expect($this->rrd->fetchProtocolTotals(['gw'], '', $start, $end))->toBe($expected);
+        expect($this->rrd->reads)->toHaveCount(2);
+        foreach ($this->rrd->reads as [$from, $to]) {
+            expect($to - $from)->toBeLessThanOrEqual(86400);
+        }
+        expect($this->rrd->fetchTotals(['gw'], '', $start, $end, 'udp'))->toBe($expected['udp']);
+    });
+
+    test('warmTotals() reads the whole days ahead, so the first long window reads only its partial days', function (): void {
+        rrdWriteSlotRange($this->rrd, 'gw', $this->base, 0, 4 * 288 + 20, $this->m);
+        $this->rrd->warmTotals('gw');
+
+        $this->rrd->reads = [];
+        expect($this->rrd->fetchProtocolTotals(['gw'], '', $this->base + 40 * 300 + 1, $this->base + 1000 * 300 + 1))
+            ->toBe(rrdRangeTotals(41, 1000, $this->m))
+        ;
+        expect($this->rrd->reads)->toHaveCount(2);
+        foreach ($this->rrd->reads as [$from, $to]) {
+            expect($to - $from)->toBeLessThanOrEqual(86400);
+        }
+    });
+
+    test('a day not yet complete is read again once its data arrives', function (): void {
+        // Days 0 to 2 and half of day 3; the window runs to the end of day 3.
+        rrdWriteSlotRange($this->rrd, 'gw', $this->base, 0, 3 * 288 + 144, $this->m);
+        $start = $this->base + 300;
+        $end = $this->base + 4 * 86400 + 300;
+        expect($this->rrd->fetchProtocolTotals(['gw'], '', $start, $end))->toBe(rrdRangeTotals(1, 3 * 288 + 144, $this->m));
+
+        rrdWriteSlotRange($this->rrd, 'gw', $this->base, 3 * 288 + 145, 4 * 288 + 10, $this->m);
+
+        expect($this->rrd->fetchProtocolTotals(['gw'], '', $start, $end))->toBe(rrdRangeTotals(1, 4 * 288, $this->m));
+    });
+
+    test('recreating a database drops its cached days', function (): void {
+        rrdWriteSlotRange($this->rrd, 'gw', $this->base, 0, 4 * 288, $this->m);
+        $start = $this->base + 300;
+        $end = $this->base + 3 * 86400 + 300;
+        expect($this->rrd->fetchTotals(['gw'], '', $start, $end))->toBe(rrdRangeTotals(1, 3 * 288, $this->m)['any']);
+
+        $this->rrd->create('gw', 0, true);
+        $double = fn (int $i): int => 2 * ($this->m)($i);
+        rrdWriteSlotRange($this->rrd, 'gw', $this->base, 0, 4 * 288, $double);
+
+        expect($this->rrd->fetchTotals(['gw'], '', $start, $end))->toBe(rrdRangeTotals(1, 3 * 288, $double)['any']);
+    });
+
+    test('consolidated rows count pro rata at the edges, cold and from the day cache', function (): void {
+        // Only a 2-hour archive, so every read answers with 7200 s rows; 10 flows/s throughout.
+        $file = $this->rrd->get_data_path('gw');
+        mkdir(dirname($file), 0o755, true);
+        $creator = new RRDCreator($file, (string) ($this->base - 300), 300);
+        $creator->addDataSource('flows:ABSOLUTE:600:U:U');
+        $creator->addArchive('AVERAGE:0.5:24:200');
+        $creator->save();
+        $updates = array_map(fn (int $i): string => ($this->base + $i * 300) . ':3000', range(0, 5 * 288 - 1));
+        expect(rrd_update($file, $updates))->toBeTrue();
+
+        // Slots 6 to 873: rows cut at both ends, three days whole in between.
+        $start = $this->base + 1800;
+        $end = $this->base + 3 * 86400 + 3000;
+        foreach (['cold', 'cached'] as $read) {
+            $this->rrd->reads = [];
+            $totals = $this->rrd->fetchTotals(['gw'], '', $start, $end);
+
+            expect($totals['flows'])->toBe(868 * 3000.0, $read);
+            expect($totals['bytes'])->toBe(0.0);
+        }
+        expect($this->rrd->reads)->toHaveCount(2);
     });
 });
 

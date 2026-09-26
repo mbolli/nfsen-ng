@@ -297,19 +297,19 @@ describe('Table', function (): void {
             expect($result)->toContain('data-caption="Flows &lt;all&gt;"', '<caption class="visually-hidden">Flows &lt;all&gt;</caption>', 'data-export-name="flows-1-2"');
         });
 
-        test('the Original view holds nfdump\'s text escaped, without the <b> marks the processor adds', function (): void {
-            $result = Table::generate([['a' => 1]], 't', ['originalData' => "<b>Date first seen</b>\n<script>x</script>"]);
+        test('the Original view holds nfdump\'s text verbatim and escaped', function (): void {
+            $result = Table::generate([['a' => 1]], 't', ['originalData' => "Date first seen\n<script>x</script>"]);
 
             expect($result)->toContain('data-view="original"', 'aria-pressed="true" data-view="table"', '<div class="original" hidden><pre>Date first seen')
                 ->toContain('&lt;script&gt;x&lt;/script&gt;')
-                ->not->toContain('<script>', '<b>')
+                ->not->toContain('<script>')
             ;
         });
 
         test('output nfdump could not read into rows is shown escaped', function (): void {
             $result = Table::generate([], 't', ['originalData' => '<b>Summary:</b> <img src=x onerror=alert(1)>']);
 
-            expect($result)->toBe('<div id="t" class="table-raw"><pre>Summary: &lt;img src=x onerror=alert(1)&gt;</pre></div>');
+            expect($result)->toBe('<div id="t" class="table-raw"><pre>&lt;b&gt;Summary:&lt;/b&gt; &lt;img src=x onerror=alert(1)&gt;</pre></div>');
         });
 
         test('no rows is an empty state with the message escaped, not a status notice', function (): void {

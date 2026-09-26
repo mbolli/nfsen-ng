@@ -202,14 +202,6 @@ class Table {
     }
 
     /**
-     * nfdump's text as it came. Nfdump::beautifyAggregatedOutput() marks labels up with <b>
-     * for a view that printed it raw; shown as text, those tags are only noise.
-     */
-    public static function plainOutput(string $output): string {
-        return str_replace(['<b>', '</b>'], '', $output);
-    }
-
-    /**
      * Get the human-readable title for a statistics type.
      *
      * @param string $statsFor The statistics type
@@ -266,7 +258,7 @@ class Table {
         ], $options);
 
         $id = self::attr($tableId);
-        $original = self::plainOutput(\is_string($options['originalData']) ? $options['originalData'] : '');
+        $original = \is_string($options['originalData']) ? $options['originalData'] : '';
 
         if ($data === []) {
             if ($original !== '') {

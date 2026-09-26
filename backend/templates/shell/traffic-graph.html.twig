@@ -1,7 +1,7 @@
 {# The persistent traffic graph (1.8, 4.1.3): Overview's configuration on Overview, the protocol
    picker on Top Talkers and Flows, one total on Conversations. Off the analysis pages: hidden, no
    data, ignored by morphs; the chart keeps its last drawing for the way back. #}
-{% import 'shell/controls-bar.html.twig' as bar %}
+{% import 'shell/icons.html.twig' as icons %}
 {% set analysisIds = shell.pagesMeta|filter(m => m.analysis)|map(m => m.id)|json_encode %}
 {% set pg = '$' ~ page.id() %}
 {% set ds = '$' ~ datestart.id() %}
@@ -80,7 +80,7 @@
 
             <button type="button" id="rangeUndo" data-size="sm" title="Go back to the range before the last change"
                     disabled data-attr:disabled="!$_prevRange" data-preserve-attr="disabled"
-                    data-on:click="const query = window.nfsenTime.restoreQuery($_prevRange); {{ remember }}; query && @post('{{ setRange.url() }}' + query)">{{ bar.icon('undo') }} Previous range</button>
+                    data-on:click="const query = window.nfsenTime.restoreQuery($_prevRange); {{ remember }}; query && @post('{{ setRange.url() }}' + query)">{{ icons.icon('undo') }} Previous range</button>
 
             <div class="menu live-menu" id="liveMenu"
                  data-on:graph-zoom__window__debounce.500ms="evt.target.id === 'trafficGraph' && $_autoSyncGraph && evt.target.isZoomed() && ({{ remember }}, $_zoom = false, @post('{{ setRange.url() }}?op=abs&from=' + Math.floor(evt.detail.from / 1000) + '&to=' + Math.ceil(evt.detail.to / 1000)))">
@@ -108,7 +108,7 @@
 
             <button type="button" id="zoomOut" data-size="sm" title="Show twice the time around this range"
                     data-attr:disabled="{{ ds }} <= ${{ data_range_min.id() }} && {{ de }} >= ${{ data_range_max.id() }}" data-preserve-attr="disabled"
-                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=zoomout')">{{ bar.icon('zoom-out') }} Zoom out</button>
+                    data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=zoomout')">{{ icons.icon('zoom-out') }} Zoom out</button>
 
             {# Touch has no drag to spare (a swipe scrolls), so the brush waits for this (1.8). #}
             <button type="button" class="brush-toggle" id="brushToggle" data-size="sm" aria-pressed="false"

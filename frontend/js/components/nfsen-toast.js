@@ -99,7 +99,8 @@ customElements.define('nfsen-toast', NfsenToast);
 
 /**
  * Shows a toast. containerSelector: an optional target, which should carry data-ignore-morph
- * so a sync keeps it; the shell's toast stack otherwise.
+ * so a sync keeps it; else the open modal's own stack, as a modal makes the page inert; else
+ * the shell's toast stack.
  */
 window.showMessage = (type, message, autoDismiss = false, containerSelector = null) => {
     const toast = document.createElement('nfsen-toast');
@@ -107,8 +108,10 @@ window.showMessage = (type, message, autoDismiss = false, containerSelector = nu
     toast.dataset.message = String(message ?? '');
     if (autoDismiss) toast.dataset.autoDismiss = 'true';
 
+    const modal = [...document.querySelectorAll('dialog:modal')].pop();
     const container =
         (containerSelector && document.querySelector(containerSelector)) ||
+        modal?.querySelector(':scope > .toast-stack') ||
         document.getElementById('alerts-toast-container') ||
         document.body;
     container.appendChild(toast);

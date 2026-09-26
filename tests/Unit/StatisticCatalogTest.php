@@ -14,7 +14,7 @@ beforeAll(function (): void {
 describe('StatisticCatalog', function (): void {
     $bin = static fn (string $name): string => dirname(__DIR__) . '/Support/bin/' . $name;
 
-    // The order of today's statistic select in stats-filters.html.twig.
+    // The order of the statistic picker on Top Talkers (the More statistics select).
     test('lists all 58 statistics in the picker order', function (): void {
         $mpls = array_map(static fn (int $i): string => 'mpls' . $i, range(1, 10));
 

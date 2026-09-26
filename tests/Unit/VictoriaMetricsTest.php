@@ -33,8 +33,12 @@ class VictoriaMetricsTest extends VictoriaMetrics {
     /** @var null|Closure(string): string Answers by URL when set, ahead of the queue */
     public ?Closure $responder = null;
 
+    /** @var list<int> */
+    public array $capturedTimeouts = [];
+
     protected function httpGet(string $url, int $timeout = 30): string {
         $this->capturedGetUrls[] = $url;
+        $this->capturedTimeouts[] = $timeout;
 
         if ($this->responder !== null) {
             return ($this->responder)($url);
@@ -708,7 +712,9 @@ describe('VictoriaMetrics stored totals', function (): void {
             ['query' => "sum(max by (source) (sum_over_time(nfsen_packets{$selector})))", 'time' => (string) ($this->end - 1)],
             ['query' => "sum(max by (source) (sum_over_time(nfsen_bytes{$selector})))", 'time' => (string) ($this->end - 1)],
         ]);
-        expect(parse_url($this->vm->capturedGetUrls[0], PHP_URL_PATH))->toBe('/api/v1/query');
+        expect(parse_url($this->vm->capturedGetUrls[0], PHP_URL_PATH))->toBe('/api/v1/query')
+            ->and($this->vm->capturedTimeouts)->toBe(array_fill(0, 3, VictoriaMetrics::TOTALS_TIMEOUT))
+        ;
     });
 
     test('returns the value of each metric', function (): void {
@@ -753,9 +759,20 @@ describe('VictoriaMetrics stored totals', function (): void {
         $this->vm->fetchTotals(['gw'], '', $this->start, $this->end, 'sctp');
     })->throws(InvalidArgumentException::class, 'sctp');
 
-    test('an unreachable VictoriaMetrics answers zero', function (): void {
+    test('an unreachable VictoriaMetrics throws after one query instead of answering zero', function (): void {
         $this->vm->responder = static fn (string $url): string => throw new Exception('connection refused');
 
+        expect(fn () => $this->vm->fetchProtocolTotals(['gw'], '', $this->start, $this->end))
+            ->toThrow(RuntimeException::class, 'VictoriaMetrics did not answer: connection refused')
+            ->and($this->vm->capturedGetUrls)->toHaveCount(1)
+        ;
+    });
+
+    test('an error answer throws; a window without samples is zero', function (): void {
+        $this->vm->nextGetResponse = '{"status":"error","error":"bad query"}';
+        expect(fn () => $this->vm->fetchTotals(['gw'], '', $this->start, $this->end))->toThrow(RuntimeException::class, 'without a result');
+
+        $this->vm->nextGetResponse = '{"status":"success","data":{"result":[]}}';
         expect($this->vm->fetchTotals(['gw'], '', $this->start, $this->end))->toBe(['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0]);
     });
 

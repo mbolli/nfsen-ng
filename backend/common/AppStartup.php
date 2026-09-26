@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\common;
 
+use mbolli\nfsen_ng\datasources\Rrd;
 use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\StoreUnavailableException;
 use Mbolli\PhpVia\Via;
@@ -56,6 +57,21 @@ class AppStartup {
             $debug->log('Alerts: alerts-log.json was not migrated, retrying on the next start: ' . $e->getMessage(), LOG_WARNING);
         }
 
+        // The first long range after a start then reads only its partial days.
+        Coroutine::create(static function () use ($debug): void {
+            if (!Config::$db instanceof Rrd) {
+                return;
+            }
+            foreach (Config::$settings->sources as $source) {
+                try {
+                    Config::$db->warmTotals($source);
+                } catch (\Throwable $e) {
+                    $debug->log("Stored totals of {$source} not read ahead: " . $e->getMessage(), LOG_WARNING);
+                }
+                Coroutine::usleep(1000);
+            }
+        });
+
         if ((bool) EnvRegistry::value('NFSEN_SKIP_DAEMON')) {
             $debug->log('ImportDaemon skipped (NFSEN_SKIP_DAEMON)', LOG_INFO);
             $app->setGlobalState('daemon_disabled', true);
@@ -90,13 +106,9 @@ class AppStartup {
             $debug->log('TopN collector off: ' . $e->getMessage(), LOG_ERR);
         }
 
-        // Startup import logic: only runs a gap fill when the database already has
-        // data. A fresh install skips the import entirely so the user can configure
-        // and trigger "Initial Import" manually from the Admin panel.
-        //
-        // NFSEN_SKIP_INITIAL_IMPORT=true  → always skip; only set up inotify watches.
-        // Existing data (any source last_update > 0) → gap fill (catch up missed files).
-        // No data at all                  → skip; user must run Initial Import manually.
+        // Startup import: a gap fill only when the store already has data. A fresh install
+        // imports nothing until someone presses Trigger in the Health page's Import card.
+        // NFSEN_SKIP_INITIAL_IMPORT=true skips the gap fill and only sets up the watches.
         Coroutine::create(function () use ($app, $daemons, $debug): void {
             /** @var array<string, ImportDaemon> $daemons */
             /** Append new Debug WARNING+ entries to the global log state. */
@@ -118,8 +130,7 @@ class AppStartup {
                 return;
             }
 
-            // Detect which profiles already have data; profiles with no data are skipped
-            // (fresh install for that profile; user triggers Initial Import manually).
+            // Profiles without data are skipped (a fresh install for that profile).
             $daemonsToRun = [];
             foreach ($daemons as $profile => $daemon) {
                 $hasData = false;
@@ -133,7 +144,7 @@ class AppStartup {
                 if ($hasData) {
                     $daemonsToRun[$profile] = $daemon;
                 } else {
-                    $debug->log("ImportDaemon [{$profile}]: no existing data, startup gap-fill skipped; use Admin panel to run Initial Import", LOG_INFO);
+                    $debug->log("ImportDaemon [{$profile}]: no existing data, startup gap-fill skipped; press Trigger on the Health page to import", LOG_INFO);
                     $daemon->setupWatchesOnly();
                 }
             }
@@ -171,7 +182,9 @@ class AppStartup {
                     $app->setGlobalState('import_eta', '');
                 } catch (\Throwable $e) {
                     $debug->log("ImportDaemon [{$profile}]: catch-up import failed: " . $e->getMessage(), LOG_ERR);
+                    $flushLog();
                     $app->setGlobalState('import_status_text', "[{$profile}] Catch-up failed: " . $e->getMessage());
+                    $app->setGlobalState(ImportDaemon::OUTCOME_STATE, 'failed');
                 }
 
                 if (!empty($app->getClients())) {

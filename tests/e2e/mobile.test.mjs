@@ -66,14 +66,15 @@ export default async function mobileTest() {
         await page.waitForPage('flows');
         assert.ok(await page.isMobile(), 'the phone layout is active at 390 px');
 
-        // The tab bar replaces the sidebar. Conversations reads "Pairs" and is titled in full.
+        // The tab bar replaces the sidebar; every tab says its page's name in full, and fits.
         const bar = await page.evaluate(`(function(){
                 var items = [...document.querySelectorAll('.tabbar > .tabbar-item, .tabbar > .menu > .tabbar-item')];
                 return {
                     tabbar: ${visible('.tabbar')},
                     sidebar: ${visible('.sidebar')},
                     labels: items.map(function(i){ return i.querySelector(':scope > span')?.textContent.trim(); }),
-                    pairs: (function(){ var a = document.querySelector('.tabbar a[href="#/conversations"]'); return a && [a.title, a.textContent.trim().split(/\\s+/)[0]]; })(),
+                    conversations: (function(){ var a = document.querySelector('.tabbar a[href="#/conversations"]'); return a && [a.title, a.textContent.trim().split(/\\s+/)[0]]; })(),
+                    clipped: items.map(function(i){ return i.querySelector(':scope > span'); }).filter(function(s){ return s.scrollWidth > s.clientWidth + 1; }).length,
                     current: document.querySelector('.tabbar a[aria-current="page"]')?.getAttribute('href'),
                     brand: ${visible('.app-brand')},
                 };
@@ -81,11 +82,20 @@ export default async function mobileTest() {
         assert.deepEqual(bar, {
             tabbar: true,
             sidebar: false,
-            labels: ['Overview', 'Flows', 'Pairs', 'Alerts', 'More'],
-            pairs: ['Conversations', 'Pairs'],
+            labels: ['Overview', 'Flows', 'Conversations', 'Alerts', 'More'],
+            conversations: ['Conversations', 'Conversations'],
+            clipped: 0,
             current: '#/flows',
             brand: true,
         });
+        // Its semibold current state still fits a fifth of the bar.
+        await page.gotoPage('conversations');
+        const current = await page.evaluate(`(function(){
+                var s = document.querySelector('.tabbar a[href="#/conversations"] > span');
+                return { current: s.parentElement.getAttribute('aria-current'), fits: s.scrollWidth <= s.clientWidth + 1 };
+            })()`);
+        assert.deepEqual(current, { current: 'page', fits: true }, 'the current Conversations tab fits');
+        await page.gotoPage('flows');
 
         // More: the remaining pages and the theme, no profile select; Escape closes it and
         // gives the focus back to its toggle.
@@ -152,7 +162,7 @@ export default async function mobileTest() {
         await page.waitFor(`!${fields('flows')}`, { label: 'the Flows fields to fold again' });
 
         // A vertical swipe scrolls the page. On the graph it keeps the range, and with the 1.8
-        // touch contract (#brushToggle, WP-OV) it scrolls the page there too.
+        // touch contract (#brushToggle) it scrolls the page there too.
         const at = (selector) =>
             page.evaluate(`(function(){
                     var r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
@@ -166,7 +176,7 @@ export default async function mobileTest() {
 
         await page.evaluate(`window.scrollTo(0, 0)`);
         await sleep(300);
-        const range = async () => [await page.signalValue('datestart'), await page.signalValue('dateend')];
+        const range = async () => Object.values(await page.signalValues(['datestart', 'dateend']));
         const [start, end] = await range();
         await swipe(page, await at('#trafficGraph'), 240);
         const [start2, end2] = await range();
@@ -177,7 +187,9 @@ export default async function mobileTest() {
         assert.equal(await page.evaluate(visible('#brushToggle')), true, '#brushToggle is visible on a phone');
         const onGraph = await page.evaluate('window.scrollY');
         assert.ok(onGraph > 50, `a vertical swipe on the graph scrolls the page (scrollY ${onGraph})`);
-        const graphHeight = await page.evaluate(`document.querySelector('#trafficGraph .chart-canvas').getBoundingClientRect().height / parseFloat(getComputedStyle(document.documentElement).fontSize)`);
+        const graphHeight = await page.evaluate(
+            `document.querySelector('#trafficGraph .chart-canvas').getBoundingClientRect().height / parseFloat(getComputedStyle(document.documentElement).fontSize)`
+        );
         assert.ok(Math.abs(graphHeight - 13) < 0.5, `the phone graph is about 13rem tall (${graphHeight.toFixed(2)}rem)`);
 
         // Nothing is wider than the phone, on any page, with results on the pages that hold them.
@@ -232,10 +244,7 @@ export default async function mobileTest() {
             await page.waitForBoot();
             assert.deepEqual(await sidebar(), ['expanded', 'false'], 'a stored choice beats the tablet default');
             await page.evaluate(`localStorage.removeItem(${KEY})`);
-            // The emulated resize may abort a running chart transition, whose rejection nfsen-chart.js leaves unhandled.
-            const tablet = page.errors
-                .slice(seen)
-                .filter((e) => !isBenignError(e) && !/Transition was aborted because of invalid state/.test(e));
+            const tablet = page.errors.slice(seen).filter((e) => !isBenignError(e));
             assert.deepEqual(tablet, [], `expected no console errors at 900 px, got:\n${tablet.join('\n')}`);
         },
         { width: 1280, height: 900 }

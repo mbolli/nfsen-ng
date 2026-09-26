@@ -243,6 +243,19 @@ describe('queries', function (): void {
         ;
     });
 
+    test('a statement whose execution failed leaves the cache, and the same SQL works again', function (): void {
+        $db = Database::open(':memory:');
+        $db->exec('CREATE TABLE t (id INTEGER PRIMARY KEY)');
+        $cache = new ReflectionProperty(Database::class, 'statements');
+        $db->exec('INSERT INTO t (id) VALUES (?)', [1]);
+
+        expect(fn () => $db->exec('INSERT INTO t (id) VALUES (?)', [1]))->toThrow(PDOException::class)
+            ->and($cache->getValue($db))->not->toHaveKey('INSERT INTO t (id) VALUES (?)')
+            ->and($db->exec('INSERT INTO t (id) VALUES (?)', [2]))->toBe(1)
+            ->and($db->value('SELECT COUNT(*) FROM t'))->toBe(2)
+        ;
+    });
+
     test('a cached statement does not keep the bindings of an earlier call', function (): void {
         $db = Database::open(':memory:');
 

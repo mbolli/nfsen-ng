@@ -47,11 +47,11 @@ final class FlowActions {
     /** Listings above this many rows run one at a time per worker. */
     public const int LARGE_ROWS = 1000;
 
-    /** Heap a json row costs while nfdump's answer is parsed (measured): its text and lines take new memory... */
-    public const int TEXT_BYTES_PER_ROW = 3072;
+    /** Heap a json row costs while nfdump's answer is parsed: about 650 B of text, read into a growing buffer... */
+    public const int TEXT_BYTES_PER_ROW = 1536;
 
-    /** ...and the decoded record fills free pages first. */
-    public const int RECORD_BYTES_PER_ROW = 5632;
+    /** ...and the decoded record (2.8 KiB measured with nfdump 1.7.8), which fills free pages first. */
+    public const int RECORD_BYTES_PER_ROW = 3584;
 
     /** Left free for the rest of the worker while a large listing is parsed. */
     public const int MEMORY_MARGIN = 10 * 1024 * 1024;
@@ -386,7 +386,7 @@ final class FlowActions {
             'limit' => $limit,
             'command' => $result->command,
             'notes' => $result->notes,
-            'rawOutput' => \is_string($result->rawOutput) ? Table::plainOutput($result->rawOutput) : '',
+            'rawOutput' => \is_string($result->rawOutput) ? $result->rawOutput : '',
             'elapsed' => $elapsed,
             'returnedSummary' => $summary,
             'rangeSummary' => $run['rangeSummary'] ?? null,

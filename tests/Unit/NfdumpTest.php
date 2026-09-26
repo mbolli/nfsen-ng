@@ -846,6 +846,21 @@ describe('Nfdump::execute()', function (): void {
         ])->and($result['notes'][0])->toStartWith('Execution time: ');
     });
 
+    test('a JSON listing without its closing bracket still decodes, and broken JSON is an error', function (): void {
+        $result = runCannedNfdump("[\n{\"src4_addr\" : \"10.0.0.1\", \"proto\" : 6}\n", options: ['-o' => 'json']);
+        expect($result['decoded'])->toBe([['src_addr' => '10.0.0.1', 'proto' => 6]]);
+
+        expect(fn () => runCannedNfdump("[\n{\"src4_addr\" : \n]\n", options: ['-o' => 'json']))
+            ->toThrow(NfdumpException::class, 'Invalid JSON from nfdump')
+        ;
+    });
+
+    test('the usage text is no result, and an error when nfdump failed', function (): void {
+        expect(runCannedNfdump("usage nfdump [options] [\"filter\"]\n-h this text\n")['decoded'])->toBe([])
+            ->and(fn () => runCannedNfdump("usage nfdump [options]\n", "bad option\n", 1))->toThrow(NfdumpException::class, 'bad option')
+        ;
+    });
+
     test('an empty JSON listing is an empty result with a note', function (): void {
         $result = runCannedNfdump("[\nNo matching flows\n\n]\n", options: ['-o' => 'json']);
 

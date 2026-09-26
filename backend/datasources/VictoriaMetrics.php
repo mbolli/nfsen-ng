@@ -16,6 +16,9 @@ use mbolli\nfsen_ng\common\HealthChecker;
  * @phpstan-import-type ProtocolTotals from TotalsProvider
  */
 class VictoriaMetrics implements Datasource, TotalsProvider {
+    /** Seconds per stored-totals query: a KPI or a Summary waits on up to 15 of them in a row. */
+    public const int TOTALS_TIMEOUT = 5;
+
     private readonly Debug $d;
     private readonly string $writeUrl;
     private readonly string $queryUrl;
@@ -299,7 +302,7 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
                     if ($lastUpdate === 0) {
                         $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
                             'status' => 'warning', 'detail' => 'No data yet', 'group' => $group,
-                            'code' => false, 'hint' => 'Go to Admin → click "Initial Import" to populate the database', 'epoch' => 0];
+                            'code' => false, 'hint' => 'Open Health and press Trigger in the Import card to import the capture files', 'epoch' => 0];
                     } else {
                         $age = time() - $lastUpdate;
                         $status = $age > 3600 ? 'warning' : 'ok';
@@ -398,7 +401,7 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
 
         foreach (array_keys($totals) as $metric) {
             $metricName = $this->buildMetricName($metric, $proto);
-            $totals[$metric] = $this->queryInstantScalar(self::sumPerSource("sum_over_time({$metricName}{$selector}[{$window}s])"), $end - 1);
+            $totals[$metric] = $this->queryTotal(self::sumPerSource("sum_over_time({$metricName}{$selector}[{$window}s])"), $end - 1);
         }
 
         return $totals;
@@ -636,6 +639,27 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
         }
 
         return $output;
+    }
+
+    /**
+     * One stored total: 0.0 when no sample lies in the window, an exception when the store did
+     * not answer, so a KPI never shows zero traffic for an outage.
+     *
+     * @throws \RuntimeException
+     */
+    private function queryTotal(string $promql, int $time): float {
+        $url = str_replace('query_range', 'query', $this->queryUrl) . '?' . http_build_query(['query' => $promql, 'time' => $time]);
+
+        try {
+            $data = json_decode($this->httpGet($url, self::TOTALS_TIMEOUT), true);
+        } catch (\Throwable $e) {
+            throw new \RuntimeException('VictoriaMetrics did not answer: ' . $e->getMessage(), 0, $e);
+        }
+        if (!\is_array($data) || !\is_array($data['data']['result'] ?? null)) {
+            throw new \RuntimeException('VictoriaMetrics answered without a result.');
+        }
+
+        return is_numeric($data['data']['result'][0]['value'][1] ?? null) ? (float) $data['data']['result'][0]['value'][1] : 0.0;
     }
 
     /**

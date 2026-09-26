@@ -107,6 +107,8 @@ async function walkHealth(page) {
     await page.gotoPage('health');
     // Gone after a reload, which tells a dev-app restart apart from a real failure.
     await page.evaluate(`window.__healthRun = true`);
+    // The first open after a start renders before the checks and metrics land.
+    await page.waitFor(`!document.querySelector('#page-health .health[aria-busy]')`, { timeout: 15000, label: 'the first health refresh' });
 
     // The cards of 2.7.9.
     for (const id of ['healthImport', 'healthSources', 'healthDisks', 'healthSystem', 'healthChecks', 'healthLog']) {
@@ -163,9 +165,9 @@ async function walkHealth(page) {
         assert.ok(system.includes(fact), `the system card shows ${fact}`);
     }
 
-    // The checks keep their colgroup group rows, now with the SQLite group.
+    // Each group of checks is a tbody headed by a rowgroup header, the SQLite group among them.
     const groups = await page.evaluate(
-        `[...document.querySelectorAll('#healthChecks tr.row-group > th[colspan="2"][scope="colgroup"]')].map((th) => th.textContent.trim())`
+        `[...document.querySelectorAll('#healthChecks tbody > tr.row-group:first-child > th[colspan="2"][scope="rowgroup"]')].map((th) => th.textContent.trim())`
     );
     assert.ok(groups.includes('Storage (SQLite)'), `the checks have the Storage (SQLite) group, got ${groups.join(', ')}`);
     const sqliteRows = await page.evaluate(`(() => {

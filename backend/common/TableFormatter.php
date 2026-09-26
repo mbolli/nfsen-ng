@@ -313,7 +313,7 @@ class TableFormatter {
     }
 
     /**
-     * Format bytes with appropriate unit (B, KB, MB, GB, TB).
+     * Format bytes with a binary unit (B, KiB, MiB, GiB, TiB, PiB).
      *
      * @param mixed $value
      */
@@ -323,7 +323,8 @@ class TableFormatter {
         }
 
         $bytes = (float) $value;
-        $units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+        // Powers of 1024, so binary prefixes: the charts, Sankey and Matrix print the same.
+        $units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
 
         if ($bytes <= 0) {
             return '0 B';

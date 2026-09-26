@@ -488,7 +488,7 @@ describe('range totals from the stored series', function (): void {
 
         expect(array_column($view['protocols'] ?? [], 'name'))->toBe(['All protocols', 'TCP', 'UDP', 'ICMP', 'Other'])
             ->and(array_column($view['protocols'] ?? [], 'series'))->toBe([null, 1, 2, 3, 4])
-            ->and($view['protocols'][0]['bytes'] ?? '')->toBe('2.000 KB')
+            ->and($view['protocols'][0]['bytes'] ?? '')->toBe('2.000 KiB')
         ;
     });
 });

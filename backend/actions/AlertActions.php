@@ -12,6 +12,7 @@ use mbolli\nfsen_ng\common\UserPreferences;
 use mbolli\nfsen_ng\pages\AlertsPage;
 use mbolli\nfsen_ng\pages\PageStates;
 use mbolli\nfsen_ng\pages\QueryKit;
+use mbolli\nfsen_ng\pages\Shell;
 use mbolli\nfsen_ng\processor\FilterValidator;
 use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
@@ -178,11 +179,7 @@ final class AlertActions {
                 return;
             }
 
-            // The shell's modal root (D24): kept in the tab's state, so a re-render keeps the dialog.
-            $html = $c->render('pages/alert-test-result.html.twig', ['view' => $view]);
-            $states->shell->modalHtml = $html;
-            $c->getPatchManager()->queuePatch(['type' => 'elements', 'content' => $html, 'selector' => '#modal-root', 'mode' => 'inner']);
-            $c->execScript("(() => { const d = document.getElementById('alertTestResult'); if (d && !d.open) d.showModal(); })()");
+            Shell::openModal($c, $states->shell, $c->render('pages/alert-test-result.html.twig', ['view' => $view]), 'alertTestResult');
             $c->sync();
             // The test event belongs in every tab's Recent alerts.
             self::broadcast($app, 'alerts:fired');

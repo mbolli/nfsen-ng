@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\pages;
 
-use mbolli\nfsen_ng\actions\Helpers;
 use mbolli\nfsen_ng\actions\ShellActions;
 use mbolli\nfsen_ng\actions\UtilityActions;
 use mbolli\nfsen_ng\common\AlertManager;
@@ -20,9 +19,6 @@ use Mbolli\PhpVia\Via;
  * built from the shell, its modules and the pages.
  */
 final class Shell {
-    /** Key under which a page or module returns top-level keys the old partials still read. */
-    public const string LEGACY = 'legacy';
-
     /** App-global cache of the footer's capture status, per profile. */
     public const string STATUS_CACHE = 'status_cache';
 
@@ -58,12 +54,6 @@ final class Shell {
         $c->signal('', 'query_eta');
         $c->signal(true, 'query_exact');
         $c->signal('', 'query_kind');
-
-        // Files and bytes a capture-reading query would cover, and the inputs they were
-        // measured for, so an unchanged selection skips the scan.
-        $c->signal(0, 'nfcapd_file_count');
-        $c->signal(0, 'nfcapd_total_bytes');
-        $c->signal('', 'nfcapd_measured');
     }
 
     public static function register(Context $c, Via $app, PageStates $states): void {
@@ -72,7 +62,7 @@ final class Shell {
     }
 
     /**
-     * The render array of 1.5, plus the top-level keys the old partials still read.
+     * The render array of 1.5.
      *
      * @return array<string, mixed>
      */
@@ -84,10 +74,6 @@ final class Shell {
         $activePage = self::activePage($c);
         $now = time();
 
-        // The first render shows the file count before anyone touches a control.
-        if (!$fatal && !$isUpdate) {
-            self::measureFiles($c);
-        }
         self::alertToast($c, $app, $states->shell, $now);
 
         $sources = $fatal ? [] : self::captureSources($app, self::profile($c), $now);
@@ -131,23 +117,8 @@ final class Shell {
             ],
         ];
 
-        // Top-level keys the old partials inside the page templates still read (1.5).
-        $legacy = [
-            'sources' => Config::$settings->sources,
-            'ports' => Config::$settings->ports,
-            'filters' => Config::$settings->filters,
-            // The Rescan confirmation on Health names the datasource.
-            'deployDatasource' => Config::$settings->datasourceName,
-            'importProgress' => $app->globalState('import_progress', 0),
-            'importCurrentFile' => $app->globalState('import_current_file', ''),
-            'importStatusText' => $app->globalState('import_status_text', ''),
-            'importEta' => $app->globalState('import_eta', ''),
-        ];
-
         foreach (PageRegistry::MODULES as $module) {
-            $moduleData = $module::viewData($c, $app, $states, $isUpdate, $activePage);
-            $legacy = [...$legacy, ...self::liftLegacy($moduleData)];
-            $data[self::MODULE_KEYS[$module]] = $moduleData;
+            $data[self::MODULE_KEYS[$module]] = $module::viewData($c, $app, $states, $isUpdate, $activePage);
         }
 
         $pages = [];
@@ -155,12 +126,10 @@ final class Shell {
             $id = $page::id();
             $active = $id === $activePage;
             $pageData = !PageRegistry::lazy() || $active ? $page::viewData($c, $app, $states, $isUpdate) : [];
-            $legacy = [...$legacy, ...self::liftLegacy($pageData)];
             $pages[$id] = ['active' => $active, ...$pageData];
         }
         $data['pages'] = $pages;
-        // After the pages: an open Health page has just refreshed the shared checks.
-        $data['shell']['healthLevel'] = HealthPage::level($app, $now);
+        $data['shell']['healthLevel'] = HealthPage::level($app, $now, $c);
         $data['shell']['healthIssues'] = self::healthIssues($app, $data['shell']['healthLevel'], $now);
 
         // Without lazy rendering every page's content is in the document on every render.
@@ -170,7 +139,7 @@ final class Shell {
 
         Revival::persist($c, $app, $states);
 
-        return [...$legacy, ...$data];
+        return $data;
     }
 
     /** The page bare `/` opens: the default view preference, as a page id. */
@@ -225,21 +194,6 @@ final class Shell {
         return $app->globalState('_fatalError', null) !== null;
     }
 
-    /**
-     * Moves the legacy keys out of a module's or page's data.
-     *
-     * @param array<string, mixed> $data
-     *
-     * @return array<string, mixed>
-     */
-    private static function liftLegacy(array &$data): array {
-        $legacy = $data[self::LEGACY] ?? [];
-        unset($data[self::LEGACY]);
-
-        /** @var array<string, mixed> */
-        return \is_array($legacy) ? $legacy : [];
-    }
-
     /** Mirrors the daemons' import locks into import_running for every tab a broadcast reaches. */
     private static function syncImportRunning(Context $c, Via $app): bool {
         /** @var array<string, ImportDaemon> $daemons */
@@ -248,25 +202,6 @@ final class Shell {
         $c->getSignal('import_running')?->setValue($importing, broadcast: false);
 
         return $importing;
-    }
-
-    private static function measureFiles(Context $c): void {
-        $datestart = $c->getSignal('datestart');
-        $dateend = $c->getSignal('dateend');
-        $graphSources = $c->getSignal('graph_sources');
-        $graphMode = $c->getSignal('graph_mode');
-        if ($datestart === null || $dateend === null || $graphSources === null) {
-            return;
-        }
-
-        Helpers::measureNfcapdFiles(
-            $c,
-            $datestart->int(),
-            $dateend->int(),
-            Helpers::resolveSources($graphSources->array()),
-            self::profile($c),
-            $graphMode?->string() === 'filtered',
-        );
     }
 
     private static function profile(Context $c): string {

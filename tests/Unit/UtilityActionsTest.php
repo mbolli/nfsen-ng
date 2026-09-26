@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use mbolli\nfsen_ng\actions\UtilityActions;
+use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\IpLookup;
+use mbolli\nfsen_ng\common\Settings;
 
 describe('UtilityActions::hostnameFor()', function (): void {
     test('does not call the resolver when reverse DNS is off', function (): void {
@@ -39,5 +42,40 @@ describe('UtilityActions::hostnameFor()', function (): void {
         expect(UtilityActions::hostnameFor('198.51.100.7', true, fn (string $ip): string => UtilityActions::HOSTNAME_UNRESOLVED))
             ->toBe('could not be resolved')
         ;
+    });
+});
+
+describe('UtilityActions::geoSource()', function (): void {
+    test('names the local database for a MaxMind answer and the host of the web service otherwise', function (): void {
+        expect(UtilityActions::geoSource(['source' => IpLookup::SOURCE_MAXMIND], 'https://ipapi.co/203.0.113.9/json/'))->toBe('MaxMind database')
+            ->and(UtilityActions::geoSource(['country' => 'CH'], 'https://ipapi.co/203.0.113.9/json/'))->toBe('ipapi.co')
+            ->and(UtilityActions::geoSource(['country' => 'CH'], 'not a url'))->toBe('geolocation service')
+        ;
+    });
+});
+
+describe('UtilityActions::ipInfoView()', function (): void {
+    test('a private address with reverse DNS off has no hostname, no geolocation and no network call', function (): void {
+        $settings = new ReflectionProperty(Config::class, 'settings');
+        $before = $settings->isInitialized() ? Config::$settings : null;
+        Config::$settings = Settings::fromArray(['general' => ['sources' => ['gw']]])->withRdnsEnabled(false);
+
+        try {
+            $view = UtilityActions::ipInfoView('192.168.1.10');
+        } finally {
+            if ($before !== null) {
+                Config::$settings = $before;
+            }
+        }
+
+        expect($view)->toMatchArray([
+            'ip' => '192.168.1.10',
+            'hostname' => UtilityActions::HOSTNAME_RDNS_DISABLED,
+            'hostnameFound' => false,
+            'isPrivate' => true,
+            'netboxData' => [],
+            'geoData' => [],
+            'geoSource' => '',
+        ]);
     });
 });

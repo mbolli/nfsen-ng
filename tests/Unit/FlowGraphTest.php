@@ -125,11 +125,4 @@ describe('FlowGraphActions::cost()', function (): void {
 
         expect(FlowGraphActions::cost($this->c))->toMatchArray(['files' => 0, 'bytes' => '', 'estimated' => false]);
     });
-
-    test('ignores the old nfcapd counters', function (): void {
-        $this->c->signal(99, 'nfcapd_file_count');
-        $this->c->signal(99_999, 'nfcapd_total_bytes');
-
-        expect(FlowGraphActions::cost($this->c))->toMatchArray(['files' => 0, 'estimated' => false]);
-    });
 });

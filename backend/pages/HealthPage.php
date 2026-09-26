@@ -19,6 +19,7 @@ use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\StoreUnavailableException;
 use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
+use OpenSwoole\Coroutine;
 
 /**
  * Health (was Settings > Health and Import): import controls, capture sources, disks, this
@@ -28,6 +29,7 @@ use Mbolli\PhpVia\Via;
  * @phpstan-import-type DaemonInfo from HealthChecker
  * @phpstan-import-type SourceHealth from HealthMetrics
  * @phpstan-import-type DiskUsage from HealthMetrics
+ * @phpstan-import-type StoreFacts from Database
  *
  * @phpstan-type Metrics array{ts: int, sources: list<SourceHealth>, disks: list<DiskUsage>, versions: array{php: string, openswoole: string, sqlite: string, nfdump: string}, journalMode: string}
  * @phpstan-type HealthCache array{ts: int, checks: list<HealthCheck>, level: string, metrics: null|Metrics}
@@ -45,12 +47,18 @@ final class HealthPage implements Page {
     /** App-global result of the last "Collect missing top-N now": {ts, queued, error}. */
     public const string TOPN_FILL = 'topn_fill';
 
-    /** App-global outcome of the last import pass started here: complete, cancelled or failed. */
-    public const string IMPORT_OUTCOME = 'import_outcome';
+    /** App-global outcome of the last import pass: complete, cancelled or failed. */
+    public const string IMPORT_OUTCOME = ImportDaemon::OUTCOME_STATE;
 
     public const int LOG_LINES = 200;
 
     public const int IMPORT_LOG_LINES = 100;
+
+    /** Whether a refresh coroutine is running, so concurrent renders start only one. */
+    private static bool $refreshing = false;
+
+    /** @var array<string, Context> tabs that saw a stale cache, re-rendered when the refresh lands */
+    private static array $waiting = [];
 
     public static function id(): string {
         return 'health';
@@ -93,7 +101,7 @@ final class HealthPage implements Page {
     public static function viewData(Context $c, Via $app, PageStates $states, bool $isUpdate): array {
         $now = time();
         $fatal = Shell::fatal($app);
-        $cache = $fatal ? null : self::refreshed($app, true, $now);
+        $cache = $fatal ? null : self::cached($app, true, $now, $c);
         $metrics = $cache['metrics'] ?? null;
         $checks = $cache['checks'] ?? [];
         $sources = $metrics['sources'] ?? [];
@@ -101,6 +109,8 @@ final class HealthPage implements Page {
         return [
             'level' => $cache['level'] ?? 'unknown',
             'fatal' => $fatal,
+            // The first refresh after a start or an import pass has not landed yet.
+            'pending' => !$fatal && ($cache === null || $metrics === null),
             'datasource' => Config::$settings->datasourceName,
             'checks' => $checks,
             'counts' => [
@@ -127,13 +137,25 @@ final class HealthPage implements Page {
      *
      * @return list<HealthCheck>
      */
-    public static function checks(Via $app, bool $active, int $now): array {
-        return self::refreshed($app, $active, $now)['checks'];
+    public static function checks(Via $app, bool $active, int $now, ?Context $c = null): array {
+        return self::cached($app, $active, $now, $c)['checks'] ?? [];
     }
 
-    /** 'ok', 'warning' or 'error' for the sidebar; 'unknown' when the configuration failed to load. */
-    public static function level(Via $app, int $now): string {
-        return Shell::fatal($app) ? 'unknown' : self::refreshed($app, false, $now)['level'];
+    /** 'ok', 'warning' or 'error' for the sidebar; 'unknown' until the first check or when the configuration failed to load. */
+    public static function level(Via $app, int $now, ?Context $c = null): string {
+        return Shell::fatal($app) ? 'unknown' : self::cached($app, false, $now, $c)['level'] ?? 'unknown';
+    }
+
+    /** Marks the checks and metrics due, keeping them on screen until the refresh lands. */
+    public static function invalidate(Via $app): void {
+        $cache = self::stored($app);
+        if ($cache !== null) {
+            $app->setGlobalState(self::CACHE, [
+                ...$cache,
+                'ts' => 0,
+                'metrics' => $cache['metrics'] === null ? null : [...$cache['metrics'], 'ts' => 0],
+            ]);
+        }
     }
 
     /** @param list<HealthCheck> $checks */
@@ -184,10 +206,14 @@ final class HealthPage implements Page {
         }
 
         try {
-            return Database::shared()->isReadOnly() ? 'Off: the SQLite store is read-only.' : '';
+            if (Database::shared()->isReadOnly()) {
+                return 'Off: the SQLite store is read-only.';
+            }
         } catch (StoreUnavailableException $e) {
             return 'Off: ' . $e->reason . '.';
         }
+
+        return TopNCollector::booted() ? '' : 'Off: the collector did not start, see the log.';
     }
 
     /** Log levels as the level filter groups them: error (and worse), warning, or the level's own name. */
@@ -245,7 +271,7 @@ final class HealthPage implements Page {
             ),
             'logTotal' => \count($log),
             'logErrors' => \count($errors),
-            // Neutral unless a pass started here completed: the daemon's catch-up sets no outcome.
+            // Neutral unless a pass completed or failed; a catch-up that succeeded sets no outcome.
             'outcomeLevel' => match (true) {
                 $outcome === 'failed' => 'error',
                 $outcome !== 'complete' => '',
@@ -323,44 +349,100 @@ final class HealthPage implements Page {
     }
 
     /**
-     * The checks refresh after CACHE_TTL while Health is open and IDLE_TTL otherwise; the
-     * metrics only while it is open.
+     * The shared cache as a render reads it. The checks are due after CACHE_TTL while Health
+     * is open and IDLE_TTL otherwise, the metrics only while it is open. A due part is
+     * recomputed in one coroutine, so its file scans never hold up a render, and the tabs
+     * that asked are re-rendered when it lands. Outside a coroutine (tests) it runs inline.
      *
-     * @return HealthCache
+     * @return null|HealthCache
      */
-    private static function refreshed(Via $app, bool $active, int $now): array {
-        $stored = $app->globalState(self::CACHE, null);
-
-        /** @var null|HealthCache $cache */
-        $cache = \is_array($stored) && \is_int($stored['ts'] ?? null) && \is_array($stored['checks'] ?? null) && \is_string($stored['level'] ?? null)
-            ? [...$stored, 'metrics' => \is_array($stored['metrics'] ?? null) ? $stored['metrics'] : null]
-            : null;
-        $changed = false;
-
-        if ($cache === null || $now - $cache['ts'] >= ($active ? self::CACHE_TTL : self::IDLE_TTL)) {
-            $checks = HealthChecker::run((bool) $app->globalState('daemon_disabled', false), self::daemonsInfo($app));
-            $cache = ['ts' => $now, 'checks' => $checks, 'level' => self::levelOf($checks), 'metrics' => $cache['metrics'] ?? null];
-            $changed = true;
+    private static function cached(Via $app, bool $active, int $now, ?Context $c): ?array {
+        $cache = self::stored($app);
+        $checksDue = $cache === null || $now - $cache['ts'] >= ($active ? self::CACHE_TTL : self::IDLE_TTL);
+        $metricsDue = $active && ($cache === null || $cache['metrics'] === null || $now - $cache['metrics']['ts'] >= self::CACHE_TTL);
+        if (!$checksDue && !$metricsDue) {
+            return $cache;
         }
 
-        if ($active && ($cache['metrics'] === null || $now - $cache['metrics']['ts'] >= self::CACHE_TTL)) {
-            $cache['metrics'] = self::metrics($now);
-            $changed = true;
+        if (Coroutine::getCid() <= 0) {
+            return self::refresh($app, $checksDue, $metricsDue, $now);
         }
 
-        if ($changed) {
-            $app->setGlobalState(self::CACHE, $cache);
+        if ($c !== null) {
+            self::$waiting[$c->getId()] = $c;
+        }
+        if (!self::$refreshing) {
+            self::$refreshing = true;
+            Coroutine::create(static function () use ($app, $checksDue, $metricsDue): void {
+                try {
+                    self::refresh($app, $checksDue, $metricsDue, time());
+                    $landed = true;
+                } catch (\Throwable $e) {
+                    Debug::getInstance()->log('Health checks not refreshed: ' . $e->getMessage(), LOG_WARNING);
+                    $landed = false;
+                } finally {
+                    self::$refreshing = false;
+                    $waiting = self::$waiting;
+                    self::$waiting = [];
+                }
+                // After a failure the tabs retry on their next render instead of at once.
+                foreach ($landed ? $waiting : [] as $tab) {
+                    try {
+                        $tab->sync();
+                    } catch (\Throwable) {
+                        // The tab closed while the refresh ran.
+                    }
+                }
+            });
         }
 
         return $cache;
     }
 
-    /** @return Metrics */
-    private static function metrics(int $now): array {
-        $facts = isset(Config::$stateDir) && Config::$stateDir !== ''
+    /**
+     * Recomputes the due parts and stores the result.
+     *
+     * @return HealthCache
+     */
+    private static function refresh(Via $app, bool $checksDue, bool $metricsDue, int $now): array {
+        $cache = self::stored($app);
+        $facts = self::storeFacts();
+
+        if ($cache === null || $checksDue) {
+            $checks = HealthChecker::run((bool) $app->globalState('daemon_disabled', false), self::daemonsInfo($app), $facts);
+            $cache = ['ts' => $now, 'checks' => $checks, 'level' => self::levelOf($checks), 'metrics' => $cache['metrics'] ?? null];
+        }
+        if ($metricsDue) {
+            $cache['metrics'] = self::metrics($now, $facts);
+        }
+        $app->setGlobalState(self::CACHE, $cache);
+
+        return $cache;
+    }
+
+    /** @return null|HealthCache */
+    private static function stored(Via $app): ?array {
+        $stored = $app->globalState(self::CACHE, null);
+
+        /** @var null|HealthCache */
+        return \is_array($stored) && \is_int($stored['ts'] ?? null) && \is_array($stored['checks'] ?? null) && \is_string($stored['level'] ?? null)
+            ? [...$stored, 'metrics' => \is_array($stored['metrics'] ?? null) ? $stored['metrics'] : null]
+            : null;
+    }
+
+    /** @return null|StoreFacts null when no state directory is configured */
+    private static function storeFacts(): ?array {
+        return isset(Config::$stateDir) && Config::$stateDir !== ''
             ? Database::inspect(rtrim(Config::$stateDir, \DIRECTORY_SEPARATOR) . \DIRECTORY_SEPARATOR . Database::FILENAME)
             : null;
+    }
 
+    /**
+     * @param null|StoreFacts $facts
+     *
+     * @return Metrics
+     */
+    private static function metrics(int $now, ?array $facts): array {
         return [
             'ts' => $now,
             'sources' => HealthMetrics::sources($now),

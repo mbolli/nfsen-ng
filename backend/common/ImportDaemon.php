@@ -17,6 +17,9 @@ namespace mbolli\nfsen_ng\common;
  *   $app->setInterval(fn() => $daemon->pollOnce(fn() => $app->broadcast('rrd:live')), 1000);
  */
 class ImportDaemon {
+    /** App-global outcome of the last import pass: complete, cancelled or failed ('' while none). */
+    public const string OUTCOME_STATE = 'import_outcome';
+
     private readonly Debug $debug;
 
     /** @var false|resource inotify file descriptor */

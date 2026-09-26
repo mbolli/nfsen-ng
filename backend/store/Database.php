@@ -10,6 +10,8 @@ use mbolli\nfsen_ng\common\Debug;
 /**
  * All coroutines share one blocking connection: never hold a transaction across a yield.
  * Floats bind as TEXT, so compare them with an aggregate or expression as CAST(? AS REAL).
+ *
+ * @phpstan-type StoreFacts array{path: string, exists: bool, writable: bool, journalMode: string, schemaVersion: int, sizeBytes: int, error: string}
  */
 final class Database {
     public const string FILENAME = 'nfsen-ng.sqlite';
@@ -112,8 +114,7 @@ final class Database {
     /**
      * Read-only facts for Health and MCP; never creates, migrates or throws.
      *
-     * @return array{path: string, exists: bool, writable: bool, journalMode: string,
-     *               schemaVersion: int, sizeBytes: int, error: string}
+     * @return StoreFacts
      */
     public static function inspect(string $path): array {
         $facts = [
@@ -437,7 +438,16 @@ final class Database {
         foreach ($bound as $key => $typed) {
             $stmt->bindValue($key, ...$typed);
         }
-        $stmt->execute();
+
+        try {
+            $stmt->execute();
+        } catch (\Throwable $e) {
+            // A statement that failed mid-step is not handed out again.
+            $stmt->closeCursor();
+            unset($this->statements[$sql], $this->boundKeys[$sql]);
+
+            throw $e;
+        }
 
         return $stmt;
     }

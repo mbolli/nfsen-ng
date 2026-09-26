@@ -15,6 +15,8 @@ const TITLES = {
 const PAGES = Object.keys(TITLES);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const SHIFT = 8;
+
 async function press(page, key, modifiers = 0) {
     const codes = { Escape: 27, Enter: 13, Tab: 9, ArrowDown: 40 };
     const base = { key, code: key, windowsVirtualKeyCode: codes[key], nativeVirtualKeyCode: codes[key], modifiers };
@@ -276,6 +278,29 @@ export default async function smokeTest() {
         assert.match(modal.title, /^IP info: /);
         assert.equal(await page.evaluate(syncAs('flows')), 'synced', 'a sync arrived while the modal was open');
         assert.equal(await page.evaluate(`document.getElementById('ip-modal-inner')?.open`), true, 'the modal survives the sync');
+
+        // A toast shown while the modal is open lands in the modal's own stack, where it is not
+        // inert: a real click on its close button dismisses it.
+        await page.evaluate(`window.showMessage('error', 'Shown over the modal', false)`);
+        await page.waitFor(`!!document.querySelector('#ip-modal-inner > .toast-stack nfsen-toast .notice')`, {
+            label: 'the toast in the modal',
+        });
+        const close = await page.evaluate(`(function(){
+            var b = document.querySelector('#ip-modal-inner > .toast-stack nfsen-toast button[data-variant=close]').getBoundingClientRect();
+            var x = b.x + b.width / 2, y = b.y + b.height / 2;
+            return { x: x, y: y, hit: document.elementFromPoint(x, y)?.matches('button[data-variant=close]') ?? false };
+        })()`);
+        assert.ok(close.hit, 'the toast close button is on top and hit-testable');
+        assert.equal(await page.evaluate(syncAs('flows')), 'synced', 'a sync arrived while the toast was shown');
+        assert.equal(
+            await page.evaluate(`document.querySelectorAll('#ip-modal-inner nfsen-toast').length`),
+            1,
+            'the toast survives the sync'
+        );
+        for (const type of ['mousePressed', 'mouseReleased']) {
+            await page.send('Input.dispatchMouseEvent', { type, x: close.x, y: close.y, button: 'left', clickCount: 1 });
+        }
+        await page.waitFor(`!document.querySelector('#ip-modal-inner nfsen-toast')`, { label: 'the toast to be dismissed by a click' });
         await press(page, 'Escape');
         await page.waitFor(`!document.getElementById('ip-modal-inner').open`, { label: 'Escape to close the modal' });
         assert.equal(await page.evaluate(syncAs('flows')), 'synced');
@@ -301,6 +326,57 @@ export default async function smokeTest() {
         await page.withForcedColors(async () => {
             await sleep(300);
             await page.screenshot('/tmp/nfsen-smoke-forced-expanded.png');
+        });
+
+        // Keyboard (V-A11Y): Tab from the theme menu reaches the sidebar toggle, Shift+Tab walks
+        // back up the navigation to Alerts, and Enter works on both.
+        await page.evaluate(`document.querySelector('#themeMenu .menu-toggle').focus()`);
+        await press(page, 'Tab');
+        assert.ok(
+            await page.evaluate(`document.activeElement?.matches('.sidebar-toggle')`),
+            'Tab from the theme menu reaches the sidebar toggle'
+        );
+        await press(page, 'Enter');
+        await page.waitFor(`document.body.dataset.sidebar === 'collapsed'`, { label: 'Enter on the toggle to collapse the sidebar' });
+        await press(page, 'Enter');
+        await page.waitFor(`document.body.dataset.sidebar === 'expanded'`, { label: 'Enter again to expand it' });
+        await press(page, 'Tab', SHIFT);
+        assert.ok(await page.evaluate(`document.activeElement?.matches('#themeMenu .menu-toggle')`), 'Shift+Tab returns to the theme menu');
+        const links = await page.evaluate(`[...document.querySelectorAll('.sidebar-nav a')].map((a) => a.getAttribute('href'))`);
+        for (const href of links.slice(links.indexOf('#/alerts')).reverse()) {
+            await press(page, 'Tab', SHIFT);
+            assert.equal(await page.evaluate(`document.activeElement?.getAttribute('href')`), href, `Shift+Tab reaches ${href}`);
+        }
+        await press(page, 'Enter');
+        await page.waitForPage('alerts');
+
+        // A toast: literal text, its own alert role, and it stays while it holds the focus.
+        await page.evaluate(`window.showMessage('error', 'x <b>y</b>', true)`);
+        await page.waitFor(`!!document.querySelector('#alerts-toast-container nfsen-toast .notice')`, { label: 'the toast' });
+        const toast = await page.evaluate(`(function(){
+            var n = document.querySelector('#alerts-toast-container nfsen-toast .notice');
+            return { role: n.getAttribute('role'), markup: !!n.querySelector('b'), live: document.getElementById('alerts-toast-container').getAttribute('aria-live') };
+        })()`);
+        assert.deepEqual(toast, { role: 'alert', markup: false, live: null }, 'an error toast is an alert of plain text');
+        await page.waitFor(`document.querySelector('#alerts-toast-container .toast-message')?.textContent === 'x <b>y</b>'`, {
+            label: 'the literal toast text',
+        });
+        // The stack follows the footer in the document, so Tab from its last link reaches the toast.
+        await page.evaluate(`[...document.querySelectorAll('.status-footer a')].at(-1).focus()`);
+        await press(page, 'Tab');
+        assert.ok(
+            await page.evaluate(`document.activeElement?.matches('#alerts-toast-container nfsen-toast button[data-variant=close]')`),
+            'Tab from the footer reaches the toast close button'
+        );
+        await sleep(6000);
+        assert.equal(
+            await page.evaluate(`!!document.querySelector('#alerts-toast-container nfsen-toast')`),
+            true,
+            'focus holds the toast past its 5 s'
+        );
+        await press(page, 'Enter');
+        await page.waitFor(`!document.querySelector('#alerts-toast-container nfsen-toast')`, {
+            label: 'Enter on its close button to dismiss it',
         });
 
         // Collapse, reload, still collapsed, and collapsed from the first paint on (the body has

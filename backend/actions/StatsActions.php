@@ -365,6 +365,8 @@ final class StatsActions {
             'fingerprint' => $params !== [] ? self::panelFingerprint($params, $panel) : '',
             'scope' => $params !== [] ? self::scope($params) : '',
             'inputs' => $params !== [] ? self::panelInputs($params) : ['filter' => '', 'lower' => '', 'upper' => ''],
+            // The main result says the same for its own run; the panel covers its window alone.
+            'clamp' => $result->window->clamped ? $result->window->clampNotice() : '',
         ]);
     }
 
@@ -396,6 +398,7 @@ final class StatsActions {
             'fingerprint' => $params !== [] ? self::panelFingerprint($params, $panel) : '',
             'scope' => $params !== [] ? self::scope($params) : '',
             'inputs' => $params !== [] ? self::panelInputs($params) : ['filter' => '', 'lower' => '', 'upper' => ''],
+            'clamp' => '',
         ]);
     }
 

@@ -21,7 +21,7 @@ describe('FilteredGraphCache::key', function (): void {
         expect(FilteredGraphCache::key(...$args))->toBe(FilteredGraphCache::key(...$args));
     });
 
-    // Every argument must participate — a key that ignores one serves the wrong graph.
+    // Every argument must participate: a key that ignores one serves the wrong graph.
     test('changes when any single input changes', function () use ($args): void {
         $baseline = FilteredGraphCache::key(...$args);
         $mutations = [
@@ -88,7 +88,7 @@ describe('FilteredGraphCache storage', function (): void {
         ;
     });
 
-    // Separate tests, because a read touches the entry — asserting both ends of the
+    // Separate tests, because a read touches the entry, asserting both ends of the
     // boundary in one test would have the first read keep the entry alive for the second.
     test('is still readable at exactly the TTL boundary', function (): void {
         FilteredGraphCache::put('k', series(), now: 1000);

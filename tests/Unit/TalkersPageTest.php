@@ -312,6 +312,21 @@ describe('results per statistic (D12)', function (): void {
         ;
     });
 
+    test('a panel over a clamped window says so, and one over the full window does not', function (): void {
+        $state = new TalkersState();
+        $clamped = new QueryResult(rows: [], command: 'nfdump -s proto/bytes', stderr: '', elapsed: 0.1, window: TimeWindow::clamped(0, 90 * 86_400, 31 * 86_400));
+        StatsActions::storePanel($state, 'proto', [['key' => '6', 'proto' => 'TCP', 'flows' => 1, 'packets' => 2, 'bytes' => 3, 'bytesPct' => 100.0]], $clamped, 0.1, talkersPageTestParams());
+        StatsActions::storePanel($state, 'as', [], talkersPageTestResult(0), 0.1, talkersPageTestParams());
+
+        $copy = new TalkersState();
+        $copy->restore($state->snapshot());
+
+        expect($state->panel('proto')['clamp'] ?? null)->toBe('Time window clamped to 31 days (NFSEN_MAX_STATS_WINDOW).')
+            ->and($state->panel('as')['clamp'] ?? null)->toBe('')
+            ->and($copy->panel('proto')['clamp'] ?? null)->toBe($state->panel('proto')['clamp'] ?? null)
+        ;
+    });
+
     test('a snapshot keeps the newest runs and both panels, and restores to the same', function (): void {
         $state = new TalkersState();
         foreach (['srcip', 'dstip', 'srcport', 'dstport'] as $element) {

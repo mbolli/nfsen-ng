@@ -8,309 +8,52 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\Import;
 use mbolli\nfsen_ng\common\ImportDaemon;
+use mbolli\nfsen_ng\common\TopNCollector;
+use mbolli\nfsen_ng\pages\HealthPage;
+use mbolli\nfsen_ng\pages\Shell;
 use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
 use OpenSwoole\Coroutine;
 
 /**
- * Import-related action registrations: trigger-import, backfill-import, force-rescan, cancel-import.
+ * The Health page's actions: trigger-import, backfill-import, force-rescan, cancel-import,
+ * topn-fill and health-refresh.
  */
 final class ImportActions {
-    /** Register trigger-import, backfill-import, force-rescan, and cancel-import actions. */
+    /**
+     * The three import passes: the status line while one starts, and the word its outcome
+     * starts with ("Backfill complete.").
+     */
+    private const array PASSES = [
+        'trigger' => ['starting' => 'Counting files…', 'noun' => 'Import'],
+        // Re-reads files older than the newest sample too; offered only where the datasource
+        // accepts historic writes, RRD needs the rescan's rebuild instead (#171).
+        'backfill' => ['starting' => 'Counting files…', 'noun' => 'Backfill'],
+        'rescan' => ['starting' => 'Resetting RRD data…', 'noun' => 'Rescan'],
+    ];
+
     public static function register(Context $c, Via $app): void {
         $c->action(static function (Context $c) use ($app): void {
-            $adminTargetProfile = $c->getSignal('admin_target_profile');
-            $importRunning = $c->getSignal('import_running');
-            $importScanPorts = $c->getSignal('import_scan_ports');
-            \assert($adminTargetProfile !== null && $importRunning !== null && $importScanPorts !== null);
-
-            /** @var array<string, ImportDaemon> $daemons */
-            $daemons = $app->globalState('daemons', []);
-            $targetProfile = $adminTargetProfile->string();
-            $targetDaemon = $daemons[$targetProfile] ?? null;
-
-            if ($targetDaemon === null || $targetDaemon->isLocked()) {
-                return;
-            }
-
-            $targetDaemon->lock();
-            $importRunning->setValue(true, broadcast: false);
-            $app->setGlobalState('import_active_profile', $targetProfile);
-            $app->setGlobalState('import_progress', 0);
-            $app->setGlobalState('import_current_file', '');
-            $app->setGlobalState('import_status_text', 'Counting files…');
-            $app->setGlobalState('import_eta', '');
-            $app->setGlobalState('import_log', []);
-            Debug::drainBuffer();
-            $c->sync();
-            if (!empty($app->getClients())) {
-                $app->broadcast('admin:import');
-            }
-
-            $scanPorts = $importScanPorts->bool();
-            Coroutine::create(function () use ($app, $targetDaemon, $targetProfile, $scanPorts): void {
-                $app->setGlobalState('import_cancel', false);
-
-                $flushLog = static function () use ($app): void {
-                    $new = Debug::drainBuffer();
-                    if ($new !== []) {
-                        $log = $app->globalState('import_log', []);
-                        $app->setGlobalState('import_log', array_merge($log, $new));
-                        if (!empty($app->getClients())) {
-                            $app->broadcast('admin:import');
-                        }
-                    }
-                };
-
-                try {
-                    $importYears = Config::$settings->importYears();
-                    $start = (new \DateTime())->modify('-' . $importYears . ' years');
-
-                    $importer = new Import();
-                    $importer->setQuiet(true);
-                    $importer->setProcessPorts($scanPorts);
-                    $importer->setProcessPortsBySource($scanPorts);
-                    $importer->setCheckLastUpdate(true);
-                    $importer->setProfile($targetProfile);
-
-                    $importer->start(
-                        $start,
-                        function (array $progress) use ($app, $flushLog): void {
-                            $flushLog();
-                            $app->setGlobalState('import_progress', $progress['pct']);
-                            $app->setGlobalState('import_current_file', $progress['file']);
-                            $app->setGlobalState(
-                                'import_status_text',
-                                'Scanning ' . number_format($progress['processed'])
-                                . ' / ' . number_format($progress['total']) . ' files'
-                            );
-                            $app->setGlobalState('import_eta', $progress['eta']);
-                            if (!empty($app->getClients())) {
-                                $app->broadcast('admin:import');
-                            }
-                        },
-                        $flushLog,
-                        static fn (): bool => (bool) $app->globalState('import_cancel', false)
-                    );
-
-                    $cancelled = (bool) $app->globalState('import_cancel', false);
-                    $app->setGlobalState('import_status_text', $cancelled ? 'Import cancelled.' : 'Import complete.');
-                    $app->setGlobalState('import_current_file', '');
-                    $app->setGlobalState('import_eta', '');
-                } catch (\Throwable $e) {
-                    Debug::getInstance()->log('Import failed: ' . $e->getMessage(), LOG_ERR);
-                    $app->setGlobalState('import_status_text', 'Import failed: ' . $e->getMessage());
-                } finally {
-                    $flushLog();
-                    $app->setGlobalState('import_cancel', false);
-                    $targetDaemon->unlock();
-                    $app->setGlobalState('import_progress', 100);
-                    if (!empty($app->getClients())) {
-                        $app->broadcast('admin:import');
-                        $app->broadcast('rrd:live');
-                    }
-                }
-            });
+            self::start($c, $app, 'trigger');
         }, 'trigger-import');
 
-        // Same pass as trigger-import, minus the last-update cursor, so capture files older
-        // than the newest sample are read again. Only offered where the datasource accepts
-        // historic writes; RRD needs force-rescan's rebuild instead (#171).
         $c->action(static function (Context $c) use ($app): void {
-            $adminTargetProfile = $c->getSignal('admin_target_profile');
-            $importRunning = $c->getSignal('import_running');
-            $importScanPorts = $c->getSignal('import_scan_ports');
-            \assert($adminTargetProfile !== null && $importRunning !== null && $importScanPorts !== null);
-
-            /** @var array<string, ImportDaemon> $daemons */
-            $daemons = $app->globalState('daemons', []);
-            $targetProfile = $adminTargetProfile->string();
-            $targetDaemon = $daemons[$targetProfile] ?? null;
-
-            if ($targetDaemon === null || $targetDaemon->isLocked()) {
-                return;
-            }
-
-            $targetDaemon->lock();
-            $importRunning->setValue(true, broadcast: false);
-            $app->setGlobalState('import_active_profile', $targetProfile);
-            $app->setGlobalState('import_progress', 0);
-            $app->setGlobalState('import_current_file', '');
-            $app->setGlobalState('import_status_text', 'Counting files…');
-            $app->setGlobalState('import_eta', '');
-            $app->setGlobalState('import_log', []);
-            Debug::drainBuffer();
-            $c->sync();
-            if (!empty($app->getClients())) {
-                $app->broadcast('admin:import');
-            }
-
-            $scanPorts = $importScanPorts->bool();
-            Coroutine::create(function () use ($app, $targetDaemon, $targetProfile, $scanPorts): void {
-                $app->setGlobalState('import_cancel', false);
-
-                $flushLog = static function () use ($app): void {
-                    $new = Debug::drainBuffer();
-                    if ($new !== []) {
-                        $log = $app->globalState('import_log', []);
-                        $app->setGlobalState('import_log', array_merge($log, $new));
-                        if (!empty($app->getClients())) {
-                            $app->broadcast('admin:import');
-                        }
-                    }
-                };
-
-                try {
-                    $importYears = Config::$settings->importYears();
-                    $start = (new \DateTime())->modify('-' . $importYears . ' years');
-
-                    $importer = new Import();
-                    $importer->setQuiet(true);
-                    $importer->setProcessPorts($scanPorts);
-                    $importer->setProcessPortsBySource($scanPorts);
-                    $importer->setCheckLastUpdate(true);
-                    $importer->setRescan(true);
-                    $importer->setProfile($targetProfile);
-
-                    $importer->start(
-                        $start,
-                        function (array $progress) use ($app, $flushLog): void {
-                            $flushLog();
-                            $app->setGlobalState('import_progress', $progress['pct']);
-                            $app->setGlobalState('import_current_file', $progress['file']);
-                            $app->setGlobalState(
-                                'import_status_text',
-                                'Scanning ' . number_format($progress['processed'])
-                                . ' / ' . number_format($progress['total']) . ' files'
-                            );
-                            $app->setGlobalState('import_eta', $progress['eta']);
-                            if (!empty($app->getClients())) {
-                                $app->broadcast('admin:import');
-                            }
-                        },
-                        $flushLog,
-                        static fn (): bool => (bool) $app->globalState('import_cancel', false)
-                    );
-
-                    $cancelled = (bool) $app->globalState('import_cancel', false);
-                    $app->setGlobalState('import_status_text', $cancelled ? 'Backfill cancelled.' : 'Backfill complete.');
-                    $app->setGlobalState('import_current_file', '');
-                    $app->setGlobalState('import_eta', '');
-                } catch (\Throwable $e) {
-                    Debug::getInstance()->log('Backfill failed: ' . $e->getMessage(), LOG_ERR);
-                    $app->setGlobalState('import_status_text', 'Backfill failed: ' . $e->getMessage());
-                } finally {
-                    $flushLog();
-                    $app->setGlobalState('import_cancel', false);
-                    $targetDaemon->unlock();
-                    $app->setGlobalState('import_progress', 100);
-                    if (!empty($app->getClients())) {
-                        $app->broadcast('admin:import');
-                        $app->broadcast('rrd:live');
-                    }
-                }
-            });
+            self::start($c, $app, 'backfill');
         }, 'backfill-import');
 
         $c->action(static function (Context $c) use ($app): void {
-            $adminTargetProfile = $c->getSignal('admin_target_profile');
-            $importRunning = $c->getSignal('import_running');
-            $confirmRescan = $c->getSignal('confirm_rescan');
-            $importScanPorts = $c->getSignal('import_scan_ports');
-            \assert($adminTargetProfile !== null && $importRunning !== null && $confirmRescan !== null && $importScanPorts !== null);
-
-            /** @var array<string, ImportDaemon> $daemons */
-            $daemons = $app->globalState('daemons', []);
-            $confirmRescan->setValue(false);
-
-            $targetProfile = $adminTargetProfile->string();
-            $targetDaemon = $daemons[$targetProfile] ?? null;
-
-            if ($targetDaemon === null || $targetDaemon->isLocked()) {
-                return;
-            }
-
-            $targetDaemon->lock();
-            $importRunning->setValue(true, broadcast: false);
-            $app->setGlobalState('import_active_profile', $targetProfile);
-            $app->setGlobalState('import_progress', 0);
-            $app->setGlobalState('import_current_file', '');
-            $app->setGlobalState('import_status_text', 'Resetting RRD data…');
-            $app->setGlobalState('import_eta', '');
-            $app->setGlobalState('import_log', []);
-            Debug::drainBuffer();
-            $c->sync();
-            if (!empty($app->getClients())) {
-                $app->broadcast('admin:import');
-            }
-
-            $scanPorts = $importScanPorts->bool();
-            Coroutine::create(function () use ($app, $targetDaemon, $targetProfile, $scanPorts): void {
-                $app->setGlobalState('import_cancel', false);
-
-                $flushLog = static function () use ($app): void {
-                    $new = Debug::drainBuffer();
-                    if ($new !== []) {
-                        $log = $app->globalState('import_log', []);
-                        $app->setGlobalState('import_log', array_merge($log, $new));
-                        if (!empty($app->getClients())) {
-                            $app->broadcast('admin:import');
-                        }
-                    }
-                };
-
-                try {
-                    $importYears = Config::$settings->importYears();
-                    $start = (new \DateTime())->modify('-' . $importYears . ' years');
-
-                    $importer = new Import();
-                    $importer->setQuiet(true);
-                    $importer->setForce(true);
-                    $importer->setProcessPorts($scanPorts);
-                    $importer->setProcessPortsBySource($scanPorts);
-                    $importer->setProfile($targetProfile);
-
-                    $importer->start(
-                        $start,
-                        function (array $progress) use ($app, $flushLog): void {
-                            $flushLog();
-                            $app->setGlobalState('import_progress', $progress['pct']);
-                            $app->setGlobalState('import_current_file', $progress['file']);
-                            $app->setGlobalState(
-                                'import_status_text',
-                                'Scanning ' . number_format($progress['processed'])
-                                . ' / ' . number_format($progress['total']) . ' files'
-                            );
-                            $app->setGlobalState('import_eta', $progress['eta']);
-                            if (!empty($app->getClients())) {
-                                $app->broadcast('admin:import');
-                            }
-                        },
-                        $flushLog,
-                        static fn (): bool => (bool) $app->globalState('import_cancel', false)
-                    );
-
-                    $cancelled = (bool) $app->globalState('import_cancel', false);
-                    $app->setGlobalState('import_status_text', $cancelled ? 'Rescan cancelled.' : 'Rescan complete.');
-                    $app->setGlobalState('import_current_file', '');
-                    $app->setGlobalState('import_eta', '');
-                } catch (\Throwable $e) {
-                    Debug::getInstance()->log('Rescan failed: ' . $e->getMessage(), LOG_ERR);
-                    $app->setGlobalState('import_status_text', 'Rescan failed: ' . $e->getMessage());
-                } finally {
-                    $flushLog();
-                    $app->setGlobalState('import_cancel', false);
-                    $targetDaemon->unlock();
-                    $app->setGlobalState('import_progress', 100);
-                    if (!empty($app->getClients())) {
-                        $app->broadcast('admin:import');
-                        $app->broadcast('rrd:live');
-                    }
-                }
-            });
+            $c->getSignal('confirm_rescan')?->setValue(false);
+            self::start($c, $app, 'rescan');
         }, 'force-rescan');
 
         $c->action(static function (Context $c) use ($app): void {
+            // A pass that ended before the click leaves nothing to cancel, and no stale "Cancelling…".
+            $daemons = $app->globalState('daemons', []);
+            if (!\is_array($daemons) || !array_any($daemons, static fn (mixed $d): bool => $d instanceof ImportDaemon && $d->isLocked())) {
+                $c->sync();
+
+                return;
+            }
             $app->setGlobalState('import_cancel', true);
             $app->setGlobalState('import_status_text', 'Cancelling…');
             if (!empty($app->getClients())) {
@@ -318,5 +61,143 @@ final class ImportActions {
             }
             $c->sync();
         }, 'cancel-import');
+
+        // One newest-first pass over every profile and source with the gap filler's budget.
+        $c->action(static function (Context $c) use ($app): void {
+            // An unbooted collector queues nothing and would report "Nothing missing".
+            if (HealthPage::topnOff($app, Shell::fatal($app)) !== '') {
+                $c->sync();
+
+                return;
+            }
+
+            try {
+                $queued = TopNCollector::fillAllGaps();
+                $app->setGlobalState(HealthPage::TOPN_FILL, ['ts' => time(), 'queued' => $queued, 'error' => '']);
+            } catch (\Throwable $e) {
+                Debug::getInstance()->log('TopN: manual gap fill failed: ' . $e->getMessage(), LOG_WARNING);
+                $app->setGlobalState(HealthPage::TOPN_FILL, ['ts' => time(), 'queued' => 0, 'error' => $e->getMessage()]);
+            }
+            $c->sync();
+        }, 'topn-fill');
+
+        // The 10 s tick of an open Health page; the render reads the 30 s cache.
+        $c->action(static function (Context $c): void {
+            try {
+                $c->sync();
+            } catch (\Throwable $e) {
+                Debug::getInstance()->log('Health refresh failed: ' . $e->getMessage(), LOG_WARNING);
+            }
+        }, 'health-refresh');
+    }
+
+    /** Locks the target profile's daemon and runs one import pass in a coroutine. */
+    private static function start(Context $c, Via $app, string $pass): void {
+        $adminTargetProfile = $c->getSignal('admin_target_profile');
+        $importRunning = $c->getSignal('import_running');
+        $importScanPorts = $c->getSignal('import_scan_ports');
+        \assert($adminTargetProfile !== null && $importRunning !== null && $importScanPorts !== null);
+
+        /** @var array<string, ImportDaemon> $daemons */
+        $daemons = $app->globalState('daemons', []);
+        $targetProfile = $adminTargetProfile->string();
+        $targetDaemon = $daemons[$targetProfile] ?? null;
+
+        // Nothing starts, but a rescan's confirmation still closes and the running pass shows.
+        if ($targetDaemon === null || $targetDaemon->isLocked()) {
+            $c->sync();
+
+            return;
+        }
+
+        $noun = self::PASSES[$pass]['noun'];
+        $targetDaemon->lock();
+        $importRunning->setValue(true, broadcast: false);
+        $app->setGlobalState('import_active_profile', $targetProfile);
+        $app->setGlobalState('import_progress', 0);
+        $app->setGlobalState('import_current_file', '');
+        $app->setGlobalState('import_status_text', self::PASSES[$pass]['starting']);
+        $app->setGlobalState('import_eta', '');
+        $app->setGlobalState('import_log', []);
+        $app->setGlobalState(HealthPage::IMPORT_OUTCOME, '');
+        Debug::drainBuffer();
+        $c->sync();
+        if (!empty($app->getClients())) {
+            $app->broadcast('admin:import');
+        }
+
+        $scanPorts = $importScanPorts->bool();
+        Coroutine::create(static function () use ($app, $targetDaemon, $targetProfile, $scanPorts, $pass, $noun): void {
+            $app->setGlobalState('import_cancel', false);
+
+            $flushLog = static function () use ($app): void {
+                $new = Debug::drainBuffer();
+                if ($new !== []) {
+                    $log = $app->globalState('import_log', []);
+                    $app->setGlobalState('import_log', array_merge($log, $new));
+                    if (!empty($app->getClients())) {
+                        $app->broadcast('admin:import');
+                    }
+                }
+            };
+
+            try {
+                $importYears = Config::$settings->importYears();
+                $start = (new \DateTime())->modify('-' . $importYears . ' years');
+
+                $importer = new Import();
+                $importer->setQuiet(true);
+                $importer->setProcessPorts($scanPorts);
+                $importer->setProcessPortsBySource($scanPorts);
+                if ($pass === 'rescan') {
+                    $importer->setForce(true);
+                } else {
+                    $importer->setCheckLastUpdate(true);
+                    $importer->setRescan($pass === 'backfill');
+                }
+                $importer->setProfile($targetProfile);
+
+                $importer->start(
+                    $start,
+                    static function (array $progress) use ($app, $flushLog): void {
+                        $flushLog();
+                        $app->setGlobalState('import_progress', $progress['pct']);
+                        $app->setGlobalState('import_current_file', $progress['file']);
+                        $app->setGlobalState(
+                            'import_status_text',
+                            'Scanning ' . number_format($progress['processed'])
+                            . ' / ' . number_format($progress['total']) . ' files'
+                        );
+                        $app->setGlobalState('import_eta', $progress['eta']);
+                        if (!empty($app->getClients())) {
+                            $app->broadcast('admin:import');
+                        }
+                    },
+                    $flushLog,
+                    static fn (): bool => (bool) $app->globalState('import_cancel', false)
+                );
+
+                $cancelled = (bool) $app->globalState('import_cancel', false);
+                $app->setGlobalState('import_status_text', $noun . ($cancelled ? ' cancelled.' : ' complete.'));
+                $app->setGlobalState(HealthPage::IMPORT_OUTCOME, $cancelled ? 'cancelled' : 'complete');
+                $app->setGlobalState('import_current_file', '');
+                $app->setGlobalState('import_eta', '');
+            } catch (\Throwable $e) {
+                Debug::getInstance()->log($noun . ' failed: ' . $e->getMessage(), LOG_ERR);
+                $app->setGlobalState('import_status_text', $noun . ' failed: ' . $e->getMessage());
+                $app->setGlobalState(HealthPage::IMPORT_OUTCOME, 'failed');
+            } finally {
+                $flushLog();
+                $app->setGlobalState('import_cancel', false);
+                $targetDaemon->unlock();
+                $app->setGlobalState('import_progress', 100);
+                // The checks and sources table describe the data before this pass.
+                $app->setGlobalState(HealthPage::CACHE, null);
+                if (!empty($app->getClients())) {
+                    $app->broadcast('admin:import');
+                    $app->broadcast('rrd:live');
+                }
+            }
+        });
     }
 }

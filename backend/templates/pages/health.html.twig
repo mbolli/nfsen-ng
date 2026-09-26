@@ -1,321 +1,467 @@
 {#
-    Health (4.7), interim: the import controls and the grouped checks of the old Settings
-    view, one card each.
+    Health (4.7): import controls, capture sources, disks, this instance, the grouped checks
+    and the recent log. Reads pages.health and shell.import; posts health-refresh every 10 s
+    while it is the open page (the figures behind it are cached for 30 s).
 #}
-<div class="stack">
-    <section class="card" aria-labelledby="healthImportTitle">
-        <header><h2 id="healthImportTitle">Import</h2></header>
-        <div class="card-body stack">
-            {# Action buttons #}
-            <div>
+{% import _self as health %}
 
-            {% if daemonDisabled or daemonsInfo is empty %}
+{# An epoch in the display timezone; the server text is the fallback until Datastar runs. #}
+{% macro when(epoch, tz, empty = 'never', style = 'short') %}
+    {%- if epoch > 0 -%}
+        <time datetime="{{ epoch|date('c') }}" data-text="new Date({{ epoch }} * 1000).toLocaleString(undefined, { dateStyle: '{{ style }}', timeStyle: '{{ style }}', ...{{ tz }} })">{{ epoch|date('Y-m-d H:i') }}</time>
+    {%- else -%}
+        {{ empty }}
+    {%- endif -%}
+{% endmacro %}
 
-                <p class="muted">
-                    Import daemon is disabled (<code>NFSEN_SKIP_DAEMON=1</code>).
-                </p>
+{# A status as a glyph and a word; the word is visible unless it is only for screen readers. #}
+{% macro status(level, word, hideWord = false) %}
+    {%- set glyph = {ok: 'success', success: 'success', warning: 'warning', error: 'error'}[level] ?? '' -%}
+    <span class="status-dot" {% if glyph %}data-level="{{ glyph }}"{% endif %}{% if not hideWord %} aria-hidden="true"{% endif %}>
+        {%- if hideWord %}<span class="visually-hidden">{{ word }}</span>{% endif -%}
+    </span>
+    {%- if not hideWord %} {{ word }}{% endif -%}
+{% endmacro %}
 
-            {% elseif daemonsInfo|length > 1 %}
+{% set h = pages.health %}
+{% set tz = 'tzOptions($' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() ~ ')' %}
+{% set imp = h.import %}
+{% set stateMeta = {
+    running: {level: 'success', text: 'Running' ~ (imp.profile ? ': ' ~ imp.profile : '')},
+    idle: {level: 'success', text: 'Idle, watching for new files'},
+    starting: {level: '', text: 'Starting'},
+    disabled: {level: 'warning', text: 'Disabled (NFSEN_SKIP_DAEMON)'},
+}[imp.state] %}
+{% set lastImport = max([imp.rate.lastTs] | merge(imp.daemons|map(d => d.lastAutoImport))) %}
 
-                {# Multi-profile daemon table #}
-                <div class="card">
-                    <div class="cluster card-header strong muted cluster-between">
-                        Import Daemon
-                    </div>
-                    <div class="card-body">
-                <table class="muted">
-                    <thead>
-                        <tr>
-                            <th>Profile</th>
-                            <th>Status</th>
-                            <th>Last auto-import</th>
-                            <th>Dirs watched</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    {% for profile, info in daemonsInfo %}
-                    <tr>
-                        <td class="mono">{{ profile }}</td>
-                        <td>
-                            {% if info.ready %}
-                                <span class="badge" data-level="success">ready</span>
-                            {% else %}
-                                <span class="badge text-warning" data-level="warning">init&hellip;</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if info.lastAutoImport > 0 %}
-                                <span data-text="new Date({{ info.lastAutoImport }} * 1000).toLocaleString(undefined, tzOptions(${{ displayTz.id() }}, ${{ nfcapdTz.id() }}))"></span>
-                            {% else %}
-                                <span class="muted">never</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ info.watchCount }}</td>
-                        <td>
-                            <div class="cluster">
-                                <button data-size="sm" data-variant="primary"
-                                        data-attr:disabled="${{ import_running.id() }}"
-                                        data-show="!${{ import_running.id() }}"
-                                        data-on:click="${{ admin_target_profile.id() }} = '{{ profile }}'; @post('{{ triggerImport.url() }}')">
-                                    Trigger
-                                </button>
-                                {% if datasourceAcceptsHistoricWrites %}
-                                <button data-size="sm"
-                                        data-attr:disabled="${{ import_running.id() }}"
-                                        data-show="!${{ import_running.id() }}"
-                                        title="Re-reads every capture file, including those older than the newest sample. Nothing is deleted."
-                                        data-on:click="${{ admin_target_profile.id() }} = '{{ profile }}'; @post('{{ backfillImport.url() }}')">
-                                    Backfill
-                                </button>
-                                {% else %}
-                                <button class="kill" data-size="sm"
-                                        data-attr:disabled="${{ import_running.id() }}"
-                                        data-show="!${{ confirm_rescan.id() }} && !${{ import_running.id() }}"
-                                        data-on:click="${{ admin_target_profile.id() }} = '{{ profile }}'; ${{ confirm_rescan.id() }} = true">
-                                    Rescan
-                                </button>
-                                {% endif %}
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-                    </div>
-                </div>
+<div class="stack health"
+     data-on-interval__duration.10s="!document.hidden && !$_disconnected && @post('{{ healthRefresh.url() }}')">
 
-                {# Shared confirm-rescan dialog (shown after clicking Rescan for any profile) #}
-                {% if not datasourceAcceptsHistoricWrites %}
-                <div data-show="${{ confirm_rescan.id() }}" style="display: none;" >
-                    <div class="cluster">
-                        <span class="text-danger strong muted">
-                            Resets all {{ deployDatasource }} data for
-                            <strong><span data-text="${{ admin_target_profile.id() }}"></span></strong>
-                            and re-imports from scratch.
+    {% if h.fatal %}
+        <p class="notice">The figures below need the configuration, which did not load. The banner above says why.</p>
+    {% endif %}
+
+    <div class="health-overview">
+        {# ── Import ─────────────────────────────────────────────────────────── #}
+        <section class="card" id="healthImport" aria-labelledby="healthImportTitle">
+            <header>
+                {# Takes the focus from a button the started pass disables or hides. #}
+                <h2 id="healthImportTitle" tabindex="-1">Import</h2>
+                <span class="card-meta health-state">{{ health.status(stateMeta.level, stateMeta.text) }}</span>
+            </header>
+            <div class="card-body stack">
+                <dl class="health-facts">
+                    <dt>Last import</dt>
+                    <dd>
+                        {{ health.when(lastImport, tz, 'none since the server started') }}
+                        {% if imp.rate.samples > 0 %}
+                            <small>{{ imp.rate.filesPerMinute|number_format(1) }} files/min, {{ imp.rate.avgMs|number_format(0) }} ms per file (last 15 min)</small>
+                        {% else %}
+                            <small>No files imported in the last 15 min</small>
+                        {% endif %}
+                    </dd>
+                    <dt>Pending files</dt>
+                    <dd>{{ imp.pending|number_format }}{{ imp.pendingCapped ? '+' }} <small>capture files of the last 7 days not imported yet</small></dd>
+                    <dt>Top-N collector</dt>
+                    <dd class="stack health-topn">
+                        {% if h.topn.off %}
+                            <span>{{ h.topn.off }}</span>
+                        {% else %}
+                            <span>
+                                {{ h.topn.queued|number_format }} queued, {{ h.topn.processed|number_format }} done{% if h.topn.failed > 0 %}, {{ h.topn.failed|number_format }} failed{% endif %}
+                                {% if h.topn.lastTs > 0 %}<small>last {{ h.topn.lastMs|number_format }} ms per file</small>{% endif %}
+                                <small>keeps {{ h.topn.retentionDays }} days</small>
+                            </span>
+                        {% endif %}
+                        <span class="cluster">
+                            <button type="button" id="topnFill" data-size="sm"
+                                    {% if h.topn.off %}disabled{% endif %}
+                                    data-indicator:_topn_filling
+                                    data-attr:disabled="$_topn_filling || {{ h.topn.off ? 'true' : 'false' }}"
+                                    data-attr:aria-busy="$_topn_filling ? 'true' : false"
+                                    data-on:click="@post('{{ topnFill.url() }}')">
+                                Collect missing top-N now
+                            </button>
+                            <small role="status" data-topn-fill>
+                                {%- if h.topn.fill -%}
+                                    {%- if h.topn.fill.error -%}
+                                        Collecting failed: {{ h.topn.fill.error }}
+                                    {%- elseif h.topn.fill.queued > 0 -%}
+                                        Queued {{ h.topn.fill.queued|number_format }} {{ h.topn.fill.queued == 1 ? 'file' : 'files' }} at {{ health.when(h.topn.fill.ts, tz, '', 'short') }}
+                                    {%- else -%}
+                                        Nothing missing at {{ health.when(h.topn.fill.ts, tz, '', 'short') }}
+                                    {%- endif -%}
+                                {%- endif -%}
+                            </small>
                         </span>
-                        <button data-variant="danger" data-size="sm"
-                                data-attr:disabled="${{ import_running.id() }}"
-                                data-on:click="@post('{{ forceRescan.url() }}')">
-                            Confirm &amp; Rescan
-                        </button>
-                        <button data-size="sm"
-                                data-on:click="${{ confirm_rescan.id() }} = false">
-                            Cancel
+                    </dd>
+                </dl>
+
+                {% if imp.state == 'disabled' %}
+                    <p class="notice">The import daemon is disabled (<code>NFSEN_SKIP_DAEMON=1</code>), so nothing can be imported from here.</p>
+                {% elseif imp.daemons is empty %}
+                    <p class="notice">The import daemon is starting. The controls appear once it watches the capture directories.</p>
+                {% else %}
+                    <div class="table-wrap">
+                        <table class="health-profiles">
+                            <caption class="visually-hidden">Import per profile</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">Profile</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Last auto-import</th>
+                                    <th scope="col" data-num>Dirs watched</th>
+                                    <th scope="col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            {% for d in imp.daemons %}
+                                <tr>
+                                    <th scope="row"><code>{{ d.profile }}</code></th>
+                                    <td>
+                                        <span class="badge" data-level="{{ d.ready ? 'success' : 'warning' }}">{{ health.status(d.ready ? 'success' : 'warning', d.ready ? 'Ready' : 'Starting') }}</span>
+                                    </td>
+                                    <td data-kind="time">{{ health.when(d.lastAutoImport, tz, 'not since start') }}</td>
+                                    <td data-num>{{ d.watchCount }}</td>
+                                    <td>
+                                        <div class="cluster">
+                                            <button type="button" data-size="sm" data-variant="primary"
+                                                    aria-label="Trigger import for {{ d.profile }}"
+                                                    {% if shell.import.running %}disabled{% endif %}
+                                                    data-attr:disabled="${{ import_running.id() }}"
+                                                    data-on:click="${{ admin_target_profile.id() }} = {{ d.profile|json_encode }}; el === document.activeElement && document.getElementById('healthImportTitle').focus({ preventScroll: true }); @post('{{ triggerImport.url() }}')">
+                                                Trigger
+                                            </button>
+                                            {% if imp.historicWrites %}
+                                                <button type="button" data-size="sm"
+                                                        aria-label="Backfill {{ d.profile }}"
+                                                        title="Re-reads every capture file, including those older than the newest sample. Nothing is deleted."
+                                                        {% if shell.import.running %}disabled{% endif %}
+                                                        data-attr:disabled="${{ import_running.id() }}"
+                                                        data-on:click="${{ admin_target_profile.id() }} = {{ d.profile|json_encode }}; el === document.activeElement && document.getElementById('healthImportTitle').focus({ preventScroll: true }); @post('{{ backfillImport.url() }}')">
+                                                    Backfill
+                                                </button>
+                                            {% else %}
+                                                <button type="button" data-size="sm"
+                                                        aria-label="Rescan {{ d.profile }}"
+                                                        aria-controls="rescanConfirm"
+                                                        data-rescan="{{ d.profile }}"
+                                                        {% if shell.import.running %}disabled{% endif %}
+                                                        data-attr:disabled="${{ import_running.id() }} || ${{ confirm_rescan.id() }}"
+                                                        data-on:click="${{ admin_target_profile.id() }} = {{ d.profile|json_encode }}; ${{ confirm_rescan.id() }} = true; requestAnimationFrame(() => document.getElementById('rescanConfirmRun')?.focus())">
+                                                    Rescan…
+                                                </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if not imp.historicWrites %}
+                        {# Shared by every profile's Rescan; Escape or Cancel returns focus to the button that opened it. #}
+                        <div class="notice health-confirm" id="rescanConfirm" data-level="warning" role="group" aria-labelledby="rescanConfirmText"
+                             hidden data-attr:hidden="!${{ confirm_rescan.id() }}" data-preserve-attr="hidden"
+                             data-on:keydown="evt.key === 'Escape' && (${{ confirm_rescan.id() }} = false, requestAnimationFrame(() => [...document.querySelectorAll('#healthImport [data-rescan]')].find((b) => b.dataset.rescan === ${{ admin_target_profile.id() }})?.focus()))">
+                            {{ health.status('warning', 'Warning:', true) }}
+                            <span id="rescanConfirmText">
+                                Deletes all {{ h.datasource }} data of <strong data-text="${{ admin_target_profile.id() }}">{{ admin_target_profile.string() }}</strong>
+                                and imports it again from the capture files.
+                            </span>
+                            <span class="cluster">
+                                <button type="button" id="rescanConfirmRun" data-variant="danger" data-size="sm"
+                                        data-attr:disabled="${{ import_running.id() }}"
+                                        data-on:click="el === document.activeElement && document.getElementById('healthImportTitle').focus({ preventScroll: true }); @post('{{ forceRescan.url() }}')">
+                                    Delete and rescan
+                                </button>
+                                <button type="button" data-size="sm"
+                                        data-on:click="${{ confirm_rescan.id() }} = false; requestAnimationFrame(() => [...document.querySelectorAll('#healthImport [data-rescan]')].find((b) => b.dataset.rescan === ${{ admin_target_profile.id() }})?.focus())">
+                                    Cancel
+                                </button>
+                            </span>
+                        </div>
+                    {% endif %}
+
+                    <div class="cluster">
+                        {% if imp.hasPorts %}
+                            <label class="switch">
+                                <input type="checkbox" role="switch" id="adminScanPorts"
+                                       {{ bind(import_scan_ports) }}
+                                       {% if shell.import.running %}disabled{% endif %}
+                                       data-attr:disabled="${{ import_running.id() }}">
+                                Scan ports
+                            </label>
+                        {% endif %}
+                        <button type="button" id="importCancel" data-size="sm"
+                                {% if not shell.import.running %}hidden{% endif %}
+                                data-attr:hidden="!${{ import_running.id() }}" data-preserve-attr="hidden"
+                                data-indicator:_cancel_loading
+                                data-attr:aria-busy="$_cancel_loading ? 'true' : false"
+                                data-on:click="el === document.activeElement && document.getElementById('healthImportTitle').focus({ preventScroll: true }); @post('{{ cancelImport.url() }}')">
+                            Cancel import
                         </button>
                     </div>
-                </div>
                 {% endif %}
 
-                {# Cancel, only while an import is running #}
-                <div class="cluster">
-                    <button data-variant="primary"
-                            data-show="${{ import_running.id() }}" style="display: none;"
-                            data-indicator:_cancel_loading
-                            data-on:click="@post('{{ cancelImport.url() }}')">
-                        <span data-show="$_cancel_loading" style="display: none;" class="spinner" role="status" aria-hidden="true"></span>
-                        <svg data-show="!$_cancel_loading" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"  viewBox="0 0 16 16">
-                            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
-                            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"/>
-                        </svg>
-                        Cancel Import
-                    </button>
-
-                    {# Port scanning, only when ports are configured #}
-                    {% if hasPorts %}
-                    <div class="choice">
-                        <input type="checkbox"  id="adminScanPorts"
-                               {{ bind(import_scan_ports) }}
-                               data-attr:disabled="${{ import_running.id() }}">
-                        <label class="muted" for="adminScanPorts">Scan ports</label>
+                {# Progress while a pass runs; the admin:import broadcast re-renders it per tick. #}
+                <div class="stack health-progress" {% if not shell.import.running %}hidden{% endif %}
+                     data-attr:hidden="!${{ import_running.id() }}" data-preserve-attr="hidden">
+                    <div class="cluster" data-justify="between">
+                        <small>{{ shell.import.statusText }}</small>
+                        <small><strong>{{ shell.import.progress }}%</strong>{% if shell.import.eta %}, {{ shell.import.eta }}{% endif %}</small>
                     </div>
+                    <progress max="100" value="{{ shell.import.progress }}" aria-label="Import progress">{{ shell.import.progress }}%</progress>
+                    {% if shell.import.currentFile %}
+                        <small>Current file <code>{{ shell.import.currentFile }}</code></small>
                     {% endif %}
                 </div>
 
-            {% else %}
-
-                {# Single-profile action buttons #}
-                <div class="cluster">
-
-                <button data-variant="primary"
-                        data-attr:disabled="${{ import_running.id() }}"
-                        data-show="!${{ import_running.id() }}"
-                        data-on:click="@post('{{ triggerImport.url() }}')">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"  viewBox="0 0 16 16">
-                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
-                        <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
-                    </svg>
-                    Trigger Import
-                </button>
-
-                {% if datasourceAcceptsHistoricWrites %}
-                <button 
-                        data-attr:disabled="${{ import_running.id() }}"
-                        data-show="!${{ import_running.id() }}"
-                        title="Re-reads every capture file, including those older than the newest sample. Nothing is deleted."
-                        data-on:click="@post('{{ backfillImport.url() }}')">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"  viewBox="0 0 16 16">
-                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2z"/>
-                        <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308c-.12.1-.12.284 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466"/>
-                    </svg>
-                    Backfill
-                </button>
-                {% else %}
-                <button class="kill"
-                        data-attr:disabled="${{ import_running.id() }}"
-                        data-show="!${{ confirm_rescan.id() }} && !${{ import_running.id() }}"
-                        data-on:click="${{ confirm_rescan.id() }} = true">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"  viewBox="0 0 16 16">
-                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2z"/>
-                        <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308c-.12.1-.12.284 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466"/>
-                    </svg>
-                    Force Rescan
-                </button>
-                {% endif %}
-
-                <button data-variant="primary"
-                        data-show="${{ import_running.id() }}" style="display: none;"
-                        data-indicator:_cancel_loading
-                        data-on:click="@post('{{ cancelImport.url() }}')">
-                    <span data-show="$_cancel_loading" style="display: none;" class="spinner" role="status" aria-hidden="true"></span>
-                    <svg data-show="!$_cancel_loading" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"  viewBox="0 0 16 16">
-                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
-                        <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"/>
-                    </svg>
-                    Cancel Import
-                </button>
-
-                {% if not datasourceAcceptsHistoricWrites %}
-                <div data-show="${{ confirm_rescan.id() }}" style="display: none;">
-                    <div class="cluster">
-                    <span class="text-danger strong muted">
-                        Resets all {{ deployDatasource }} data and re-imports from scratch.
-                    </span>
-                    <button data-variant="danger" data-size="sm"
-                            data-attr:disabled="${{ import_running.id() }}"
-                            data-on:click="@post('{{ forceRescan.url() }}')">
-                        Confirm &amp; Rescan
-                    </button>
-                    <button data-size="sm"
-                            data-on:click="${{ confirm_rescan.id() }} = false">
-                        Cancel
-                    </button>
-                    </div>
-                </div>
-                {% endif %}
-
-                {# Port scanning, only when ports are configured #}
-                {% if hasPorts %}
-                <div class="choice">
-                    <input type="checkbox"  id="adminScanPorts"
-                           {{ bind(import_scan_ports) }}
-                           data-attr:disabled="${{ import_running.id() }}">
-                    <label class="muted" for="adminScanPorts">Scan ports</label>
-                </div>
-                {% endif %}
-
+                {# Always in the page, so the outcome notice it gains when a pass ends is announced. #}
+                <div class="health-outcome" id="importOutcome" role="status">
+                    {%- if shell.import.statusText and not shell.import.running -%}
+                        <p class="notice" {% if imp.outcomeLevel %}data-level="{{ imp.outcomeLevel }}"{% endif %}>
+                            {%- if imp.outcomeLevel -%}
+                                {{ health.status(imp.outcomeLevel, {success: 'Done:', warning: 'Warning:', error: 'Error:'}[imp.outcomeLevel], true) }}
+                            {%- endif -%}
+                            <span>
+                                {{- shell.import.statusText -}}
+                                {%- if imp.outcomeLevel in ['warning', 'error'] and imp.log is not empty %} The import log below has the details.{% endif -%}
+                            </span>
+                        </p>
+                    {%- endif -%}
                 </div>
 
-            {% endif %}
-
-            </div>{# /action buttons #}
-
-            {# Progress, while an import runs #}
-            <div data-show="${{ import_running.id() }}" style="display: none;" >
-                <div class="cluster cluster-between">
-                    <small class="muted">{{ importStatusText }}</small>
-                    <small class="strong">{{ importProgress }}%{% if importEta %} · {{ importEta }}{% endif %}</small>
-                </div>
-                <progress class="import-progress" max="100" value="{{ importProgress }}">{{ importProgress }}%</progress>
-                <div class="muted{{ importCurrentFile ? '' : ' invisible' }}">
-                    Current: <code>{{ importCurrentFile ?: '…' }}</code>
-                </div>
-            </div>
-
-            {# Import status, after completion #}
-            {% if importStatusText and not import_running.getValue() %}
-            <div>
-                <div class="notice muted" data-level="{{ importLog|filter(e => e.level <= 3)|length > 0 ? 'error' : (importLog|length > 0 ? 'warning' : 'success') }}">
-                    {{ importStatusText }}
-                </div>
-            </div>
-            {% endif %}
-
-            {# Import log #}
-            {% if importLog|length > 0 %}
-            <div>
-                <div class="card">
-                    <div class="card-header muted strong text-warning" data-level="warning">
-                        Import log ({{ importLog|length }} warning{{ importLog|length != 1 ? 's' : '' }})
-                    </div>
-                    <div class="card-body">
-                        <div  style="max-height: 240px;">
-                            <table class="mono muted">
+                {% if imp.log is not empty %}
+                    <div class="stack health-import-log">
+                        {% set logWarnings = imp.logTotal - imp.logErrors %}
+                        {% set logParts = [] %}
+                        {% if imp.logErrors > 0 %}{% set logParts = logParts|merge([imp.logErrors|number_format ~ (imp.logErrors == 1 ? ' error' : ' errors')]) %}{% endif %}
+                        {% if logWarnings > 0 %}{% set logParts = logParts|merge([logWarnings|number_format ~ (logWarnings == 1 ? ' warning' : ' warnings')]) %}{% endif %}
+                        <h3>Import log <small>{{ logParts|join(', ') }}{% if imp.logTotal > imp.log|length %}, the last {{ imp.log|length }} shown{% endif %}</small></h3>
+                        <div class="table-wrap health-scroll" tabindex="0" role="region" aria-label="Import log">
+                            <table>
                                 <tbody>
-                                {% for entry in importLog|reverse %}
-                                    <tr data-level="{{ entry.level <= 3 ? 'error' : 'warning' }}">
-                                        <td class="muted" style="width:1%"><span data-text="new Date({{ entry.ts }} * 1000).toLocaleString('sv', {timeStyle:'medium'})">{{ entry.ts|date('H:i:s') }}</span></td>
-                                        <td>{{ entry.msg }}</td>
+                                {% for entry in imp.log %}
+                                    <tr>
+                                        <td data-kind="time"><time data-text="new Date({{ entry.ts }} * 1000).toLocaleString('sv', {{ tz }})">{{ entry.ts|date('Y-m-d H:i:s') }}</time></td>
+                                        <td>{{ health.status(entry.band, entry.band == 'error' ? 'Error' : 'Warning', true) }}</td>
+                                        <td class="health-message">{{ entry.msg }}</td>
                                     </tr>
                                 {% endfor %}
                                 </tbody>
                             </table>
                         </div>
                     </div>
-                </div>
+                {% endif %}
             </div>
-            {% endif %}
-        </div>
-    </section>
+        </section>
 
-    {% set hcErrors = healthChecks|filter(c => c.status == 'error')|length %}
-    {% set hcWarnings = healthChecks|filter(c => c.status == 'warning')|length %}
-    <div>
-        <div class="card">
-            <div class="cluster card-header strong cluster-between">
-                System Health
-                <span>
-                    {% if hcErrors > 0 %}
-                        <span class="badge" data-level="error">{{ hcErrors }} error{{ hcErrors != 1 ? 's' : '' }}</span>
-                    {% elseif hcWarnings > 0 %}
-                        <span class="badge text-warning" data-level="warning">{{ hcWarnings }} warning{{ hcWarnings != 1 ? 's' : '' }}</span>
-                    {% else %}
-                        <span class="badge" data-level="success">All checks passed</span>
-                    {% endif %}
-                </span>
-            </div>
-            <div class="card-body">
+        {# ── Capture sources ──────────────────────────────────────────────────── #}
+        <section class="card" id="healthSources" aria-labelledby="healthSourcesTitle">
+            <header>
+                <h2 id="healthSourcesTitle">Capture sources</h2>
+                <span class="card-meta">Newest nfcapd file per source, from the last 7 days</span>
+            </header>
+            <div class="table-wrap">
                 <table>
-                    <tbody>
-                        {% for check in healthChecks %}
-                        {% if loop.first or check.group != healthChecks[loop.index0 - 1].group %}
-                        <tr class="row-group">
-                            <th colspan="2" scope="colgroup">{{ check.group }}</th>
-                        </tr>
-                        {% endif %}
-                        <tr data-level="{{ check.status == 'error' ? 'error' : (check.status == 'warning' ? 'warning' : '') }}">
-                            <td  style="width:40%">
-                                <span class="text-{{ check.status == 'error' ? 'danger' : (check.status == 'warning' ? 'warning' : 'success') }}">●</span>
-                                {{ check.label }}
-                            </td>
-                            <td class="muted">
-                                {% if check.code %}<code>{{ check.detail }}</code>{% else %}{{ check.detail|raw }}{% endif %}
-                                {% if check.epoch > 0 %}
-                                    <br><span class="mono" style="font-size:.85em" data-text="new Date({{ check.epoch }} * 1000).toLocaleString(undefined, tzOptions(${{ displayTz.id() }}, ${{ nfcapdTz.id() }}))">{{ check.epoch|date('Y-m-d H:i:s') }}</span>
-                                {% endif %}
-                                {% if check.hint %}
-                                    <br><small class="muted" style="opacity:.65; font-size:.78em">{{ check.hint }}</small>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
+                    <thead>
                         <tr>
-                            <td colspan="2" class="muted italic">No checks available.</td>
+                            <th scope="col">Profile</th>
+                            <th scope="col">Source</th>
+                            <th scope="col">Newest file</th>
+                            <th scope="col">Data until</th>
+                            <th scope="col">Imported until</th>
+                            <th scope="col" data-num>Pending (7 d)</th>
+                            <th scope="col">State</th>
                         </tr>
-                        {% endfor %}
+                    </thead>
+                    <tbody>
+                    {% set stateBadge = {
+                        healthy: {level: 'success', text: 'Healthy', hint: ''},
+                        stale: {level: 'warning', text: 'Stale', hint: 'No new file for more than 12 minutes'},
+                        nodata: {level: 'warning', text: 'No data', hint: 'No capture file in the last 7 days'},
+                        missing: {level: 'error', text: 'Missing', hint: 'The source directory does not exist'},
+                    } %}
+                    {% for s in h.sources %}
+                        {% set badge = stateBadge[s.state] %}
+                        <tr>
+                            <td><code>{{ s.profile }}</code></td>
+                            <th scope="row">{{ s.source }}</th>
+                            <td>{% if s.newestFile %}<code>{{ s.newestFile }}</code>{% else %}none{% endif %}</td>
+                            <td data-kind="time">{{ health.when(s.dataUntil ?? 0, tz, 'none') }}</td>
+                            <td data-kind="time">{{ health.when(s.imported, tz) }}</td>
+                            <td data-num>{{ s.pending|number_format }}{{ s.pending >= constant('mbolli\\nfsen_ng\\common\\HealthMetrics::PENDING_CAP') ? '+' }}</td>
+                            <td>
+                                <span class="badge" data-level="{{ badge.level }}" {% if badge.hint %}title="{{ badge.hint }}"{% endif %}>{{ health.status(badge.level, badge.text) }}</span>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="7">{{ h.fatal ? 'Not available.' : 'No sources configured.' }}</td></tr>
+                    {% endfor %}
                     </tbody>
                 </table>
             </div>
-        </div>
+        </section>
+
+        {# ── Disk usage ───────────────────────────────────────────────── #}
+        <section class="card" id="healthDisks" aria-labelledby="healthDisksTitle">
+            <header><h2 id="healthDisksTitle">Disk usage</h2></header>
+            <div class="card-body">
+                <ul class="stack disk-list">
+                {% for disk in h.disks %}
+                    <li class="stack disk">
+                        <div class="cluster" data-justify="between">
+                            <strong>{{ disk.label }}</strong>
+                            {% if disk.path != 'remote' %}<code>{{ disk.path }}</code>{% endif %}
+                        </div>
+                        {% if disk.usedPct is not null %}
+                            {% set pct = disk.usedPct|round %}
+                            <div class="usage-bar" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ disk.usedPct }}"
+                                 aria-label="{{ disk.label }} disk usage" aria-valuetext="{{ pct }}% used, {{ disk.freeText }} free"
+                                 style="--share: {{ disk.usedPct }}%" {% if disk.level %}data-level="{{ disk.level }}"{% endif %}>
+                                <span>
+                                    {%- if disk.level -%}
+                                        {{ health.status(disk.level, disk.level == 'error' ? 'Almost full:' : 'Filling up:', true) }}
+                                    {% endif -%}
+                                    {{ pct }}% used
+                                </span>
+                            </div>
+                            <small>{{ disk.freeText }} free of {{ disk.totalText }}</small>
+                        {% elseif disk.path == 'remote' %}
+                            <small>Stored in VictoriaMetrics, so not measured here.</small>
+                        {% else %}
+                            <small>Not available{% if disk.path %}: the directory does not exist{% endif %}.</small>
+                        {% endif %}
+                    </li>
+                {% else %}
+                    <li><small>Not available.</small></li>
+                {% endfor %}
+                </ul>
+            </div>
+        </section>
+
+        {# ── System ───────────────────────────────────────────────────── #}
+        {% set sys = h.system %}
+        <section class="card" id="healthSystem" aria-labelledby="healthSystemTitle">
+            <header><h2 id="healthSystemTitle">System</h2></header>
+            <div class="card-body">
+                <dl class="health-facts">
+                    <dt>nfdump</dt>
+                    <dd>{{ sys.nfdump ?: 'not found' }}</dd>
+                    <dt>Active queries</dt>
+                    <dd>{{ sys.queries.inUse }} of {{ sys.queries.max }} <small>({{ sys.queries.byOwner.import }} import)</small></dd>
+                    <dt>Uptime</dt>
+                    <dd>{{ sys.uptime }} <small>since {{ health.when(sys.startedAt, tz) }}</small></dd>
+                    <dt>Datasource</dt>
+                    <dd>{{ sys.datasource }}</dd>
+                    <dt>PHP</dt>
+                    <dd>{{ sys.php }}</dd>
+                    <dt>OpenSwoole</dt>
+                    <dd>{{ sys.openswoole ?: 'not loaded' }}</dd>
+                    <dt>SQLite</dt>
+                    <dd>{{ sys.sqlite ?: 'not loaded' }}</dd>
+                    <dt>SQLite journal</dt>
+                    <dd>{{ sys.journalMode ?: 'not available' }}</dd>
+                </dl>
+            </div>
+        </section>
     </div>
+
+    {# ── Checks ─────────────────────────────────────────────────────────────── #}
+    <section class="card" id="healthChecks" aria-labelledby="healthChecksTitle">
+        <header>
+            <h2 id="healthChecksTitle">Checks</h2>
+            {% if h.counts.error > 0 or h.counts.warning > 0 %}
+                {% set parts = [] %}
+                {% if h.counts.error > 0 %}{% set parts = parts|merge([h.counts.error ~ (h.counts.error == 1 ? ' error' : ' errors')]) %}{% endif %}
+                {% if h.counts.warning > 0 %}{% set parts = parts|merge([h.counts.warning ~ (h.counts.warning == 1 ? ' warning' : ' warnings')]) %}{% endif %}
+                {% set worst = h.counts.error > 0 ? 'error' : 'warning' %}
+                <span class="badge" data-level="{{ worst }}">{{ health.status(worst, parts|join(', ')) }}</span>
+            {% elseif h.checks is not empty %}
+                <span class="badge" data-level="success">{{ health.status('success', 'All checks passed') }}</span>
+            {% endif %}
+        </header>
+        <div class="table-wrap">
+            <table class="health-checks">
+                <tbody>
+                {% for check in h.checks %}
+                    {% if loop.first or check.group != h.checks[loop.index0 - 1].group %}
+                        <tr class="row-group">
+                            <th colspan="2" scope="colgroup">{{ check.group }}</th>
+                        </tr>
+                    {% endif %}
+                    <tr {% if check.status != 'ok' %}data-level="{{ check.status }}"{% endif %}>
+                        <th scope="row">{{ health.status(check.status, {ok: 'OK', warning: 'Warning', error: 'Error'}[check.status] ~ ':', true) }} {{ check.label }}</th>
+                        <td>
+                            <div class="stack check-result">
+                                <span>{% if check.code %}<code>{{ check.detail }}</code>{% else %}{{ check.detail }}{% endif %}</span>
+                                {% if check.epoch > 0 %}<small>{{ health.when(check.epoch, tz, '', 'medium') }}</small>{% endif %}
+                                {% if check.hint %}<small class="check-hint">{{ check.hint }}</small>{% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="2">{{ h.fatal ? 'The checks need the configuration, which did not load.' : 'No checks available.' }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {# ── Recent log ─────────────────────────────────────────────────────────── #}
+    {# The level filter is client-side: data-filter on the card hides rows by data-level (health.css). #}
+    <section class="card health-log" id="healthLog" aria-labelledby="healthLogTitle"
+             data-signals__ifmissing="{_log_level: 'all', _log_copied: false}"
+             data-filter="all" data-attr:data-filter="$_log_level" data-preserve-attr="data-filter">
+        <header>
+            <h2 id="healthLogTitle">Recent log</h2>
+            <span class="card-meta">the last {{ h.log|length }} lines, log level {{ h.logLevel }}</span>
+            <div class="segmented" role="radiogroup" aria-label="Show log levels">
+                <input type="radio" id="healthLogAll" name="healthLogLevel" value="all" data-bind="_log_level" checked>
+                <label for="healthLogAll">All</label>
+                <input type="radio" id="healthLogWarnings" name="healthLogLevel" value="warning" data-bind="_log_level">
+                <label for="healthLogWarnings">Warnings and errors</label>
+                <input type="radio" id="healthLogErrors" name="healthLogLevel" value="error" data-bind="_log_level">
+                <label for="healthLogErrors">Errors</label>
+            </div>
+            {# navigator.clipboard needs a secure context; plain HTTP falls back to a selected textarea,
+               then gives the focus back. #}
+            <button type="button" id="healthLogCopy" data-size="sm"
+                    data-on:click="((text) => (window.isSecureContext && navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.resolve(((t) => (t.value = text, t.readOnly = true, t.style.position = 'fixed', t.style.opacity = '0', document.body.append(t), t.select(), document.execCommand('copy'), t.remove(), el.focus()))(document.createElement('textarea')))).then(() => ($_log_copied = true, setTimeout(() => ($_log_copied = false), 2000))))([...el.closest('section').querySelectorAll('tbody tr[data-level]')].filter((r) => r.getClientRects().length > 0).map((r) => [...r.cells].map((c) => c.textContent.trim()).join('  ')).join('\n'))">
+                <span data-text="$_log_copied ? 'Copied' : 'Copy'">Copy</span>
+            </button>
+            <span class="visually-hidden" role="status" data-text="$_log_copied ? 'The visible log lines were copied.' : ''"></span>
+        </header>
+        <div class="table-wrap health-scroll" tabindex="0" role="region" aria-label="Recent log lines">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Time</th>
+                        <th scope="col">Level</th>
+                        <th scope="col">Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for entry in h.log %}
+                    <tr id="healthLog-{{ entry.seq }}" data-level="{{ entry.band }}">
+                        <td data-kind="time"><time data-text="new Date({{ entry.ts }}).toLocaleString('sv', {{ tz }})">{{ (entry.ts // 1000)|date('Y-m-d H:i:s') }}</time></td>
+                        <td class="health-level">
+                            {%- if entry.band in ['error', 'warning'] -%}
+                                {{ health.status(entry.band, entry.levelName) }}
+                            {%- else -%}
+                                {{ entry.levelName }}
+                            {%- endif -%}
+                        </td>
+                        <td class="health-message">{{ entry.message }}</td>
+                    </tr>
+                {% endfor %}
+                <tr data-empty="all"><td colspan="3">Nothing logged since the server started.</td></tr>
+                <tr data-empty="warning"><td colspan="3">No warnings or errors in these lines.</td></tr>
+                <tr data-empty="error"><td colspan="3">No errors in these lines.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
 </div>

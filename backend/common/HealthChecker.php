@@ -6,20 +6,36 @@ namespace mbolli\nfsen_ng\common;
 
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
+use mbolli\nfsen_ng\query\Estimate;
+use mbolli\nfsen_ng\store\Database;
+use mbolli\nfsen_ng\store\Migrator;
 
 /**
- * Runs a suite of configuration and environment checks.
- *
- * Call HealthChecker::run() on every view render (cached in app.php with a 30s
- * throttle so it doesn't block every SSE re-render).
+ * Runs a suite of configuration and environment checks. The Health page caches the result
+ * for 30 s (HealthPage::CACHE); the MCP status tool calls it directly.
  *
  * Returns checks sorted by group (defined order), then errors-first within
  * each group, so the template can render with visual group separators.
+ * Details and hints are plain text: the template escapes them.
  *
  * @phpstan-type HealthCheck array{id: string, label: string, status: 'ok'|'warning'|'error', detail: string, group: string, code: bool, hint: string, epoch: int}
  * @phpstan-type DaemonInfo array{ready: bool, watchCount: int, lastAutoImport: int}
+ *
+ * @phpstan-import-type DiskUsage from HealthMetrics
  */
 class HealthChecker {
+    public const string STORE_GROUP = 'Storage (SQLite)';
+
+    public const string DISK_GROUP = 'Disk space';
+
+    /** Used share of a filesystem at which its row and usage bar turn warning, then error (2.5). */
+    public const float DISK_WARNING = 85.0;
+
+    public const float DISK_ERROR = 95.0;
+
+    /** Oldest SQLite that runs the top-N rollups (`UPDATE ... FROM`). */
+    public const string SQLITE_MIN = '3.33.0';
+
     /** Human-readable elapsed time; non-positive values (clock skew) read as "just now". */
     public static function ageStr(int $seconds): string {
         if ($seconds <= 0) {
@@ -76,7 +92,7 @@ class HealthChecker {
         $storageGroup = $datasource === 'victoriametrics' ? 'VictoriaMetrics' : 'RRD Storage';
 
         // Group display order (index = sort priority)
-        $groupOrder = array_flip(['PHP Extensions', 'Configuration', 'Timezone', 'nfdump', 'Sources', 'Import Daemon', 'nfcapd Paths', $storageGroup]);
+        $groupOrder = array_flip(['PHP Extensions', 'Configuration', 'Timezone', 'nfdump', 'Sources', 'Import Daemon', 'nfcapd Paths', $storageGroup, self::STORE_GROUP, self::DISK_GROUP]);
 
         // ── 1. PHP Extensions ────────────────────────────────────────────────
         $phpVer = PHP_VERSION;
@@ -169,7 +185,8 @@ class HealthChecker {
             $add('tz_nfcapd', 'nfcapd timezone', 'ok', $phpTz, 'Timezone', false, 'Inherited from the PHP timezone. Set NFCAPD_TZ if nfcapd runs in a different timezone.');
         }
 
-        // nfcapd file time plausibility: the newest file name must not lie in the future.
+        // nfcapd file time plausibility: the newest file name must match its write time (a
+        // file is written when its 5 minute interval ends) and must not lie in the future.
         $plausibilityDone = false;
         if (rtrim($settings->nfdumpProfilesData, '/\\') !== '' && !empty($settings->sources)) {
             foreach (Config::detectProfiles() as $profileP) {
@@ -182,7 +199,20 @@ class HealthChecker {
 
                     $now = time();
                     $plausibilityDone = true;
-                    if ($newestP['ts'] > $now + 1800) {
+                    $written = @filemtime($newestP['path']);
+                    $skew = $written !== false ? $written - ($newestP['ts'] + 300) : 0;
+                    if (abs($skew) > 1800) {
+                        $hours = round(abs($skew) / 3600, 1);
+                        $add(
+                            'tz_plausibility',
+                            'nfcapd file time',
+                            'warning',
+                            "File names are {$hours} h " . ($skew > 0 ? 'behind' : 'ahead of') . " their write time ({$newestP['name']})",
+                            'Timezone',
+                            false,
+                            'Check NFCAPD_TZ: nfcapd file names may be in a different timezone than configured.'
+                        );
+                    } elseif ($newestP['ts'] > $now + 1800) {
                         $minutesAhead = (int) round(($newestP['ts'] - $now) / 60);
                         $add(
                             'tz_plausibility',
@@ -284,14 +314,18 @@ class HealthChecker {
 
         // ── 5. Import Daemon ─────────────────────────────────────────────────
         if ($daemonDisabled) {
+            // The MCP status tool passes true because it does not see the daemons.
+            $skipped = (bool) EnvRegistry::value('NFSEN_SKIP_DAEMON');
             $add(
                 'daemon_status',
                 'Daemon status',
                 'warning',
-                'Disabled',
+                $skipped ? 'Disabled' : 'Not visible to the status tool',
                 'Import Daemon',
                 false,
-                'Import must be triggered manually from this panel'
+                $skipped
+                    ? 'NFSEN_SKIP_DAEMON is set, so no capture files are imported and alerts are not evaluated. Unset it and restart nfsen-ng.'
+                    : 'The Health page shows the state of the import daemon.'
             );
         } elseif (empty($daemonsInfo)) {
             $add(
@@ -382,28 +416,23 @@ class HealthChecker {
                         continue;
                     }
 
-                    // Capture freshness: today's YYYY/MM/DD dir in the nfcapd timezone, rotated files only
-                    // (an nfcapd.current.* file is rewritten continuously and says nothing about rotation).
+                    // Capture freshness: the newest rotated file of today or yesterday in the nfcapd
+                    // timezone, so the minutes after local midnight still find the last rotation.
+                    // An nfcapd.current.* file is rewritten continuously and says nothing about rotation.
                     $todayDt = new \DateTimeImmutable('now', Config::nfcapdTimezone());
                     $today = $todayDt->format('Y') . \DIRECTORY_SEPARATOR . $todayDt->format('m') . \DIRECTORY_SEPARATOR . $todayDt->format('d');
                     $freshnessLabel = $multiProfile ? "Freshness {$source} ({$profile})" : "Capture freshness: {$source}";
-                    $newest = NfcapdFiles::newest($profile, $source, 0);
+                    $newest = NfcapdFiles::newest($profile, $source, 1);
                     // filemtime() is false when nfcapd rotated the file away between scan and stat.
                     $newestMtime = $newest === null ? false : @filemtime($newest['path']);
-                    if (!is_dir($sourcePath . \DIRECTORY_SEPARATOR . $today)) {
+                    if ($newestMtime === false) {
                         $add(
                             "capture_fresh_{$sourceIdPfx}",
                             $freshnessLabel,
                             'warning',
-                            "No data dir for today ({$today})",
-                            'nfcapd Paths'
-                        );
-                    } elseif ($newestMtime === false) {
-                        $add(
-                            "capture_fresh_{$sourceIdPfx}",
-                            $freshnessLabel,
-                            'warning',
-                            "No nfcapd files in today's dir",
+                            is_dir($sourcePath . \DIRECTORY_SEPARATOR . $today)
+                                ? 'No nfcapd files since yesterday'
+                                : "No data dir for today ({$today})",
                             'nfcapd Paths'
                         );
                     } else {
@@ -427,8 +456,20 @@ class HealthChecker {
         // Delegated to the active datasource implementation: each knows its
         // own connectivity checks, file paths, and per-source freshness logic.
         if (isset(Config::$db)) {
-            array_push($checks, ...Config::$db->healthChecks($storageGroup, $sources));
+            foreach (Config::$db->healthChecks($storageGroup, $sources) as $check) {
+                $check['detail'] = self::plainText($check['detail']);
+                $check['hint'] = self::plainText($check['hint']);
+                $checks[] = $check;
+            }
         }
+
+        // Read through Database::inspect() only: never creates, migrates or throws, so the
+        // MCP process works even where it cannot write the state directory.
+        $storePath = isset(Config::$stateDir) && Config::$stateDir !== ''
+            ? rtrim(Config::$stateDir, \DIRECTORY_SEPARATOR) . \DIRECTORY_SEPARATOR . Database::FILENAME
+            : '';
+        array_push($checks, ...self::storeChecks($storePath, $storePath === '' ? null : Database::inspect($storePath), ProcessInfo::sqliteVersion()));
+        array_push($checks, ...self::diskChecks(HealthMetrics::disks()));
 
         // ── 8. Configuration (environment variables) ─────────────────────────
         // Config source: the env-var baseline vs the deprecated settings.php file.
@@ -518,7 +559,7 @@ class HealthChecker {
                     'Overridden by a saved log-level preference (' . Settings::logLevelToString($settings->logPriority) . ')',
                     'Configuration',
                     false,
-                    'A saved Preferences log level wins over NFSEN_LOG_LEVEL. Clear it in Settings → Preferences, or match the env var there.'
+                    'A saved log level preference wins over NFSEN_LOG_LEVEL. Change it in Settings (General) to match the env var.'
                 );
             }
         }
@@ -532,5 +573,169 @@ class HealthChecker {
         );
 
         return $checks;
+    }
+
+    /**
+     * The "Storage (SQLite)" group from the facts of Database::inspect(); $facts is null when
+     * the state directory is not configured.
+     *
+     * @param null|array{path: string, exists: bool, writable: bool, journalMode: string, schemaVersion: int, sizeBytes: int, error: string} $facts
+     *
+     * @return list<HealthCheck>
+     */
+    public static function storeChecks(string $path, ?array $facts, string $sqliteVersion): array {
+        /** @var list<HealthCheck> $checks */
+        $checks = [];
+
+        /** @param 'error'|'ok'|'warning' $status */
+        $add = static function (string $id, string $label, string $status, string $detail, bool $code = false, string $hint = '') use (&$checks): void {
+            /** @var list<HealthCheck> $checks */
+            $checks[] = ['id' => $id, 'label' => $label, 'status' => $status, 'detail' => $detail,
+                'group' => self::STORE_GROUP, 'code' => $code, 'hint' => $hint, 'epoch' => 0];
+        };
+        $needs = 'Top-N lists, saved filters and alert history are kept there.';
+
+        if ($facts === null) {
+            $add('sqlite_file', 'Database file', 'error', 'The state directory is not configured', false, 'Set NFSEN_STATE_DIR. ' . $needs);
+        } elseif ($facts['exists']) {
+            $add('sqlite_file', 'Database file', 'ok', $path, true);
+            $add(
+                'sqlite_writable',
+                'Writable',
+                $facts['writable'] ? 'ok' : 'error',
+                $facts['writable'] ? 'Yes' : 'No, the file or its directory is read-only for this user',
+                false,
+                $facts['writable'] ? '' : 'SQLite also writes its journal next to the file. ' . $needs
+            );
+        } elseif ($facts['writable']) {
+            $add('sqlite_file', 'Database file', 'warning', 'Not created yet: ' . $path, false, 'The server creates it when it starts.');
+        } else {
+            $add('sqlite_file', 'Database file', 'error', 'Cannot be created: ' . $path, false, 'Make NFSEN_STATE_DIR writable for the user nfsen-ng runs as. ' . $needs);
+        }
+
+        if ($facts !== null && $facts['journalMode'] !== '') {
+            $mode = strtolower($facts['journalMode']);
+            $add(
+                'sqlite_journal',
+                'Journal mode',
+                'ok',
+                self::journalLabel($mode),
+                false,
+                $mode === 'delete' ? 'The filesystem refused WAL, which is common on FUSE mounts such as Unraid appdata. Everything works; reads wait while a write runs.' : ''
+            );
+        }
+
+        if ($facts !== null && $facts['exists']) {
+            $version = $facts['schemaVersion'];
+            $latest = Migrator::latestVersion();
+            $add(
+                'sqlite_schema',
+                'Schema version',
+                $version === $latest ? 'ok' : 'warning',
+                match (true) {
+                    $version === $latest => (string) $version,
+                    $version > $latest => "{$version}, newer than this nfsen-ng knows ({$latest})",
+                    default => "{$version}, expected {$latest}",
+                },
+                false,
+                match (true) {
+                    $version === $latest => '',
+                    $version > $latest => 'The store is opened read-only, so nothing is lost. Update nfsen-ng or restore a matching backup.',
+                    default => 'The server migrates it when it starts.',
+                }
+            );
+            $add('sqlite_size', 'Size', 'ok', Estimate::humanBytes($facts['sizeBytes']));
+        }
+
+        if ($sqliteVersion === '') {
+            $add('sqlite_version', 'SQLite library', 'error', 'Not available, pdo_sqlite is not loaded');
+        } else {
+            $recent = version_compare($sqliteVersion, self::SQLITE_MIN, '>=');
+            $add(
+                'sqlite_version',
+                'SQLite library',
+                $recent ? 'ok' : 'error',
+                $recent ? $sqliteVersion : "{$sqliteVersion}. SQLite 3.33 or later is required.",
+                false,
+                $recent ? '' : 'The top-N rollups use UPDATE ... FROM, which older SQLite versions reject.'
+            );
+        }
+
+        if ($facts !== null && $facts['error'] !== '') {
+            $add('sqlite_error', 'Store', 'error', $facts['error']);
+        }
+
+        return $checks;
+    }
+
+    /**
+     * The "Disk space" group: one row per measured filesystem of HealthMetrics::disks(). A
+     * missing directory has its own row elsewhere and VictoriaMetrics data is not measured here.
+     *
+     * @param list<DiskUsage> $disks
+     *
+     * @return list<HealthCheck>
+     */
+    public static function diskChecks(array $disks): array {
+        $checks = [];
+        foreach ($disks as $disk) {
+            if ($disk['usedPct'] === null || $disk['free'] === null || $disk['total'] === null) {
+                continue;
+            }
+            $level = self::diskLevel($disk['usedPct']);
+            $checks[] = [
+                'id' => 'disk_' . strtolower((string) preg_replace('/\W+/', '_', $disk['label'])),
+                'label' => 'Disk space: ' . $disk['label'],
+                'status' => $level === '' ? 'ok' : $level,
+                'detail' => round($disk['usedPct']) . '% used, ' . Estimate::humanBytes($disk['free']) . ' free of ' . Estimate::humanBytes($disk['total']),
+                'group' => self::DISK_GROUP,
+                'code' => false,
+                'hint' => match ($level) {
+                    'error' => "Free space under {$disk['path']} now: nfcapd, the import and the SQLite store fail once it is full.",
+                    'warning' => "Free space under {$disk['path']} or grow the filesystem before it fills up.",
+                    default => '',
+                },
+                'epoch' => 0,
+            ];
+        }
+
+        return $checks;
+    }
+
+    /**
+     * The level of a filesystem's usage: '' below DISK_WARNING or when it was not measured.
+     *
+     * @return ''|'error'|'warning'
+     */
+    public static function diskLevel(?float $usedPct): string {
+        return match (true) {
+            $usedPct === null => '',
+            $usedPct >= self::DISK_ERROR => 'error',
+            $usedPct >= self::DISK_WARNING => 'warning',
+            default => '',
+        };
+    }
+
+    /** An SQLite journal mode as the Health page names it; '' stays ''. */
+    public static function journalLabel(string $mode): string {
+        return match (strtolower($mode)) {
+            'wal' => 'WAL',
+            'delete' => 'Rollback journal (DELETE)',
+            default => strtolower($mode),
+        };
+    }
+
+    /**
+     * Datasource rows may carry markup (the VictoriaMetrics UI link): a link becomes its
+     * address, every other tag goes.
+     */
+    public static function plainText(string $html): string {
+        if (!str_contains($html, '<') && !str_contains($html, '&')) {
+            return $html;
+        }
+
+        $text = preg_replace('~<a\b[^>]*\bhref\s*=\s*"([^"]*)"[^>]*>.*?</a>~is', '$1', $html) ?? $html;
+
+        return trim(html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     }
 }

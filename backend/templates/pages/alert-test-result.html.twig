@@ -1,0 +1,38 @@
+{#
+    The alert Test result (4.6.2), rendered by test-alert into the shell's modal root (D24).
+    Data: view (AlertsPage::testResultView).
+#}
+<dialog id="alertTestResult" class="alert-test-result" aria-labelledby="alertTestResultTitle" data-preserve-attr="open">
+    <div class="dialog-content">
+        <header class="dialog-header">
+            <h2 class="dialog-title" id="alertTestResultTitle">{{ view.title }}</h2>
+            <form method="dialog">
+                <button type="submit" data-variant="close" aria-label="Close"></button>
+            </form>
+        </header>
+        <div class="dialog-body stack">
+            <p class="alert-test-outcome" data-level="{{ view.level }}">
+                <span class="status-dot" data-level="{{ view.level }}" aria-hidden="true"></span>
+                <strong>{{ view.headline }}</strong>
+            </p>
+            <p>{{ view.detail }}</p>
+            <p>{{ view.notification }}</p>
+            <p class="help">
+                Interval starting
+                <time datetime="{{ view.slotIso }}"
+                      data-text="new Date({{ view.slot }} * 1000).toLocaleString(undefined, tzOptions(${{ displayTz.id() }}, ${{ nfcapdTz.id() }}))">{{ view.slotIso }}</time>
+            </p>
+            <dl class="alert-test-templates">
+                {% for template in view.templates %}
+                    <dt>{{ template.label }}</dt>
+                    <dd><pre>{{ template.text }}</pre></dd>
+                {% endfor %}
+            </dl>
+        </div>
+        <footer class="dialog-footer">
+            <form method="dialog">
+                <button type="submit" autofocus>Close</button>
+            </form>
+        </footer>
+    </div>
+</dialog>

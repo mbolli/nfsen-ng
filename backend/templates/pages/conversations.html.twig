@@ -123,7 +123,8 @@
     {# A Sankey node click bubbles up here: addresses open the IP info. #}
     <section class="card conv-results" id="conversationsResults" aria-labelledby="conversationsResultsTitle"
              data-on:conversation-node="evt.detail.address && @post('{{ ipInfo.url() }}?ip=' + encodeURIComponent(evt.detail.address))">
-        <header>
+        {# Before a run the bar would be an empty band, so only the heading is rendered. #}
+        {% if cv.has %}<header>{% endif %}
             <h2 id="conversationsResultsTitle" class="visually-hidden">Results</h2>
             {% if hasPairs %}
                 <div class="tabs" role="tablist" aria-label="Conversation views" data-size="sm"
@@ -166,7 +167,7 @@
                     </ul>
                 </div>
             {% endif %}
-        </header>
+        {% if cv.has %}</header>{% endif %}
 
         <div class="card-body stack">
             <div id="conversationsMessage" class="stack">

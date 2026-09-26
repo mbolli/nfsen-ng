@@ -22,6 +22,7 @@ use mbolli\nfsen_ng\store\Migrator;
  * @phpstan-type DaemonInfo array{ready: bool, watchCount: int, lastAutoImport: int}
  *
  * @phpstan-import-type DiskUsage from HealthMetrics
+ * @phpstan-import-type StoreFacts from Database
  */
 class HealthChecker {
     public const string STORE_GROUP = 'Storage (SQLite)';
@@ -56,13 +57,24 @@ class HealthChecker {
 
     /**
      * @param array<string, array{ready: bool, watchCount: int, lastAutoImport: int}> $daemonsInfo Profile-keyed daemon status map. Empty = not running.
+     * @param null|StoreFacts                                                         $storeFacts  Database::inspect() of the store when the caller already has it
      *
      * @return list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}>
      */
-    public static function run(bool $daemonDisabled, array $daemonsInfo = []): array {
+    public static function run(bool $daemonDisabled, array $daemonsInfo = [], ?array $storeFacts = null): array {
         /** @var list<array{id: string, label: string, status: 'error'|'ok'|'warning', detail: string, group: string, code: bool, hint: string, epoch: int}> $checks */
         $checks = [];
         $settings = Config::$settings;
+        // The plausibility and freshness checks both want today's or yesterday's newest file.
+        $newestCache = [];
+        $newestOf = static function (string $profile, string $source) use (&$newestCache): ?array {
+            $key = "{$profile}/{$source}";
+            if (!\array_key_exists($key, $newestCache)) {
+                $newestCache[$key] = NfcapdFiles::newest($profile, $source, 1);
+            }
+
+            return $newestCache[$key];
+        };
 
         /**
          * @param 'error'|'ok'|'warning' $status
@@ -192,7 +204,7 @@ class HealthChecker {
             foreach (Config::detectProfiles() as $profileP) {
                 foreach ($settings->sources as $sourceP) {
                     // Today and yesterday in the nfcapd timezone
-                    $newestP = NfcapdFiles::newest($profileP, $sourceP, 1);
+                    $newestP = $newestOf($profileP, $sourceP);
                     if ($newestP === null) {
                         continue;
                     }
@@ -422,7 +434,7 @@ class HealthChecker {
                     $todayDt = new \DateTimeImmutable('now', Config::nfcapdTimezone());
                     $today = $todayDt->format('Y') . \DIRECTORY_SEPARATOR . $todayDt->format('m') . \DIRECTORY_SEPARATOR . $todayDt->format('d');
                     $freshnessLabel = $multiProfile ? "Freshness {$source} ({$profile})" : "Capture freshness: {$source}";
-                    $newest = NfcapdFiles::newest($profile, $source, 1);
+                    $newest = $newestOf($profile, $source);
                     // filemtime() is false when nfcapd rotated the file away between scan and stat.
                     $newestMtime = $newest === null ? false : @filemtime($newest['path']);
                     if ($newestMtime === false) {
@@ -468,7 +480,7 @@ class HealthChecker {
         $storePath = isset(Config::$stateDir) && Config::$stateDir !== ''
             ? rtrim(Config::$stateDir, \DIRECTORY_SEPARATOR) . \DIRECTORY_SEPARATOR . Database::FILENAME
             : '';
-        array_push($checks, ...self::storeChecks($storePath, $storePath === '' ? null : Database::inspect($storePath), ProcessInfo::sqliteVersion()));
+        array_push($checks, ...self::storeChecks($storePath, $storePath === '' ? null : ($storeFacts ?? Database::inspect($storePath)), ProcessInfo::sqliteVersion()));
         array_push($checks, ...self::diskChecks(HealthMetrics::disks()));
 
         // ── 8. Configuration (environment variables) ─────────────────────────
@@ -579,7 +591,7 @@ class HealthChecker {
      * The "Storage (SQLite)" group from the facts of Database::inspect(); $facts is null when
      * the state directory is not configured.
      *
-     * @param null|array{path: string, exists: bool, writable: bool, journalMode: string, schemaVersion: int, sizeBytes: int, error: string} $facts
+     * @param null|StoreFacts $facts
      *
      * @return list<HealthCheck>
      */

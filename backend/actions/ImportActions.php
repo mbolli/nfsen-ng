@@ -192,7 +192,7 @@ final class ImportActions {
                 $targetDaemon->unlock();
                 $app->setGlobalState('import_progress', 100);
                 // The checks and sources table describe the data before this pass.
-                $app->setGlobalState(HealthPage::CACHE, null);
+                HealthPage::invalidate($app);
                 if (!empty($app->getClients())) {
                     $app->broadcast('admin:import');
                     $app->broadcast('rrd:live');

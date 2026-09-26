@@ -10,9 +10,11 @@ use mbolli\nfsen_ng\common\FilteredGraphCache;
 use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\common\QueryProgress;
 use mbolli\nfsen_ng\datasources\Datasource;
+use mbolli\nfsen_ng\pages\RangeControls;
 use mbolli\nfsen_ng\processor\FilteredSeries;
-use mbolli\nfsen_ng\query\CostEstimate;
 use mbolli\nfsen_ng\query\CoverageQuery;
+use mbolli\nfsen_ng\query\FilterComposer;
+use mbolli\nfsen_ng\query\ProtocolFilter;
 use mbolli\nfsen_ng\query\TimelineQuery;
 use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Context;
@@ -25,11 +27,15 @@ use OpenSwoole\Coroutine;
  * @phpstan-import-type GraphData from Datasource
  */
 final class GraphActions {
+    /** The protocol series of the Protocols display, in slot order (2.3). */
+    public const array PROTOCOL_SERIES = ['tcp', 'udp', 'icmp', 'other'];
+
     /** Banner prefixes of the graph's own failures, the only ones a successful fetch clears. */
     private const array ERROR_PREFIXES = ['Graph error: ', 'Filtered graph: '];
 
     /**
-     * Fetch graph data from the datasource, updating the live, resolution and last-update signals.
+     * Fetch the Overview series from the datasource, updating the live, resolution, step and
+     * last-update signals.
      *
      * @return array{}|GraphData empty when the fetch failed (the _error signal carries why)
      */
@@ -39,7 +45,6 @@ final class GraphActions {
         $graphDisplay = $c->getSignal('graph_display');
         $graphSources = $c->getSignal('graph_sources');
         $graphPorts = $c->getSignal('graph_ports');
-        $graphProtocols = $c->getSignal('graph_protocols');
         $graphDatatype = $c->getSignal('graph_datatype');
         $graphTrafficUnit = $c->getSignal('graph_trafficUnit');
         $graphResolution = $c->getSignal('graph_resolution');
@@ -49,14 +54,12 @@ final class GraphActions {
         $error = $c->getSignal('_error');
         $selectedProfile = $c->getSignal('selected_profile');
         $graphMode = $c->getSignal('graph_mode');
-        $graphFilter = $c->getSignal('graph_filter');
         \assert(
             $datestart !== null
             && $dateend !== null
             && $graphDisplay !== null
             && $graphSources !== null
             && $graphPorts !== null
-            && $graphProtocols !== null
             && $graphDatatype !== null
             && $graphTrafficUnit !== null
             && $graphResolution !== null
@@ -66,7 +69,6 @@ final class GraphActions {
             && $error !== null
             && $selectedProfile !== null
             && $graphMode !== null
-            && $graphFilter !== null
         );
 
         $ds = $datestart->int();
@@ -74,19 +76,17 @@ final class GraphActions {
 
         $graphIsLive->setValue($c->getSignal('range_live')?->bool() ?? false, broadcast: false);
 
-        $dt = $graphDatatype->string();
-        $unit = ($dt !== 'traffic') ? $dt : $graphTrafficUnit->string();
-        $display = $graphDisplay->string();
+        $display = self::display($graphDisplay->string());
         $sources = self::normalizeSources($graphSources->array(), $display);
         $ports = self::normalizePorts($graphPorts->array());
 
-        // Both signals are client-writable, and graph._config feeds them straight into the
-        // chart, where a port outside a plain array takes the ports view down (#160).
+        // Both signals are client-writable and reach the datasource, where a port outside a
+        // plain array takes the ports view down (#160).
         if ($graphPorts->getValue() !== $ports) {
             $graphPorts->setValue($ports, broadcast: false);
         }
-        if ($graphSources->getValue() !== $sources) {
-            $graphSources->setValue($sources, broadcast: false);
+        if ($graphDisplay->getValue() !== $display) {
+            $graphDisplay->setValue($display, broadcast: false);
         }
 
         // Filtered mode (#166): only run-filtered-graph builds; a render would fork hundreds of
@@ -99,12 +99,14 @@ final class GraphActions {
             if ($cached === null) {
                 // 0 points is what the "press Apply" hint keys off.
                 $graphActualRes->setValue(0, broadcast: false);
+                self::setStep($c, 0);
 
                 return [];
             }
 
             $graphActualRes->setValue(\count($cached['data']), broadcast: false);
             $graphLastUpdate->setValue($cached['end'], broadcast: false);
+            self::setStep($c, $cached['step']);
             self::clearOwnError($error);
 
             return $cached;
@@ -113,11 +115,11 @@ final class GraphActions {
         $query = new TimelineQuery(
             window: TimeWindow::raw($ds, $de),
             sources: $sources,
-            protocols: self::normalizeProtocols($graphProtocols->array()),
+            protocols: self::displayProtocols($display, RangeControls::protocol($c)),
             ports: $ports,
-            unit: $unit,
+            unit: self::unit($graphDatatype->string(), $graphTrafficUnit->string()),
             display: $display,
-            resolution: $graphResolution->int(),
+            resolution: self::resolution($graphResolution->int()),
             profile: $selectedProfile->string(),
         );
 
@@ -127,12 +129,13 @@ final class GraphActions {
             $data = $query->run();
         } catch (\Throwable $e) {
             $error->setValue('Graph error: ' . $e->getMessage(), broadcast: false);
+            self::setStep($c, 0);
 
             return [];
         }
 
-        $pointCount = \count($data['data']);
-        $graphActualRes->setValue($pointCount, broadcast: false);
+        $graphActualRes->setValue(\count($data['data']), broadcast: false);
+        self::setStep($c, $data['data'] === [] ? 0 : $data['step']);
 
         // Use the actual datasource last-write time rather than wall-clock "now"
         $lastWrite = $query->lastWrite();
@@ -143,10 +146,40 @@ final class GraphActions {
     }
 
     /**
+     * Which protocol data sources a display reads (4.1.2): the Protocols display always shows
+     * all four, the others read the global protocol's.
+     *
+     * @return list<string>
+     */
+    public static function displayProtocols(string $display, string $protocol): array {
+        return $display === 'protocols' ? self::PROTOCOL_SERIES : [ProtocolFilter::normalize($protocol)];
+    }
+
+    /** The datasource unit: a datatype other than traffic is its own unit, traffic the global one. */
+    public static function unit(string $datatype, string $trafficUnit): string {
+        return match ($datatype) {
+            'packets', 'flows' => $datatype,
+            default => $trafficUnit === 'bytes' ? 'bytes' : 'bits',
+        };
+    }
+
+    /** One of the three displays whatever the client sent. */
+    public static function display(string $display): string {
+        return \in_array($display, ['sources', 'protocols', 'ports'], true) ? $display : 'sources';
+    }
+
+    /** The resolution slider's range: 50 to 2000 points in steps of 50. */
+    public static function resolution(int $points): int {
+        return max(50, min(2000, (int) (round($points / 50) * 50)));
+    }
+
+    /**
      * Resolve every input that defines a filtered-graph query.
      *
      * Shared by the cache lookup on the render path and by the builder in the action, so
      * the two never disagree about the key: a mismatch would rebuild and still never hit.
+     * The global protocol narrows the Sources display, as it does the stored one; the
+     * Protocols display splits by protocol, so there it does not apply (4.1.2).
      *
      * @return array{start: int, end: int, clamped: bool, sources: list<string>, filter: string, protocols: list<string>, unit: string, display: string, points: int, profile: string}
      */
@@ -159,7 +192,6 @@ final class GraphActions {
         $graphTrafficUnit = $c->getSignal('graph_trafficUnit');
         $graphResolution = $c->getSignal('graph_resolution');
         $graphFilter = $c->getSignal('graph_filter');
-        $graphProtocols = $c->getSignal('graph_protocols');
         $selectedProfile = $c->getSignal('selected_profile');
         \assert(
             $datestart !== null
@@ -170,13 +202,15 @@ final class GraphActions {
             && $graphTrafficUnit !== null
             && $graphResolution !== null
             && $graphFilter !== null
-            && $graphProtocols !== null
             && $selectedProfile !== null
         );
 
-        $dt = $graphDatatype->string();
-        $display = $graphDisplay->string();
+        // A filtered series has no per-port breakdown: the filter is the port selection, so
+        // the ports view falls back to the protocol split.
+        $display = self::display($graphDisplay->string()) === 'sources' ? 'sources' : 'protocols';
+        $protocol = $display === 'sources' ? RangeControls::protocol($c) : 'any';
         [$start, $end, $clamped] = self::clampFilteredWindow($datestart->int(), $dateend->int());
+        $filter = \is_string($graphFilter->getValue()) ? trim($graphFilter->string()) : '';
 
         return [
             'start' => $start,
@@ -185,15 +219,25 @@ final class GraphActions {
             // Helpers::resolveSources(), not normalizeSources(): nfdump is handed real
             // source names for -M, and the 'any' sentinel is not one.
             'sources' => Helpers::resolveSources($graphSources->array()),
-            'filter' => trim($graphFilter->string()),
-            'protocols' => FilteredSeries::normalizeProtocolSelection(self::normalizeProtocols($graphProtocols->array())),
-            'unit' => ($dt !== 'traffic') ? $dt : $graphTrafficUnit->string(),
-            // A filtered series has no per-port breakdown: the filter is the port selection,
-            // so the ports view falls back to the protocol split.
-            'display' => $display === 'sources' ? 'sources' : 'protocols',
-            'points' => $graphResolution->int(),
+            'filter' => self::composeFilter($protocol, $filter),
+            'protocols' => [$protocol],
+            'unit' => self::unit($graphDatatype->string(), $graphTrafficUnit->string()),
+            'display' => $display,
+            'points' => self::resolution($graphResolution->int()),
             'profile' => $selectedProfile->string(),
         ];
+    }
+
+    /**
+     * The global protocol's term and the user's filter, each parenthesised. A filter with
+     * unbalanced parentheses stays as typed, so nfdump names the problem when it runs.
+     */
+    public static function composeFilter(string $protocol, string $filter): string {
+        try {
+            return FilterComposer::and(ProtocolFilter::term(ProtocolFilter::normalize($protocol)), $filter);
+        } catch (\InvalidArgumentException) {
+            return $filter;
+        }
     }
 
     /**
@@ -209,37 +253,6 @@ final class GraphActions {
         $window = TimeWindow::clamped($start, $end);
 
         return [$window->start, $window->end, $window->clamped];
-    }
-
-    /**
-     * What the Apply button is about to cost, for display beside it.
-     *
-     * File count and size come from the signals measureFilteredCost() keeps current: this runs
-     * on every render and must not walk the capture tree itself.
-     *
-     * @return array{files: int, bytes: string, intervals: int, clamped: bool, window: string}
-     */
-    public static function filteredCost(Context $c): array {
-        $p = self::filteredParams($c);
-        $files = $c->getSignal('nfcapd_file_count');
-        $bytes = $c->getSignal('nfcapd_total_bytes');
-        $groups = $p['display'] === 'sources' ? max(1, \count($p['sources'])) : 1;
-
-        $runs = CostEstimate::runsForFilteredSeries(
-            TimeWindow::raw($p['start'], $p['end']),
-            $p['points'],
-            $groups,
-        );
-
-        return [
-            // The counts cover the selected range, which is not what a clamped build reads, so
-            // the panel drops them when the window was shortened rather than overstating.
-            'files' => $files?->int() ?? 0,
-            'bytes' => QueryRunner::formatBytes($bytes?->int() ?? 0),
-            'intervals' => $runs,
-            'clamped' => $p['clamped'],
-            'window' => self::formatWindow(Config::$settings->maxStatsWindow),
-        ];
     }
 
     /**
@@ -293,26 +306,6 @@ final class GraphActions {
         }
 
         return $sources;
-    }
-
-    /**
-     * Sanitize the graph_protocols signal before it reaches a datasource.
-     *
-     * Same client-writable-signal problem as normalizeSources(): entries can be any
-     * scalar under any key. An empty selection means "no protocol filter", which the
-     * datasources spell 'any': they index $protocols[0] directly.
-     *
-     * @param array<int|string, mixed> $selected raw graph_protocols signal value
-     *
-     * @return list<string>
-     */
-    public static function normalizeProtocols(array $selected): array {
-        $protocols = array_values(array_filter(
-            array_map(static fn (mixed $p): string => \is_scalar($p) ? trim((string) $p) : '', $selected),
-            static fn (string $p): bool => $p !== ''
-        ));
-
-        return $protocols === [] ? ['any'] : $protocols;
     }
 
     /**
@@ -390,9 +383,9 @@ final class GraphActions {
                 && $error !== null
             );
 
-            // Apply is only meaningful in filtered mode; anywhere else behave like a refresh.
+            // Apply is only meaningful in filtered mode; anywhere else behave like a refresh,
+            // whose render fetches the stored series.
             if ($graphMode->string() !== 'filtered') {
-                self::fetchGraphData($c);
                 $c->sync();
 
                 return;
@@ -408,7 +401,6 @@ final class GraphActions {
 
             // Already built: nothing to do but re-render off the cache.
             if (FilteredGraphCache::has($key)) {
-                self::fetchGraphData($c);
                 $c->sync();
 
                 return;
@@ -504,21 +496,18 @@ final class GraphActions {
             });
         }, 'run-filtered-graph');
 
-        // A live window advances in the render that follows (RangeControls), not here.
+        // Posted by the live tick and by the Overview options. The render that follows advances
+        // a live window (RangeControls) and fetches the series once, with the new inputs.
         $c->action(static function (Context $c): void {
-            try {
-                self::measureFilteredCost($c);
-                self::fetchGraphData($c);
-            } catch (\Throwable $e) {
-                Debug::getInstance()->log('refresh-graphs failed: ' . $e->getMessage(), LOG_ERR);
-            }
             $c->sync();
         }, 'refresh-graphs');
     }
 
     /**
-     * Re-counts the capture files behind the filtered graph's cost line after the window,
-     * sources or profile changed. Names and sizes only, and skipped while nothing changed.
+     * Re-counts the capture files for nfcapd_file_count after the window, sources or profile
+     * changed in filtered mode. Names and sizes only, and skipped while nothing changed. The
+     * Overview reads `_est_overview` now; RangeActions still calls this until WP-I1 drops the
+     * nfcapd_* signals.
      */
     public static function measureFilteredCost(Context $c): void {
         $datestart = $c->getSignal('datestart');
@@ -541,10 +530,18 @@ final class GraphActions {
     }
 
     /** Clears the banner when it holds one of this graph's own failures, and only then. */
-    private static function clearOwnError(Signal $error): void {
-        $text = $error->string();
-        if ($text !== '' && array_any(self::ERROR_PREFIXES, static fn (string $p): bool => str_starts_with($text, $p))) {
+    public static function clearOwnError(?Signal $error): void {
+        $text = $error?->string() ?? '';
+        if ($error !== null && $text !== '' && array_any(self::ERROR_PREFIXES, static fn (string $p): bool => str_starts_with($text, $p))) {
             $error->setValue('', broadcast: false);
+        }
+    }
+
+    /** graph_step (4.1.1): seconds per point of the drawn series, 0 without one. */
+    private static function setStep(Context $c, int $step): void {
+        $signal = $c->getSignal('graph_step');
+        if ($signal !== null && $signal->getValue() !== $step) {
+            $signal->setValue($step, broadcast: false);
         }
     }
 }

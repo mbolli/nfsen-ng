@@ -5,6 +5,12 @@ declare(strict_types=1);
 use mbolli\nfsen_ng\actions\GraphActions;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
+use mbolli\nfsen_ng\pages\OverviewPage;
+use mbolli\nfsen_ng\pages\RangeControls;
+use mbolli\nfsen_ng\pages\Shell;
+use Mbolli\PhpVia\Config as ViaConfig;
+use Mbolli\PhpVia\Context;
+use Mbolli\PhpVia\Via;
 
 function settingsWithMaxWindow(int $maxWindow): void {
     Config::$settings = Settings::fromArray([
@@ -94,5 +100,71 @@ describe('GraphActions::formatWindow', function (): void {
 
     test('trims a trailing .0 so whole values read naturally', function (): void {
         expect(GraphActions::formatWindow(86400 * 3))->toBe('3 days');
+    });
+});
+
+describe('GraphActions::filteredParams', function (): void {
+    beforeEach(function (): void {
+        settingsWithMaxWindow(0);
+        $prefs = new ReflectionProperty(Config::class, 'prefsFile');
+        $this->prefsBefore = $prefs->isInitialized() ? Config::$prefsFile : null;
+        Config::$prefsFile = sys_get_temp_dir() . '/nfsen-graph-filtered-test-missing.json';
+        $this->c = new Context('ctx-filtered', '/', new Via(new ViaConfig()));
+        Shell::signals($this->c);
+        RangeControls::signals($this->c);
+        OverviewPage::signals($this->c);
+        $this->c->getSignal('graph_mode')?->setValue('filtered', broadcast: false);
+        $this->c->getSignal('graph_filter')?->setValue('dst port 443', broadcast: false);
+    });
+
+    afterEach(function (): void {
+        if ($this->prefsBefore !== null) {
+            Config::$prefsFile = $this->prefsBefore;
+        }
+    });
+
+    // 4.1.2: the global protocol narrows the Sources display, stored or filtered alike.
+    test('the Sources display composes the global protocol into the filter', function (): void {
+        $this->c->getSignal('graph_display')?->setValue('sources', broadcast: false);
+        $this->c->getSignal('protocol')?->setValue('udp', broadcast: false);
+
+        $p = GraphActions::filteredParams($this->c);
+
+        expect($p['filter'])->toBe('(proto udp) and (dst port 443)')
+            ->and($p['protocols'])->toBe(['udp'])
+            ->and($p['display'])->toBe('sources')
+        ;
+    });
+
+    test('the Protocols display splits by protocol, so the global one does not apply', function (): void {
+        $this->c->getSignal('graph_display')?->setValue('protocols', broadcast: false);
+        $this->c->getSignal('protocol')?->setValue('udp', broadcast: false);
+
+        $p = GraphActions::filteredParams($this->c);
+
+        expect($p['filter'])->toBe('dst port 443')
+            ->and($p['protocols'])->toBe(['any'])
+        ;
+    });
+
+    test('the Ports display falls back to the protocol split: the filter is the port selection', function (): void {
+        $this->c->getSignal('graph_display')?->setValue('ports', broadcast: false);
+
+        expect(GraphActions::filteredParams($this->c)['display'])->toBe('protocols');
+    });
+
+    test('a different protocol is a different cache key, so a build never answers for another', function (): void {
+        $this->c->getSignal('protocol')?->setValue('tcp', broadcast: false);
+        $tcp = GraphActions::filteredKey($this->c);
+        $this->c->getSignal('protocol')?->setValue('udp', broadcast: false);
+
+        expect(GraphActions::filteredKey($this->c))->not->toBe($tcp);
+    });
+
+    test('a filter nfdump will reject stays as typed, so the run names the problem', function (): void {
+        expect(GraphActions::composeFilter('tcp', 'port 53) or (port 80'))->toBe('port 53) or (port 80')
+            ->and(GraphActions::composeFilter('any', ' host 10.0.0.1 '))->toBe('host 10.0.0.1')
+            ->and(GraphActions::composeFilter('bogus', 'port 53'))->toBe('port 53')
+        ;
     });
 });

@@ -82,7 +82,7 @@ describe('Misc::processReadBytes', function (): void {
         $before = Misc::processReadBytes($pid);
 
         if ($before === null) {
-            expect(true)->toBeTrue(); // no procfs on this platform — nothing to assert
+            expect(true)->toBeTrue(); // no procfs on this platform, nothing to assert
 
             return;
         }
@@ -102,6 +102,49 @@ describe('Misc::processReadBytes', function (): void {
     test('returns null for a non-positive pid', function (): void {
         expect(Misc::processReadBytes(0))->toBeNull()
             ->and(Misc::processReadBytes(-1))->toBeNull()
+        ;
+    });
+});
+
+describe('Misc::formatVolume', function (): void {
+    // D5: bytes read in base 1024 like the graph's byte axis, bits in base 1000 like its bit axis.
+    test('bytes use base 1024 and IEC prefixes, with three significant digits', function (): void {
+        expect(Misc::formatVolume(0.0))->toBe('0 B')
+            ->and(Misc::formatVolume(812.0))->toBe('812 B')
+            ->and(Misc::formatVolume(1536.0))->toBe('1.50 KiB')
+            ->and(Misc::formatVolume(24.8 * 1024 ** 3))->toBe('24.8 GiB')
+            ->and(Misc::formatVolume(812 * 1024 ** 2))->toBe('812 MiB')
+        ;
+    });
+
+    test('bits multiply by eight and use base 1000', function (): void {
+        expect(Misc::formatVolume(1000.0, 'bits'))->toBe('8.00 kb')
+            ->and(Misc::formatVolume(2.49e12 / 8, 'bits'))->toBe('2.49 Tb')
+            ->and(Misc::formatVolume(100.0, 'bits'))->toBe('800 b')
+        ;
+    });
+
+    test('rounding that reaches the base carries into the next prefix', function (): void {
+        expect(Misc::formatVolume(1023.9 * 1024))->toBe('1.00 MiB')
+            ->and(Misc::formatVolume(999.96e3 / 8, 'bits'))->toBe('1.00 Mb')
+        ;
+    });
+
+    test('nothing to show reads as zero, not as an error', function (): void {
+        expect(Misc::formatVolume(-5.0))->toBe('0 B')
+            ->and(Misc::formatVolume(NAN, 'bits'))->toBe('0 b')
+            ->and(Misc::formatVolume(INF))->toBe('0 B')
+        ;
+    });
+});
+
+describe('Misc::formatCount', function (): void {
+    test('counts use base 1000 with k, M and G', function (): void {
+        expect(Misc::formatCount(482.0))->toBe('482')
+            ->and(Misc::formatCount(987_000.0))->toBe('987 k')
+            ->and(Misc::formatCount(1_200_000.0))->toBe('1.20 M')
+            ->and(Misc::formatCount(28_800.0))->toBe('28.8 k')
+            ->and(Misc::formatCount(0.0))->toBe('0')
         ;
     });
 });

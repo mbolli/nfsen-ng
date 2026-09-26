@@ -1,27 +1,31 @@
-{# The persistent traffic graph (1.8). Off the analysis pages: hidden, no data, ignored by
-   morphs; the chart keeps its last drawing for the way back. #}
+{# The persistent traffic graph (1.8, 4.1.3): Overview's configuration on Overview, the protocol
+   picker on Top Talkers and Flows, one total on Conversations. Off the analysis pages: hidden, no
+   data, ignored by morphs; the chart keeps its last drawing for the way back. #}
 {% import 'shell/controls-bar.html.twig' as bar %}
 {% set analysisIds = shell.pagesMeta|filter(m => m.analysis)|map(m => m.id)|json_encode %}
+{% set pg = '$' ~ page.id() %}
 {% set ds = '$' ~ datestart.id() %}
 {% set de = '$' ~ dateend.id() %}
 {% set live = '$' ~ range_live.id() %}
 {% set tz = '$' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() %}
+{% set mode = '$' ~ graph_mode.id() %}
 {% set remember = '$_prevRange = {from: ' ~ ds ~ ', to: ' ~ de ~ ', live: ' ~ live ~ ', preset: $' ~ range_preset.id() ~ '}' %}
-{# Changes whenever the chart draws new data, which also resets its zoom. #}
-{% set drawn = [graph.lastUpdate, graph.points, graph.data|length, datestart.int(), dateend.int()]|join(':') %}
+{% set overview = graph.mode == 'overview' %}
+{% set filteredNow = overview and graph_mode.string() == 'filtered' %}
 <section class="traffic-graph" id="trafficGraphSection" aria-labelledby="trafficGraphTitle"
-         data-attr:hidden="!{{ analysisIds }}.includes(${{ page.id() }})" data-preserve-attr="hidden"
+         data-mode="{{ graph.mode }}"
+         data-attr:hidden="!{{ analysisIds }}.includes({{ pg }})" data-preserve-attr="hidden"
          {% if graph.mode == 'none' %}hidden data-ignore-morph{% endif %}
-         data-computed:graph._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ${{ graph_protocols.id() }}, ports: ${{ graph_ports.id() }}, display: ${{ graph_display.id() }}, type: ${{ graph_datatype.id() }}, trafficUnit: ${{ graph_trafficUnit.id() }}, logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}"
+         data-signals__ifmissing="{_zoom: false, _brushArmed: false}"
          data-indicator:graph._connecting
          {# Live tick (1.7): stored series only, every 15 s on Overview and every 60 s on the other analysis pages. #}
-         data-on-interval__duration.15s.leading="!$_disconnected && ${{ page.id() }} === 'overview' && ${{ graph_mode.id() }} === 'stored' && {{ live }} && @post('{{ refreshGraphs.url() }}')"
-         data-on-interval__duration.60s="!$_disconnected && ${{ page.id() }} !== 'overview' && {{ analysisIds }}.includes(${{ page.id() }}) && ${{ graph_mode.id() }} === 'stored' && {{ live }} && @post('{{ refreshGraphs.url() }}')">
+         data-on-interval__duration.15s.leading="!$_disconnected && {{ pg }} === 'overview' && {{ mode }} === 'stored' && {{ live }} && @post('{{ refreshGraphs.url() }}')"
+         data-on-interval__duration.60s="!$_disconnected && {{ pg }} !== 'overview' && {{ analysisIds }}.includes({{ pg }}) && {{ live }} && @post('{{ refreshGraphs.url() }}')">
 
-    <header class="traffic-graph-header" data-signals__ifmissing="{_zoom: false}">
+    <header class="traffic-graph-header">
         <div class="traffic-graph-heading">
             <h2 id="trafficGraphTitle">{{ graph.title }}</h2>
-            <span class="traffic-graph-mode">{{ graph.modeLabel }}</span>
+            <span class="traffic-graph-mode" id="trafficGraphMode">{{ graph.modeLabel }}</span>
             {% if graph.filtered %}
                 <span class="badge" title="Series built by re-reading the capture files through an nfdump filter">FILTERED</span>
             {% elseif range_live.bool() %}
@@ -42,16 +46,36 @@
         <p class="traffic-graph-hint">Drag across the graph to set the range<span class="visually-hidden">, or set it with the range controls at the top of the page</span>.</p>
 
         <div class="traffic-graph-actions">
-            {# A zoomed view the window does not follow yet (D6): apply it or put the view back. #}
+            {% if overview %}
+                {# Stored plots the datasource series; Filtered re-reads the capture files (#166). #}
+                <div class="segmented graph-source" id="filterGraphMode" role="radiogroup" aria-label="Source data"
+                     data-attr:hidden="{{ pg }} !== 'overview'" data-preserve-attr="hidden">
+                    <input type="radio" name="graphMode" value="stored" id="graphModeRrd" {% if not filteredNow %}checked{% endif %}
+                           data-effect="el.checked = {{ mode }} === 'stored'"
+                           data-on:change__stop="{{ mode }} = 'stored'; @post('{{ refreshGraphs.url() }}')">
+                    <label data-size="sm" for="graphModeRrd" title="The stored series: instant and live">Stored</label>
+                    <input type="radio" name="graphMode" value="filtered" id="graphModeFiltered" {% if filteredNow %}checked{% endif %}
+                           data-effect="el.checked = {{ mode }} === 'filtered'"
+                           data-on:change__stop="{{ mode }} = 'filtered'; ${{ graph_display.id() }} === 'ports' && (${{ graph_display.id() }} = 'protocols'); @post('{{ refreshGraphs.url() }}')">
+                    <label data-size="sm" for="graphModeFiltered" title="Re-read the capture files through an nfdump filter">Filtered</label>
+                </div>
+                <button type="button" class="graph-options-toggle" id="graphOptionsToggle" data-size="sm"
+                        aria-controls="graphOptions" aria-expanded="false"
+                        data-attr:aria-expanded="$_ov_optionsOpen ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+                        data-attr:hidden="{{ pg }} !== 'overview'"
+                        data-on:click="$_ov_optionsOpen = !$_ov_optionsOpen">Options</button>
+            {% endif %}
+
+            {# A zoomed view the window does not follow yet (D6): apply it or put the view back. The
+               chart reports its view after every zoom and after new data, which may keep the zoom. #}
             <div class="zoom-preview" id="zoomPreview" role="status" hidden
                  data-attr:hidden="!($_zoom && !$_autoSyncGraph)" data-preserve-attr="hidden"
-                 data-init="'{{ drawn }}' && ($_zoom = false)"
                  data-on:graph-zoom__window="evt.target.id === 'trafficGraph' && ($_zoom = evt.target.isZoomed() ? evt.detail : false)">
                 <span>Previewing <span data-ignore-morph data-text="$_zoom ? window.nfsenTime.formatRange($_zoom.from / 1000, $_zoom.to / 1000, {{ tz }}) : ''"></span></span>
                 <button type="button" id="zoomApply" data-size="sm"
                         data-on:click="$_zoom && ({{ remember }}, @post('{{ setRange.url() }}?op=abs&from=' + Math.floor($_zoom.from / 1000) + '&to=' + Math.ceil($_zoom.to / 1000))); $_zoom = false">Apply</button>
                 <button type="button" id="zoomReset" data-size="sm" data-variant="ghost"
-                        data-on:click="$graph._widget?.chart?.dispatchAction({type: 'dataZoom', start: 0, end: 100}); $_zoom = false">Reset</button>
+                        data-on:click="$graph._widget?.resetZoom(); $_zoom = false">Reset</button>
             </div>
 
             <button type="button" id="rangeUndo" data-size="sm" title="Go back to the range before the last change"
@@ -85,29 +109,157 @@
             <button type="button" id="zoomOut" data-size="sm" title="Show twice the time around this range"
                     data-attr:disabled="{{ ds }} <= ${{ data_range_min.id() }} && {{ de }} >= ${{ data_range_max.id() }}" data-preserve-attr="disabled"
                     data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=zoomout')">{{ bar.icon('zoom-out') }} Zoom out</button>
+
+            {# Touch has no drag to spare (a swipe scrolls), so the brush waits for this (1.8). #}
+            <button type="button" class="brush-toggle" id="brushToggle" data-size="sm" aria-pressed="false"
+                    title="Then drag across the graph to set the range"
+                    data-attr:aria-pressed="$_brushArmed ? 'true' : 'false'" data-preserve-attr="aria-pressed"
+                    data-on:click="$_brushArmed ? $graph._widget?.disarmBrush() : $graph._widget?.armBrushOnce()">Select range</button>
         </div>
     </header>
 
-    {# An unbuilt filtered series says so instead of drawing an empty chart; Apply filter is on Overview only. #}
-    {% if shell.activePage == 'overview' and graph_mode.string() == 'filtered' and graph_actualResolution.int() == 0 and not query_running.bool() %}
-        <p class="notice" data-show="${{ page.id() }} === 'overview'">Set an nfdump filter below and press <strong>Apply filter</strong> to build the graph from the capture files.</p>
+    {% if overview %}
+        {# Collapsed by default (_ov_optionsOpen, persisted); changes post refresh-graphs, style toggles stay in the browser. #}
+        <div class="graph-options" id="graphOptions" hidden
+             data-attr:hidden="!$_ov_optionsOpen || {{ pg }} !== 'overview'" data-preserve-attr="hidden">
+            {# Debounced, not throttled: a throttle drops a second change made within its window. #}
+            <div class="graph-options-group"
+                 data-on:change__debounce.200ms="@post('{{ refreshGraphs.url() }}')">
+                <div class="field">
+                    <label for="filterDisplaySelect">Display by</label>
+                    <select id="filterDisplaySelect" {{ bind(graph_display) }}>
+                        {% for value, label in {'sources': 'Sources', 'protocols': 'Protocols', 'ports': 'Ports'} %}
+                            {# A filtered series has no per-port breakdown: the filter is the port selection. #}
+                            <option value="{{ value }}"{% if graph_display.string() == value %} selected{% endif %}
+                                    {% if value == 'ports' %}data-attr:disabled="{{ mode }} === 'filtered'"{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="help" hidden data-attr:hidden="${{ graph_display.id() }} !== 'protocols'">The protocol in the controls bar does not apply to this display.</p>
+                </div>
+                <div class="field" id="filterPorts" {% if graph_display.string() != 'ports' %}hidden{% endif %}
+                     data-attr:hidden="${{ graph_display.id() }} !== 'ports'" data-preserve-attr="hidden">
+                    <label for="filterPortsSelect">Ports</label>
+                    <select id="filterPortsSelect" multiple {{ bind(graph_ports) }}>
+                        {% for port in shell.ports %}
+                            <option value="{{ port }}"{% if port in graph_ports.array() %} selected{% endif %}>{{ port }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field" id="filterTypes">
+                    <span class="field-label" id="filterTypesLabel">Data type</span>
+                    <div class="segmented" role="radiogroup" aria-labelledby="filterTypesLabel">
+                        {% for value, label in {'traffic': 'Traffic', 'packets': 'Packets', 'flows': 'Flows'} %}
+                            <input type="radio" name="datatype" value="{{ value }}" id="dataType{{ value|capitalize }}"
+                                   {% if graph_datatype.string() == value %}checked{% endif %} {{ bind(graph_datatype) }}>
+                            <label data-size="sm" for="dataType{{ value|capitalize }}">{{ label }}</label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="resolutionSlider">Resolution <output for="resolutionSlider" data-text="${{ graph_resolution.id() }} + ' points'">{{ graph_resolution.int() }} points</output></label>
+                    <input type="range" id="resolutionSlider" min="50" max="2000" step="50"
+                           title="Number of data points (higher = more detail)" {{ bind(graph_resolution) }}>
+                </div>
+            </div>
+
+            <div class="graph-options-group">
+                <div class="field">
+                    <span class="field-label" id="graphScaleLabel">Scale</span>
+                    <div class="segmented" role="radiogroup" aria-labelledby="graphScaleLabel" id="graph_linlog">
+                        <input type="radio" name="scale" value="linear" id="graph_linlog_linear" checked
+                               data-effect="el.checked = !$_graph_logscale" data-on:change="$_graph_logscale = false">
+                        <label data-size="sm" for="graph_linlog_linear">Linear</label>
+                        <input type="radio" name="scale" value="log" id="graph_linlog_log"
+                               data-effect="el.checked = $_graph_logscale" data-on:change="$_graph_logscale = true">
+                        <label data-size="sm" for="graph_linlog_log">Log</label>
+                    </div>
+                </div>
+                <div class="field">
+                    <span class="field-label" id="graphStyleLabel">Style</span>
+                    <div class="segmented" role="radiogroup" aria-labelledby="graphStyleLabel">
+                        <input type="radio" name="style" value="stacked" id="graph_linestacked_stacked"
+                               data-effect="el.checked = $_graph_stacked" data-on:change="$_graph_stacked = true">
+                        <label data-size="sm" for="graph_linestacked_stacked">Stacked</label>
+                        <input type="radio" name="style" value="line" id="graph_linestacked_line" checked
+                               data-effect="el.checked = !$_graph_stacked" data-on:change="$_graph_stacked = false">
+                        <label data-size="sm" for="graph_linestacked_line">Line</label>
+                    </div>
+                </div>
+                <div class="field">
+                    <span class="field-label" id="graphLineLabel">Line</span>
+                    <div class="segmented" role="radiogroup" aria-labelledby="graphLineLabel" id="graph_lineplot">
+                        <input type="radio" name="lineplot" value="step" id="graph_lineplot_step" checked
+                               data-effect="el.checked = $_graph_stepplot" data-on:change="$_graph_stepplot = true">
+                        <label data-size="sm" for="graph_lineplot_step">Step</label>
+                        <input type="radio" name="lineplot" value="curve" id="graph_lineplot_curve"
+                               data-effect="el.checked = !$_graph_stepplot" data-on:change="$_graph_stepplot = false">
+                        <label data-size="sm" for="graph_lineplot_curve">Curve</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if filteredNow %}
+            {# Filtered mode: the filter, what a build would read, and Apply, whatever the Options state. #}
+            <div class="graph-filter" id="filterGraphNfdump" data-attr:hidden="{{ mode }} !== 'filtered' || {{ pg }} !== 'overview'" data-preserve-attr="hidden">
+                {% include 'components/filter-field.html.twig' with {target: 'overview', signal: graph_filter, textareaId: 'graphNfdumpTextarea', label: 'nfdump filter for the graph', rows: 2} %}
+                <div class="graph-filter-run">
+                    {% include 'components/query-estimate.html.twig' with {target: 'overview'} %}
+                    {% include 'partials/progress-button.html.twig' with {
+                        id: 'graphFilterRun',
+                        label: 'Apply filter',
+                        action: runFilteredGraph.url(),
+                        killAction: killNfdump.url(),
+                        running: query_running.id(),
+                        permille: query_permille.id(),
+                        status: query_status.id(),
+                        eta: query_eta.id(),
+                        exact: query_exact.id(),
+                        kindSignal: query_kind.id(),
+                        kind: 'graph',
+                        run: 'overview',
+                        doneText: "Number($" ~ graph_actualResolution.id() ~ ").toLocaleString('en') + ' points built'",
+                    } only %}
+                </div>
+            </div>
+            {% if graph_actualResolution.int() == 0 and not query_running.bool() %}
+                <p class="notice">Set an nfdump filter above and press <strong>Apply filter</strong> to build the graph from the capture files. An empty filter graphs all traffic.</p>
+            {% endif %}
+        {% endif %}
     {% endif %}
 
-    <div class="traffic-graph-body">
+    <div class="traffic-graph-body" {% if overview %}data-side="open" data-attr:data-side="$_ov_seriesOpen ? 'open' : 'closed'" data-preserve-attr="data-side"{% endif %}>
         <nfsen-chart id="trafficGraph" data-ref="graph._widget" data-external-prefix="trafficGraph"
-                     data-mode="{{ graph.mode }}" role="img" aria-label="{{ graph.ariaLabel }}"
-                     data-attr:data-chart-config="$graph._config"
+                     data-mode="{{ graph.mode }}" role="img"
+                     aria-label="{{ graph.ariaLabel }}" data-aria-base="{{ graph.ariaLabel }}" data-preserve-attr="aria-label"
+                     data-chart-config="{{ graph.config }}"
+                     data-attr:data-chart-style="JSON.stringify({logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot})"
+                     data-on:range-select="{{ remember }}; @post('{{ setRange.url() }}?op=abs&from=' + Math.floor(evt.detail.from / 1000) + '&to=' + Math.ceil(evt.detail.to / 1000))"
+                     data-on:brush-armed="$_brushArmed = evt.detail.armed"
                      {% if graph.mode != 'none' %}data-chart-data="{{ graph.data }}"{% endif %}>
             <div class="chart-container" data-ignore-morph data-ignore>
                 <div class="chart-canvas"></div>
+                <p class="chart-hint" hidden>Hold Ctrl to zoom</p>
             </div>
         </nfsen-chart>
-        {# Filled by nfsen-chart; ignored by morphs, which would otherwise wipe them after load. #}
-        <aside class="traffic-graph-side" aria-label="Series and legend">
-            <h3>Series</h3>
-            <div id="trafficGraph-series" data-ignore-morph data-ignore></div>
-            <h3>Legend</h3>
-            <div id="trafficGraph-legend" data-ignore-morph data-ignore></div>
-        </aside>
+        {% if overview %}
+            {# Filled by nfsen-chart; ignored by morphs, which would otherwise wipe them after load. #}
+            <aside class="traffic-graph-side" aria-label="Series and legend" data-attr:hidden="{{ pg }} !== 'overview'" data-preserve-attr="hidden">
+                <div class="traffic-graph-side-head">
+                    <h3 id="trafficGraphSeriesTitle">Series</h3>
+                    <button type="button" id="seriesToggle" data-size="sm" data-variant="ghost" aria-controls="trafficGraphSidePanel"
+                            aria-expanded="true" data-attr:aria-expanded="$_ov_seriesOpen ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+                            data-on:click="$_ov_seriesOpen = !$_ov_seriesOpen"
+                            data-text="$_ov_seriesOpen ? 'Hide' : 'Show'">Hide</button>
+                </div>
+                <div class="traffic-graph-side-panel" id="trafficGraphSidePanel">
+                    <div id="trafficGraph-series" class="series-list" role="group" aria-labelledby="trafficGraphSeriesTitle" data-ignore-morph data-ignore></div>
+                    <h3>Legend</h3>
+                    <div id="trafficGraph-legend" class="cursor-legend" aria-live="off" data-ignore-morph data-ignore>
+                        <p class="help">Point at the graph to read the values at that time.</p>
+                    </div>
+                </div>
+            </aside>
+        {% endif %}
     </div>
 </section>

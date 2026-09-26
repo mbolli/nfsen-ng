@@ -47,18 +47,6 @@
     font-size: var(--font-size-00);
 }
 
-/* Touch has #brushToggle to explain itself, so the hint stays for screen readers only. */
-@media (pointer: coarse) {
-    .traffic-graph-hint {
-        position: absolute;
-        inline-size: 1px;
-        block-size: 1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-        white-space: nowrap;
-    }
-}
-
 .zoom-preview {
     padding-inline-start: var(--size-2);
     border-inline-start: 2px solid var(--border-strong);
@@ -71,26 +59,180 @@
     min-inline-size: 14rem;
 }
 
-/* The series and legend panel sits beside the chart where there is room, under it otherwise. */
+.traffic-graph-actions .segmented label {
+    padding: var(--size-1) var(--size-2);
+    font-size: var(--font-size-00);
+}
+
+/* A disclosure, so it points the way the panel opens. */
+.graph-options-toggle::after {
+    content: '';
+    inline-size: 0.4em;
+    block-size: 0.4em;
+    margin-inline-start: var(--size-1);
+    border-block-end: 1.5px solid currentcolor;
+    border-inline-end: 1.5px solid currentcolor;
+    transform: translateY(-0.1em) rotate(45deg);
+    transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.graph-options-toggle[aria-expanded='true']::after {
+    transform: translateY(0.1em) rotate(-135deg);
+}
+
+/* Touch explains the gesture with its own button; fine pointers read the hint instead. */
+.brush-toggle {
+    display: none;
+}
+
+@media (pointer: coarse) {
+    .brush-toggle {
+        display: inline-flex;
+    }
+
+    .traffic-graph-hint {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+}
+
+/* ── Overview: options and the filtered bar (4.1.4) ─────────────────────── */
+
+/* The id outranks the old #graphOptions rule in nfsen-ng.css, which WP-I1 removes. */
+#graphOptions.graph-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-3) var(--size-5);
+    margin: 0;
+    padding: var(--size-3) var(--size-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    background: var(--surface-3);
+}
+
+#graphOptions.graph-options[hidden] {
+    display: none;
+}
+
+.graph-options-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--size-3) var(--size-4);
+}
+
+.graph-options-group + .graph-options-group {
+    padding-inline-start: var(--size-5);
+    border-inline-start: 1px solid var(--border);
+}
+
+.graph-options .field {
+    min-inline-size: 8rem;
+}
+
+.graph-options .field .help {
+    max-inline-size: 16rem;
+}
+
+.graph-options select[multiple] {
+    min-inline-size: 7rem;
+    max-block-size: 6.5rem;
+}
+
+.graph-options input[type='range'] {
+    inline-size: 12rem;
+}
+
+.graph-options output {
+    color: var(--text-1);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--font-weight-normal);
+}
+
+.graph-filter {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-2);
+    padding: var(--size-3) var(--size-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    background: var(--surface-3);
+}
+
+.graph-filter[hidden] {
+    display: none;
+}
+
+.graph-filter-run {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-2) var(--size-4);
+}
+
+/* ── The chart and its Series and Legend panel ──────────────────────────── */
+
+/* Beside the chart where there is room, under it otherwise; folded to its header on request. */
 .traffic-graph-body {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--size-4);
+    gap: var(--size-3) var(--size-4);
 }
 
 @media (min-width: 80em) {
-    .traffic-graph-body {
-        grid-template-columns: minmax(0, 1fr) 14rem;
+    .traffic-graph-body[data-side] {
+        grid-template-columns: minmax(0, 1fr) 15rem;
+    }
+
+    .traffic-graph-body[data-side='closed'] {
+        grid-template-columns: minmax(0, 1fr) max-content;
     }
 }
 
 .traffic-graph .chart-container {
+    position: relative;
     view-transition-name: nfsen-chart;
+    /* A vertical swipe that starts on the graph scrolls the page (1.8). */
+    touch-action: pan-y;
 }
 
-/* ECharts sizes itself from its container, so the container needs a height. */
+/* ECharts sizes itself from its container, so the container needs a height. A short
+   viewport gives up graph height so the Overview top-N starts above the fold (4.1.4). */
 .traffic-graph .chart-canvas {
-    block-size: 22rem;
+    block-size: clamp(14rem, 100svh - 33rem, 22rem);
+}
+
+.traffic-graph nfsen-chart:is([data-mode='picker'], [data-mode='picker-total']) .chart-canvas {
+    block-size: 11rem;
+}
+
+@media (max-width: 47.98em) {
+    .traffic-graph .chart-canvas,
+    .traffic-graph nfsen-chart:is([data-mode='picker'], [data-mode='picker-total']) .chart-canvas {
+        block-size: 13rem;
+    }
+}
+
+.chart-hint {
+    position: absolute;
+    inset-block-start: var(--size-2);
+    inset-inline-start: 50%;
+    padding: var(--size-1) var(--size-3);
+    border-radius: var(--radius-round);
+    background: var(--surface-inverse);
+    color: var(--text-on-inverse);
+    font-size: var(--font-size-00);
+    pointer-events: none;
+    transform: translateX(-50%);
+}
+
+.chart-hint[hidden] {
+    display: none;
 }
 
 .traffic-graph-side {
@@ -101,9 +243,87 @@
     font-size: var(--font-size-0);
 }
 
+.traffic-graph-side-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-2);
+}
+
 .traffic-graph-side h3 {
     color: var(--text-2);
     font-size: var(--font-size-00);
     letter-spacing: 0.06em;
     text-transform: uppercase;
+}
+
+.traffic-graph-side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-2);
+    min-inline-size: 0;
+}
+
+.traffic-graph-body[data-side='closed'] .traffic-graph-side-panel {
+    display: none;
+}
+
+.series-note {
+    margin-block-end: var(--size-1);
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+}
+
+.series-items,
+.cursor-legend-rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.series-item {
+    display: flex;
+    align-items: center;
+    gap: var(--size-2);
+    padding-block: 0.1rem;
+    font-size: var(--font-size-0);
+}
+
+.series-item input {
+    flex-shrink: 0;
+    margin: 0;
+}
+
+.series-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cursor-legend-time {
+    color: var(--text-1);
+    font-weight: var(--font-weight-semibold);
+}
+
+.cursor-legend-rows li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--size-2);
+    padding-block: 0.1rem;
+}
+
+.cursor-legend-rows li > span:not(.series-swatch) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cursor-legend-rows b {
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--font-weight-semibold);
+}
+
+.cursor-legend-more {
+    color: var(--text-2);
 }

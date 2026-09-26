@@ -133,6 +133,25 @@ describe('the Overview graph and the explicit live window', function (): void {
         expect(array_keys($this->c->getNamedActions()))->toBe(['run-filtered-graph', 'refresh-graphs']);
     });
 
+    test('refresh-graphs reads no datasource: the render that follows fetches once', function (): void {
+        $c = $this->c;
+        $calls = 0;
+        $stub = $this->createStub(Datasource::class);
+        $stub->method('get_graph_data')->willReturnCallback(function () use (&$calls): array {
+            ++$calls;
+
+            return $this->series;
+        });
+        Config::$db = $stub;
+
+        $c->setRequestInput([], []);
+        $c->executeAction((string) $c->getAction('refresh-graphs')?->id());
+        // Apply in stored mode is a refresh as well.
+        $c->executeAction((string) $c->getAction('run-filtered-graph')?->id());
+
+        expect($calls)->toBe(0);
+    });
+
     test('refresh-graphs leaves a live window to the render, which advances it', function (string $mode): void {
         $c = $this->c;
         $c->getSignal('graph_mode')?->setValue($mode, broadcast: false);
@@ -173,5 +192,71 @@ describe('the Overview graph and the explicit live window', function (): void {
         $c->getSignal('_error')?->setValue('Range: Enter a duration between 1 and 9999.', broadcast: false);
         GraphActions::fetchGraphData($c);
         expect($c->getSignal('_error')?->string())->toBe('Range: Enter a duration between 1 and 9999.');
+    });
+
+    test('the step of the drawn series is graph_step, 0 without one', function (): void {
+        $c = $this->c;
+        GraphActions::fetchGraphData($c);
+        $withData = $c->getSignal('graph_step')?->int();
+
+        $empty = $this->createStub(Datasource::class);
+        $empty->method('get_graph_data')->willReturn(['data' => [], 'start' => 0, 'end' => 0, 'step' => 300, 'legend' => []]);
+        Config::$db = $empty;
+        GraphActions::fetchGraphData($c);
+
+        expect($withData)->toBe(300)
+            ->and($c->getSignal('graph_step')?->int())->toBe(0)
+        ;
+    });
+
+    test('each display reads its protocols: the global one, or all four for Protocols (4.1.2)', function (string $display, string $protocol, array $expected): void {
+        $c = $this->c;
+        $seen = [];
+        $stub = $this->createStub(Datasource::class);
+        $stub->method('get_graph_data')->willReturnCallback(function (int $start, int $end, array $sources, array $protocols, array $ports, string $type, string $shown) use (&$seen): array {
+            $seen = ['sources' => $sources, 'protocols' => $protocols, 'type' => $type, 'display' => $shown];
+
+            return $this->series;
+        });
+        Config::$db = $stub;
+        $c->getSignal('graph_display')?->setValue($display, broadcast: false);
+        $c->getSignal('protocol')?->setValue($protocol, broadcast: false);
+        $c->getSignal('graph_sources')?->setValue(['swi6', 'core'], broadcast: false);
+
+        GraphActions::fetchGraphData($c);
+
+        expect($seen['protocols'])->toBe($expected)
+            ->and($seen['display'])->toBe($display)
+            // The Display control no longer narrows the global sources (4.1.1).
+            ->and($seen['sources'])->toBe(['swi6', 'core'])
+            ->and($c->getSignal('graph_sources')?->array())->toBe(['swi6', 'core'])
+        ;
+    })->with([
+        ['sources', 'udp', ['udp']],
+        ['sources', 'any', ['any']],
+        ['protocols', 'udp', ['tcp', 'udp', 'icmp', 'other']],
+        ['ports', 'tcp', ['tcp']],
+    ]);
+
+    test('the unit is the datatype, or the global unit for traffic', function (): void {
+        expect(GraphActions::unit('traffic', 'bits'))->toBe('bits')
+            ->and(GraphActions::unit('traffic', 'bytes'))->toBe('bytes')
+            ->and(GraphActions::unit('packets', 'bytes'))->toBe('packets')
+            ->and(GraphActions::unit('flows', 'bits'))->toBe('flows')
+            ->and(GraphActions::unit('bogus', 'bogus'))->toBe('bits')
+        ;
+    });
+
+    test('a client-written display or resolution is brought back into range', function (): void {
+        $c = $this->c;
+        $c->getSignal('graph_display')?->setValue('bogus', broadcast: false);
+        GraphActions::fetchGraphData($c);
+
+        expect($c->getSignal('graph_display')?->string())->toBe('sources')
+            ->and(GraphActions::resolution(0))->toBe(50)
+            ->and(GraphActions::resolution(9999))->toBe(2000)
+            ->and(GraphActions::resolution(512))->toBe(500)
+            ->and(GraphActions::displayProtocols('sources', 'bogus'))->toBe(['any'])
+        ;
     });
 });

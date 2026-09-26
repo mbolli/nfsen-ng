@@ -1,11 +1,21 @@
 {#
-    Overview (4.1), interim: the graph filters and options of the old Graphs view. The chart
-    is the shell's traffic graph above this page. Notices come from Kill on a graph run.
+    Overview (4.1): the KPI strip and the top-N card, right under the traffic graph (which the
+    shell renders above this page, with the Overview options). Both read what overview-topn
+    stored; the card's effect posts it once per input change and 5 minute interval (1.7).
 #}
-<div class="stack">
-    {% if pages.overview.notifications is not empty %}
+{% set ov = pages.overview %}
+{% set topn = ov.topn %}
+{% set tz = '$' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() %}
+{% set pending = '$' ~ _ov_topn_pending.id() %}
+{% set exactRows = '$' ~ _ov_exact_rows.id() %}
+{% set tab = '$' ~ ov_tab.id() %}
+{% set presetLabel = (range.presets|filter(p => p.id == range_preset.string())|first).label ?? '' %}
+{% set labels = {} %}
+{% for p in range.presets %}{% set labels = labels|merge({(p.id): p.label}) %}{% endfor %}
+<div class="overview stack">
+    {% if ov.notifications is not empty %}
         <div id="overviewMessage" class="stack">
-            {% for n in pages.overview.notifications %}
+            {% for n in ov.notifications %}
                 <div class="notice dismissible" data-level="{{ n.type }}" role="alert">
                     {{ n.message }}{% if n.code %} <code>{{ n.code }}</code>{% endif %}
                     <button type="button" data-variant="close" aria-label="Dismiss"
@@ -15,24 +25,190 @@
         </div>
     {% endif %}
 
-    <section class="card query-card" aria-labelledby="overviewQueryTitle"
-             data-collapsed data-attr:data-collapsed="!$_optionsOpen_overview" data-preserve-attr="data-collapsed">
-        <header>
-            <h2 id="overviewQueryTitle">Graph filters</h2>
-            <button type="button" class="options-toggle" data-size="sm" aria-controls="overviewQueryFields"
-                    aria-expanded="false" data-attr:aria-expanded="$_optionsOpen_overview ? 'true' : 'false'" data-preserve-attr="aria-expanded"
-                    data-on:click="$_optionsOpen_overview = !$_optionsOpen_overview"
-                    data-text="$_optionsOpen_overview ? 'Hide filters' : 'Show filters'">Show filters</button>
-        </header>
-        <div class="card-body">
-            {% include 'partials/graph-filters.html.twig' %}
-        </div>
+    <section class="kpi-strip" id="overviewKpis" aria-label="Key figures for the range"
+             data-signals__ifmissing="{ {{ _ov_topn_pending.id() }}: false }">
+        <article class="kpi" id="kpi-total">
+            <h2 class="kpi-label">Total traffic</h2>
+            {% if not graph.totalsAvailable %}
+                <p class="kpi-value" data-kind="state">Not available</p>
+                <p class="kpi-meta">The datasource keeps no totals</p>
+            {% elseif graph.totals is null %}
+                <p class="kpi-value" data-kind="state">{{ graph.totalsError ? 'Could not read the stored totals' : 'Not available' }}</p>
+                {% if graph.totalsError %}<p class="kpi-meta">{{ graph.totalsError }}</p>{% endif %}
+            {% else %}
+                <p class="kpi-value">{{ graph.totalsText }}</p>
+                <p class="kpi-meta">
+                    <span data-ignore-morph data-text="({{ '$' ~ range_live.id() }} ? window.nfsenTime.rangeLabel({{ '$' ~ range_preset.id() }}, true, {{ '$' ~ datestart.id() }}, {{ '$' ~ dateend.id() }}, {{ labels|json_encode }}) : window.nfsenTime.formatRange({{ '$' ~ datestart.id() }}, {{ '$' ~ dateend.id() }}, {{ tz }})) + ', stored series'">{{ range_live.bool() and presetLabel ? presetLabel ~ ', stored series' : 'Stored series' }}</span>
+                </p>
+            {% endif %}
+        </article>
+        {% for card in ov.kpi %}
+            <article class="kpi" id="{{ card.id }}" {% if card.busy %}aria-busy="true"{% endif %}
+                     data-attr:aria-busy="({{ pending }} || {{ card.busy ? 'true' : 'false' }}) ? 'true' : false" data-preserve-attr="aria-busy">
+                <h2 class="kpi-label">{{ card.label }}</h2>
+                {% if card.ip %}
+                    <p class="kpi-value" data-kind="address">
+                        <a href="#" class="ip-link" data-ip="{{ card.ip }}" title="Look up {{ card.ip }}"
+                           data-on:click__prevent="@post('{{ ipInfo.url() }}?ip=' + encodeURIComponent(el.dataset.ip))">{{ card.value }}</a>
+                    </p>
+                {% else %}
+                    <p class="kpi-value" {% if card.kind %}data-kind="{{ card.kind }}"{% endif %}>{{ card.value }}</p>
+                {% endif %}
+                {% if card.meta or card.approx %}
+                    <p class="kpi-meta">
+                        {% if card.meta %}<span>{{ card.meta }}</span>{% endif %}
+                        {% if card.approx %}<span class="badge" data-kind="approx" title="From the per-interval top 50">approx.</span>{% endif %}
+                    </p>
+                {% endif %}
+            </article>
+        {% endfor %}
     </section>
 
-    <section class="card" aria-labelledby="overviewOptionsTitle">
-        <header><h2 id="overviewOptionsTitle">Graph options</h2></header>
-        <div class="card-body">
-            {% include 'partials/graph-view.html.twig' %}
+    {# Posts overview-topn on open and whenever an input really changes (1.7, 4.1.5). #}
+    <section class="card topn-card" id="overviewTopn" aria-labelledby="overviewTopnTitle"
+             data-signals__ifmissing="{ {{ _ov_topn_pending.id() }}: false, {{ _ov_exact_rows.id() }}: 0 }"
+             data-effect="window.nfsenChanged(el, Math.floor(${{ datestart.id() }} / 300), Math.floor(${{ dateend.id() }} / 300), [].concat(${{ graph_sources.id() }} ?? []).join(','), ${{ selected_profile.id() }}, {{ tab }}, ${{ ov_dir.id() }}, ${{ ov_limit.id() }}, ${{ ov_order.id() }}) && @post('{{ overviewTopn.url() }}')">
+        <header class="card-header topn-header">
+            <h2 id="overviewTopnTitle">Top of the range</h2>
+            {% if not topn.exactRun %}
+                <span class="badge" data-kind="approx" title="Summed from the top 50 of every 5 minute interval">approx. from per-interval top 50</span>
+            {% endif %}
+        </header>
+        <div class="topn-controls">
+            <div class="tabs" role="tablist" aria-label="Top of the range by" data-activation="manual" data-size="sm">
+                {% for t in topn.tabs %}
+                    <button type="button" role="tab" id="ovTab-{{ t.id }}" aria-controls="ovTopnPanel"
+                            aria-selected="{{ t.selected ? 'true' : 'false' }}" tabindex="{{ t.selected ? '0' : '-1' }}"
+                            data-attr:aria-selected="{{ tab }} === '{{ t.id }}' ? 'true' : 'false'" data-preserve-attr="aria-selected"
+                            data-on:click="{{ tab }} = '{{ t.id }}'">{{ t.label }}</button>
+                {% endfor %}
+            </div>
+            <div class="topn-options">
+                <div class="segmented" role="radiogroup" aria-label="Direction" id="ovDir"
+                     {% if not topn.hasDir %}hidden{% endif %}
+                     data-attr:hidden="{{ tab }} === 'protocols'" data-preserve-attr="hidden">
+                    {% for value in ['src', 'dst'] %}
+                        <input type="radio" name="ovDir" value="{{ value }}" id="ovDir-{{ value }}"
+                               {% if topn.dir == value %}checked{% endif %} {{ bind(ov_dir) }}>
+                        <label data-size="sm" for="ovDir-{{ value }}"
+                               data-text="{{ tab }} === 'interfaces' ? '{{ value == 'src' ? 'In' : 'Out' }}' : '{{ value == 'src' ? 'Source' : 'Destination' }}'">{{ value == 'src' ? topn.dirLabels[0] : topn.dirLabels[1] }}</label>
+                    {% endfor %}
+                </div>
+                <select id="ovLimit" aria-label="Rows" title="Rows" {{ bind(ov_limit) }}>
+                    {% for n in [10, 20, 50] %}
+                        <option value="{{ n }}"{% if topn.limit == n %} selected{% endif %}>Top {{ n }}</option>
+                    {% endfor %}
+                </select>
+                <select id="ovOrder" aria-label="Order" title="Order" aria-describedby="ovOrderNote" {{ bind(ov_order) }}>
+                    {% for value, label in {'bytes': 'Bytes', 'packets': 'Packets', 'flows': 'Flows'} %}
+                        <option value="{{ value }}"{% if topn.order == value %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                {# D10: the lists hold each interval's top 50 by bytes, whatever they are sorted by here. #}
+                <small id="ovOrderNote" {% if topn.order == 'bytes' %}hidden{% endif %}
+                       data-attr:hidden="${{ ov_order.id() }} === 'bytes'" data-preserve-attr="hidden">ranked by bytes per interval</small>
+            </div>
         </div>
+
+        <div class="card-body topn-body" role="tabpanel" id="ovTopnPanel" tabindex="0"
+             aria-labelledby="ovTab-{{ topn.tab }}" data-attr:aria-labelledby="'ovTab-' + {{ tab }}" data-preserve-attr="aria-labelledby"
+             data-state="{{ topn.state }}"
+             {% if topn.busy %}aria-busy="true"{% endif %}
+             data-attr:aria-busy="({{ pending }} || {{ topn.busy ? 'true' : 'false' }}) ? 'true' : false" data-preserve-attr="aria-busy">
+            {% if topn.exactRun %}
+                {% if topn.exact %}
+                    {% set rows = topn.exact.rows %}
+                    <p class="topn-exact-label">
+                        <span class="badge">Exact (nfdump)</span>
+                        <code>{{ topn.exact.command }}</code>
+                    </p>
+                    {% if topn.exact.movedOn %}
+                        <p class="notice" data-kind="stale">Covers <span data-ignore-morph data-text="window.nfsenTime.formatRange({{ topn.exact.start }}, {{ topn.exact.end }}, {{ tz }})"></span>. The live window has moved on; Run again to include newer data.</p>
+                    {% endif %}
+                {% else %}
+                    <div class="empty-state">
+                        <h3>{{ topn.state == 'outside' ? 'Outside the precomputed range' : (topn.state == 'disabled' ? 'Top-N collection is off' : 'Top-N unavailable') }}</h3>
+                        <p>{{ topn.reason }} Run the same list from the capture files with nfdump instead.</p>
+                    </div>
+                {% endif %}
+                <div class="topn-exact-run">
+                    {% include 'components/query-estimate.html.twig' with {target: 'overview-topn'} %}
+                    {% include 'partials/progress-button.html.twig' with {
+                        id: 'overviewTopnRun',
+                        label: topn.exact ? 'Run again' : 'Run exact query',
+                        action: overviewTopnRun.url(),
+                        killAction: killNfdump.url(),
+                        running: query_running.id(),
+                        permille: query_permille.id(),
+                        status: query_status.id(),
+                        eta: query_eta.id(),
+                        exact: query_exact.id(),
+                        kindSignal: query_kind.id(),
+                        kind: 'overview-topn',
+                        run: 'overview-topn',
+                        doneText: "Number(" ~ exactRows ~ ").toLocaleString('en') + (" ~ exactRows ~ " === 1 ? ' row' : ' rows') + ' returned'",
+                    } only %}
+                </div>
+            {% elseif topn.state == 'table' %}
+                {% set rows = topn.rows %}
+            {% elseif topn.state == 'loading' %}
+                <div class="empty-state"><p>Reading the precomputed lists…</p></div>
+            {% else %}
+                <div class="empty-state">
+                    <h3>{{ topn.state == 'collecting' ? 'Collecting' : (topn.state == 'empty' ? 'No flows in this range' : 'Top-N unavailable') }}</h3>
+                    <p>{{ topn.reason }}</p>
+                </div>
+            {% endif %}
+
+            {% if rows is defined and rows is not empty %}
+                <div class="table-wrap">
+                    <table class="ranking" id="ovTopnTable">
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col">{{ topn.keyHeader }}</th>
+                                <th scope="col" data-num>Bytes</th>
+                                <th scope="col" data-num>Packets</th>
+                                <th scope="col" data-num>Flows</th>
+                                <th scope="col">Share</th>
+                                {% if topn.exactIntervals and not topn.exactRun %}<th scope="col" data-num title="5 minute intervals (per source) whose top 50 held this key">In top 50</th>{% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in rows %}
+                                <tr>
+                                    <td><span class="rank"{% if row.slot > 0 %} data-series="{{ row.slot }}"{% endif %}>{{ row.rank }}</span></td>
+                                    <td{% if row.ip %} data-kind="address"{% endif %}>
+                                        {% if row.ip %}
+                                            <a href="#" class="ip-link" data-ip="{{ row.ip }}" title="Look up {{ row.ip }}"
+                                               data-on:click__prevent="@post('{{ ipInfo.url() }}?ip=' + encodeURIComponent(el.dataset.ip))">{{ row.label }}</a>
+                                        {% else %}
+                                            {{ row.label }}
+                                        {% endif %}
+                                    </td>
+                                    <td data-num>{{ row.bytes }}</td>
+                                    <td data-num>{{ row.packets }}</td>
+                                    <td data-num>{{ row.flows }}</td>
+                                    <td data-kind="share">
+                                        {% if row.share is not null %}
+                                            <span class="bar" style="--share: {{ row.share|round(1) }}%"></span>{{ row.shareText }}
+                                        {% endif %}
+                                    </td>
+                                    {% if topn.exactIntervals and not topn.exactRun %}<td data-num>{{ row.intervals }}</td>{% endif %}
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% elseif rows is defined and topn.exactRun %}
+                <div class="empty-state"><p>nfdump returned no rows for this range.</p></div>
+            {% endif %}
+        </div>
+
+        {% if topn.notes is not empty %}
+            <footer class="card-footer topn-notes">
+                {% for note in topn.notes %}<p>{{ note }}</p>{% endfor %}
+            </footer>
+        {% endif %}
     </section>
 </div>

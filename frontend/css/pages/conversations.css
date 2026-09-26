@@ -1,1 +1,180 @@
-/* Styles of the conversations page (spec 4), written by the package that builds the page. */
+/* Conversations (4.4, 2.7.6): the query card, then one result shown as a Sankey, a Matrix or
+   ranked IP pairs. The query fields rearrange with the width the page gets. */
+
+.conversations {
+    container-type: inline-size;
+}
+
+.conversations .card > header h2 {
+    font-size: var(--font-size-1);
+}
+
+/* ── Query ──────────────────────────────────────────────────────────────── */
+
+.conv-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'group' 'direction' 'metric' 'topn' 'filter' 'bytes' 'note';
+    gap: var(--size-3) var(--size-4);
+    align-items: start;
+}
+
+.conv-fields fieldset {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+}
+
+.conv-fields legend {
+    margin-block-end: var(--size-1);
+    padding: 0;
+}
+
+.conv-group {
+    grid-area: group;
+}
+
+.conv-direction {
+    grid-area: direction;
+}
+
+.conv-metric {
+    grid-area: metric;
+}
+
+.conv-topn {
+    grid-area: topn;
+}
+
+.conv-filter {
+    grid-area: filter;
+}
+
+.conv-bytes {
+    grid-area: bytes;
+}
+
+.conv-subnet-note {
+    grid-area: note;
+}
+
+.conv-fields select {
+    inline-size: 100%;
+}
+
+.conv-limit {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-2);
+    color: var(--text-2);
+}
+
+.conv-limit input {
+    inline-size: 7rem;
+}
+
+@container (min-width: 40rem) {
+    .conv-fields {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas: 'group topn' 'direction metric' 'filter filter' 'bytes bytes' 'note note';
+    }
+}
+
+@container (min-width: 64rem) {
+    .conv-fields {
+        grid-template-columns: minmax(12rem, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+        grid-template-areas: 'group direction metric' 'topn filter filter' 'bytes filter filter' 'note note note';
+    }
+}
+
+.conversations .query-run {
+    --cluster-gap: var(--size-2) var(--size-4);
+}
+
+/* ── Results ────────────────────────────────────────────────────────────── */
+
+/* Tabs, summary and Export in one bar; the selected tab's rule sits on the header's edge. */
+.conv-results > header {
+    align-items: stretch;
+    padding-block: 0;
+    min-block-size: 2.75rem;
+}
+
+#conversationsResults > header > .tabs {
+    align-self: stretch;
+    box-shadow: none;
+}
+
+.conv-results > header > :is(.conv-summary, .conv-export) {
+    align-self: center;
+}
+
+.conv-summary {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2);
+    margin-inline-start: auto;
+    padding-block: var(--size-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.conv-export {
+    padding-block: var(--size-1);
+}
+
+.conv-export [role='menuitem'][aria-disabled='true'] {
+    color: var(--text-3);
+    cursor: not-allowed;
+}
+
+.conv-export [role='menuitem'][aria-disabled='true']:hover {
+    background: none;
+}
+
+.conv-panel:focus-visible {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+}
+
+nfsen-sankey,
+nfsen-matrix {
+    display: block;
+}
+
+/* Grows with the node count (nfsen-sankey.js); the card scrolls instead of the page. */
+.sankey-container {
+    max-block-size: 80vh;
+    overflow-y: auto;
+}
+
+.sankey-canvas {
+    inline-size: 100%;
+    block-size: 31.25rem;
+}
+
+/* The padding keeps an overlay scrollbar off the legend at the bottom. */
+.matrix-container {
+    overflow-x: auto;
+    padding-block-end: var(--size-2);
+}
+
+.matrix-canvas {
+    inline-size: 100%;
+    min-inline-size: 36rem;
+    block-size: 20rem;
+}
+
+.conv-chart-message {
+    padding: var(--size-6) var(--size-4);
+    color: var(--text-2);
+    text-align: center;
+}
+
+.conv-others {
+    margin-block-start: var(--size-3);
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+    font-variant-numeric: tabular-nums;
+}

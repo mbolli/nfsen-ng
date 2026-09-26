@@ -18,6 +18,8 @@ use mbolli\nfsen_ng\common\Debug;
  * @phpstan-import-type ProcessorResult from Processor
  */
 class Nfdump implements Processor {
+    /** How long execute() waits for nfdump to exit once it has closed its output. */
+    public const float EXIT_WAIT_SECONDS = 5.0;
     public static ?self $_instance = null;
 
     /**
@@ -230,7 +232,7 @@ class Nfdump implements Processor {
         $closed = false;
         $stdout = '';
         $stderr = '';
-        $status = 0;
+        $exitCode = 0;
 
         try {
             $process = proc_open('exec ' . $command, $descriptorspec, $pipes);
@@ -253,8 +255,10 @@ class Nfdump implements Processor {
             fclose($pipes[1]);
             fclose($pipes[2]);
 
+            $polled = self::polledExitCode($process);
             $status = proc_close($process);
             $closed = true;
+            $exitCode = $polled ?? self::exitCodeFrom($status);
         } finally {
             // A throw while reading the pipes would otherwise leave the child unreaped and
             // its handle open for the life of the worker.
@@ -269,7 +273,7 @@ class Nfdump implements Processor {
             NfdumpSlots::release();
         }
 
-        return $this->interpret($command, $stdout, $stderr, self::exitCodeFrom($status), $timer);
+        return $this->interpret($command, $stdout, $stderr, $exitCode, $timer);
     }
 
     /**
@@ -300,6 +304,29 @@ class Nfdump implements Processor {
         }
 
         return $status;
+    }
+
+    /**
+     * The exit code (or ending signal) once the process has ended, null when it could not be seen.
+     * Under OpenSwoole's hooks proc_close() sometimes answers 0 for a failed run.
+     *
+     * @param resource $process
+     */
+    public static function polledExitCode($process, float $timeout = self::EXIT_WAIT_SECONDS): ?int {
+        $deadline = microtime(true) + $timeout;
+        do {
+            $status = proc_get_status($process);
+            if (!$status['running']) {
+                if ($status['signaled']) {
+                    return $status['termsig'];
+                }
+
+                return $status['exitcode'] >= 0 ? $status['exitcode'] : null;
+            }
+            usleep(1000);
+        } while (microtime(true) < $deadline);
+
+        return null;
     }
 
     /**
@@ -555,10 +582,9 @@ class Nfdump implements Processor {
 
     /**
      * Parse whitespace-delimited aggregated nfdump output (custom 'fmt:' format strings) into
-     * structured rows. Skips nfdump's own header/summary/footer lines by requiring an exact
-     * column-count match against $headers; those lines never happen to match by construction
-     * (the human-readable header row has multi-word column labels, and summary/footer lines are
-     * comma/colon-laden with a different token count).
+     * structured rows. A line is a row when it has exactly one field per column and every
+     * address column (`sa`, `da`) holds an address, so nfdump's header, "No matching flows"
+     * and summary lines never become rows, whatever their token count.
      *
      * @param array<string> $lines   Raw output lines from nfdump
      * @param array<string> $headers Column names, in order, as derived from the fmt: string
@@ -567,6 +593,7 @@ class Nfdump implements Processor {
      */
     public static function parseWhitespaceDelimitedAggregation(array $lines, array $headers): array {
         $headerCount = \count($headers);
+        $addressColumns = array_keys(array_intersect($headers, ['sa', 'da']));
         $decoded = [];
 
         foreach ($lines as $line) {
@@ -578,6 +605,11 @@ class Nfdump implements Processor {
             $fields = preg_split('/\s+/', $trimmed);
             if ($fields === false || \count($fields) !== $headerCount) {
                 continue;
+            }
+            foreach ($addressColumns as $column) {
+                if (filter_var($fields[$column], FILTER_VALIDATE_IP) === false) {
+                    continue 2;
+                }
             }
 
             $decoded[] = array_combine($headers, $fields);
@@ -851,18 +883,14 @@ class Nfdump implements Processor {
         $isAggregationWithoutCsv = isset($this->cfg['option']['-a']) && $this->cfg['format'] !== 'csv';
 
         if ($isBidirectional || $isAggregationWithoutCsv) {
-            $this->d->log('Aggregation detected (-B=' . (isset($this->cfg['option']['-B']) ? 'yes' : 'no') . ', -a flag=' . self::scalarString($this->cfg['option']['-a'] ?? 'null') . ') producing fixed-width format (bidirectional=' . ($isBidirectional ? 'yes' : 'no') . ', format=' . ($this->cfg['format'] ?? 'null') . '), returning enhanced raw output', LOG_DEBUG);
+            $this->d->log('Aggregation detected (-B=' . (isset($this->cfg['option']['-B']) ? 'yes' : 'no') . ', -a flag=' . self::scalarString($this->cfg['option']['-a'] ?? 'null') . ') producing fixed-width format (bidirectional=' . ($isBidirectional ? 'yes' : 'no') . ', format=' . ($this->cfg['format'] ?? 'null') . '), returning the raw output', LOG_DEBUG);
 
             // The biflow table has a known shape, so it can be read into rows. The raw text
-            // still travels with it: a row the parser does not recognise means an empty list,
-            // and the caller renders the output as it came instead of losing it.
+            // still travels with it, untouched: a row the parser does not recognise means an
+            // empty list, and the caller shows the output as it came instead of losing it.
             $decoded = $isBidirectional ? self::parseBidirectionalOutput($output) : [];
 
-            // Beautifying is for when the text *is* the view. Once there are rows, the text
-            // moves to "Original View", which escapes what it is given.
-            $rawOutput = $decoded === [] ? $this->beautifyAggregatedOutput($output) : $stdout;
-
-            return $this->result($command, $rawOutput, $decoded, $stderr, $notes, $exitCode, $timer);
+            return $this->result($command, $stdout, $decoded, $stderr, $notes, $exitCode, $timer);
         }
 
         // A last line with a colon and no comma is a key: value summary such as `-I`.
@@ -1036,74 +1064,5 @@ class Nfdump implements Processor {
         return $at === false
             ? [$endpoint, '']
             : [substr($endpoint, 0, $at), substr($endpoint, $at + 1)];
-    }
-
-    /**
-     * Beautifies aggregated nfdump output by bolding headers and summary labels.
-     * Aggregated output (-a flag) produces fixed-width space-padded format that
-     * cannot be reliably parsed as CSV.
-     *
-     * @param array<string> $output Raw output lines from nfdump
-     *
-     * @return string Enhanced output with HTML bold tags
-     */
-    private function beautifyAggregatedOutput(array $output): string {
-        $enhancedLines = [];
-
-        foreach ($output as $i => $line) {
-            // Bold first line (headers)
-            if ($i === 0) {
-                $enhancedLines[] = '<b>' . $line . '</b>';
-
-                continue;
-            }
-
-            $trim = trim($line);
-
-            // For the "Summary:" line which contains comma-separated key: value pairs
-            if (str_starts_with($trim, 'Summary:')) {
-                $after = trim(substr($trim, \strlen('Summary:')));
-                $parts = array_map('trim', explode(',', $after));
-                $newParts = [];
-                foreach ($parts as $p) {
-                    if (str_contains($p, ':')) {
-                        [$k, $v] = explode(':', $p, 2);
-                        $newParts[] = '<b>' . trim($k) . ':</b> ' . trim($v);
-                    } else {
-                        $newParts[] = $p;
-                    }
-                }
-                $enhancedLines[] = '<b>Summary:</b> ' . implode(', ', $newParts);
-
-                continue;
-            }
-
-            // Flow data rows start with a timestamp like "2026-04-22 10:43:...", so don't split on colon
-            if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:/', $trim)) {
-                $enhancedLines[] = $line;
-
-                continue;
-            }
-
-            // Lines like "Time window: ..." or "Total records processed: ..."
-            if (str_contains($line, ':')) {
-                // Check if it's a summary-style line (not data with port notation like "IP:Port")
-                if (preg_match('/^([^:]+):\s*(.*)$/', $line, $matches)) {
-                    $key = trim($matches[1]);
-                    $value = trim($matches[2]);
-                    // Only bold if the key doesn't look like an IP or port (no dots or pure numbers)
-                    if (!str_contains($key, '.') && !is_numeric($key)) {
-                        $enhancedLines[] = '<b>' . $key . ':</b> ' . $value;
-
-                        continue;
-                    }
-                }
-            }
-
-            // Default: keep the line as-is
-            $enhancedLines[] = $line;
-        }
-
-        return implode("\n", $enhancedLines);
     }
 }

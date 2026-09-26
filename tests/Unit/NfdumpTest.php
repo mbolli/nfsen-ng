@@ -44,7 +44,8 @@ function runCannedNfdump(string $stdout, string $stderr = '', int $exit = 0, arr
 
     $nfdump = new Nfdump();
     foreach ($options as $option => $value) {
-        $nfdump->setOption($option, $value);
+        // A numeric flag such as -6 comes back from the array as an int key.
+        $nfdump->setOption((string) $option, $value);
     }
     $nfdump->setFilter($filter);
 
@@ -327,6 +328,35 @@ describe('Nfdump', function (): void {
             $lines = ['', '   ', '  172.24.154.108     149.126.4.47 1658542255   114225  1290'];
 
             expect(Nfdump::parseWhitespaceDelimitedAggregation($lines, $headers))->toHaveCount(1);
+        });
+
+        // The token count alone let a footer line through whenever it happened to match.
+        test('keeps a line only when its address columns hold addresses', function (): void {
+            $lines = [
+                'Time window: <unknown>',
+                'No matching flows',
+                '  10.0.37.1   10.1.37.2   288000',
+            ];
+
+            expect(Nfdump::parseWhitespaceDelimitedAggregation($lines, ['sa', 'da', 'ibyt']))->toBe([
+                ['sa' => '10.0.37.1', 'da' => '10.1.37.2', 'ibyt' => '288000'],
+            ])->and(Nfdump::parseWhitespaceDelimitedAggregation(['Time window: <unknown>'], ['sa', 'ibyt', 'fl']))->toBe([]);
+        });
+
+        // With -6 nfdump prints full IPv6 addresses; the condensed form without it is no address.
+        test('reads full IPv6 addresses and drops condensed ones', function () use ($headers): void {
+            $lines = [
+                '2001:db8:0:0:0:0:0:1   2001:db8::2   500   5   1',
+                '2001:62..e0:fed5   2001:db8::2   500   5   1',
+            ];
+
+            expect(Nfdump::parseWhitespaceDelimitedAggregation($lines, $headers))->toBe([
+                ['sa' => '2001:db8:0:0:0:0:0:1', 'da' => '2001:db8::2', 'ibyt' => '500', 'ipkt' => '5', 'fl' => '1'],
+            ]);
+        });
+
+        test('leaves formats without address columns to the token count', function (): void {
+            expect(Nfdump::parseWhitespaceDelimitedAggregation(['443   500'], ['dp', 'ibyt']))->toBe([['dp' => '443', 'ibyt' => '500']]);
         });
 
         test('handles a full realistic multi-line output block', function () use ($headers): void {
@@ -729,6 +759,37 @@ describe('Nfdump::exitCodeFrom()', function (): void {
     });
 });
 
+describe('Nfdump::polledExitCode()', function (): void {
+    $spawn = static function (string $script) {
+        $process = proc_open(['/bin/sh', '-c', $script], [], $pipes);
+        expect($process)->toBeResource();
+
+        return $process;
+    };
+
+    test('reads the exit code once the process has ended', function () use ($spawn): void {
+        $process = $spawn('exit 254');
+
+        expect(Nfdump::polledExitCode($process))->toBe(254);
+        proc_close($process);
+    });
+
+    test('reads the signal that ended the process', function () use ($spawn): void {
+        $process = $spawn('kill -TERM $$');
+
+        expect(Nfdump::polledExitCode($process))->toBe(15);
+        proc_close($process);
+    });
+
+    test('gives up on a process that does not end in time', function () use ($spawn): void {
+        $process = $spawn('sleep 5');
+
+        expect(Nfdump::polledExitCode($process, 0.05))->toBeNull();
+        proc_terminate($process);
+        proc_close($process);
+    });
+});
+
 describe('Nfdump::execute()', function (): void {
     $stub = dirname(__DIR__) . '/Support/bin/nfdump-canned';
 
@@ -970,6 +1031,34 @@ describe('Nfdump::execute()', function (): void {
         $result = runCannedNfdump("firstSeen,proto\n2026-08-29 05:17:53.000,6\n", "read() error: Success\nsomething real\n");
 
         expect($result['stderr'])->toBe('something real');
+    });
+
+    // SPEC 3.4: rawOutput is nfdump's stdout; the text view escapes it, so no markup is added.
+    test('returns an unparsed biflow table untouched, footer included', function (): void {
+        $stdout = "Date first seen  Duration Proto  Src IP Addr:Port  Dst IP Addr:Port  Out Pkt  In Pkt Out Byte In Byte Flows\n"
+            . "garbled row <-> that the parser does not know\n"
+            . "Summary: total flows: 21600, total bytes: 14774400, total packets: 151200, avg bps: 118195200, avg pps: 151200, avg bpp: 97\n"
+            . "Time window: <unknown>\n";
+        $result = runCannedNfdump($stdout, options: ['-o' => 'csv', '-B' => '']);
+
+        expect($result['decoded'])->toBe([])
+            ->and($result['rawOutput'])->toBe($stdout)
+            ->and($result['rawOutput'])->not->toContain('<b>')
+            ->and(NfdumpSummary::fromTextFooter($result['rawOutput']))->toMatchArray(['flows' => 21600, 'bytes' => 14774400, 'packets' => 151200])
+        ;
+    });
+
+    test('keeps the footer of an aggregated fmt run for the totals', function (): void {
+        $stdout = "     Src IP Addr      Dst IP Addr  In Byte   In Pkt Flows\n"
+            . "       10.0.37.1        10.1.37.2   288000     2880   288\n"
+            . "Summary: total flows: 21600, total bytes: 14774400, total packets: 151200, avg bps: 1, avg pps: 1, avg bpp: 97\n";
+        $result = runCannedNfdump($stdout, options: ['-a' => '-Asrcip,dstip', '-6' => null, '-o' => 'fmt:%sa %da %ibyt %ipkt %fl']);
+
+        expect($result['decoded'])->toBe([['sa' => '10.0.37.1', 'da' => '10.1.37.2', 'ibyt' => '288000', 'ipkt' => '2880', 'fl' => '288']])
+            ->and($result['rawOutput'])->toBe($stdout)
+            ->and($result['command'])->toContain(" -6 -o 'fmt:%sa %da %ibyt %ipkt %fl'")
+            ->and(NfdumpSummary::fromTextFooter($result['rawOutput'])['bytes'] ?? null)->toBe(14774400)
+        ;
     });
 
     // A filter such as `-w/tmp/x` used to reach nfdump's option parser and write a file.

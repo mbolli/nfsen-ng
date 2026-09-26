@@ -140,9 +140,9 @@ function recordingDatasource(): Datasource {
     };
 }
 
-function statsQuerySettings(): void {
+function statsQuerySettings(int $maxStatsWindow = 0): void {
     Config::$settings = Settings::fromArray([
-        'general' => ['sources' => ['gw'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump', 'max_stats_window' => 0],
+        'general' => ['sources' => ['gw'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump', 'max_stats_window' => $maxStatsWindow],
         'nfdump' => [
             'binary' => '/usr/bin/nfdump',
             'profiles-data' => '/var/nfdump/profiles-data',
@@ -527,16 +527,77 @@ describe('MatrixQuery', function (): void {
     });
 
     // Ports add the middle column of the diagram, so they join the aggregation key.
-    test('adds the destination port to the key only when showing ports', function (): void {
+    test('aggregates on the key of the grouping (4.4.2)', function (string $groupBy, bool $showPorts, string $spec): void {
+        statsQuerySettings();
+        $query = new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, showPorts: $showPorts, groupBy: $groupBy);
+
+        expect($query->aggregation())->toBe($spec)
+            ->and($query->groupBy())->toBe($showPorts ? 'port' : $groupBy)
+        ;
+    })->with([
+        ['ip', false, 'srcip,dstip'],
+        ['net24', false, 'srcip4/24,dstip4/24'],
+        ['net16', false, 'srcip4/16,dstip4/16'],
+        ['port', false, 'srcip,dstport,dstip'],
+        // The MCP tool's flag is the port grouping.
+        ['ip', true, 'srcip,dstport,dstip'],
+    ]);
+
+    test('rejects an unknown grouping or direction, and both directions with the port', function (): void {
         statsQuerySettings();
 
-        $without = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10))->aggregation();
-        $with = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, showPorts: true))->aggregation();
-
-        expect($without)->not->toHaveKey('dstport')
-            ->and($with)->toHaveKey('dstport')
+        expect(fn () => new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, groupBy: 'net8'))->toThrow(InvalidArgumentException::class)
+            ->and(fn () => new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, direction: 'backward'))->toThrow(InvalidArgumentException::class)
+            ->and(fn () => new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, groupBy: 'port', direction: 'both'))->toThrow(InvalidArgumentException::class)
+            ->and(fn () => new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, showPorts: true, direction: 'both'))->toThrow(InvalidArgumentException::class)
         ;
     });
+
+    // D15: both directions merge the directed pairs, so it fetches four times as many.
+    test('over-fetches for both directions, capped', function (): void {
+        statsQuerySettings();
+        $pairs = static fn (int $topN, string $direction): int => (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', $topN, direction: $direction))->fetchLimit();
+
+        expect($pairs(20, 'forward'))->toBe(20)
+            ->and($pairs(20, 'both'))->toBe(80)
+            ->and($pairs(500, 'both'))->toBe(MatrixQuery::MAX_FETCH)
+            ->and($pairs(900, 'forward'))->toBe(MatrixQuery::MAX_TOP_N)
+            ->and($pairs(0, 'forward'))->toBe(1)
+        ;
+    });
+
+    test('maps the grouping onto nfdump options, always with full IPv6 addresses', function (): void {
+        statsQuerySettings();
+        Config::$processorClass = recordingProcessor();
+
+        $processor = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'packets', 20, groupBy: 'net24', direction: 'both', handle: 'ctx'))->processor();
+
+        expect($processor->options)->toMatchArray([
+            '-M' => 'gw',
+            '-a' => '-Asrcip4/24,dstip4/24',
+            '-O' => 'packets',
+            '-n' => 80,
+            '-N' => null,
+            '-6' => null,
+        ])->and($processor->options)->toHaveKey('-6')
+            ->and($processor->options['-o'])->toStartWith('fmt:')
+            ->and($processor->handle)->toBe('ctx')
+            ->and($processor->filter)->toBe('ipv4')
+        ;
+    });
+
+    test('limits a subnet grouping to IPv4, between the protocol and the user filter', function (string $groupBy, string $expected): void {
+        statsQuerySettings();
+
+        $query = new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, filter: 'port 53', protocol: 'udp', groupBy: $groupBy);
+
+        expect($query->effectiveFilter())->toBe($expected);
+    })->with([
+        ['net24', '(proto udp) and (ipv4) and (port 53)'],
+        ['net16', '(proto udp) and (ipv4) and (port 53)'],
+        ['ip', '(proto udp) and (port 53)'],
+        ['port', '(proto udp) and (port 53)'],
+    ]);
 
     // #159: 1.7.5 rejects a custom fmt: alongside -A, so it gets plain aggregated csv.
     test('falls back to csv on the nfdump version that cannot combine fmt with aggregation', function (): void {
@@ -548,14 +609,16 @@ describe('MatrixQuery', function (): void {
         ;
     });
 
-    test('asks for the port field only when showing ports', function (): void {
+    test('asks for the port field only when grouping by port', function (): void {
         statsQuerySettings();
 
-        $with = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, showPorts: true))->outputFormat('1.7.6');
-        $without = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10))->outputFormat('1.7.6');
+        $with = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, groupBy: 'port'))->outputFormat('1.7.6');
+        $flag = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, showPorts: true))->outputFormat('1.7.6');
+        $without = (new MatrixQuery(TimeWindow::raw(0, 10), ['gw'], 'live', 'bytes', 10, groupBy: 'net24'))->outputFormat('1.7.6');
 
-        expect($with)->toContain('%dp')
-            ->and($without)->not->toContain('%dp')
+        expect($with)->toBe('fmt:%sa %da %dp %ibyt %ipkt %fl')
+            ->and($flag)->toBe($with)
+            ->and($without)->toBe('fmt:%sa %da %ibyt %ipkt %fl')
         ;
     });
 
@@ -784,7 +847,7 @@ describe('TimeWindow::clampNotice()', function (): void {
     // "clamped to 0 days" was the exact wording bug the window formatter was added to fix,
     // and the notice was still rounding to days on its own.
     test('names a sub-day bound in a unit that reads', function (): void {
-        makeWindowSettings(3600);
+        statsQuerySettings(3600);
 
         expect(TimeWindow::clamped(0, 86400)->clampNotice())->toContain('1 hour')
             ->and(TimeWindow::clamped(0, 86400)->clampNotice())->not->toContain('0 days')
@@ -792,7 +855,7 @@ describe('TimeWindow::clampNotice()', function (): void {
     });
 
     test('names the bound the caller passed, not the configured one', function (): void {
-        makeWindowSettings(86400 * 30);
+        statsQuerySettings(86400 * 30);
 
         expect(TimeWindow::clamped(0, 86400 * 10, 86400)->clampNotice())->toContain('1 day');
     });

@@ -7,6 +7,7 @@ use mbolli\nfsen_ng\common\CpuBudget;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\HealthMetrics;
+use mbolli\nfsen_ng\common\LoopLag;
 use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Datasource;
@@ -177,6 +178,29 @@ describe('HealthMetrics::sources', function (): void {
 
         expect(healthRow(HealthMetrics::sources($now), 'live', 'gateway')['pending'])->toBe(2);
     });
+
+    // A name stamped inside the window but filed 30 days back counts only if the scan reads that directory.
+    test('a never imported source scans only the 8 day directories of the window', function () use ($now): void {
+        $data = $this->root . '/profiles-data';
+        healthSettings($data, ['gateway']);
+        healthCapture($data, 'live', 'gateway', $now - 300);
+        $inWindow = (new DateTimeImmutable('@' . ($now - 600)))->setTimezone(Config::nfcapdTimezone())->format('YmdHi');
+        healthCapture($data, 'live', 'gateway', $now - 30 * 86400, null, 'nfcapd.' . $inWindow);
+        ($this->importedUntil)([]);
+
+        expect(healthRow(HealthMetrics::sources($now), 'live', 'gateway')['pending'])->toBe(1);
+    });
+
+    test('the window is 7 calendar days in the nfcapd timezone, across a DST change too', function (string $local, string $start): void {
+        $tz = new DateTimeZone('Europe/Zurich');
+        $from = HealthMetrics::windowStart((new DateTimeImmutable($local, $tz))->getTimestamp(), $tz);
+
+        expect((new DateTimeImmutable('@' . $from))->setTimezone($tz)->format('Y-m-d H:i'))->toBe($start);
+    })->with([
+        'spring forward on 31 March' => ['2024-04-01 00:30', '2024-03-25 00:30'],
+        'fall back on 27 October' => ['2024-11-01 00:30', '2024-10-25 00:30'],
+        'no change' => ['2024-06-10 12:00', '2024-06-03 12:00'],
+    ]);
 
     test('pending is capped at 10 000', function () use ($now): void {
         $data = $this->root . '/profiles-data';
@@ -392,6 +416,56 @@ describe('HealthMetrics::processBudget', function (): void {
 
         expect(HealthMetrics::processBudget())->toMatchArray(['processes' => 3, 'auto' => false]);
     });
+});
+
+describe('HealthMetrics::loopLag', function (): void {
+    $now = 1_790_000_000.0;
+
+    beforeEach(fn () => LoopLag::reset());
+    afterEach(fn () => LoopLag::reset());
+
+    test('says nothing before the first tick', function () use ($now): void {
+        expect(HealthMetrics::loopLag($now))->toBe(['samples' => 0, 'window' => 60, 'p50' => '', 'p95' => '', 'max' => '', 'level' => '']);
+    });
+
+    test('shows p50, p95 and max of the last minute', function () use ($now): void {
+        foreach (range(1, 19) as $i) {
+            LoopLag::record(0.44, $now - 1);
+        }
+        LoopLag::record(85.4, $now);
+        LoopLag::record(40.0, $now - 61);
+
+        expect(HealthMetrics::loopLag($now))->toBe(['samples' => 20, 'window' => 60, 'p50' => '0.4 ms', 'p95' => '0.4 ms', 'max' => '85 ms', 'level' => '']);
+    });
+
+    // 100 ms is where moving imports out of the request worker (PERF-SPEC P6b) starts to pay.
+    test('warns from a p95 that reads 100 ms and turns to an error from one that reads 1.0 s', function (float $p95, string $text, string $level) use ($now): void {
+        foreach (range(1, 20) as $i) {
+            LoopLag::record($p95, $now);
+        }
+
+        expect(HealthMetrics::loopLag($now))->toMatchArray(['p95' => $text, 'level' => $level]);
+    })->with([
+        'below' => [99.4, '99 ms', ''],
+        'rounds up to the warning' => [99.6, '100 ms', 'warning'],
+        'at the warning' => [100.0, '100 ms', 'warning'],
+        'just below an error' => [999.4, '999 ms', 'warning'],
+        'rounds up to the error' => [999.6, '1.0 s', 'error'],
+        'at the error' => [1000.0, '1.0 s', 'error'],
+    ]);
+
+    test('writes a lag in ms below a second and in s above', function (?float $ms, string $text): void {
+        expect(HealthMetrics::lagText($ms))->toBe($text);
+    })->with([
+        'none' => [null, ''],
+        'zero' => [0.0, '0.0 ms'],
+        'sub-ms' => [0.44, '0.4 ms'],
+        'rounds up to 10' => [9.96, '10 ms'],
+        'tens' => [85.4, '85 ms'],
+        'rounds up to a second' => [999.6, '1.0 s'],
+        'seconds' => [2345.0, '2.3 s'],
+        'minutes' => [125_000.0, '125.0 s'],
+    ]);
 });
 
 describe('HealthChecker nfdump group', function (): void {

@@ -101,6 +101,10 @@
     display: block;
 }
 
+.health-lag > .status-dot {
+    margin-inline-end: var(--size-1);
+}
+
 .health-topn {
     --stack-gap: var(--size-2);
 }

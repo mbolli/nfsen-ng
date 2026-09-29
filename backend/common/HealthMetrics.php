@@ -9,13 +9,15 @@ use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
 
 /**
- * Live figures for the Health page: capture sources, disks, the nfdump process budget and slots.
+ * Live figures for the Health page: capture sources, disks, the nfdump process budget and slots,
+ * and the event-loop lag.
  *
  * @phpstan-type SourceHealth array{profile: string, source: string, newestFile: ?string, dataUntil: ?int, written: ?int, imported: int, pending: int, state: 'healthy'|'stale'|'missing'|'nodata'}
  * @phpstan-type DiskUsage array{label: string, path: string, free: ?int, total: ?int, usedPct: ?float}
  * @phpstan-type SlotCounts array{interactive: int, background: int}
  * @phpstan-type ActiveQueries array{inUse: int, max: int, backgroundMax: int, byClass: SlotCounts, waiting: SlotCounts}
  * @phpstan-type ProcessBudget array{cores: int, coresSource: string, coresOrigin: string, coresFrom: string, coresDetail: string, processes: int, auto: bool, workers: int, workersPassed: int, version: string}
+ * @phpstan-type LagView array{samples: int, window: int, p50: string, p95: string, max: string, level: ''|'warning'|'error'}
  */
 final class HealthMetrics {
     /** Seconds a capture file covers; also nfcapd's default rotation interval. */
@@ -28,6 +30,11 @@ final class HealthMetrics {
     public const WINDOW_DAYS = 7;
 
     public const PENDING_CAP = 10_000;
+
+    /** Event-loop lag p95 in ms from which the System card warns; also P6b's threshold (PERF-SPEC). */
+    public const float LAG_WARNING = 100.0;
+
+    public const float LAG_ERROR = 1000.0;
 
     /**
      * One row per profile and configured source.
@@ -173,6 +180,45 @@ final class HealthMetrics {
         return $waiting > 0 ? $text . ', ' . $waiting . ' waiting' : $text;
     }
 
+    /** WINDOW_DAYS calendar days back in the nfcapd timezone, so the window spans 8 day directories across a DST change too. */
+    public static function windowStart(int $now, ?\DateTimeZone $tz = null): int {
+        return (new \DateTimeImmutable('@' . $now))->setTimezone($tz ?? Config::nfcapdTimezone())->modify('-' . self::WINDOW_DAYS . ' days')->getTimestamp();
+    }
+
+    /**
+     * The worker's event-loop lag over the last minute, levelled by its p95 in whole ms, the
+     * precision lagText() shows at both thresholds: a p95 that reads "100 ms" warns.
+     *
+     * @return LagView
+     */
+    public static function loopLag(?float $now = null): array {
+        $lag = LoopLag::summary($now);
+        $p95 = $lag['p95'] === null ? null : round($lag['p95']);
+
+        return [
+            'samples' => $lag['samples'],
+            'window' => $lag['window'],
+            'p50' => self::lagText($lag['p50']),
+            'p95' => self::lagText($lag['p95']),
+            'max' => self::lagText($lag['max']),
+            'level' => match (true) {
+                $p95 === null || $p95 < self::LAG_WARNING => '',
+                $p95 < self::LAG_ERROR => 'warning',
+                default => 'error',
+            },
+        ];
+    }
+
+    /** "0.4 ms", "85 ms", "2.3 s"; '' before the first tick. */
+    public static function lagText(?float $ms): string {
+        return match (true) {
+            $ms === null => '',
+            round($ms, 1) < 10 => number_format($ms, 1) . ' ms',
+            round($ms) < 1000 => number_format($ms) . ' ms',
+            default => number_format($ms / 1000, 1) . ' s',
+        };
+    }
+
     /**
      * @return SourceHealth
      */
@@ -193,7 +239,7 @@ final class HealthMetrics {
         }
 
         $row['imported'] = self::imported($profile, $source);
-        $windowStart = $now - self::WINDOW_DAYS * 86400;
+        $windowStart = self::windowStart($now);
 
         // Never imported means imported = 0, so the window start keeps the scan to 8 day directories.
         $pending = array_filter(

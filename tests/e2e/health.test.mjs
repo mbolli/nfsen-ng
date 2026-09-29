@@ -200,7 +200,7 @@ async function walkHealth(page) {
     }
 
     const system = await page.evaluate(`document.querySelector('#healthSystem').textContent`);
-    for (const fact of ['nfdump', 'CPU cores', 'Parallel nfdump processes', 'Active queries', 'Uptime', 'Datasource', 'PHP', 'OpenSwoole', 'SQLite journal']) {
+    for (const fact of ['nfdump', 'CPU cores', 'Parallel nfdump processes', 'Active queries', 'Event loop lag', 'Uptime', 'Datasource', 'PHP', 'OpenSwoole', 'SQLite journal']) {
         assert.ok(system.includes(fact), `the system card shows ${fact}`);
     }
     // The process budget: the limit with what one process costs, and the slots split by class.
@@ -212,6 +212,24 @@ async function walkHealth(page) {
         `the process limit, -W and the cost: ${facts['Parallel nfdump processes']}`
     );
     assert.match(facts['Active queries'] ?? '', /^\d+ of \d+ \(\d+ interactive, \d+ background(, \d+ waiting)?\)$/, `the slots by class: ${facts['Active queries']}`);
+
+    // The event-loop lag probe has ticked since the server started: p95 first, then p50 and max.
+    const lagText = facts['Event loop lag'] ?? '';
+    const lag = lagText.match(/^(?:(Slow|Stalled): )?p95 ([\d.,]+) (ms|s) p50 ([\d.,]+) (ms|s), max ([\d.,]+) (ms|s), over the last 60 s$/);
+    assert.ok(lag, `the lag reads as p95, p50 and max over a minute: ${lagText}`);
+    const inMs = (value, unit) => Number(value.replace(/,/g, '')) * (unit === 's' ? 1000 : 1);
+    const [p95, p50, max] = [inMs(lag[2], lag[3]), inMs(lag[4], lag[5]), inMs(lag[6], lag[7])];
+    assert.ok(p50 <= p95 && p95 <= max, `p50 <= p95 <= max: ${lagText}`);
+    const lagGlyph = await page.evaluate(`(() => {
+            const dot = document.querySelector('#healthSystem .health-lag > .status-dot');
+            return dot ? { level: dot.dataset.level, word: dot.textContent.trim() } : null;
+        })()`);
+    const expectedLevel = p95 >= 1000 ? 'error' : p95 >= 100 ? 'warning' : null;
+    assert.deepEqual(
+        lagGlyph,
+        expectedLevel && { level: expectedLevel, word: expectedLevel === 'error' ? 'Stalled:' : 'Slow:' },
+        `a p95 that reads 100 ms or more carries a glyph with its word: ${lagText}`
+    );
 
     // Each group of checks is a tbody headed by a rowgroup header, the SQLite group among them.
     const groups = await page.evaluate(

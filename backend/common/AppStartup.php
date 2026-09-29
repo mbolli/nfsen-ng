@@ -11,9 +11,9 @@ use Mbolli\PhpVia\Via;
 use OpenSwoole\Coroutine;
 
 /**
- * Encapsulates the server-startup logic that runs once in the onStart coroutine:
- * Config/DB initialisation, the SQLite store, AlertManager, ImportDaemon setup, gap-fill
- * import, the inotify poll interval and the top-N collector.
+ * Encapsulates the server-startup logic that runs once in the onStart coroutine: the
+ * event-loop lag probe, Config/DB initialisation, the SQLite store, AlertManager,
+ * ImportDaemon setup, gap-fill import, the inotify poll interval and the top-N collector.
  */
 class AppStartup {
     /**
@@ -21,6 +21,8 @@ class AppStartup {
      * Pass the Via application instance so global state and intervals can be registered.
      */
     public static function boot(Via $app): void {
+        LoopLag::start();
+
         try {
             Config::initialize(true);
         } catch (\Throwable $e) {

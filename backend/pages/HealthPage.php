@@ -328,6 +328,8 @@ final class HealthPage implements Page {
                 'split' => HealthMetrics::slotSplit($queries),
             ],
             'budget' => $fatal ? null : HealthMetrics::processBudget(),
+            // Live and independent of the configuration: the probe starts before it loads.
+            'lag' => HealthMetrics::loopLag(),
             'uptime' => self::duration(ProcessInfo::uptime($now)),
             'startedAt' => ProcessInfo::startedAt(),
             'datasource' => Config::$settings->datasourceName,

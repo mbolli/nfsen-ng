@@ -1,7 +1,7 @@
 # VictoriaMetrics
 
 [VictoriaMetrics](https://victoriametrics.com/) is an optional alternative to the
-default RRD datasource — useful when you want parallel/out-of-order imports,
+default RRD datasource, useful when you want parallel/out-of-order imports,
 longer retention, or PromQL/MetricsQL for ad-hoc queries. The architectural
 comparison is in [Data Sources](../architecture/data-sources.md); this page is
 the setup guide.
@@ -19,7 +19,7 @@ the setup guide.
 
 Because every query and write is an HTTP call, a VictoriaMetrics install is the
 one most affected by the OpenSwoole/libcurl issue described in
-[libcurl 8.20 and OpenSwoole](installation.md#libcurl-820-and-openswoole) — on
+[libcurl 8.20 and OpenSwoole](installation.md#libcurl-820-and-openswoole): on
 libcurl 8.20.0 or newer those calls block the worker rather than yielding. RRD
 makes no HTTP calls at all.
 
@@ -27,8 +27,8 @@ makes no HTTP calls at all.
 
 ### 1. Start VictoriaMetrics
 
-`deploy/docker-compose.victoriametrics.yml` brings up a full stack —
-`victoriametrics`, `nfsen`, and `caddy` — with the app already pointed at VM:
+`deploy/docker-compose.victoriametrics.yml` brings up a full stack
+(`victoriametrics`, `nfsen`, and `caddy`) with the app already pointed at VM:
 
 ```bash
 docker compose -f deploy/docker-compose.victoriametrics.yml up -d
@@ -74,22 +74,23 @@ $nfsen_config = [
 
 ### 3. Import
 
-On a fresh install, run the first import from **Settings → Import → Trigger
-Import** in the web UI. `nfcapd` files are still required — VictoriaMetrics is a
-storage backend, not a replacement for the raw captures nfdump reads for Flows
-and Statistics.
+On a fresh install, run the first import with **Trigger** on the **Health**
+page. `nfcapd` files are still required: VictoriaMetrics is a storage backend,
+not a replacement for the raw captures nfdump reads for Top Talkers, Flows and
+Conversations. The saved filters, the alert history and the Overview top-N live
+in the SQLite store in the state directory, whichever datasource you use.
 
 ### Importing captures older than the install
 
 A normal Trigger resumes at the newest sample already stored and never looks
 behind it, so an archive of `nfcapd` files collected before nfsen-ng was
-installed is skipped. Use **Settings → Import → Backfill**, which re-reads every
+installed is skipped. Use **Backfill** on the **Health** page, which re-reads every
 capture file and writes each sample at the timestamp it belongs to. Nothing is
 deleted, so it is safe to run on a populated instance, and it can be cancelled.
 
 One prerequisite: VictoriaMetrics silently drops samples older than its
 retention window on ingest, without an error. Set `--retentionPeriod` to cover
-your oldest capture *before* backfilling — the bundled
+your oldest capture *before* backfilling. The bundled
 `deploy/docker-compose.victoriametrics.yml` sets `3y` to match
 `NFSEN_IMPORT_YEARS`, but the default on a stock VictoriaMetrics is one month,
 which will make a backfill look like it did nothing.
@@ -114,36 +115,36 @@ nfsen_packets{source="gw",profile="live"}               67890
 
 Labels:
 
-- `source` — the source name.
-- `port` — port number string; **absent** on aggregate totals. On the read path
+- `source`: the source name.
+- `port`: port number string; **absent** on aggregate totals. On the read path
   the aggregate is selected with `port=""`, which matches series where the label
   is absent (so sparse per-port series don't shadow the dense aggregate).
-- `protocol` — `tcp`/`udp`/`icmp`/`other` on the per-protocol series (redundant
+- `protocol`: `tcp`/`udp`/`icmp`/`other` on the per-protocol series (redundant
   with the metric-name suffix); absent on the aggregate.
-- `profile` — the nfdump profile, e.g. `profile="live"`. Data written before
+- `profile`: the nfdump profile, e.g. `profile="live"`. Data written before
   profiles existed has no label and is matched on read via `profile=~"live|"`.
 
 ## Real-time updates
 
-RRD relies on inotify to detect new files directly. With VictoriaMetrics — a
-remote database — the embedded import daemon instead broadcasts a re-render to
+RRD relies on inotify to detect new files directly. With VictoriaMetrics, a
+remote database, the embedded import daemon instead broadcasts a re-render to
 all SSE clients after each successful write, and a `VictoriaMetricsWatcher` polls
-VM's health/readiness so the Admin panel can report connectivity rather than just
-config sanity. No browser polling is involved either way.
+VM's health/readiness so the Health page can report connectivity rather than just
+config sanity.
 
 ## Migrating between RRD and VictoriaMetrics
 
 1. Change `general.db` (or `NFSEN_DATASOURCE`) to the target datasource.
 2. Run **Backfill** (VictoriaMetrics) or **Rescan** (RRD) to populate it from the
    `nfcapd` files.
-3. The two datasources are independent — switching to VM does not touch existing
+3. The two datasources are independent: switching to VM does not touch existing
    `.rrd` files, and you can roll back by setting the datasource to `RRD` again.
    Remove the now-unused `backend/datasources/data/*.rrd` only after verifying the
    VM data is complete.
 
 ## Seeding demo / development data
 
-`scripts/seed_vm_data.php` pushes realistic synthetic NetFlow data into VM — handy
+`scripts/seed_vm_data.php` pushes realistic synthetic NetFlow data into VM, handy
 for demos, screenshots, and testing without a live `nfcapd` source. (The RRD
 equivalent is `scripts/seed_rrd_data.php`.)
 
@@ -160,12 +161,12 @@ php scripts/seed_vm_data.php [--host=localhost] [--port=8428] [--source=all] [--
 | `--ports` | _(none)_ | Comma-separated ports to also emit, e.g. `80,443,22` |
 
 It generates diurnal traffic with a realistic protocol mix (TCP 63 % / UDP 22 % /
-ICMP 4 % / Other 11 %), weekend dips (~30 % quieter), and ±15 % Gaussian noise —
-peaking around 25 000 flow events per 5-minute slot at the busiest hour — using
+ICMP 4 % / Other 11 %), weekend dips (~30 % quieter), and ±15 % Gaussian noise,
+peaking around 25 000 flow events per 5-minute slot at the busiest hour, using
 the same metric names and labels `VictoriaMetrics::write()` produces, so the
 output shows up immediately in the graphs. Unlike the RRD seeder (which needs the
 app's config and an RRD datasource, so it runs inside the container), this script
 only needs PHP and network reach to VM.
 
 > **Warning:** only run this against a development or demo VictoriaMetrics
-> instance — it writes a large volume of fake flow events.
+> instance: it writes a large volume of fake flow events.

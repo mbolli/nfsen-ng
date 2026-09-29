@@ -6,13 +6,15 @@ nfsen-ng has three moving layers, all inside a single long-running PHP process:
 nfcapd (external)              → writes rotated capture files to disk
       │  inotify
       ▼
-ImportDaemon (backend/common)  → parses new files, writes to the datasource,
-      │                           evaluates alert rules
+ImportDaemon (backend/common)  → reads each new file with nfdump, writes the
+      │                           datasource, queues the file for the top-N
+      │                           collector, evaluates alert rules per interval
       ▼
-Datasource (Rrd|VictoriaMetrics)
-      │
+Datasource (Rrd|VictoriaMetrics)   time series: flows, packets, bytes per 5 min
+SQLite store (backend/store)       top-N lists, saved filters, alert history,
+      │                            query timings
       ▼
-Signals + Actions + SSE (php-via / Datastar) → browser
+Shell + pages + actions + SSE (php-via / Datastar) → browser
 ```
 
 ## Stack
@@ -20,30 +22,34 @@ Signals + Actions + SSE (php-via / Datastar) → browser
 | Layer | Technology |
 |---|---|
 | Runtime | PHP 8.4 on [OpenSwoole](https://openswoole.com/) coroutines |
-| Web framework | [php-via](https://github.com/mbolli/php-via) — signals, actions, SSE, in-house |
-| Reactivity | [Datastar](https://data-star.dev/) — server-driven DOM patching over SSE |
-| Templates | Twig |
+| Web framework | [php-via](https://github.com/mbolli/php-via): signals, actions, SSE, in-house |
+| Reactivity | [Datastar](https://data-star.dev/): server-driven DOM patching over SSE |
+| Templates | Twig, one template per page plus the shell parts |
 | Flow decoding | [nfdump](https://github.com/phaag/nfdump) CLI, invoked as a subprocess |
-| Storage | RRD (default) or VictoriaMetrics, pluggable per the `Datasource` interface |
-| Charts | Apache ECharts (time-series graphs and Sankey diagram) |
+| Time series | RRD (default) or VictoriaMetrics, pluggable per the `Datasource` interface |
+| Everything else | SQLite through `pdo_sqlite`, one file in the state directory |
+| Charts | Apache ECharts (traffic graph, Sankey, Matrix) |
 
-## Why one long-running process
+## One long-running process
 
-Unlike classic PHP-FPM, `backend/app.php` is started once and stays running:
-OpenSwoole's HTTP server, the SSE broadcaster, and the import daemon's inotify
-watch all live in the same process's memory for as long as it's up. This is
-what makes the reactive loop cheap — signals and their subscribers are plain
-PHP objects, not something serialized to a session store between requests —
-but it also means the process holds real state: alert cooldowns, the import
-daemon's file-watch handles, per-session signal stores. A deploy is a process
-restart, not just a new request.
+`backend/app.php` is started once and stays running: OpenSwoole's HTTP server,
+the SSE broadcaster, the import daemon's inotify watch, the top-N collector's
+queue and the SQLite connection all live in the same process's memory for as long
+as it's up. That makes the reactive loop cheap (signals and their subscribers are
+plain PHP objects, and each browser tab's page state is an object in memory, not
+something serialised to a session store between requests), but the process holds
+real state: per-tab results, alert cooldowns, file-watch handles, caches. A
+deploy is a process restart, not just a new request. When php-via revives a
+tab's context (it re-runs the page handler under the same context id), `Revival`
+hands the tab its results back; a reload gets a new context and starts clean.
 
 In development, `deploy/docker-compose.dev.yml` runs this same process under
 `entr`, which kills and restarts it whenever a watched `.php`/`.twig`/`.js`/
-`.css` file changes — so there's no build step, but there's also no
-hot-module-reload: a restart means every open browser tab's Datastar session
-re-connects the SSE stream and gets a resynced page.
+`.css` file changes. There's no build step, but also no hot-module reload: a
+restart means every open browser tab's Datastar session reconnects the SSE stream
+and gets a resynced page.
 
-See [Reactive Loop](reactive-loop.md) for how signals/actions/SSE fit
-together, [Data Sources](data-sources.md) for the storage backends, and
-[Import Pipeline](import-pipeline.md) for how nfcapd files become RRD/VM data.
+See [Reactive Loop](reactive-loop.md) for how pages, signals, actions and SSE fit
+together, [Data Sources](data-sources.md) for the storage backends,
+[Import Pipeline](import-pipeline.md) for how nfcapd files become stored data, and
+[SQLite Store](../features/sqlite-store.md) for the non-time-series data.

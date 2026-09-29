@@ -11,8 +11,9 @@ LABEL org.opencontainers.image.title="nfsen-ng" \
 ENV TZ="UTC"
 # Persistent app data lives under one volume, separate from the code, so it
 # survives image upgrades and is a single thing to back up:
-#   /var/lib/nfsen-ng/rrd    — RRD database (unused for the VictoriaMetrics datasource)
-#   /var/lib/nfsen-ng/state  — preferences.json + alert rules/state/log
+#   /var/lib/nfsen-ng/rrd    RRD database (unused for the VictoriaMetrics datasource)
+#   /var/lib/nfsen-ng/state  preferences.json, alert rule state and the SQLite store
+#                            nfsen-ng.sqlite (saved filters, alert history, top-N data)
 # Declared as a VOLUME below and mounted as a named volume by the compose files.
 ENV NFSEN_RRD_PATH="/var/lib/nfsen-ng/rrd"
 ENV NFSEN_STATE_DIR="/var/lib/nfsen-ng/state"
@@ -49,7 +50,8 @@ RUN wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.8.zip \
 ADD --chmod=0755 https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
 # Install OpenSwoole, inotify, and brotli extensions
-# brotli is required for php-via's ->withBrotli() compression support
+# brotli is required for php-via's ->withBrotli() compression support.
+# pdo_sqlite, which the SQLite store needs, already ships with php:8.4-cli.
 RUN install-php-extensions openswoole inotify brotli
 
 # Install PHP RRD extension. rrd 2.0.4 passes char ** where librrd 1.9.0 wants
@@ -60,7 +62,7 @@ RUN CFLAGS="-g -O2 -Wno-error=incompatible-pointer-types" pecl install rrd \
 # Copy application source
 COPY backend/ backend/
 COPY frontend/ frontend/
-COPY composer.json ./
+COPY composer.json composer.lock ./
 
 # Install composer and production dependencies
 RUN curl -sS https://getcomposer.org/download/latest-stable/composer.phar -o /usr/local/bin/composer \
@@ -68,8 +70,9 @@ RUN curl -sS https://getcomposer.org/download/latest-stable/composer.phar -o /us
     && composer install --no-dev --optimize-autoloader
 
 # Setup volumes for persistent data and configuration.
-# /data/nfsen-ng    — nfcapd capture tree (written by the collector, read by nfdump)
-# /var/lib/nfsen-ng — nfsen-ng's own data: rrd/ (RRD database) + state/ (preferences + alerts)
+# /data/nfsen-ng     nfcapd capture tree (written by the collector, read by nfdump)
+# /var/lib/nfsen-ng  nfsen-ng's own data: rrd/ (RRD database) and state/ (preferences,
+#                    alert rule state, nfsen-ng.sqlite)
 RUN mkdir -p /var/lib/nfsen-ng/rrd /var/lib/nfsen-ng/state
 VOLUME ["/data/nfsen-ng", "/var/lib/nfsen-ng"]
 

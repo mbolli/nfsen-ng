@@ -1,69 +1,173 @@
-# Reactive Loop: Signals, Actions & SSE
+# Reactive Loop: Pages, Signals, Actions & SSE
 
-There is no REST API and no client-side state store. Every piece of UI state
-is a **signal** living on the server; every user interaction that needs
-server logic is an **action**; every update reaches the browser as an
-**SSE-pushed DOM patch**. This is the [Datastar](https://data-star.dev/)
-model, implemented server-side by [php-via](https://github.com/mbolli/php-via).
+There is no REST API and no client-side state store. Every piece of UI state the
+server needs is a **signal**; every user interaction that needs server logic is
+an **action**; every update reaches the browser as an **SSE-pushed DOM patch**.
+This is the [Datastar](https://data-star.dev/) model, implemented server-side by
+[php-via](https://github.com/mbolli/php-via).
+
+## One route, seven pages
+
+There is exactly one server route, `/`. The pages (Overview, Top Talkers, Flows,
+Conversations, Alerts, Health, Settings) are addressed by the URL hash:
+`#/overview`, `#/talkers`, `#/flows`, `#/conversations`, `#/alerts`, `#/health`,
+`#/settings`. `nfsen-router.js` keeps the hash and the tab signal `page`
+in step:
+
+1. A click on a sidebar link changes the hash. The router sets `$page` at once, so
+   the page sections swap on the client (inside a view transition) without
+   waiting for the server.
+2. It then posts one `navigate` action. The server validates the page and renders
+   it in full; `navigate` resets an unknown page to the default page.
+3. The old hashes of the tab layout (`#/graphs`, `#/statistics`, `#/sankey`,
+   `#/investigate`) are rewritten to their pages, and a view persisted by the old
+   layout is mapped once by a script in `<head>`.
+
+The server renders **only the active page** (`PageRegistry::LAZY`). The other
+page sections hold a skeleton, and each page template reads `pages.<id>` only
+while `pages.<id>.active` is true. A page switch therefore costs one render of
+one page, and a live tick on Overview does not render the Flows table.
+
+## Composition
+
+`backend/app.php` builds every tab from four kinds of parts, all registered in
+`PageRegistry`:
+
+| Part | Classes | Owns |
+|---|---|---|
+| Shell | `Shell` | The layout, sidebar, footer, notices, modal root, and the render |
+| Shell modules | `RangeControls`, `TrafficGraph`, `QueryKit`, `FilterDrawer` | The controls bar, the traffic graph, filter validation and estimates, the filter drawer; each has a top-level Twig key (`range`, `graph`, `querykit`, `drawer`) |
+| Pages | `OverviewPage`, `TalkersPage`, `FlowsPage`, `ConversationsPage`, `AlertsPage`, `HealthPage`, `SettingsPage` | Their signals, actions and `pages.<id>` view data |
+| Page states | `PageStates` with `ShellState`, `OverviewState`, `TalkersState`, `FlowsState`, `ConversationsState` | Per-tab results, notices and caches, in memory |
+
+Each page implements `Page` (`backend/pages/Page.php`): `id()`, `title()`,
+`lede()`, `icon()`, `group()` (`analysis`, `monitor` or `system`), `signals()`,
+`register()` and `viewData()`. For every new context, `app.php` calls
+`signals()` on the shell, the modules and the pages, then `register()`, then
+renders through `Shell::render()`.
 
 ## Signals
 
 ```php
-$graphSources = $c->signal(Config::$settings->sources, 'graph_sources', clientWritable: true);
+$c->signal('ip', 'conv_group', clientWritable: true);
 ```
 
-A signal has a default value, a human-readable name, and a scope:
+A signal has a default value, a name, and a scope:
 
-- **TAB scope** (the default) — private to one browser tab/context. Most form
-  state (`alert_form_*`, `graph_*`, `flows_*`) is TAB-scoped.
+- **TAB scope** (the default) is private to one browser tab (one context).
 - **Shared scopes** (`ROUTE`, `SESSION`, `GLOBAL`, or a custom string like
-  `rrd:live`) — one signal instance shared across every context in that
-  scope, so a write in one tab can broadcast to every other subscribed tab.
-- `clientWritable: true` lets the browser's own POST update the signal
-  (through an action); server-owned signals omit it and can only change from
-  PHP.
+  `rrd:live`) are one instance shared by every context in the scope.
+- `clientWritable: true` lets the browser's POST update the signal; server-owned
+  signals omit it and change only from PHP.
 
-Client-local signals — prefixed with `_`, e.g. `$_currentView`,
-`$_darkMode` — never round-trip to the server at all. Every "page" nfsen-ng
-appears to have (Graphs, Flows, Statistics, Sankey, the Settings sub-tabs) is
-actually one of these: a client-local signal toggling `data-show` on a
-`<div>` that's already in the DOM. There's exactly one server route (`/`).
+The global signals every page reads are declared by `RangeControls` and the
+shell: `page`, `datestart`, `dateend`, `range_preset`, `range_live`,
+`graph_sources` (the global sources), `protocol` and `graph_trafficUnit` (the
+global unit). Page signals keep their prefixes: `graph_*` and `ov_*` (Overview),
+`stats_*` (Top Talkers), `flows_*` (Flows), `conv_*` and `sankey_*`
+(Conversations), `alert_form_*` (Alerts), `settings_*` (Settings), `drawer_*`
+(the filter drawer).
+
+A leading `_` means Datastar never posts the signal back. Most of these are
+**client-local**: the browser seeds them itself with `data-signals` in the
+markup, and templates use them by their bare name. They hold state only the
+browser needs: `$_flows_tab`, `$_conv_view` and
+`$_settings_tab` (which tab of a page is open), `$_prevRange` (for **Previous
+range**), `$_graph_logscale`, `$_graph_stacked`, `$_graph_stepplot`,
+`$_sidebarCollapsed`, `$_themeChoice`. Some are persisted per browser in
+`localStorage` under `nfsen-persist:<name>`; `_sidebarCollapsed` is written only
+by the collapse toggle. Server-owned signals with a leading underscore
+(`_flt_<target>`, `_est_<target>`, `_conv_stale`, `_drawer_notice`, `_stats_rows`) are declared with
+`$c->signal()`, pushed by the server and never posted back. Their wire id carries the per-context
+hash like every server signal, so templates address them as `${{ _conv_stale.id() }}`; a bare
+`$_conv_stale` matches nothing.
 
 ## Actions
 
 ```php
-$c->action(function (Context $c) use (&$flowTableHtml): void {
-    $filter = $c->getSignal('flows_filter');
-    // ... run nfdump, build $flowTableHtml ...
-    $c->sync();
-}, 'flow-actions');
+$c->action(static function (Context $c) use ($conversations): void {
+    self::run($c, $conversations);
+}, 'conversations-run');
 ```
 
-Actions are closures registered with a name; the client calls them via
-`@post('{{ action_name.url() }}')` in a `data-on:click` attribute, which
-POSTs to `/_action/{id}` with the current signal values as the JSON body.
-The handler reads whatever signals it needs, does its work (frequently
-shelling out to `nfdump` — see [Nfdump Integration](nfdump-integration.md)),
-and calls `$c->sync()`, which re-renders and pushes the diff to that
-context's SSE connection.
+Actions are closures registered with a name, in the page's `register()` or in an
+`*Actions` class it calls. The client calls them with
+`@post('{{ conversationsRun.url() }}')` in a `data-on:click` attribute, which
+POSTs the current signals as JSON. All actions are TAB scoped; the URL is
+`<basePath>_action/<name>` in every tab, and the `via_ctx` signal in the body
+names the context. Templates always use `{{ action.url() }}` (Twig name = the
+camelCase of the action name), which adds the base path. The handler reads the
+signals it needs, does its work (often in a coroutine, often shelling out to
+`nfdump`; see [Nfdump Integration](nfdump-integration.md)), and calls
+`$c->sync()` to re-render and push the patch, or `$c->syncSignals()` to push
+signals only (query progress, filter validation, estimates).
 
-## The `$c->sync()` / broadcast split
+Every action closure catches `\Throwable`: php-via's action handler catches only
+`\Exception`, and an escaped `\Error` kills the worker. Failures are reported
+through the page's notices or the `_error` signal. The full list is in the
+[Actions Reference](../api.md).
+
+## Sync and broadcast
 
 - `$c->sync()` updates the calling context only.
-- `$app->broadcast($scope)` (used e.g. after an import completes) pushes to
-  every context subscribed to that scope — this is how a new nfcapd file
-  landing updates every open browser tab's graph without any of them having
-  clicked anything.
+- `$app->broadcast($scope)` re-renders every context subscribed to a scope:
+  `rrd:live` after each imported file, `admin:import` on import progress,
+  `settings:saved` after a settings save, `alerts:fired` when rules fire.
+
+## Render cost and caches
+
+One render is the shell, the modules, and the active page. Anything that is
+expensive at render time is cached process-wide, so a broadcast to many tabs does
+not multiply the work:
+
+| Data | Cache |
+|---|---|
+| Footer capture status | Shell, 30 s |
+| Health checks and metrics | `HealthPage`, 30 s while Health is open, 5 min otherwise, refreshed in a coroutine, never in a render |
+| Settings read-only tabs | `SettingsPage`, 30 s, and fresh after a save |
+| Top-N range results | `TopNRepository`, 64-entry LRU, 300 s or until the collector's generation moves |
+| Query estimates | `QueryEstimator`, 32-entry LRU, 300 s |
+| GeoIP reader | `GeoIpDatabase`, until the file changes |
+
+The graph data and the stored totals behind the KPI card are cached per tab and
+fetched only when due. Nothing that reads SQLite at the size of a range query, or
+reads a capture file, runs inside a render: actions compute results and store
+them in the page state, and the render reads what they stored.
+
+The live window moves `datestart` and `dateend` every render of an analysis page,
+at second granularity. Client effects that post (estimates, `overview-topn`)
+therefore key on `Math.floor(${{ datestart.id() }} / 300)` and `Math.floor(${{ dateend.id() }} / 300)`
+through `window.nfsenChanged(el, ...)`, so they fire at most once per
+five-minute interval in live mode. Result fingerprints encode a live window as
+`live:<width>` for the same reason.
+
+## Result hosts
+
+Large blocks (the Flows table and raw output, the Top Talkers table, the
+Conversations payload and IP pairs table) are sent once per result. The
+macro in `components/result-host.html.twig` renders
+`<div class="result-host" id="<name>-<resultId>" data-ignore-morph>` with the
+content only when `PageState::sendResult()` says the client does not have that
+result yet, and empty otherwise. Datastar skips a morph when both the old and the
+new element carry `data-ignore-morph`, and replaces an element whose id changed,
+so an unchanged result is neither re-sent nor morphed, and a new result (a new
+random `resultId`) replaces the old one. A tab that lacks part of a large result
+pulls it in chunks through its own action (`flows-rows`, `flows-raw`).
 
 ## Practical consequences
 
-- **No client build step.** The frontend is server-rendered Twig +
-  hand-written Web Components (`frontend/js/components/`) for the pieces that
-  need real client-side behaviour (charts, the date-range slider, the flow
-  table). There's nothing to bundle.
-- **Signal names are wire keys.** A signal's rendered `data-bind` id is a
-  hash of its name plus a per-context salt; the human name is only a
-  server-side lookup key (`$c->getSignal('name')`), not what's transmitted.
-- **Actions read signals, not `$_POST`.** `$c->input()` exists for the rare
-  case an action needs a plain query/form parameter (e.g. `delete-alert`
-  taking `?id=`), but the normal path is signals in, `$c->sync()` out.
+- **No client build step.** The frontend is server-rendered Twig plus hand-written
+  Web Components (`frontend/js/components/`) for the pieces that need real
+  client-side behaviour: charts, the table, the router, the filter editor, menus
+  and toasts. There's nothing to bundle.
+- **Signal names are not wire keys.** A signal's rendered id is its name plus a
+  per-context hash; the human name is only a server-side lookup key
+  (`$c->getSignal('name')`).
+- **Actions read signals, not `$_POST`.** `$c->input()` exists for plain query
+  parameters (e.g. `delete-alert` taking `?id=`, `set-range` taking `?op=`), but
+  the normal path is signals in, `$c->sync()` out.
+- **Morphs keep client state only where told.** ECharts canvases sit in
+  `data-ignore-morph data-ignore` containers, dialogs use
+  `data-preserve-attr="open"`, page sections `data-preserve-attr="hidden"`, and
+  any attribute JavaScript sets on server markup is listed in
+  `data-preserve-attr`.

@@ -7,27 +7,79 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Bootstrap is gone.** It was a CSS-only dependency: no JavaScript, no icon font, and 171 of its 2031 class selectors were ever used, so roughly two thirds of the 227 KB it shipped were rules for classes this app never writes. What replaces it is a token layer (`tokens.css`) and a semantic stylesheet (`ui.css`) of about 50 KB together. Colours are `oklch()` with `light-dark()`, and the theme sets a real `color-scheme`, so native controls, scrollbars and form widgets follow the theme instead of being restyled. The markup now says what things are: a button is a `button`, progress is `<progress>`, and which option is selected is `:checked` or `aria-pressed` rather than a class the server has to keep in sync. The shipped CSS drops from 250 KB to 50 KB and the rendered page from 205 KB to 187 KB.
+- **A new layout.** A sidebar leads to seven pages, each with its own address (`#/overview`, `#/flows`, ...), so a page can be bookmarked, opened in a new tab and reached with the back button. One controls bar sets the time range, sources, protocol and unit for every page, and the traffic graph above every analysis page is the range picker: drag across it to set the range, or Ctrl + wheel to preview a zoom. The server renders only the page you are on. Below 768px the sidebar becomes a tab bar with Overview, Flows, Conversations, Alerts and More.
+
+- **Overview top talkers from precomputed data.** While importing, nfsen-ng stores the top 50 of nine statistics (addresses, ports, protocol, AS and interfaces, per direction) for every capture file in SQLite, with exact hourly and daily sums. Overview reads them for its top-N table and three KPI cards (top source, top destination, top protocol) beside the total traffic, without running nfdump, and labels them as approximate. `NFSEN_TOPN_RETENTION_DAYS` (default 31, `0` turns collection off) sets how far back they reach; for older ranges the card offers an exact run with nfdump. Budget about 12 MB per source and day.
+
+- **Top Talkers** (the Statistics tab) picks the common statistics as tabs (Talkers, Ports, Protocols, ASNs, Interfaces) with a Source/Destination/Any direction, and all 58 statistic types under More statistics; types the installed nfdump cannot compute are shown disabled with the reason. Choosing a statistic never runs it. Two side panels, Protocol share and Top ASNs, each run on their own.
+
+- **Flows** shows the files, size and time a run will read before it runs, checks the filter with `nfdump -Z` while you type, and splits the result into Flows, Raw output (nfdump's output and command, with Copy and Download) and Summary tabs. The table pages through the returned rows in the browser and says when nfdump's row limit cut it short. Summary adds the unfiltered totals of the range from the stored series and, on request, the filtered totals without the row limit.
+
+- **Conversations** (the Sankey tab, [#152](https://github.com/mbolli/nfsen-ng/issues/152)) groups pairs by address, /24, /16 or destination port, merges both directions of a pair or keeps them apart, and shows one result as a Sankey, a Matrix and a ranked IP pairs table, with the traffic outside the top pairs as Others. Export as CSV, JSON or PNG.
+
+- **Filter builder.** A drawer for every filter field, the alert rule's included: a field reference and examples that insert at the cursor, keyword completion, a raw editor, live validation, the estimate, and **Apply and run**. Saved filters live on the server in SQLite, shared by every browser, with search, stars, rename and delete. Each browser's old locally saved filters and the filter presets from Settings are moved in once; `NFSEN_FILTERS` presets are added once each.
+
+- **Alerts page.** Rules and the recent history side by side, with each rule's status and last firing. A rule that fired and then finds its condition false records a *resolved* event (not notified). The history lives in SQLite; the old `alerts-log.json` is moved in once on the first start and renamed. Test opens a dialog with the verdict, the figures, the interval and the rendered messages.
+
+- **Health page.** Import controls and rate, pending files, the top-N collector, capture freshness per source, disk usage of the capture, data and state directories, uptime and versions, the grouped checks (now with a Storage (SQLite) group and a check that nfcapd file names match their write time), and the last 200 log lines with a level filter.
+
+- **Settings tabs** General, Sources, Storage, Integrations and System, with new preferences for the default time range, the default unit, the instance theme (the default for browsers without their own choice), compact tables, and a reverse DNS switch. The theme menu in the sidebar offers Light, Dark, System and the instance default.
+
+- **Local GeoIP.** With `NFSEN_GEOIP_DB` pointing at a MaxMind GeoLite2/GeoIP2 City or Country `.mmdb`, IP lookups answer locally, with no rate limit and no request leaving the host. It uses the pure-PHP `maxmind-db/reader` package, so no PHP extension is needed.
+
+- **The Flow Records statistic can be aggregated** ([#174](https://github.com/mbolli/nfsen-ng/issues/174), reported by [@bbaugnies](https://github.com/bbaugnies)). `nfdump -s record` ranks whole flows, so what counts as one flow decides what the ranking means, and the option was not reachable from nfsen-ng at all. Top Talkers now carries the same aggregation controls as Flows, shown for **Flow Records** only: nfdump applies an aggregation to that statistic alone and answers every other one with `Aggregation ignored for element statistics`.
+
+### Changed
+
+- **SQLite is now required.** The Docker image already has it; bare-metal installs need `php8.4-sqlite3` and `phpenmod pdo_sqlite`. Saved filters, the alert history, recorded query timings and the Overview top-N live in `<state dir>/nfsen-ng.sqlite`; without the driver, or with a read-only state directory, the app still starts and says what is unavailable. A new composer dependency, `maxmind-db/reader`, comes with `composer install`, and the Docker image now installs from `composer.lock`.
+
+- **Graphs, Statistics and Sankey are now Overview, Top Talkers and Conversations**, and Alerts and Health left Settings for pages of their own. A browser that last had a tab open under the old layout opens the page that replaced it, and the old names work in the address (`#/graphs` opens Overview).
+
+- **Neutral light and dark themes.** Surfaces, text, borders and controls are neutral greys, so colour marks only status and data series. The graph colours come in fixed slots: a protocol or a port keeps its colour across the graph, the tables and the side panels.
+
+- **Bootstrap is gone.** It was a CSS-only dependency: no JavaScript, no icon font, and 171 of its 2031 class selectors were ever used, so roughly two thirds of the 227 KB it shipped were rules for classes this app never writes. A token layer (`tokens.css`) and a semantic stylesheet (`ui.css`) of 56 KB together replace it, plus one small stylesheet per shell part and page; all of them come to 137 KB, against 250 KB before. Colours are `oklch()` with `light-dark()`, and the theme sets a real `color-scheme`, so native controls, scrollbars and form widgets follow the theme instead of being restyled. The markup says what things are: a button is a `button`, progress is `<progress>`, and which option is selected is `:checked` or `aria-pressed` rather than a class the server has to keep in sync.
 
 - **`data-bs-theme` is now `data-theme`.** Only relevant if you styled nfsen-ng from outside.
 
-- **The filter panels lay themselves out instead of guessing at breakpoints.** Every control used to carry hand-picked Bootstrap column classes, which were wrong in both directions: at 1100px the Sankey "Top pairs" select rendered 50px wide showing nothing but a chevron and the byte inputs read `e.`, while a single "Min bytes" field kept a whole column on a wide screen, and the cards ended at 3 to 6 different heights per row. Each panel is now one auto-fit grid, so the column count follows the width that is there and no control drops below a readable size. Min and Max bytes share one card, and below 768px the controls collapse behind **Show filters**: the Statistics panel measured 1448px tall on a phone, which put **Process data** three screens below the filters.
+- **Alert rules are evaluated once per five-minute interval**, when every source has delivered its file for it, in any arrival order; a source that stops delivering is left out after one interval instead of holding back the others. Rules without a traffic filter read each source's stored value right after its import. `{time}` in a notification is now the start of that interval, for Test too, and the cooldown counts intervals.
 
-- **The date-range slider no longer draws both times on top of each other** when the selection is short against a long range, which on a year-wide slider was every 24-hour view. The left one moves up a line.
+- **Filter presets are saved filters.** `NFSEN_FILTERS` and the `filters` key of `settings.php` seed the saved filters instead of a separate preset list, and the Settings textarea for presets is gone.
 
-- **The Flow Records statistic can be aggregated** ([#174](https://github.com/mbolli/nfsen-ng/issues/174), reported by [@bbaugnies](https://github.com/bbaugnies)). `nfdump -s record` ranks whole flows, so what counts as one flow decides what the ranking means, and the option was not reachable from nfsen-ng at all. The Statistics tab now carries the same aggregation controls as the Flows tab, shown for **Flow Records** only: nfdump applies an aggregation to that statistic alone and answers every other one with `Aggregation ignored for element statistics`.
+- **nfdump's raw output is passed on untouched**, on every path, with the command line and nfdump's side notes kept apart. The exit code is read with `proc_get_status()`, because under OpenSwoole's hooks `proc_close()` sometimes returned the raw wait status or 0 for a failed run.
+
+### Removed
+
+- The date slider (replaced by the controls bar and the traffic graph), the browser-local filter manager and the filter presets textarea (replaced by the saved filters), and the count of matching files under the query panels (replaced by the estimate).
 
 ### Fixed
 
-- **A bi-directional query is now a table like any other.** nfdump prints its merged-flow output as fixed-width text whatever output format it is asked for, csv and json included, so it used to be shown as preformatted text: no IP lookups, no formatted byte counts, no CSV/JSON export, for the one query that merges both directions of a conversation. That table is now read back into rows, with nfdump's own text, and the summary it ends with, still under **Original View**.
+- **Min/max bytes could be bypassed by an `or` in the filter**, and a `)` in the filter could close the wrapper and drop the byte limits and the protocol. Every part of a composed filter is now parenthesised, and an unbalanced filter is rejected before nfdump runs.
 
-- **An aggregated table named its columns after nfdump's internal fields.** Aggregating forces csv output, whose field names differ from the json ones, so the same column read `SrcAddr` and `DstPort` where an unaggregated query said Source IP and Destination Port. The Statistics tab's aggregation controls also no longer stretch across the full page width.
+- **Filter syntax errors were reported as success** in some runs, and a failed query showed an empty result. A non-zero exit of nfdump is now an error with nfdump's message.
 
-- **A query that worked no longer reports an nfdump warning.** nfdump prints `Command line switch -s overwrites -a` for every aggregated statistic while honouring the aggregation, and that went to the panel as a yellow warning beside a correct result. Messages nfdump always prints are filtered out of what the panels show, and still logged at debug level.
+- **Saving preferences reset the selected profile.** Saves now merge with what `preferences.json` holds.
+
+- **The series visibility checkboxes and the Original view toggle work**, and IPv6 addresses sort by value.
+
+- **Backfill skipped captures older than the newest stored sample**, which is exactly what it exists for. It now offers every capture file to the datasource.
+
+- **Alert names and nfdump messages are escaped** everywhere they are shown; nfdump quotes a filter's markup back in its error text.
+
+- **The IP info dialog closed on every live update.** It now survives them, as does the alert Test dialog.
+
+- **A bi-directional query is now a table like any other.** nfdump prints its merged-flow output as fixed-width text whatever output format it is asked for, csv and json included, so it used to be shown as preformatted text: no IP lookups, no formatted byte counts, no CSV/JSON export, for the one query that merges both directions of a conversation. That table is now read back into rows, with nfdump's own text, and the summary it ends with, still under **Original** on Top Talkers and on the **Raw output** tab on Flows.
+
+- **An aggregated table named its columns after nfdump's internal fields.** Aggregating forces csv output, whose field names differ from the json ones, so the same column read `SrcAddr` and `DstPort` where an unaggregated query said Source IP and Destination Port.
+
+- **A query that worked no longer reports an nfdump warning.** nfdump prints `Command line switch -s overwrites -a` for every aggregated statistic while honouring the aggregation, and that went to the panel as a yellow warning beside a correct result. Messages nfdump always prints are filtered out of what the pages show, and still logged at debug level.
 
 - The import's "no traffic" notice named every silent port ([#173](https://github.com/mbolli/nfsen-ng/issues/173)). A configured port list runs to dozens, so the line grew to a wall of port numbers that buried the sentence explaining what it meant. It now leads with the count and names at most nine of them.
 
-- A graph with many series was hard to read, which the **Ports** display makes routine: one line per configured port, and a real port list runs to dozens ([#173](https://github.com/mbolli/nfsen-ng/issues/173)). Hovering a line now lifts it and fades the rest, since the palette cycles long before sixty series and colour alone cannot identify one. The tooltip and the Legend panel show the largest series first, capped, with a count of the rest, instead of listing every port in source order with most of them at zero. Series Visibility gained a colour swatch per entry and scrolls instead of growing: with sixty ports it measured 1500px and pushed the chart off the top of the screen.
+- A graph with many series was hard to read, which the **Ports** display makes routine: one line per configured port, and a real port list runs to dozens ([#173](https://github.com/mbolli/nfsen-ng/issues/173)). Hovering a line now lifts it and fades the rest, since the palette cycles long before sixty series and colour alone cannot identify one. The tooltip and the Legend list show the largest series first, capped, with a count of the rest, instead of listing every port in source order with most of them at zero. The Series list gained a colour swatch per entry and scrolls instead of growing: with sixty ports it measured 1500px and pushed the chart off the top of the screen.
+
+### Security
+
+- **A filter starting with `-` reached nfdump's option parser**, so a typed filter such as `-w /tmp/x` made nfdump write a file. Every command now passes `--` before the filter, and the statistic order is checked against the allowed values like the statistic itself.
 
 ---
 

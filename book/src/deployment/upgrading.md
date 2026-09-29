@@ -1,69 +1,144 @@
-# Upgrading from v0
+# Upgrading
+
+## Upgrading from 1.0.0-beta.5
+
+This release rebuilds the interface around a sidebar and adds an SQLite store next
+to the RRD or VictoriaMetrics data. Nothing is re-imported and no setting has to
+change, but bare-metal installs need one more PHP extension.
+
+### Docker
+
+Pull the new image and recreate the container. Everything the upgrade creates lands
+in the state directory on the `nfsen-data` volume (`/var/lib/nfsen-ng/state`), next
+to `preferences.json`. The image already contains `pdo_sqlite`.
+
+### Bare metal
+
+1. Install and enable the SQLite driver:
+
+   ```bash
+   apt install php8.4-sqlite3 && phpenmod pdo_sqlite
+   ```
+
+   The app starts without it, but saved filters, the alert history and the Overview
+   top-N stay unavailable until it is there, and the Health page says so. The
+   SQLite library has to be 3.33 or later, or the Overview top-N never gets past
+   *Collecting*.
+2. Update the code and the dependencies. `composer install` brings in the new
+   `maxmind-db/reader` package:
+
+   ```bash
+   git pull
+   php composer.phar install --no-dev --optimize-autoloader
+   ```
+
+3. Make sure the state directory (`NFSEN_STATE_DIR`, by default `backend/settings`)
+   is writable by the user the server runs as, then restart the service.
+
+### What happens on the first start
+
+- The SQLite store `nfsen-ng.sqlite` is created in the state directory.
+- The alert history moves into it: every entry of `alerts-log.json` becomes a
+  *fired* event, and the file is renamed to `alerts-log.json.migrated`. If the move
+  fails, the file stays where it is and the next start tries again.
+- The filter presets saved in Settings (the old *Filter presets* list in
+  `preferences.json`) become saved filters, once, the first time the server reads
+  the saved filters (when somebody opens the filter builder, for instance). The
+  deployment presets from `NFSEN_FILTERS` or `settings.php` are added at the same
+  moment, each one once; a preset you delete stays deleted.
+- Each browser's own saved filters, kept by the old filter panel in the browser's
+  local storage, are imported the first time that browser opens the new version.
+  A failed import is retried on the next load.
+- The top-N collector starts recording the Overview lists with the next import, and
+  its gap filler works back through the retention window (31 days by default) from
+  the capture files that still exist. Until the first interval is in, the Overview
+  table says *Collecting*. **Collect missing top-N now** on the Health page queues
+  up to 500 missing files right away instead of waiting for the next pass.
+
+### What moved in the interface
+
+| In 1.0.0-beta.5 | Now |
+|--------|-----|
+| Graphs | **Overview** page |
+| Statistics | **Top Talkers** page |
+| Flows | **Flows** page |
+| Sankey | **Conversations** page |
+| Alerts section of Settings | **Alerts** page |
+| Import and Health sections of Settings | **Health** page |
+| Preferences and System sections of Settings | **Settings** page (tabs General, Sources, Storage, Integrations, System) |
+| Date slider | Controls bar (range menu, step buttons, start and end) and a drag across the traffic graph |
+| Filter presets textarea, browser-local filter list | Filter builder drawer with saved filters |
+
+Every page has its own address (`#/overview`, `#/talkers`, `#/flows`,
+`#/conversations`, `#/alerts`, `#/health`, `#/settings`). A browser that last had
+a tab open under the old layout opens the matching page, once. The old names work
+in the address too: `#/graphs`, `#/statistics`, `#/sankey` and `#/investigate`
+open the page that replaced them.
+
+## Upgrading from v0
 
 v1 is a ground-up rewrite. It is not code-compatible with the v0.x
 (NfSen-style) releases, but it reuses the same underlying data: nfsen-ng reads
 the `nfcapd` capture files nfdump already writes, so **no data migration is
-needed** — point v1 at your existing capture tree and run an import.
+needed**. Point v1 at your existing capture tree and run an import.
 
-## What changed
+### What changed
 
-### Architecture
+#### Architecture
 
 | v0.x | v1 |
 |------|----|
 | Apache/nginx + PHP-FPM (per-request) | OpenSwoole via [php-via](https://github.com/mbolli/php-via) (one persistent process) |
-| REST JSON API + AJAX polling | Hypermedia over SSE ([Datastar](https://data-star.dev/)) — no JSON API |
-| jQuery frontend | Server-rendered Twig + Datastar signals; no client-side routing or build step |
-| RRD only | RRD (default) or [VictoriaMetrics](victoriametrics.md) |
+| REST JSON API + AJAX polling | Hypermedia over SSE ([Datastar](https://data-star.dev/)), no JSON API |
+| jQuery frontend | Server-rendered Twig + Datastar signals; hash links per page, no client-side framework or build step |
+| RRD only | RRD (default) or [VictoriaMetrics](victoriametrics.md), plus SQLite for saved filters, alert history and top-N data |
 | No live push | inotify → SSE broadcast to every open tab |
 
-See [Architecture → Overview](../architecture/overview.md) for how the v1 pieces
+See [Architecture: Overview](../architecture/overview.md) for how the v1 pieces
 fit together.
 
-### Frontend
+#### Frontend
 
 - jQuery, ion.rangeSlider, and the old REST client are gone.
-- Replaced by Datastar, [noUiSlider](https://refreshless.com/nouislider/), and
-  [Apache ECharts](https://echarts.apache.org/) for graphs (v1 migrated the
-  Graphs tab off Dygraphs).
-- No client-side routing — the server pushes full HTML re-renders over SSE and
-  Datastar morphs the DOM.
+- Replaced by Datastar and [Apache ECharts](https://echarts.apache.org/) for
+  graphs (v1 migrated the graphs off Dygraphs).
+- The server pushes full HTML re-renders over SSE and Datastar morphs the DOM.
 
-### Backend
+#### Backend
 
 - The entry point is now `backend/app.php` (the OpenSwoole server), not a web
   server document root.
 - **The `cli.php` interface was removed.** Import is driven from the web UI
-  (**Settings → Import → Trigger Import** / **Force Rescan**) by the daemon
+  (**Trigger**, **Backfill** and **Rescan** on the **Health** page) by the daemon
   embedded in `app.php`.
 - Configuration moved to environment variables (`NFSEN_*`); the `settings.php`
   file still works but is now a **deprecated** overlay on top of them. If you
   keep one, start from the current `backend/settings/settings.php.dist` rather
   than reusing a v0 file verbatim (the schema was expanded and reorganised: new
-  `general.db`, `db.<datasource>.*`, `frontend.defaults.*`, and more) — or skip
+  `general.db`, `db.<datasource>.*`, `frontend.defaults.*`, and more), or skip
   the file entirely and configure via environment variables. See
   [Configuration](configuration.md).
 
-### Docker
+#### Docker
 
 - v0 ran Apache inside the container; v1 runs the OpenSwoole app and fronts it
   with a **stock `caddy:latest`** container (optional, behind the `proxy`
-  profile) — there is no custom Caddy image.
+  profile). There is no custom Caddy image.
 - Deployment layout moved under `deploy/` (`docker-compose.yml`,
   `docker-compose.dev.yml`, …). See [Installation](installation.md).
 - **Persistent data is consolidated** under a single `nfsen-data` volume at
   `/var/lib/nfsen-ng` (`rrd/` + `state/`). If you ran an earlier v1 beta with the
   separate `rrd-data` volume (`/var/nfsen-ng/rrd`), copy your RRD files into the
-  new volume once — e.g. `docker run --rm -v rrd-data:/old -v nfsen-data:/new
-  alpine cp -a /old/. /new/rrd/` — or just rebuild them with **Force Rescan**.
+  new volume once, e.g. `docker run --rm -v rrd-data:/old -v nfsen-data:/new
+  alpine cp -a /old/. /new/rrd/`, or rebuild them with **Rescan**.
   See [State & persistence](configuration.md#state--persistence).
 - **Unraid template users**: the UI template gained a matching **App data** path
   (`/var/lib/nfsen-ng`, defaulting to `/mnt/user/appdata/nfsen-ng-data`) in
   v1.0.0-beta.3. An install created before that has no such mapping, so add it
-  when you update the container, otherwise the RRD database, preferences, and
-  alert rules are recreated empty on every image update.
+  when you update the container, otherwise the RRD database, preferences, saved
+  filters and alert rules are recreated empty on every image update.
 
-## Migration steps
+### Migration steps
 
 1. **(Optional) Back up your old RRD files**, in case you want to keep the v0
    graph history around:
@@ -76,22 +151,23 @@ fit together.
    run from source, check out a `v1.0.0-*` release tag (or the `v1` branch)
    rather than the old v0 tags. Full steps: [Installation](installation.md).
 
-3. **Point v1 at your existing capture tree** — set `NFSEN_NFDUMP_PROFILES` (or
+3. **Point v1 at your existing capture tree**: set `NFSEN_NFDUMP_PROFILES` (or
    `nfdump.profiles-data`) to the same `profiles-data` directory `nfcapd` already
    writes to, and list your sources in `NFSEN_SOURCES`.
 
 4. **Review configuration.** Map any custom v0 settings onto the current keys or
    environment variables ([Configuration](configuration.md)).
 
-5. **Build the graph data.** Run **Settings → Import → Trigger Import** (or
-   **Force Rescan** on RRD, **Backfill** on VictoriaMetrics) once. This rebuilds the RRD/VictoriaMetrics graph data from
-   your `nfcapd` files — the v1 RRD structure differs from v0's, so re-importing
-   from the captures is the reliable path rather than reusing old `.rrd` files.
-   Flows and Statistics work directly off the capture files and need no import.
+5. **Build the graph data.** Run **Trigger** on the **Health** page (or
+   **Rescan** on RRD, **Backfill** on VictoriaMetrics) once. This rebuilds the
+   RRD/VictoriaMetrics graph data from your `nfcapd` files. The v1 RRD structure
+   differs from v0's, so re-importing from the captures is the reliable path
+   rather than reusing old `.rrd` files. Top Talkers, Flows and Conversations work
+   directly off the capture files and need no import.
 
-## Known differences from v0 / NfSen
+### Known differences from v0 / NfSen
 
-- The v0 REST API endpoints (`/api/…`) no longer exist — v1 has no JSON API.
+- The v0 REST API endpoints (`/api/…`) no longer exist; v1 has no JSON API.
 - NfSen's alert/plugin mechanisms are not carried over; v1 has its own
   [alerting](../features/alerts.md).
 - Some v0 profile-filter behaviour differs; v1's profile model is

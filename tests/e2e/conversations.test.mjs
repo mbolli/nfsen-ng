@@ -343,6 +343,10 @@ export default async function conversationsTest() {
             `/pairs? returned\\. Done in/.test(document.querySelector('#conversationsRun [role=status][data-ignore-morph]')?.textContent ?? '')`,
             { label: 'the completion announcement' }
         );
+        // A large read runs as time slices in parallel nfdump processes (PERF-SPEC P4), and says how many.
+        const done = await page.evaluate(`document.querySelector('#conversationsRun .query-progress-line > span').textContent.trim()`);
+        assert.match(done, /^Done in [\d.]+s(?: with \d+ nfdump processes)?\.$/, `the outcome names the processes of a split, got: ${done}`);
+        console.log(`  (conversations: ${done.includes('processes') ? done.replace(/^Done in [\d.]+s with /, 'split into ').replace(/\.$/, '') : 'one nfdump process'})`);
 
         const sankey = await page.evaluate(`(function(){
             var o = document.querySelector('nfsen-sankey').chart.getOption();

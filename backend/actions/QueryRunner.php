@@ -22,8 +22,9 @@ use OpenSwoole\Coroutine;
  *
  * The action returns immediately and the work runs in a coroutine, while a second coroutine
  * samples how far nfdump has read and pushes per-mille updates as signal-only patches.
- * Progress is an estimate (bytes read against bytes to read), so the UI marks it as such.
- * Every finished run that was not cancelled is recorded for the query estimates.
+ * Progress is an estimate (bytes read against bytes to read), so the UI marks it as such;
+ * a split query (PartitionPlanner) counts files instead. Every finished run that was not
+ * cancelled is recorded for the query estimates.
  */
 final class QueryRunner {
     /** How often to sample nfdump's read position. */
@@ -41,7 +42,8 @@ final class QueryRunner {
      *                                    unknown, which degrades to an indeterminate indicator.
      *                                    A closure because sizing walks the window, which belongs
      *                                    in the coroutine rather than in front of the response.
-     * @param \Closure        $work       performs the query and writes its own result/notifications
+     * @param \Closure        $work       performs the query and writes its own result/notifications,
+     *                                    given the onSplit of PartitionPlanner::run()
      */
     public static function run(Context $c, string $kind, \Closure $totalBytes, string $startStatus, \Closure $work): void {
         $running = $c->getSignal('query_running');
@@ -87,17 +89,56 @@ final class QueryRunner {
             $status,
             $eta
         ): void {
+            $split = new class {
+                /** Processes the query runs as now: 1 again once a split falls back to one. */
+                public int $parts = 1;
+
+                /** Processes its first pass split into. */
+                public int $width = 1;
+
+                /** Whether a split read its files a second time. */
+                public bool $again = false;
+
+                /** @var null|\Closure(): array{int, int} files read and to read, once split */
+                public ?\Closure $sample = null;
+
+                public int $files = 0;
+
+                public float $startedAt = 0.0;
+
+                /** Work seconds when the first pass ended, and when the one process it fell back to started. */
+                public ?float $firstPass = null;
+
+                public ?float $singleFrom = null;
+            };
             $progress = new QueryProgress(static function (int $pm, string $etaText, int $done, int $total) use (
                 $c,
                 $permille,
                 $status,
-                $eta
+                $eta,
+                $split
             ): void {
                 $permille->setValue($pm, broadcast: false);
                 $eta->setValue($etaText, broadcast: false);
-                $status->setValue('Read ' . self::formatBytes($done) . ' of ' . self::formatBytes($total), broadcast: false);
+                $status->setValue($split->sample === null
+                    ? 'Read ' . self::formatBytes($done) . ' of ' . self::formatBytes($total)
+                    : self::splitStatus($done, $total, $split->parts, $split->again), broadcast: false);
                 $c->syncSignals();
             });
+            $onSplit = static function (int $parts, \Closure $sample, bool $again, bool $single = false) use ($split): void {
+                $at = microtime(true) - $split->startedAt - NfdumpSlots::scope()['waited'];
+                if ($again) {
+                    $split->firstPass ??= $at;
+                }
+                if ($single) {
+                    $split->singleFrom = $at;
+                }
+                $split->files = $again ? $split->files : $sample()[1];
+                $split->width = max($split->width, $parts);
+                $split->parts = $parts;
+                $split->again = $split->again || $again;
+                $split->sample = $sample;
+            };
 
             $sizeInBytes = 0;
             $workStartedAt = microtime(true);
@@ -136,14 +177,18 @@ final class QueryRunner {
                     },
                 );
 
-                // Stops once the work is finished, or for good the first time the platform
-                // cannot report bytes read.
-                Coroutine::create(static function () use ($progress, $watcher): void {
+                // Stops once the work is finished. The bytes of one nfdump are no longer sampled
+                // once the platform cannot report them; a split counts the files of its parts.
+                Coroutine::create(static function () use ($progress, $watcher, $split): void {
                     try {
-                        while (!$progress->isFinished() && $watcher->isTrackable()) {
+                        $watching = true;
+                        while (!$progress->isFinished()) {
                             Coroutine::usleep(self::POLL_INTERVAL_US);
-                            if (!$watcher->tick()) {
-                                return;
+                            if ($split->sample !== null) {
+                                [$done, $total] = ($split->sample)();
+                                $progress->update($done, $total);
+                            } elseif ($watching && !$watcher->tick()) {
+                                $watching = false;
                             }
                         }
                     } catch (\Throwable $e) {
@@ -152,12 +197,12 @@ final class QueryRunner {
                     }
                 });
 
-                $workStartedAt = microtime(true);
+                $workStartedAt = $split->startedAt = microtime(true);
 
                 // A user waits for it, so every nfdump it starts takes an interactive slot. A wait
                 // for one is not read time, which the estimates learn from.
                 try {
-                    NfdumpSlots::runAs(NfdumpSlots::INTERACTIVE, static fn (): mixed => $work(), waited: $slotWait);
+                    NfdumpSlots::runAs(NfdumpSlots::INTERACTIVE, static fn (): mixed => $work($onSplit), waited: $slotWait);
                 } finally {
                     $workSeconds = max(0.0, microtime(true) - $workStartedAt - $slotWait);
                 }
@@ -166,7 +211,7 @@ final class QueryRunner {
             } finally {
                 // finish() emits a last tick that rewrites the status from the counts, so it
                 // has to run before the outcome is written.
-                $progress->finish($sizeInBytes);
+                $progress->finish($split->sample === null ? $sizeInBytes : ($split->sample)()[1]);
                 $sample = $lastRead->sample;
                 // nfdump started at most one poll interval before it was first seen.
                 $readFrom = max($workStartedAt, ($lastRead->seenAt ?? $workStartedAt) - self::POLL_INTERVAL_US / 1e6);
@@ -176,7 +221,11 @@ final class QueryRunner {
                     $workSeconds,
                     $sample === null ? null : ['bytes' => $sample['bytes'], 'seconds' => $sample['at'] - $readFrom],
                 );
-                $finalStatus = self::finish($kind, $read['bytes'], $read['seconds'], $progress->elapsed(), $error, QueryCancel::isRequested($contextId));
+                if ($split->again) {
+                    $read['seconds'] = self::splitReadSeconds($workSeconds, $split->firstPass, $split->singleFrom);
+                }
+                $resultParts = $split->singleFrom === null ? $split->width : 1;
+                $finalStatus = self::finish($kind, $read['bytes'], $read['seconds'], $progress->elapsed(), $error, QueryCancel::isRequested($contextId), $resultParts, $split->files, $split->again);
                 $status->setValue($finalStatus, broadcast: false);
                 $running->setValue(false, broadcast: false);
                 QueryCancel::clear($contextId);
@@ -207,14 +256,17 @@ final class QueryRunner {
     }
 
     /**
-     * The status line for a finished run. Records the run for the estimates unless it was
-     * cancelled, whose timing says nothing about throughput. Never throws.
+     * The status line for a finished run, recorded for the estimates unless it was cancelled.
+     * Never throws.
      *
      * @param int   $bytes        capture bytes the run read, from recordedRead()
-     * @param float $readSeconds  the time those bytes took, from recordedRead()
+     * @param float $readSeconds  the time one read of those bytes took
      * @param float $totalSeconds time since the run started, for the status line
+     * @param int   $parts        nfdump processes the result came from, side by side (1 after a fallback)
+     * @param int   $files        capture files the run read, when known
+     * @param bool  $again        a split read files a second time: recorded as 2 passes
      */
-    public static function finish(string $kind, int $bytes, float $readSeconds, float $totalSeconds, ?\Throwable $error, bool $cancelRequested): string {
+    public static function finish(string $kind, int $bytes, float $readSeconds, float $totalSeconds, ?\Throwable $error, bool $cancelRequested, int $parts = 1, int $files = 0, bool $again = false): string {
         if (self::wasCancelled($error, $cancelRequested)) {
             Debug::getInstance()->log('Query cancelled (' . $kind . ').', LOG_INFO);
 
@@ -226,14 +278,34 @@ final class QueryRunner {
         }
 
         try {
-            new QueryRunRepository(Database::shared())->record($kind, $bytes, 0, (int) round($readSeconds * 1000), $error === null);
+            new QueryRunRepository(Database::shared())->record($kind, $bytes, $files, (int) round($readSeconds * 1000), $error === null, parts: $parts, passes: $again ? 2 : 1);
         } catch (\Throwable $e) {
             Debug::getInstance()->log('Query run not recorded: ' . $e->getMessage(), LOG_WARNING);
         }
 
-        return $error === null
-            ? 'Done in ' . round($totalSeconds, 1) . 's.'
-            : 'Failed: ' . $error->getMessage();
+        if ($error !== null) {
+            return 'Failed: ' . $error->getMessage();
+        }
+
+        return 'Done in ' . round($totalSeconds, 1) . 's' . ($parts > 1 ? ' with ' . $parts . ' nfdump processes.' : '.');
+    }
+
+    /**
+     * The seconds of one complete read in a split that read files again: the one process it fell
+     * back to, else its first pass.
+     */
+    public static function splitReadSeconds(float $workSeconds, ?float $firstPass, ?float $singleFrom): float {
+        if ($singleFrom !== null) {
+            return max(0.0, $workSeconds - $singleFrom);
+        }
+
+        return min($workSeconds, $firstPass ?? $workSeconds);
+    }
+
+    /** The progress line of a split query: files, since its parts read side by side. */
+    public static function splitStatus(int $done, int $total, int $parts, bool $again = false): string {
+        return 'Read ' . number_format($done) . ' of ' . number_format($total) . ' files'
+            . ($parts > 1 ? ' in ' . $parts . ' nfdump processes' : '') . ($again ? ', second pass' : '');
     }
 
     /**

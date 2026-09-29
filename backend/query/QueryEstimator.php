@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\query;
 
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
 use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\QueryRunRepository;
 use mbolli\nfsen_ng\store\StoreUnavailableException;
@@ -32,6 +34,15 @@ final class QueryEstimator {
     /** Start-up cost of each nfdump run of a filtered series. */
     public const float SECONDS_PER_RUN = 0.05;
 
+    /** @var list<string> kinds PartitionPlanner may split into parallel nfdump processes */
+    public const array SPLIT_KINDS = ['stats', 'talkers-panel', 'overview-topn', 'conversations'];
+
+    /**
+     * Speed-up of a filtered series building its bins in that many slots at once: measured at 2,
+     * 4 and 6 (7 days of 5-minute bins), interpolated between and held flat above.
+     */
+    public const array BIN_SPEEDUP = [1 => 1.0, 2 => 2.0, 3 => 2.3, 4 => 2.6, 5 => 2.8, 6 => 3.0];
+
     /** @var array<string, array{at: int, files: int, bytes: int}> oldest first */
     private static array $cache = [];
 
@@ -39,21 +50,27 @@ final class QueryEstimator {
     private static ?\Closure $clock = null;
 
     /**
-     * One nfdump pass over the window: Flows, Top Talkers, Conversations, the exact top-N.
+     * One nfdump pass over the window: Flows, Top Talkers, Conversations, the exact top-N, as the
+     * processes PartitionPlanner would split it into now. $splittable null: the kind decides.
      *
      * @param list<string> $sources
      *
      * @throws \InvalidArgumentException for a kind without a default throughput
      */
-    public static function singlePass(string $kind, TimeWindow $window, array $sources, string $profile): Estimate {
+    public static function singlePass(string $kind, TimeWindow $window, array $sources, string $profile, ?bool $splittable = null): Estimate {
         $throughput = self::throughput($kind);
         [$files, $bytes] = self::cost($kind, $window, $sources, $profile);
+        $seconds = $bytes / $throughput['bytesPerSecond'];
+        $splittable ??= $kind !== 'conversations' || !Nfdump::needsAggregatedCsv(Nfdump::version());
+        $parts = $splittable && \in_array($kind, self::SPLIT_KINDS, true)
+            ? PartitionPlanner::parts($files, $seconds, PartitionPlanner::freeSlots(NfdumpSlots::INTERACTIVE))
+            : 1;
 
         return new Estimate(
             files: $files,
             bytes: $bytes,
-            runs: 1,
-            seconds: $files > 0 && $bytes > 0 ? (int) ceil($bytes / $throughput['bytesPerSecond']) : null,
+            runs: $parts,
+            seconds: $files > 0 && $bytes > 0 ? (int) ceil($seconds / PartitionPlanner::speedup($parts)) : null,
             measured: $throughput['measured'],
             clamped: $window->clamped,
             window: TimeWindow::humanize($window->duration()),
@@ -62,7 +79,8 @@ final class QueryEstimator {
 
     /**
      * Filtered series and flows graph: one nfdump per bin and group, each reading its own slice,
-     * so the files are read once in total and every run adds its start-up cost.
+     * so the files are read once in total and every run adds its start-up cost. The bins run
+     * side by side in the slots free now (FilteredSeries).
      *
      * @param list<string> $sources
      *
@@ -78,7 +96,7 @@ final class QueryEstimator {
             bytes: $bytes,
             runs: $runs,
             seconds: $files > 0 && $bytes > 0
-                ? (int) ceil($bytes / $throughput['bytesPerSecond'] + $runs * self::SECONDS_PER_RUN)
+                ? (int) ceil(($bytes / $throughput['bytesPerSecond'] + $runs * self::SECONDS_PER_RUN) / self::binSpeedup(min(max(1, NfdumpSlots::available(NfdumpSlots::INTERACTIVE)), $runs)))
                 : null,
             measured: $throughput['measured'],
             clamped: $window->clamped,
@@ -102,7 +120,7 @@ final class QueryEstimator {
         $median = null;
 
         try {
-            $median = new QueryRunRepository(Database::shared())->medianThroughput($kind);
+            $median = new QueryRunRepository(Database::shared())->medianThroughput($kind, PartitionPlanner::speedup(...));
         } catch (StoreUnavailableException) {
             // Database::shared() logs the reason once per retry interval.
         } catch (\Throwable $e) {
@@ -128,6 +146,11 @@ final class QueryEstimator {
             [$kind, $profile, $sources, intdiv($window->start, $step) * $step, intdiv($window->end, $step) * $step],
             JSON_THROW_ON_ERROR,
         );
+    }
+
+    /** How much faster a filtered series builds in $slots slots than in one. */
+    public static function binSpeedup(int $slots): float {
+        return self::BIN_SPEEDUP[max(1, min(6, $slots))];
     }
 
     /** Tests. */

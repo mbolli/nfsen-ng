@@ -5,7 +5,9 @@ declare(strict_types=1);
 use mbolli\nfsen_ng\actions\StatsActions;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
 use mbolli\nfsen_ng\processor\Processor;
+use mbolli\nfsen_ng\query\PartitionPlanner;
 use mbolli\nfsen_ng\query\QueryResult;
 use mbolli\nfsen_ng\query\StatisticCatalog;
 use mbolli\nfsen_ng\query\StatsQuery;
@@ -179,6 +181,189 @@ describe('the Top Talkers queries (StatsActions)', function (): void {
         expect(fn () => StatsActions::panelQuery(statsQueryTestParams(), 'geo'))->toThrow(InvalidArgumentException::class, 'Unknown panel.')
             ->and(fn () => StatsActions::query(statsQueryTestParams(['element' => '<b>x</b>'])))->toThrow(InvalidArgumentException::class, 'Unknown statistic.')
             ->and(fn () => StatsActions::query(statsQueryTestParams(['order' => 'tos'])))->toThrow(InvalidArgumentException::class)
+        ;
+    });
+});
+
+/**
+ * A capture tree of $intervals 5-minute files per source from 2026-09-29 00:00 UTC; returns its root.
+ *
+ * @param list<string> $sources
+ */
+function statsQueryTestTree(array $sources, int $intervals): string {
+    $root = sys_get_temp_dir() . '/nfsen-stats-split-' . bin2hex(random_bytes(4));
+    foreach ($sources as $source) {
+        for ($i = 0; $i < $intervals; ++$i) {
+            $ts = 1_790_640_000 + $i * 300;
+            $dir = $root . '/live/' . $source . '/' . gmdate('Y/m/d', $ts);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0o777, true);
+            }
+            file_put_contents($dir . '/nfcapd.' . gmdate('YmdHi', $ts), 'x');
+        }
+    }
+
+    return $root;
+}
+
+function statsQueryTestRemoveTree(string $root): void {
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
+        $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+    }
+    rmdir($root);
+}
+
+/**
+ * A processor that keeps the options and filter of every run and answers with the stat lines
+ * $answer returns for them.
+ *
+ * @param Closure(array<string, mixed>, string): string $answer
+ */
+function statsQueryTestRecorder(Closure $answer): Processor {
+    return new class($answer) implements Processor {
+        /** @var list<array{options: array<string, mixed>, filter: string, handle: string}> */
+        public static array $runs = [];
+
+        public static ?Closure $answer = null;
+
+        /** @var array<string, mixed> */
+        private array $options = [];
+
+        private string $filter = '';
+
+        private string $handle = '';
+
+        public function __construct(?Closure $answer = null) {
+            self::$answer = $answer ?? self::$answer;
+        }
+
+        public function setOption(string $option, $value): void {
+            $this->options[$option] = $value;
+        }
+
+        public function setFilter(string $filter): void {
+            $this->filter = $filter;
+        }
+
+        public function setProfile(string $profile): void {}
+
+        public function setQueryHandle(string $handle): void {
+            $this->handle = $handle;
+        }
+
+        public function execute(): array {
+            self::$runs[] = ['options' => $this->options, 'filter' => $this->filter, 'handle' => $this->handle];
+
+            return ['command' => 'nfdump ' . (is_string($this->options['-R'] ?? null) ? $this->options['-R'] : 'window'), 'rawOutput' => (self::$answer)($this->options, $this->filter), 'decoded' => [], 'exitCode' => 0];
+        }
+    };
+}
+
+/** One line of nfdump's json element statistic. */
+function statsQueryTestLine(string $name, string $value, int $bytes, int $proto = 0): string {
+    return '{ "first" : "2026-09-29T00:00:00.000", "last" : "2026-09-29T00:05:00.000", "proto" : ' . $proto . ', "' . $name . '" : "' . $value . '", "flows" : 1, "packets" : 1, "bytes" : ' . $bytes . ', "pps" : 0, "bps" : 0, "bpp" : ' . $bytes . '}';
+}
+
+describe('StatsQuery in time slices', function (): void {
+    beforeEach(function (): void {
+        $this->root = statsQueryTestTree(['gw', 'dmz'], 6);
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw', 'dmz'], 'ports' => [], 'max_stats_window' => 0],
+            'nfdump' => ['binary' => '/usr/bin/nfdump', 'profiles-data' => $this->root, 'profile' => 'live', 'max-processes' => 8],
+            'log' => ['priority' => LOG_ERR],
+        ]);
+        PartitionPlanner::useFetchLimit(null);
+        $recorder = statsQueryTestRecorder(static fn (array $options, string $filter): string => implode("\n", [
+            statsQueryTestLine('srcip', '10.0.0.1', 300),
+            statsQueryTestLine('proto', '6', 300, 6),
+        ]) . "\n");
+        $recorder::$runs = [];
+        Config::$processorClass = $recorder;
+        $this->window = TimeWindow::raw(1_790_640_000, 1_790_640_000 + 6 * 300 - 1);
+    });
+
+    afterEach(function (): void {
+        PartitionPlanner::useFetchLimit(null);
+        statsQueryTestRemoveTree($this->root);
+    });
+
+    test('a part reads its slice in json, listing its share of the line budget, with the protocol list when it needs shares', function (): void {
+        $runs = Config::$processorClass::class;
+        $result = statsQueryTestQuery(['window' => $this->window, 'filter' => 'port 53', 'output' => 'csv'])->runPartitioned('stats', parts: 2);
+        $ranges = ['2026/09/29/nfcapd.202609290000:2026/09/29/nfcapd.202609290010', '2026/09/29/nfcapd.202609290015:2026/09/29/nfcapd.202609290025'];
+
+        expect($result->parts)->toBe(2)
+            ->and(array_column(array_column($runs::$runs, 'options'), '-R'))->toBe($ranges)
+            ->and($runs::$runs[0]['options'])->toMatchArray(['-M' => 'gw:dmz', '-n' => 10_000, '-o' => 'json', '-s' => ['srcip/bytes', 'proto/bytes']])
+            ->and($runs::$runs[0]['filter'])->toBe('port 53')
+            ->and($runs::$runs[0]['handle'])->toBe('ctx-1')
+            ->and($result->rawOutput)->toBe("ts,te,td,pr,val,fl,flP,pkt,pktP,byt,bytP,pps,bps,bpp\n2026-09-29 00:00:00,2026-09-29 00:05:00,300.000,any,10.0.0.1,2,100.0,2,100.0,600,100.0,0,16,300\n")
+            ->and($result->rows[0]['val'] ?? null)->toBe('10.0.0.1')
+            ->and($result->partCommands)->toBe(array_map(static fn (string $range): string => 'nfdump ' . $range, $ranges))
+            ->and(array_filter($result->notes, static fn (string $note): bool => str_starts_with($note, 'Part ')))->toBe([])
+        ;
+    });
+
+    test('json needs no protocol list, and -s proto takes its totals from -s dir', function (): void {
+        $runs = Config::$processorClass::class;
+        statsQueryTestQuery(['window' => $this->window, 'limit' => 200])->runPartitioned('stats', parts: 2);
+        statsQueryTestQuery(['window' => $this->window, 'for' => 'proto', 'output' => 'csv'])->runPartitioned('stats', parts: 2);
+        statsQueryTestQuery(['window' => $this->window, 'for' => 'dstport', 'limit' => 500])->runPartitioned('stats', parts: 2);
+
+        expect($runs::$runs[0]['options'])->toMatchArray(['-s' => 'srcip/bytes', '-n' => 10_000])
+            ->and($runs::$runs[2]['options'])->toMatchArray(['-s' => ['proto/bytes', 'dir/bytes'], '-n' => 10_000])
+            ->and($runs::$runs[4]['options'])->toMatchArray(['-s' => 'dstport/bytes', '-n' => 10_000])
+            ->and($runs::$runs)->toHaveCount(6)
+        ;
+    });
+
+    test('Flow Records with -A read their slice in a csv with raw times and the out counters', function (): void {
+        $runs = Config::$processorClass::class;
+        statsQueryTestQuery(['window' => $this->window, 'for' => 'record', 'aggregation' => ['proto' => true, 'srcip' => 'srcip4', 'srcipPrefix' => '24']])->runPartitioned('stats', parts: 2);
+
+        expect($runs::$runs[0]['options'])->toMatchArray([
+            '-s' => 'record/bytes',
+            '-a' => '-Aproto,srcip4/24',
+            '-o' => 'csv:%ts,%tsr,%ter,%pr,%sa,%ipkt,%ibyt,%opkt,%obyt,%fl',
+        ]);
+    });
+
+    test('a rate ranking, a 5-tuple, a bidirectional aggregation or a slot the caller holds run as one process', function (): void {
+        $runs = Config::$processorClass::class;
+        statsQueryTestQuery(['window' => $this->window, 'orderBy' => 'bps'])->runPartitioned('stats', parts: 2);
+        statsQueryTestQuery(['window' => $this->window, 'for' => 'record'])->runPartitioned('stats', parts: 2);
+        statsQueryTestQuery(['window' => $this->window, 'for' => 'record', 'aggregation' => ['bidirectional' => true]])->runPartitioned('stats', parts: 2);
+        NfdumpSlots::acquire(0.0);
+        $window = $this->window;
+
+        try {
+            NfdumpSlots::runInHeldSlot(NfdumpSlots::INTERACTIVE, static fn (): QueryResult => statsQueryTestQuery(['window' => $window])->runPartitioned('stats', parts: 2));
+        } finally {
+            NfdumpSlots::release();
+        }
+
+        expect(array_column(array_column($runs::$runs, 'options'), '-R'))->toBe(array_fill(0, 4, $this->window->toRangeOption()));
+    });
+
+    test('keys a part did not list are looked up in it with a filter on exactly those, under the query\'s own', function (): void {
+        PartitionPlanner::useFetchLimit(2);
+        $runs = Config::$processorClass::class;
+        $runs::$answer = static function (array $options, string $filter): string {
+            if (!str_contains($filter, ' in [')) {
+                return str_contains((string) $options['-R'], '202609290000')
+                    ? statsQueryTestLine('srcip', '10.0.0.1', 100) . "\n" . statsQueryTestLine('srcip', '10.0.0.2', 50) . "\n"
+                    : statsQueryTestLine('srcip', '10.0.0.3', 90) . "\n" . statsQueryTestLine('srcip', '10.0.0.4', 40) . "\n";
+            }
+
+            return '';
+        };
+
+        $result = statsQueryTestQuery(['window' => $this->window, 'limit' => 1, 'protocol' => 'tcp'])->runPartitioned('stats', parts: 2);
+
+        expect(array_column(array_slice($runs::$runs, 2), 'filter'))->toBe(['(proto tcp) and (src ip in [10.0.0.3])', '(proto tcp) and (src ip in [10.0.0.1])'])
+            ->and(array_column(array_column(array_slice($runs::$runs, 2), 'options'), '-n'))->toBe([0, 0])
+            ->and(array_column($result->rows, 'srcip'))->toBe(['10.0.0.1'])
+            ->and($result->parts)->toBe(2)
         ;
     });
 });

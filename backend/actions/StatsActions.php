@@ -73,7 +73,7 @@ final class StatsActions {
                 $totalBytes = static fn (): int => $query->totalBytes();
                 $processor = $query->processor();
 
-                QueryRunner::run($c, 'stats', $totalBytes, 'Starting nfdump…', static function () use (
+                QueryRunner::run($c, 'stats', $totalBytes, 'Starting nfdump…', static function (?\Closure $onSplit = null) use (
                     $query,
                     $processor,
                     $ipInfoUrl,
@@ -85,7 +85,7 @@ final class StatsActions {
                     $rows
                 ): void {
                     try {
-                        $result = $query->run($processor);
+                        $result = $query->runPartitioned('stats', $processor, $onSplit, static fn (): bool => QueryCancel::isRequested($contextId));
                         self::storeResult($talkers, $result, round(microtime(true) - $time, 3), $ipInfoUrl, $clampNotice, $params);
                         $rows?->setValue($result->count(), broadcast: false);
                     } catch (\Throwable $e) {
@@ -118,7 +118,7 @@ final class StatsActions {
                 $totalBytes = static fn (): int => $query->totalBytes();
                 $processor = $query->processor();
 
-                QueryRunner::run($c, 'talkers-panel', $totalBytes, 'Starting nfdump…', static function () use (
+                QueryRunner::run($c, 'talkers-panel', $totalBytes, 'Starting nfdump…', static function (?\Closure $onSplit = null) use (
                     $query,
                     $processor,
                     $time,
@@ -129,7 +129,7 @@ final class StatsActions {
                     $notices
                 ): void {
                     try {
-                        $result = $query->run($processor);
+                        $result = $query->runPartitioned('talkers-panel', $processor, $onSplit, static fn (): bool => QueryCancel::isRequested($contextId));
                         self::storePanel($talkers, $panel, $query->statRows($result), $result, round(microtime(true) - $time, 3), $params);
                     } catch (\Throwable $e) {
                         self::storePanelFailure($talkers, $panel, $e, QueryRunner::wasCancelled($e, QueryCancel::isRequested($contextId)), $params, $notices);

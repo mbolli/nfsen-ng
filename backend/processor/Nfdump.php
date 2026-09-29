@@ -38,6 +38,12 @@ class Nfdump implements Processor {
     /** Identifies this processor's runs to NfdumpSlots, so a kill reaches the right one. */
     private string $queryHandle = 'default';
 
+    /** The nfdump this processor runs right now, for a progress sampler following several. */
+    private ?int $pid = null;
+
+    /** Whether execute() hands back what nfdump printed without decoding it. */
+    private bool $rawOnly = false;
+
     /** @var NfdumpConfig */
     private array $cfg;
 
@@ -265,6 +271,7 @@ class Nfdump implements Processor {
             // single static the existing single-query callers read.
             $pid = proc_get_status($process)['pid'];
             self::$runningPid = $pid;
+            $this->pid = $pid;
             NfdumpSlots::register($this->queryHandle, $pid);
 
             $stdout = (string) stream_get_contents($pipes[1]);
@@ -285,6 +292,7 @@ class Nfdump implements Processor {
                 proc_close($process);
             }
             self::$runningPid = null;
+            $this->pid = null;
             if ($pid !== null) {
                 NfdumpSlots::unregister($this->queryHandle, $pid);
             }
@@ -296,6 +304,31 @@ class Nfdump implements Processor {
         return $this->interpret($command, $stdout, $stderr, $exitCode, $timer);
     }
 
+    /** The pid of the nfdump this processor is running, null between runs. */
+    public function pid(): ?int {
+        return $this->pid;
+    }
+
+    /**
+     * execute() returns nfdump's output undecoded (for split parts); a non-zero exit fails, since
+     * no rows show what it printed.
+     */
+    public function keepRawOutput(): void {
+        $this->rawOnly = true;
+    }
+
+    /**
+     * Reads $stdout as execute() reads what nfdump printed with this processor's options: for
+     * output assembled from several runs, which then reads exactly like one run's.
+     *
+     * @return array{command: string, rawOutput: string, decoded: array<array<string, mixed>>, stderr?: string, notes: list<string>, exitCode: int}
+     *
+     * @throws NfdumpException when the output is not data
+     */
+    public function decodeOutput(string $command, string $stdout, ?float $startedAt = null): array {
+        return $this->interpret($command, $stdout, '', 0, $startedAt ?? microtime(true));
+    }
+
     /**
      * The command line execute() runs, as shown to the user. `--` keeps a filter that starts
      * with a dash from being read as an nfdump option such as `-w <file>`. `-W`, after the
@@ -303,7 +336,7 @@ class Nfdump implements Processor {
      */
     public function commandLine(): string {
         $parts = [$this->cfg['env']['bin']];
-        $options = $this->flatten($this->cfg['option']);
+        $options = $this->flatten($this->sourcesLedByFirstFile($this->cfg['option']));
         if ($options !== '') {
             $parts[] = $options;
         }
@@ -757,6 +790,38 @@ class Nfdump implements Processor {
     }
 
     /**
+     * $options with -M led by a source that holds -R's first file: nfdump reads nothing at all
+     * when the first -M directory lacks it (a capture gap, a source added later).
+     *
+     * @param array<string, mixed> $options
+     *
+     * @return array<string, mixed>
+     */
+    private function sourcesLedByFirstFile(array $options): array {
+        $sources = $this->cfg['env']['sources'];
+        $range = $options['-R'] ?? null;
+        if (!isset($options['-M']) || !\is_string($options['-M']) || \count($sources) < 2 || !\is_string($range) || $range === '' || str_starts_with($range, '/')) {
+            return $options;
+        }
+
+        $base = \dirname($options['-M']) . \DIRECTORY_SEPARATOR;
+        $first = \DIRECTORY_SEPARATOR . explode(':', $range, 2)[0];
+        if (is_file($base . $sources[0] . $first)) {
+            return $options;
+        }
+        foreach ($sources as $i => $source) {
+            if ($i > 0 && is_file($base . $source . $first)) {
+                unset($sources[$i]);
+                $options['-M'] = $base . implode(':', [$source, ...$sources]);
+
+                break;
+            }
+        }
+
+        return $options;
+    }
+
+    /**
      * The options as command-line arguments. A null or empty value is a bare flag, a list
      * repeats the flag once per element, in order (`-s 'a' -s 'b'`).
      *
@@ -802,6 +867,14 @@ class Nfdump implements Processor {
         $blank = $usage || strspn($stdout, " \t\n\r\0\x0B") === \strlen($stdout);
         if ($exitCode !== 0 && ($blank || \in_array($exitCode, [127, 250, 254, 255], true))) {
             throw $this->failure($command, $usage ? [] : self::lines($stdout), $stderr, $stderrRaw, $exitCode);
+        }
+
+        if ($this->rawOnly) {
+            if ($exitCode !== 0) {
+                throw $this->failure($command, self::lines($stdout), $stderr, $stderrRaw, $exitCode);
+            }
+
+            return $this->result($command, $blank ? '' : $stdout, [], $stderr, [], $exitCode, $timer);
         }
 
         // Nothing printed and no failure: an empty result. Import::start() moves on to the next file on one.

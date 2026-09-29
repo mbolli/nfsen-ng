@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\store;
 
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\store\migrations\M0001Initial;
+use mbolli\nfsen_ng\store\migrations\M0002QueryRunParts;
 
 /**
  * Brings a database up to the newest schema this code knows. Runs only from the server
@@ -14,7 +15,7 @@ use mbolli\nfsen_ng\store\migrations\M0001Initial;
 final class Migrator {
     /** @return list<Migration> */
     public static function all(): array {
-        return [new M0001Initial()];
+        return [new M0001Initial(), new M0002QueryRunParts()];
     }
 
     public static function latestVersion(): int {

@@ -413,6 +413,65 @@ describe('ConversationActions', function (): void {
         ;
     });
 
+    // 12 sparse files of 25 MB: 300 MB, over a second at the default 230 MB/s of Conversations.
+    test('a large window runs in parallel parts: QueryRunner hears them, and the totals are the merged ones', function () use ($params): void {
+        $root = sys_get_temp_dir() . '/nfsen-conversations-split-' . bin2hex(random_bytes(4));
+        for ($i = 0; $i < 12; ++$i) {
+            $ts = 1_000_200 + $i * 300;
+            $dir = $root . '/live/gw1/' . gmdate('Y/m/d', $ts);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0o777, true);
+            }
+            $handle = fopen($dir . '/nfcapd.' . gmdate('YmdHi', $ts), 'w');
+            ftruncate($handle, 25_000_000);
+            fclose($handle);
+        }
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw1', 'gw2'], 'ports' => [80], 'max_stats_window' => 0],
+            'nfdump' => ['binary' => '/nonexistent/nfdump', 'profiles-data' => $root, 'profile' => 'live', 'max-processes' => 4],
+            'log' => ['priority' => LOG_ERR],
+        ]);
+        FakeProcessor::reset();
+        $slot = new ReflectionProperty(Config::class, 'processorClass');
+        $processorBefore = $slot->isInitialized() ? Config::$processorClass : null;
+        Config::$processorClass = new FakeProcessor();
+        foreach ([[6000, 4000], [2000, 3000]] as [$first, $second]) {
+            FakeProcessor::queueRaw(implode("\n", [
+                '     Src IP Addr      Dst IP Addr  In Byte   In Pkt Flows Out Byte  Out Pkt',
+                sprintf('%16s %16s %8d %8d %5d %8d %8d', '10.0.0.1', '10.1.0.1', $first, 10, 1, 0, 0),
+                sprintf('%16s %16s %8d %8d %5d %8d %8d', '10.0.0.2', '10.1.0.2', $second, 10, 1, 0, 0),
+                'Summary: total flows: 10, total bytes: 12000, total packets: 100, avg bps: 1, avg pps: 1, avg bpp: 120',
+            ]) . "\n");
+        }
+        $p = $params(['start' => 1_000_200, 'end' => 1_000_200 + 12 * 300, 'direction' => 'forward', 'sources' => ['gw1']]);
+        $query = new MatrixQuery(TimeWindow::raw($p['start'], $p['end']), ['gw1'], 'live', 'bytes', 20, direction: 'forward');
+        $heard = [];
+
+        try {
+            $result = ConversationActions::runUnlessCancelled($query, new FakeProcessor(), static fn (): bool => false, static function (int $parts, Closure $sample, bool $again) use (&$heard): void {
+                $heard[] = [$parts, $sample(), $again];
+            });
+        } finally {
+            if ($processorBefore !== null) {
+                Config::$processorClass = $processorBefore;
+            }
+            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
+                $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+            }
+            rmdir($root);
+        }
+        $state = new ConversationsState();
+        ConversationActions::storeResult($state, $query, $result, $p, 0.2, '');
+        $payload = json_decode($state->payload, true);
+
+        expect($heard)->toBe([[2, [0, 12], false]])
+            ->and($result?->parts)->toBe(2)
+            ->and(array_column($payload['pairs'], 'bytes'))->toBe([8000, 7000])
+            ->and($payload['totals'])->toBe(['flows' => 20, 'packets' => 200, 'bytes' => 24000])
+            ->and($payload['pairs'][0]['share'])->toBe(round(8000 / 24000, 6))
+        ;
+    });
+
     test('marks the result stale once an input differs', function (): void {
         [, $c, $states] = conversationsTestCompose();
         $state = $states->conversations;

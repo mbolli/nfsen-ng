@@ -575,7 +575,10 @@ final class OverviewPage implements Page {
         });
     }
 
-    /** The exact run out of retention, through QueryRunner (progress, Kill, recorded throughput). */
+    /**
+     * The exact run out of retention, through QueryRunner (progress, Kill, recorded throughput),
+     * split into parallel nfdump processes when that pays.
+     */
     private static function startExact(Context $c, OverviewState $overview): void {
         $in = self::inputs($c);
         $contextId = $c->getId();
@@ -587,9 +590,9 @@ final class OverviewPage implements Page {
         }
 
         $count = $c->getSignal('_ov_exact_rows');
-        QueryRunner::run($c, 'overview-topn', static fn (): int => $query->totalBytes(), 'Starting nfdump…', static function () use ($query, $in, $overview, $fingerprint, $contextId, $count): void {
+        QueryRunner::run($c, 'overview-topn', static fn (): int => $query->totalBytes(), 'Starting nfdump…', static function (?\Closure $onSplit = null) use ($query, $in, $overview, $fingerprint, $contextId, $count): void {
             try {
-                $result = $query->run();
+                $result = $query->runPartitioned('overview-topn', null, $onSplit, static fn (): bool => QueryCancel::isRequested($contextId));
                 $rows = self::exactRows($query->statRows($result));
                 $count?->setValue(\count($rows), broadcast: false);
                 $overview->exact = [

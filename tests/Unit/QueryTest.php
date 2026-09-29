@@ -6,12 +6,14 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Import;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Datasource;
+use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\Processor;
 use mbolli\nfsen_ng\query\CostEstimate;
 use mbolli\nfsen_ng\query\CoverageQuery;
 use mbolli\nfsen_ng\query\FlowsQuery;
 use mbolli\nfsen_ng\query\LoadQuery;
 use mbolli\nfsen_ng\query\MatrixQuery;
+use mbolli\nfsen_ng\query\PartitionPlanner;
 use mbolli\nfsen_ng\query\QueryResult;
 use mbolli\nfsen_ng\query\StatisticCatalog;
 use mbolli\nfsen_ng\query\StatsQuery;
@@ -665,6 +667,144 @@ describe('MatrixQuery', function (): void {
 
         expect(fn () => $query->run(recordingProcessor(['decoded' => 'not a table'])))
             ->toThrow(RuntimeException::class)
+        ;
+    });
+});
+
+/** A capture tree of $intervals 5-minute files of one source from 2026-09-29 00:00 UTC; returns its root. */
+function queryTestTree(int $intervals): string {
+    $root = sys_get_temp_dir() . '/nfsen-matrix-split-' . bin2hex(random_bytes(4));
+    for ($i = 0; $i < $intervals; ++$i) {
+        $ts = 1_790_640_000 + $i * 300;
+        $dir = $root . '/live/gw/' . gmdate('Y/m/d', $ts);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0o777, true);
+        }
+        file_put_contents($dir . '/nfcapd.' . gmdate('YmdHi', $ts), 'x');
+    }
+
+    return $root;
+}
+
+/** One pair as a Conversations part prints it: the query's columns, then out bytes and packets. */
+function queryTestPair(string $src, string $dst, int $bytes, ?int $port = null): string {
+    return sprintf('%16s %16s', $src, $dst) . ($port === null ? '' : sprintf(' %6d', $port)) . sprintf(' %8d %8d %5d %8d %8d', $bytes, 1, 1, 0, 0);
+}
+
+describe('MatrixQuery in time slices', function (): void {
+    beforeEach(function (): void {
+        $this->root = queryTestTree(12);
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw'], 'ports' => [], 'max_stats_window' => 0],
+            'nfdump' => ['binary' => '/usr/bin/nfdump', 'profiles-data' => $this->root, 'profile' => 'live', 'max-processes' => 8],
+            'log' => ['priority' => LOG_ERR],
+        ]);
+        PartitionPlanner::useFetchLimit(null);
+        $this->window = TimeWindow::raw(1_790_640_000, 1_790_640_000 + 12 * 300 - 1);
+        FakeProcessor::reset();
+        Config::$processorClass = new FakeProcessor();
+    });
+
+    afterEach(function (): void {
+        PartitionPlanner::useFetchLimit(null);
+        FakeProcessor::reset();
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
+            $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+        }
+        rmdir($this->root);
+    });
+
+    test('a part prints the query\'s pairs with the out counters its ranking needs', function (): void {
+        $header = '     Src IP Addr      Dst IP Addr  In Byte   In Pkt Flows Out Byte  Out Pkt';
+        FakeProcessor::queueRaw($header . "\n" . queryTestPair('10.0.0.1', '10.0.0.2', 500) . "\nSummary: total flows: 1, total bytes: 500, total packets: 1\n");
+        FakeProcessor::queueRaw($header . "\n" . queryTestPair('10.0.0.1', '10.0.0.2', 700) . "\nSummary: total flows: 1, total bytes: 700, total packets: 1\n");
+
+        $result = new MatrixQuery($this->window, ['gw'], 'live', 'bytes', 20, handle: 'ctx', direction: 'forward')->runPartitioned(parts: 2);
+
+        expect($result->parts)->toBe(2)
+            ->and(FakeProcessor::callOptions(0))->toMatchArray(['-R' => '2026/09/29/nfcapd.202609290000:2026/09/29/nfcapd.202609290025', '-n' => 10_000, '-O' => 'bytes', '-o' => 'fmt:%sa %da %ibyt %ipkt %fl %obyt %opkt'])
+            ->and(FakeProcessor::$calls[1]['handle'])->toBe('ctx')
+            ->and($result->rows)->toBe([['sa' => '10.0.0.1', 'da' => '10.0.0.2', 'ibyt' => '1200', 'ipkt' => '2', 'fl' => '2']])
+            ->and((string) $result->rawOutput)->toContain("Summary: total flows: 2, total bytes: 1200, total packets: 2\n")
+        ;
+    });
+
+    test('pairs a part did not list are looked up by their subnets, or their ports, under the query\'s filter', function (string $group, array $first, array $second, array $filters): void {
+        PartitionPlanner::useFetchLimit(2);
+        $header = '     Src IP Addr      Dst IP Addr' . ($group === 'port' ? ' Dst Pt' : '') . '  In Byte   In Pkt Flows Out Byte  Out Pkt';
+        FakeProcessor::queueRaw($header . "\n" . implode("\n", array_map(static fn (array $pair): string => queryTestPair(...$pair), $first)) . "\n");
+        FakeProcessor::queueRaw($header . "\n" . implode("\n", array_map(static fn (array $pair): string => queryTestPair(...$pair), $second)) . "\n");
+
+        $result = new MatrixQuery($this->window, ['gw'], 'live', 'bytes', 1, groupBy: $group, direction: 'forward')->runPartitioned(parts: 2);
+
+        expect(array_column(array_slice(FakeProcessor::$calls, 2), 'filter'))->toBe($filters)
+            ->and(array_column(array_column(array_slice(FakeProcessor::$calls, 2), 'options'), '-n'))->toBe([0, 0])
+            ->and($result->parts)->toBe(2)
+            ->and($result->rows[0]['ibyt'] ?? null)->toBe('100')
+        ;
+    })->with([
+        'subnets' => ['net24', [['10.1.2.0', '10.9.9.0', 100], ['10.1.3.0', '10.9.9.0', 50]], [['10.1.4.0', '10.9.8.0', 90], ['10.1.5.0', '10.9.8.0', 40]], [
+            '(ipv4) and (src ip in [10.1.4.0/24] and dst ip in [10.9.8.0/24])',
+            '(ipv4) and (src ip in [10.1.2.0/24] and dst ip in [10.9.9.0/24])',
+        ]],
+        'ports' => ['port', [['10.0.0.1', '10.0.0.9', 100, 443], ['10.0.0.2', '10.0.0.9', 50, 53]], [['10.0.0.3', '10.0.0.8', 90, 22], ['10.0.0.4', '10.0.0.8', 40, 80]], [
+            'src ip in [10.0.0.3] and dst ip in [10.0.0.8] and dst port in [22]',
+            'src ip in [10.0.0.1] and dst ip in [10.0.0.9] and dst port in [443]',
+        ]],
+    ]);
+
+    test('nfdump 1.7.5, which needs the plain csv, runs as one process', function (): void {
+        $query = new MatrixQuery($this->window, ['gw'], 'live', 'bytes', 20);
+
+        expect($query->outputFormat('1.7.5'))->toBe('csv')
+            ->and($query->outputFormat())->toStartWith('fmt:')
+        ;
+    });
+});
+
+describe('an nfdump run over sources with a capture gap', function (): void {
+    beforeEach(function (): void {
+        $this->root = queryTestTree(6);
+        rename($this->root . '/live/gw', $this->root . '/live/dmz');
+        mkdir($this->root . '/live/gw/2026/09/29', 0o777, true);
+        foreach (['0005', '0010', '0015', '0020', '0025'] as $time) {
+            file_put_contents($this->root . '/live/gw/2026/09/29/nfcapd.20260929' . $time, 'x');
+        }
+        $this->settingsBefore = isset(Config::$settings) ? Config::$settings : null;
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw', 'dmz'], 'ports' => [], 'max_stats_window' => 0],
+            'nfdump' => ['binary' => '/usr/bin/nfdump', 'profiles-data' => $this->root, 'profile' => 'live', 'max-processes' => 8],
+            'log' => ['priority' => LOG_ERR],
+        ]);
+    });
+
+    afterEach(function (): void {
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
+            $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+        }
+        rmdir($this->root);
+        if ($this->settingsBefore !== null) {
+            Config::$settings = $this->settingsBefore;
+        }
+    });
+
+    // nfdump -M reads nothing at all when its first directory lacks the first -R file.
+    test('names first in -M a source that holds the first file of -R', function (): void {
+        $command = static function (string $sources, array|string $range): string {
+            $nfdump = new Nfdump();
+            $nfdump->setOption('-M', $sources);
+            $nfdump->setOption('-R', $range);
+
+            return $nfdump->commandLine();
+        };
+        $live = $this->root . '/live/';
+
+        expect($command('gw:dmz', [1_790_640_000, 1_790_640_000 + 6 * 300 - 1]))->toContain("-M '{$live}dmz:gw' -R '2026/09/29/nfcapd.202609290000:2026/09/29/nfcapd.202609290025'")
+            ->and($command('gw:dmz', '2026/09/29/nfcapd.202609290000:2026/09/29/nfcapd.202609290000'))->toContain("-M '{$live}dmz:gw'")
+            ->and($command('gw:dmz', '2026/09/29/nfcapd.202609290005:2026/09/29/nfcapd.202609290025'))->toContain("-M '{$live}gw:dmz'")
+            ->and($command('dmz:gw', '2026/09/29/nfcapd.202609290000:2026/09/29/nfcapd.202609290025'))->toContain("-M '{$live}dmz:gw'")
+            ->and($command('gw', '2026/09/29/nfcapd.202609290000:2026/09/29/nfcapd.202609290025'))->toContain("-M '{$live}gw'")
+            ->and($command('gw:dmz', '2026/09/29/nfcapd.202609290030:2026/09/29/nfcapd.202609290035'))->toContain("-M '{$live}gw:dmz'")
         ;
     });
 });

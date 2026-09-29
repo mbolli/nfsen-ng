@@ -6,6 +6,7 @@ use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\Migration;
 use mbolli\nfsen_ng\store\migrations\M0001Initial;
+use mbolli\nfsen_ng\store\migrations\M0002QueryRunParts;
 use mbolli\nfsen_ng\store\Migrator;
 
 /** @return array<string, list<string>> table and index names by type */
@@ -48,16 +49,17 @@ test('the migration list is strictly increasing and starts with M0001Initial', f
     sort($sorted);
 
     expect($migrations[0])->toBeInstanceOf(M0001Initial::class)
+        ->and($migrations[1])->toBeInstanceOf(M0002QueryRunParts::class)
         ->and($versions)->toBe(array_values(array_unique($sorted)))
         ->and(Migrator::latestVersion())->toBe(end($versions))
-        ->and(Migrator::latestVersion())->toBe(1)
+        ->and(Migrator::latestVersion())->toBe(2)
     ;
 });
 
-test('a fresh database reaches version 1 with every table and index', function (): void {
+test('a fresh database reaches the latest version with every table and index', function (): void {
     $db = Database::open(':memory:');
 
-    expect($db->schemaVersion())->toBe(1)
+    expect($db->schemaVersion())->toBe(Migrator::latestVersion())
         ->and(migratorTestSchema($db))->toBe([
             'table' => ['alert_events', 'meta', 'query_runs', 'saved_filters', 'topn_1d', 'topn_1h', 'topn_5m', 'topn_interval'],
             'index' => [
@@ -79,7 +81,7 @@ test('a file created by another tool at version 0 is migrated on open', function
     try {
         $db = Database::open($path);
 
-        expect($db->schemaVersion())->toBe(1)
+        expect($db->schemaVersion())->toBe(Migrator::latestVersion())
             ->and(migratorTestSchema($db)['table'])->toContain('unrelated', 'meta', 'topn_5m')
         ;
     } finally {
@@ -105,7 +107,7 @@ test('re-running is a no-op', function (): void {
     $db->metaSet('kept', '1');
     $schema = migratorTestSchema($db);
 
-    expect(Migrator::migrate($db))->toBe(1)
+    expect(Migrator::migrate($db))->toBe(Migrator::latestVersion())
         ->and(migratorTestSchema($db))->toBe($schema)
         ->and($db->metaGet('kept'))->toBe('1')
     ;
@@ -125,7 +127,7 @@ test('a higher on-disk version is reported and nothing is dropped', function ():
 
     $logged = array_values(array_filter(
         Debug::drainBuffer(),
-        fn (array $entry) => str_contains($entry['msg'], 'has schema version 7, newer than 1'),
+        fn (array $entry) => str_contains($entry['msg'], 'has schema version 7, newer than ' . Migrator::latestVersion()),
     ));
     expect($logged)->toHaveCount(1)
         ->and($logged[0]['level'])->toBe(LOG_ERR)
@@ -135,15 +137,16 @@ test('a higher on-disk version is reported and nothing is dropped', function ():
 
 test('runs only the migrations above the current version, each in its own transaction', function (): void {
     $db = Database::open(':memory:');
+    $latest = Migrator::latestVersion();
     $ran = [];
     $migrations = [
-        new M0001Initial(),
-        migratorTestMigration(2, function (Database $db) use (&$ran): void {
-            $ran[] = 2;
+        ...Migrator::all(),
+        migratorTestMigration($latest + 1, function (Database $db) use (&$ran, $latest): void {
+            $ran[] = $latest + 1;
             $db->exec('CREATE TABLE second (x INTEGER)');
         }),
-        migratorTestMigration(3, function (Database $db) use (&$ran): void {
-            $ran[] = 3;
+        migratorTestMigration($latest + 2, function (Database $db) use (&$ran, $latest): void {
+            $ran[] = $latest + 2;
             $db->exec('CREATE TABLE third (x INTEGER)');
 
             throw new RuntimeException('migration 3 failed');
@@ -151,8 +154,8 @@ test('runs only the migrations above the current version, each in its own transa
     ];
 
     expect(fn () => Migrator::migrate($db, $migrations))->toThrow(RuntimeException::class, 'migration 3 failed')
-        ->and($ran)->toBe([2, 3])
-        ->and($db->schemaVersion())->toBe(2)
+        ->and($ran)->toBe([$latest + 1, $latest + 2])
+        ->and($db->schemaVersion())->toBe($latest + 1)
         ->and(migratorTestSchema($db)['table'])->toContain('second')->not->toContain('third')
     ;
 });
@@ -164,4 +167,26 @@ test('rejects migration versions that do not increase', function (): void {
     expect(fn () => Migrator::migrate($db, [migratorTestMigration(2, $noop), migratorTestMigration(2, $noop)]))
         ->toThrow(LogicException::class)
     ;
+});
+
+test('version 2 counts the processes and passes of each query run, 1 for the runs a version 1 store kept', function (): void {
+    $path = sys_get_temp_dir() . '/nfsen-migrator-' . bin2hex(random_bytes(6)) . '.sqlite';
+    $pdo = new PDO('sqlite:' . $path);
+    $pdo->exec('CREATE TABLE query_runs (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, ts INTEGER NOT NULL, bytes INTEGER NOT NULL,
+        files INTEGER NOT NULL DEFAULT 0, elapsed_ms INTEGER NOT NULL, ok INTEGER NOT NULL CHECK (ok IN (0, 1)))');
+    $pdo->exec("INSERT INTO query_runs (kind, ts, bytes, files, elapsed_ms, ok) VALUES ('stats', 1, 100, 2, 50, 1)");
+    $pdo->exec('PRAGMA user_version = 1');
+    unset($pdo);
+
+    try {
+        $db = Database::open($path);
+        $db->exec("INSERT INTO query_runs (kind, ts, bytes, elapsed_ms, ok, parts, passes) VALUES ('stats', 2, 100, 50, 1, 4, 2)");
+
+        expect($db->schemaVersion())->toBe(2)
+            ->and($db->all('SELECT ts, parts, passes FROM query_runs ORDER BY ts'))->toBe([['ts' => 1, 'parts' => 1, 'passes' => 1], ['ts' => 2, 'parts' => 4, 'passes' => 2]])
+        ;
+    } finally {
+        unset($db);
+        array_map('unlink', glob($path . '*') ?: []);
+    }
 });

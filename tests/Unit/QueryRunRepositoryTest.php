@@ -34,6 +34,20 @@ describe('QueryRunRepository::record()', function (): void {
         ;
     });
 
+    test('stores how many nfdump processes the run read with and how often, once in one unless told', function (): void {
+        $this->runs->record('stats', 10, 48, 5, true, 1);
+        $this->runs->record('stats', 10, 48, 5, true, 2, parts: 6);
+        $this->runs->record('stats', 10, 48, 5, true, 3, parts: 4, passes: 2);
+        $this->runs->record('stats', 10, 48, 5, true, 4, parts: -2, passes: 0);
+
+        expect($this->db->all('SELECT parts, passes FROM query_runs ORDER BY ts'))->toBe([
+            ['parts' => 1, 'passes' => 1],
+            ['parts' => 6, 'passes' => 1],
+            ['parts' => 4, 'passes' => 2],
+            ['parts' => 1, 'passes' => 1],
+        ]);
+    });
+
     test('keeps the newest 200 runs per kind and leaves other kinds alone', function (): void {
         for ($i = 1; $i <= QueryRunRepository::KEEP_PER_KIND + 5; ++$i) {
             $this->runs->record('flows', $i, 0, 1, true, 1_000 + $i);
@@ -102,6 +116,27 @@ describe('QueryRunRepository::medianThroughput()', function (): void {
         }
 
         expect($this->runs->medianThroughput('graph'))->toBe(150.0 * QUERY_RUN_MIB);
+    });
+
+    test('counts a split run at the rate of one process', function (): void {
+        // 100 MiB/s as one process each: alone, in 2 processes at 1.6x, in 4 at 1.9x.
+        $this->runs->record('stats', 100 * QUERY_RUN_MIB, 0, 1000, true, 1);
+        $this->runs->record('stats', 160 * QUERY_RUN_MIB, 0, 1000, true, 2, parts: 2);
+        $this->runs->record('stats', 190 * QUERY_RUN_MIB, 0, 1000, true, 3, parts: 4);
+        $speedup = static fn (int $parts): float => [2 => 1.6, 4 => 1.9][$parts] ?? 1.0;
+
+        expect($this->runs->medianThroughput('stats', $speedup))->toEqualWithDelta(100.0 * QUERY_RUN_MIB, 1.0)
+            ->and($this->runs->medianThroughput('stats'))->toBe(160.0 * QUERY_RUN_MIB)
+        ;
+    });
+
+    // A split that read files again records the time of its first pass, so it keeps teaching the estimate.
+    test('counts a split that read files twice, whose time is that of one read', function (): void {
+        for ($i = 1; $i <= QueryRunRepository::MIN_SAMPLES; ++$i) {
+            $this->runs->record('conversations', 190 * QUERY_RUN_MIB, 48, 1000, true, $i, parts: 4, passes: 2);
+        }
+
+        expect($this->runs->medianThroughput('conversations', static fn (int $parts): float => 1.9))->toEqualWithDelta(100.0 * QUERY_RUN_MIB, 1.0);
     });
 
     test('searches the kind index', function (): void {

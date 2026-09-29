@@ -17,6 +17,8 @@ use mbolli\nfsen_ng\pages\PageStates;
 use mbolli\nfsen_ng\pages\Shell;
 use mbolli\nfsen_ng\pages\state\OverviewState;
 use mbolli\nfsen_ng\pages\TrafficGraph;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
+use mbolli\nfsen_ng\processor\Processor;
 use mbolli\nfsen_ng\query\QueryResult;
 use mbolli\nfsen_ng\query\TopNStat;
 use mbolli\nfsen_ng\store\Database;
@@ -590,6 +592,86 @@ describe('the exact run', function (): void {
                 ['key' => '6', 'flows' => 4160, 'packets' => 41600, 'bytes' => 4160000, 'share' => 78.0],
                 ['key' => '17', 'flows' => 2080, 'packets' => 10400, 'bytes' => 1040000, 'share' => 19.5],
             ])
+        ;
+    });
+});
+
+describe('the exact run over a large read', function (): void {
+    // 48 sparse files of 10 MB: 480 MB, over a second at the default read rate.
+    test('runs as time slices in parallel nfdump processes, merges them exactly and records the processes', function (): void {
+        $root = sys_get_temp_dir() . '/nfsen-overview-split-' . bin2hex(random_bytes(4));
+        for ($i = 0; $i < 48; ++$i) {
+            $ts = OVT_T0 + $i * 300;
+            $dir = $root . '/live/gw/' . gmdate('Y/m/d', $ts);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0o777, true);
+            }
+            $handle = fopen($dir . '/nfcapd.' . gmdate('YmdHi', $ts), 'w');
+            ftruncate($handle, 10_000_000);
+            fclose($handle);
+        }
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw', 'core'], 'ports' => [80], 'db' => 'RRD', 'processor' => 'Nfdump'],
+            'nfdump' => ['binary' => '/nonexistent/nfdump', 'profiles-data' => $root, 'profile' => 'live', 'max-processes' => 4],
+            'log' => ['priority' => LOG_ERR],
+        ])->withTopnRetentionDays(31);
+        $slot = new ReflectionProperty(Config::class, 'processorClass');
+        $processorBefore = $slot->isInitialized() ? Config::$processorClass : null;
+        // Every part: two addresses and the protocol list the shares come from.
+        Config::$processorClass = new class implements Processor {
+            /** @var array<string, mixed> */
+            private array $options = [];
+
+            public function setOption(string $option, $value): void {
+                $this->options[$option] = $value;
+            }
+
+            public function setFilter(string $filter): void {}
+
+            public function setQueryHandle(string $handle): void {}
+
+            public function setProfile(string $profile): void {}
+
+            public function execute(): array {
+                $line = static fn (string $name, string $value, int $proto, int $bytes): string => '{ "first" : "2026-09-29T00:00:00.000", "last" : "2026-09-29T00:10:00.000", "proto" : ' . $proto . ', "' . $name . '" : "' . $value . '", "flows" : 1, "packets" : 10, "bytes" : ' . $bytes . ', "pps" : 0, "bps" : 0, "bpp" : 0}';
+
+                return ['command' => 'nfdump -R ' . $this->options['-R'], 'rawOutput' => implode("\n", [
+                    $line('srcip', '10.0.0.1', 0, 3000),
+                    $line('srcip', '10.0.0.2', 0, 1000),
+                    $line('proto', '6', 6, 4000),
+                ]) . "\n", 'decoded' => [], 'exitCode' => 0];
+            }
+        };
+        Database::useShared($this->store);
+        [, $c, $states] = overviewTestCompose();
+        $c->getSignal('datestart')?->setValue(OVT_T0, broadcast: false);
+        $c->getSignal('dateend')?->setValue(OVT_T0 + 48 * 300, broadcast: false);
+        $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
+
+        try {
+            Coroutine::run(static function () use ($c): void {
+                $c->setRequestInput([], []);
+                $c->executeAction((string) $c->getAction('overview-topn-run')?->id());
+            });
+        } finally {
+            if ($processorBefore !== null) {
+                Config::$processorClass = $processorBefore;
+            }
+            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
+                $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+            }
+            rmdir($root);
+        }
+
+        // 4 slots: the split takes 3 and leaves one for another query.
+        expect($states->overview->exact['rows'] ?? null)->toBe([
+            ['key' => '10.0.0.1', 'flows' => 3, 'packets' => 30, 'bytes' => 9000, 'share' => 75.0],
+            ['key' => '10.0.0.2', 'flows' => 3, 'packets' => 30, 'bytes' => 3000, 'share' => 25.0],
+        ])
+            ->and($c->getSignal('query_status')?->string())->toStartWith('Done in ')->toEndWith(' with 3 nfdump processes.')
+            ->and($c->getSignal('_ov_exact_rows')?->int())->toBe(2)
+            ->and($this->store->all('SELECT kind, files, parts, passes FROM query_runs'))->toBe([['kind' => 'overview-topn', 'files' => 48, 'parts' => 3, 'passes' => 1]])
+            ->and(NfdumpSlots::inUse())->toBe(0)
         ;
     });
 });

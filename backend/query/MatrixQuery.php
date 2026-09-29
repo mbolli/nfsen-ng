@@ -15,6 +15,9 @@ use mbolli\nfsen_ng\processor\Processor;
  *
  * Grouping by destination port puts the port into the aggregation key, which gives the Sankey
  * its middle column (source, destination port, destination).
+ *
+ * @phpstan-import-type Part from PartitionPlanner
+ * @phpstan-import-type Meta from PartitionPlanner
  */
 final readonly class MatrixQuery {
     /** @var list<string> */
@@ -164,6 +167,50 @@ final readonly class MatrixQuery {
     }
 
     /**
+     * Runs the query as parallel time slices when that pays (PartitionPlanner), else as one
+     * process, as always on nfdump 1.7.5, whose plain csv lacks the out counters.
+     *
+     * @param null|\Closure(int, \Closure(): array{int, int}, bool, bool): void $onSplit   see PartitionPlanner::run()
+     * @param null|\Closure(): bool                                             $cancelled whether a Kill arrived
+     * @param null|int                                                          $parts     tests: this many parts at most
+     *
+     * @throws \Exception        when nfdump cannot be run
+     * @throws \RuntimeException when the processor answers with something that is not a table
+     */
+    public function runPartitioned(?Processor $processor = null, ?\Closure $onSplit = null, ?\Closure $cancelled = null, ?int $parts = null): QueryResult {
+        $processor ??= $this->processor();
+        $format = $this->outputFormat();
+        if (!self::splits($format)) {
+            return $this->run($processor);
+        }
+
+        $startedAt = microtime(true);
+        $keyFields = $this->groupBy() === 'port' ? 3 : 2;
+
+        return PartitionPlanner::run(
+            kind: 'conversations',
+            files: PartitionPlanner::files($this->window, $this->sources, $this->profile),
+            n: $this->fetchLimit(),
+            handle: $this->handle,
+            single: fn (): QueryResult => $this->run($processor),
+            build: fn (array $part, int $limit, ?string $filter): Processor => $this->partProcessor($part, $limit, PartitionMerge::pairFormat($format), $filter),
+            parse: static function (array $part, array $output, int $limit, ?array $only = null) use ($keyFields): array {
+                $data = PartitionMerge::parsePairs($output['rawOutput'], $keyFields, $only);
+                $data['truncated'] = $limit > 0 && \count($data['lines']) >= $limit;
+                $data['empty'] = $data['empty'] || PartitionMerge::saysNoMatch('', $output['notes'] ?? []);
+
+                return $data;
+            },
+            rank: fn (array $data): array => PartitionMerge::rankFlows(array_values($data), $this->metric()),
+            render: fn (array $data, array $top, array $meta): QueryResult => $this->merged(PartitionMerge::pairs(array_values($data), $top), $meta, $processor, $format, $startedAt),
+            keyFilter: fn (array $keys): string => FilterComposer::and($this->effectiveFilter(), $this->pairFilter($keys)),
+            onSplit: $onSplit,
+            cancelled: $cancelled,
+            parts: $parts,
+        );
+    }
+
+    /**
      * @throws \Exception        when nfdump cannot be run
      * @throws \RuntimeException when the processor answers with something that is not a table
      */
@@ -186,6 +233,83 @@ final readonly class MatrixQuery {
             rawOutput: $result['rawOutput'] ?? null,
             notes: $result['notes'] ?? [],
             exitCode: $result['exitCode'] ?? 0,
+        );
+    }
+
+    /** Whether a run in the output $format can be split: a `fmt:` that prints the out counters. */
+    private static function splits(string $format): bool {
+        return str_starts_with($format, 'fmt:');
+    }
+
+    /**
+     * One time slice listing $limit pairs (0: all) in $format, under a lookup's $filter or else
+     * the query's own.
+     *
+     * @param Part $part
+     */
+    private function partProcessor(array $part, int $limit, string $format, ?string $filter = null): Processor {
+        $processor = new Config::$processorClass();
+        if ($processor instanceof Nfdump) {
+            $processor->keepRawOutput();
+        }
+        $processor->setQueryHandle($this->handle);
+        $processor->setProfile($this->profile);
+        $processor->setOption('-M', implode(':', $this->sources));
+        $processor->setOption('-R', $part['range']);
+        $processor->setOption('-a', '-A' . $this->aggregation());
+        $processor->setOption('-O', $this->metric());
+        $processor->setOption('-n', $limit);
+        $processor->setOption('-N', null);
+        $processor->setOption('-6', null);
+        $processor->setOption('-o', $format);
+        $processor->setFilter($filter ?? $this->effectiveFilter());
+
+        return $processor;
+    }
+
+    /**
+     * A filter matching the flows of the pairs $keys, and of more pairs, which a lookup ignores.
+     *
+     * @param list<string> $keys
+     */
+    private function pairFilter(array $keys): string {
+        $mask = match ($this->groupBy()) {
+            'net24' => '24',
+            'net16' => '16',
+            default => '',
+        };
+        $fields = PartitionMerge::keyFields($keys);
+        $terms = [PartitionMerge::inList('srcip', $fields[0] ?? [], $mask), PartitionMerge::inList('dstip', $fields[1] ?? [], $mask)];
+        if (isset($fields[2])) {
+            $terms[] = PartitionMerge::inList('dstport', $fields[2]);
+        }
+
+        return implode(' and ', $terms);
+    }
+
+    /**
+     * What the merged parts print ($raw) decoded the way the processor decodes one run.
+     *
+     * @param Meta $meta
+     */
+    private function merged(string $raw, array $meta, Processor $processor, string $format, float $startedAt): QueryResult {
+        $decoder = new Nfdump();
+        $decoder->setOption('-a', '-A' . $this->aggregation());
+        $decoder->setOption('-o', $format);
+        $command = $processor instanceof Nfdump ? $processor->commandLine() : implode("\n", $meta['commands']);
+        $result = $decoder->decodeOutput($command, $raw, $startedAt);
+
+        return new QueryResult(
+            rows: array_values($result['decoded']),
+            command: $command,
+            stderr: implode("\n", $meta['stderr']),
+            elapsed: round(microtime(true) - $startedAt, 3),
+            window: $this->window,
+            rawOutput: $result['rawOutput'],
+            notes: $result['notes'],
+            exitCode: $meta['exitCode'],
+            parts: \count($meta['commands']),
+            partCommands: $meta['commands'],
         );
     }
 }

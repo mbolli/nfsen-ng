@@ -92,6 +92,17 @@ describe('QueryRunner::finish', function (): void {
         ;
     });
 
+    test('a split run records its processes, files and passes, and says how many processes the result came from', function (): void {
+        $status = QueryRunner::finish('stats', 64 * 1024 ** 2, 0.5, 0.61, null, false, 6, 48);
+
+        expect($status)->toBe('Done in 0.6s with 6 nfdump processes.')
+            ->and(Database::shared()->all('SELECT kind, files, parts, passes FROM query_runs'))->toBe([['kind' => 'stats', 'files' => 48, 'parts' => 6, 'passes' => 1]])
+            ->and(QueryRunner::finish('stats', 1000, 0.5, 0.61, null, false, 4, 48, again: true))->toBe('Done in 0.6s with 4 nfdump processes.')
+            ->and(QueryRunner::finish('stats', 1000, 0.5, 0.61, null, false, 1, 48, again: true))->toBe('Done in 0.6s.')
+            ->and(Database::shared()->all('SELECT parts, passes FROM query_runs ORDER BY id'))->toBe([['parts' => 6, 'passes' => 1], ['parts' => 4, 'passes' => 2], ['parts' => 1, 'passes' => 2]])
+        ;
+    });
+
     test('records a failed run as not ok and reports the error', function (): void {
         $status = QueryRunner::finish('stats', 1000, 0.1, 0.2, new NfdumpException('Filter syntax error: bad', 'nfdump', '', 254), false);
 
@@ -189,6 +200,27 @@ describe('QueryRunner::recordedRead', function (): void {
 
     test('Flows without a sample records no bytes', function (): void {
         expect(QueryRunner::recordedRead('flows', 50 * 1024 ** 3, 0.3, null))->toBe(['bytes' => 0, 'seconds' => 0.3]);
+    });
+});
+
+describe('QueryRunner::splitReadSeconds', function (): void {
+    test('times one complete read: the one process a split fell back to, else its first pass', function (): void {
+        expect(QueryRunner::splitReadSeconds(10.0, 3.0, null))->toBe(3.0)
+            ->and(QueryRunner::splitReadSeconds(10.0, 3.0, 6.0))->toBe(4.0)
+            ->and(QueryRunner::splitReadSeconds(10.0, 0.5, 0.5))->toBe(9.5)
+            ->and(QueryRunner::splitReadSeconds(10.0, null, null))->toBe(10.0)
+            ->and(QueryRunner::splitReadSeconds(2.0, 3.0, null))->toBe(2.0)
+        ;
+    });
+});
+
+describe('QueryRunner::splitStatus', function (): void {
+    test('counts files, since the parts read side by side', function (): void {
+        expect(QueryRunner::splitStatus(96, 288, 4))->toBe('Read 96 of 288 files in 4 nfdump processes')
+            ->and(QueryRunner::splitStatus(1200, 2400, 8))->toBe('Read 1,200 of 2,400 files in 8 nfdump processes')
+            ->and(QueryRunner::splitStatus(300, 336, 4, true))->toBe('Read 300 of 336 files in 4 nfdump processes, second pass')
+            ->and(QueryRunner::splitStatus(300, 576, 1, true))->toBe('Read 300 of 576 files, second pass')
+        ;
     });
 });
 

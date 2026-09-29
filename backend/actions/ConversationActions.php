@@ -231,16 +231,18 @@ final class ConversationActions {
     }
 
     /**
-     * Runs the query; null when Kill was pressed before nfdump started or before the result
-     * is stored, so a cancelled run never replaces the result.
+     * Runs the query, split into parallel nfdump processes when that pays; null when Kill was
+     * pressed before nfdump started or before the result is stored, so a cancelled run never
+     * replaces the result.
      *
-     * @param \Closure(): bool $cancelled
+     * @param \Closure(): bool                                                  $cancelled
+     * @param null|\Closure(int, \Closure(): array{int, int}, bool, bool): void $onSplit   QueryRunner's, for the progress of a split
      */
-    public static function runUnlessCancelled(MatrixQuery $query, Processor $processor, \Closure $cancelled): ?QueryResult {
+    public static function runUnlessCancelled(MatrixQuery $query, Processor $processor, \Closure $cancelled, ?\Closure $onSplit = null): ?QueryResult {
         if ($cancelled()) {
             return null;
         }
-        $result = $query->run($processor);
+        $result = $query->runPartitioned($processor, $onSplit, $cancelled);
 
         return $cancelled() ? null : $result; // @phpstan-ignore ternary.alwaysFalse (Kill can land while nfdump runs)
     }
@@ -302,7 +304,7 @@ final class ConversationActions {
             $totalBytes = static fn (): int => $query->totalBytes();
             $processor = $query->processor();
 
-            QueryRunner::run($c, 'conversations', $totalBytes, 'Starting nfdump…', static function () use (
+            QueryRunner::run($c, 'conversations', $totalBytes, 'Starting nfdump…', static function (?\Closure $onSplit = null) use (
                 $query,
                 $processor,
                 $p,
@@ -315,7 +317,7 @@ final class ConversationActions {
                 $notices
             ): void {
                 try {
-                    $result = self::runUnlessCancelled($query, $processor, static fn (): bool => QueryCancel::isRequested($contextId));
+                    $result = self::runUnlessCancelled($query, $processor, static fn (): bool => QueryCancel::isRequested($contextId), $onSplit);
                     if ($result === null) {
                         self::restoreNotices($state, $notices);
 

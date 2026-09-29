@@ -1,0 +1,24 @@
+From 0e39e04067a627c67991cc96ba85102689ef2fc3 Mon Sep 17 00:00:00 2001
+From: Michael Bolli <michael@zweiundeins.gmbh>
+Date: Tue, 29 Sep 2026 04:14:29 +0000
+Subject: [PATCH 2/7] Rocket: keep the element as it is on an atomic move
+
+---
+ library/src/rocket/runtime.ts | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/library/src/rocket/runtime.ts b/library/src/rocket/runtime.ts
+index 5adf914..b62c349 100644
+--- a/library/src/rocket/runtime.ts
++++ b/library/src/rocket/runtime.ts
+@@ -1576,6 +1576,10 @@ export function rocket<
+       )
+     }
+ 
++    // An atomic move (moveBefore, which Datastar's morph uses) keeps the element
++    // connected: no teardown, no second setup, nothing lost.
++    connectedMoveCallback() {}
++
+     disconnectedCallback() {
+       // Deleting the signals re-runs their effects, which can throw; the teardown
+       // must still finish, or the element stays mounted and setup never reruns.

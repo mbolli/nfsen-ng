@@ -1,0 +1,40 @@
+{
+    "banner": "Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)",
+    "sha256": "eedda3e39a5cb89189f30ac83768f27bcc3c8ef09402f0ff2876150444a48576",
+    "starbase": {
+        "repository": "https://github.com/zweiundeins/starbase.git",
+        "commit": "d23c936b152397e8b2a12c0934b6014dda7f9fbd",
+        "describe": "v0.4.0-4-gd23c936",
+        "path": "static/vendor/datastar-rocket.js"
+    },
+    "patches": [
+        {
+            "file": "0001-Rocket-finish-the-teardown-when-deleting-the-signals.patch",
+            "sha256": "a5cc850687f57a4ef711bba1389c5d9a6d92f1acac6bf1fa3e65bce15e730df0"
+        },
+        {
+            "file": "0002-Rocket-keep-the-element-as-it-is-on-an-atomic-move.patch",
+            "sha256": "add919e7d76097a396df1a22aef906e34cadaa4c84176921ff5bf16a932e9e6c"
+        },
+        {
+            "file": "0003-Rocket-form-associated-components-and-focus-delegati.patch",
+            "sha256": "69d0438939f2c4463d2cd96a4492452c5136aa14fa58edf851bdc276b6fea38f"
+        },
+        {
+            "file": "0004-Rocket-bool-props-follow-HTML-boolean-attributes.patch",
+            "sha256": "2a4a98a995a8dda3af50e6a75486371e7851c099e58707b87e970a08dfe7f4f5"
+        },
+        {
+            "file": "0005-Rocket-clean-up-the-shadow-tree-s-attributes-on-disc.patch",
+            "sha256": "44299c842f012fa9b177a98b73afd6a97106f6cf5d9e18971e4d5cd0b9320005"
+        },
+        {
+            "file": "0006-Rocket-instances-share-one-constructed-stylesheet-pe.patch",
+            "sha256": "42b6684928bfcc127d26c7c63e284bc1ddd305246928c04249c51dd9584fd318"
+        },
+        {
+            "file": "0007-Rocket-observers-hear-an-attribute-write-whose-value.patch",
+            "sha256": "735df0dd92955d8ce7841398f255c8d512d06857d4b64106aaf24e50c524a61d"
+        }
+    ]
+}

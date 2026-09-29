@@ -1,0 +1,48 @@
+From 3e509db04c851070b766b67d6165b18cef5ca506 Mon Sep 17 00:00:00 2001
+From: Michael Bolli <michael@zweiundeins.gmbh>
+Date: Tue, 29 Sep 2026 04:14:29 +0000
+Subject: [PATCH 4/7] Rocket: bool props follow HTML boolean attributes
+
+---
+ library/src/rocket/codecs.ts  | 6 +++---
+ library/src/rocket/runtime.ts | 7 ++++++-
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/library/src/rocket/codecs.ts b/library/src/rocket/codecs.ts
+index bbc14ba..b5f17b7 100644
+--- a/library/src/rocket/codecs.ts
++++ b/library/src/rocket/codecs.ts
+@@ -417,12 +417,12 @@ const createNumberCodec = (
+ 
+ // Decode HTML-style truthy values because attribute presence and string forms both represent boolean props.
+ const createBoolCodec = (
++  // Like a native boolean attribute, any present value is true (checked="checked"),
++  // except "false" and "0", so a server can still say false in markup.
+   decode: (value: unknown) => boolean = (value) =>
+     value === true ||
+-    value === '' ||
+-    value === 'true' ||
+     value === 1 ||
+-    value === '1',
++    (typeof value === 'string' && value !== 'false' && value !== '0'),
+   encode: (value: boolean) => string = (value) => (value ? 'true' : 'false'),
+   defaultFactory?: () => boolean,
+   manifestMeta: CodecManifest = { type: 'boolean' },
+diff --git a/library/src/rocket/runtime.ts b/library/src/rocket/runtime.ts
+index f5e8768..bb97099 100644
+--- a/library/src/rocket/runtime.ts
++++ b/library/src/rocket/runtime.ts
+@@ -1048,7 +1048,12 @@ export function rocket<
+       const attrName = kebab(name)
+       this.#reflecting = true
+       try {
+-        const encoded = propDefs[name].encode(value)
++        // A false boolean removes its attribute, as native ones do: [disabled]
++        // selectors and form-associated elements treat disabled="false" as disabled.
++        const encoded =
++          propDefs[name].manifestMeta?.type === 'boolean' && !value
++            ? null
++            : propDefs[name].encode(value)
+         if (encoded == null) {
+           this.removeAttribute(attrName)
+         } else {

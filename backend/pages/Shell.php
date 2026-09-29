@@ -11,6 +11,7 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\HealthMetrics;
 use mbolli\nfsen_ng\common\ImportDaemon;
+use mbolli\nfsen_ng\common\StarbaseAssets;
 use mbolli\nfsen_ng\pages\state\ShellState;
 use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
@@ -88,6 +89,7 @@ final class Shell {
             'shell' => [
                 'version' => Config::VERSION,
                 'assetVersion' => Config::assetVersion(),
+                'starbaseModules' => StarbaseAssets::modules(),
                 'fatalError' => $fatal ? (string) $app->globalState('_fatalError') : null,
                 'connections' => \count($app->getClients()),
                 'activePage' => $activePage,

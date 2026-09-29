@@ -1,0 +1,40 @@
+From d18e923a2c34636caa25eebe109ffc2a1afd0dc2 Mon Sep 17 00:00:00 2001
+From: Michael Bolli <michael@zweiundeins.gmbh>
+Date: Tue, 29 Sep 2026 04:14:29 +0000
+Subject: [PATCH 6/7] Rocket: instances share one constructed stylesheet per
+ CSS text
+
+---
+ library/src/rocket/runtime.ts | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/library/src/rocket/runtime.ts b/library/src/rocket/runtime.ts
+index d2ed6b4..ef9589d 100644
+--- a/library/src/rocket/runtime.ts
++++ b/library/src/rocket/runtime.ts
+@@ -569,6 +569,10 @@ registerAction({
+ })
+ 
+ // Register a custom element tag and wire its props, setup, render, and Datastar bridge into the element class.
++// Constructed stylesheets by their text: every instance of a component adopts
++// the same sheet, parsed once, instead of a copy each.
++const sharedSheets = new Map<string, CSSStyleSheet>()
++
+ export function rocket<
+   Refs extends RefCtors = RefCtors,
+   Defs extends PropDefs = PropDefs,
+@@ -1081,8 +1085,12 @@ export function rocket<
+           'replaceSync' in CSSStyleSheet.prototype
+         ) {
+           if (!style.sheet) {
+-            style.sheet = new CSSStyleSheet()
+-            style.sheet.replaceSync(style.text)
++            style.sheet = sharedSheets.get(style.text)
++            if (!style.sheet) {
++              style.sheet = new CSSStyleSheet()
++              style.sheet.replaceSync(style.text)
++              sharedSheets.set(style.text, style.sheet)
++            }
+           }
+           if (!style.root.adoptedStyleSheets.includes(style.sheet)) {
+             style.root.adoptedStyleSheets = [

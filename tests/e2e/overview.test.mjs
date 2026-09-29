@@ -168,7 +168,7 @@ export default async function overviewTest() {
         }
         await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x2, y, button: 'left', clickCount: 1 });
         const window = `(async function(){
-            var root = (await import(document.querySelector('script[type=module][src*="/js/datastar.js"]').src)).root;
+            var root = (await import('datastar')).root;
             var get = function(n){ return root[Object.keys(root).find(function(k){ return k.startsWith(n + '____'); })]; };
             return { from: get('datestart'), to: get('dateend'), live: get('range_live') };
         })()`;

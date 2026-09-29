@@ -35,7 +35,7 @@ body.app::before {
 
 /* Only the sidebar and the main column take grid cells; the rest is fixed or in the top layer. */
 #modal-root,
-#nfsen-tip-container {
+#client-root {
     display: contents;
 }
 

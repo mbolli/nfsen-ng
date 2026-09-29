@@ -7,13 +7,15 @@
     "lint": "biome lint frontend/js/components frontend/css",
     "format": "biome format --write frontend/js/components frontend/css",
     "test-e2e": "node tests/e2e/run.mjs",
-    "postinstall": "cp node_modules/datastar/bundles/datastar.* frontend/js && cp node_modules/echarts/dist/echarts.min.js frontend/js/"
+    "postinstall": "sh scripts/vendor-rocket.sh --if-tools && cp node_modules/datastar/LICENSE.md frontend/js/datastar.LICENSE.md && cp node_modules/echarts/dist/echarts.min.js frontend/js/ && cp node_modules/echarts/LICENSE frontend/js/echarts.LICENSE && cp node_modules/echarts/NOTICE frontend/js/echarts.NOTICE",
+    "vendor-rocket": "sh scripts/vendor-rocket.sh"
   },
   "dependencies": {
-    "datastar": "github:starfederation/datastar#v1.0.2",
+    "datastar": "github:starfederation/datastar#v1.0.4",
     "echarts": "^6.1.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.13"
+    "@biomejs/biome": "^2.5.13",
+    "esbuild": "0.28.2"
   }
 }

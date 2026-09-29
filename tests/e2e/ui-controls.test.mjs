@@ -135,7 +135,7 @@ const FLOATING = `
 
 async function inject(page) {
     await page.evaluate(`(() => {
-        document.getElementById('nfsen-tip-container').insertAdjacentHTML('beforeend', ${JSON.stringify(FIXTURE)});
+        document.getElementById('client-root').insertAdjacentHTML('beforeend', ${JSON.stringify(FIXTURE)});
         const fx = document.getElementById('fx');
         Object.assign(fx.style, { position: 'fixed', insetBlockStart: '1rem', insetInlineStart: '1rem', zIndex: 40, inlineSize: '40rem' });
         for (const list of fx.querySelectorAll('[role=tablist]:not(#tlLeg)')) {
@@ -151,7 +151,7 @@ async function inject(page) {
             if (b) window.__clicked.push(b.id);
             if (e.target.closest('a[href="#"]')) e.preventDefault();
         });
-        document.getElementById('nfsen-tip-container').insertAdjacentHTML('beforeend', ${JSON.stringify(FLOATING)});
+        document.getElementById('client-root').insertAdjacentHTML('beforeend', ${JSON.stringify(FLOATING)});
         return true;
     })()`);
 }

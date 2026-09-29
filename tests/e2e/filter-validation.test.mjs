@@ -135,8 +135,7 @@ async function estimateSettled(page, label) {
 /** Moves the window the way an SSE signal patch does, without a request of its own. */
 async function shiftWindow(page, seconds) {
     await page.evaluate(`(async function(){
-        var src = document.querySelector('script[type=module][src*="/js/datastar.js"]').src;
-        var root = (await import(src)).root;
+        var root = (await import('datastar')).root;
         var find = function(n){ return Object.keys(root).find(function(k){ return k.startsWith(n + '____'); }); };
         root[find('datestart')] = root[find('datestart')] + ${seconds};
         root[find('dateend')] = root[find('dateend')] + ${seconds};
@@ -146,8 +145,7 @@ async function shiftWindow(page, seconds) {
 /** Sets a signal the way a server patch or a revival does. */
 async function setSignal(page, name, value) {
     await page.evaluate(`(async function(){
-        var src = document.querySelector('script[type=module][src*="/js/datastar.js"]').src;
-        var root = (await import(src)).root;
+        var root = (await import('datastar')).root;
         var key = Object.keys(root).find(function(k){ return k.startsWith('${name}____'); });
         root[key] = ${JSON.stringify(value)};
     })()`);

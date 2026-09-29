@@ -1,0 +1,44 @@
+From 3d804475c01a8ce8c7592771a758ba5b96356c53 Mon Sep 17 00:00:00 2001
+From: Michael Bolli <michael@zweiundeins.gmbh>
+Date: Tue, 29 Sep 2026 04:14:29 +0000
+Subject: [PATCH 7/7] Rocket: observers hear an attribute write whose value
+ decodes the same
+
+---
+ library/src/rocket/runtime.ts | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/library/src/rocket/runtime.ts b/library/src/rocket/runtime.ts
+index ef9589d..b0ba84d 100644
+--- a/library/src/rocket/runtime.ts
++++ b/library/src/rocket/runtime.ts
+@@ -1017,8 +1017,12 @@ export function rocket<
+     #setProp(
+       name: keyof InferProps<Defs> & string,
+       nextValue: InferProps<Defs>[typeof name],
++      // The attribute's text changed: observers hear it even if the value is the
++      // same (checked="false" written onto a toggle that had no checked attribute).
++      written = false,
+     ) {
+-      if (Object.is(this.#props[name], nextValue)) return
++      const same = Object.is(this.#props[name], nextValue)
++      if (same && !written) return
+       this.#props[name] = nextValue
+       const changes = { [name]: nextValue } as Partial<InferProps<Defs>>
+       for (const observer of this.#propObservers) {
+@@ -1028,6 +1032,7 @@ export function rocket<
+       }
+ 
+       // Notify prop observers synchronously, then optionally queue a render so a burst of writes still collapses into one render.
++      if (same) return
+       if (
+         typeof renderOnPropChange === 'function'
+           ? renderOnPropChange({
+@@ -1625,6 +1630,7 @@ export function rocket<
+         newValue === null
+           ? getCodecDefault(propDefs[propName])
+           : decodeCodec(propDefs[propName], newValue),
++        oldValue !== newValue,
+       )
+     }
+ 

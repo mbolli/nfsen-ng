@@ -228,8 +228,7 @@ class Page {
     /** Several signals read in one evaluate, so a patch between the reads cannot tear them apart. */
     async signalValues(names) {
         return this.evaluate(`(async function(){
-            var src = document.querySelector('script[type=module][src*="/js/datastar.js"]').src;
-            var root = (await import(src)).root;
+            var root = (await import('datastar')).root;
             var keys = Object.keys(root);
             var out = {};
             ${JSON.stringify(names)}.forEach(function(name){

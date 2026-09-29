@@ -59,7 +59,7 @@ export default async function controlsTest() {
         // One read of all four, so a patch landing in between cannot mix two windows.
         const range = () =>
             page.evaluate(`(async function(){
-                var root = (await import(document.querySelector('script[type=module][src*="/js/datastar.js"]').src)).root;
+                var root = (await import('datastar')).root;
                 var get = function(n){ var k = Object.keys(root).find(function(x){ return x === n || x.startsWith(n + '____'); }); return k === undefined ? undefined : root[k]; };
                 return { from: get('datestart'), to: get('dateend'), live: get('range_live'), preset: get('range_preset') };
             })()`);
@@ -172,7 +172,7 @@ export default async function controlsTest() {
         // The same entry in the capture timezone once the display is set to server time.
         const serverTz = await page.signalValue('nfcapdTz');
         await page.evaluate(`(async function(){
-            var root = (await import(document.querySelector('script[type=module][src*="/js/datastar.js"]').src)).root;
+            var root = (await import('datastar')).root;
             var key = Object.keys(root).find(function(k){ return k.startsWith('displayTz____'); });
             root[key] = 'server';
         })()`);

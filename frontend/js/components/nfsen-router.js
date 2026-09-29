@@ -1,5 +1,5 @@
 // Hash routing (spec 1.1): '#/<page>' names the page and the `page` signal mirrors it. Loaded
-// before datastar.js, because the data-init on <body> and the hashchange handler on <html> call it.
+// before the Datastar bundle, because the data-init on <body> and the hashchange handler on <html> call it.
 
 const PAGES = ['overview', 'talkers', 'flows', 'conversations', 'alerts', 'health', 'settings'];
 const LEGACY = { graphs: 'overview', statistics: 'talkers', sankey: 'conversations', investigate: 'flows' };

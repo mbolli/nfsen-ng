@@ -65,8 +65,7 @@ async function changeSources(page) {
         return;
     }
     const change = await page.evaluate(`(async function(){
-        var src = document.querySelector('script[type=module][src*="/js/datastar.js"]').src;
-        var root = (await import(src)).root;
+        var root = (await import('datastar')).root;
         var key = Object.keys(root).find(function(k){ return k.startsWith('graph_sources____'); });
         var before = JSON.stringify(root[key]);
         var configured = [...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')].map(function(b){ return b.value; });
@@ -80,8 +79,7 @@ async function changeSources(page) {
 /** Samples query_running in the page every 100 ms, so a run between two checks is still seen. */
 async function watchQueryRunning(page) {
     await page.evaluate(`(async function(){
-        var src = document.querySelector('script[type=module][src*="/js/datastar.js"]').src;
-        var root = (await import(src)).root;
+        var root = (await import('datastar')).root;
         window.__queryRan = false;
         window.__queryWatch = setInterval(function(){
             var key = Object.keys(root).find(function(k){ return k.startsWith('query_running____'); });

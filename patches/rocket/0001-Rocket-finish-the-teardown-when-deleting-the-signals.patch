@@ -1,0 +1,63 @@
+From 54dc605a04ed2e91668bff48eeda082aa7b4281a Mon Sep 17 00:00:00 2001
+From: Michael Bolli <michael@zweiundeins.gmbh>
+Date: Tue, 29 Sep 2026 04:14:29 +0000
+Subject: [PATCH 1/7] Rocket: finish the teardown when deleting the signals
+ throws
+
+---
+ library/src/rocket/runtime.ts | 41 ++++++++++++++++++++---------------
+ 1 file changed, 23 insertions(+), 18 deletions(-)
+
+diff --git a/library/src/rocket/runtime.ts b/library/src/rocket/runtime.ts
+index f432cd2..5adf914 100644
+--- a/library/src/rocket/runtime.ts
++++ b/library/src/rocket/runtime.ts
+@@ -1577,25 +1577,30 @@ export function rocket<
+     }
+ 
+     disconnectedCallback() {
+-      mergePaths([[this.#signalPathBase, null]])
+-      this.removeEventListener(
+-        DATASTAR_SCOPE_CHILDREN_EVENT,
+-        this.#scopePatchedChildren,
+-      )
++      // Deleting the signals re-runs their effects, which can throw; the teardown
++      // must still finish, or the element stays mounted and setup never reruns.
++      try {
++        mergePaths([[this.#signalPathBase, null]])
++      } finally {
++        this.removeEventListener(
++          DATASTAR_SCOPE_CHILDREN_EVENT,
++          this.#scopePatchedChildren,
++        )
+ 
+-      // Run cleanups registered by `setup({ actions })` alongside Rocket's normal setup/effect cleanups when the component disconnects.
+-      for (const cleanup of this.#globalActionCleanups.values()) cleanup()
+-      this.#globalActionCleanups.clear()
+-      for (const cleanup of this.#hostConditionalCleanups) cleanup()
+-      this.#hostConditionalCleanups.length = 0
+-      for (const cleanup of this.#conditionalCleanups) cleanup()
+-      this.#conditionalCleanups.length = 0
+-      for (const cleanup of this.#cleanups) cleanup()
+-      this.#cleanups.length = 0
+-      for (const name of Object.keys(this.#refs)) delete this.#refs[name]
+-      this.#propObservers = []
+-      this.#actions.clear()
+-      this.#mounted = false
++        // Run cleanups registered by `setup({ actions })` alongside Rocket's normal setup/effect cleanups when the component disconnects.
++        for (const cleanup of this.#globalActionCleanups.values()) cleanup()
++        this.#globalActionCleanups.clear()
++        for (const cleanup of this.#hostConditionalCleanups) cleanup()
++        this.#hostConditionalCleanups.length = 0
++        for (const cleanup of this.#conditionalCleanups) cleanup()
++        this.#conditionalCleanups.length = 0
++        for (const cleanup of this.#cleanups) cleanup()
++        this.#cleanups.length = 0
++        for (const name of Object.keys(this.#refs)) delete this.#refs[name]
++        this.#propObservers = []
++        this.#actions.clear()
++        this.#mounted = false
++      }
+     }
+     static {
+       for (const name of propNames) {

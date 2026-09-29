@@ -120,7 +120,7 @@
                              ((evt.detail.type.startsWith('datastar') && ($_disconnected = false)) ||
                              (['retrying', 'error', 'finished'].includes(evt.detail.type) && ($_disconnected = true)))">
     <meta data-init="window.addEventListener('beforeunload', () => { navigator.sendBeacon('{{ basePath }}_session/close', '{{ contextId }}'); });">
-    {% for sheet in ['tokens', 'ui', 'shell', 'controls-bar', 'traffic-graph', 'query-kit', 'drawer', 'nfsen-ng', 'pages/overview', 'pages/talkers', 'pages/flows', 'pages/conversations', 'pages/alerts', 'pages/health', 'pages/settings'] %}
+    {% for sheet in ['tokens', 'starbase', 'ui', 'shell', 'controls-bar', 'traffic-graph', 'query-kit', 'drawer', 'nfsen-ng', 'pages/overview', 'pages/talkers', 'pages/flows', 'pages/conversations', 'pages/alerts', 'pages/health', 'pages/settings'] %}
         <link rel="stylesheet" type="text/css" href="{{ basePath }}css/{{ sheet }}.css?v={{ shell.assetVersion }}">
     {% endfor %}
 </head>
@@ -208,8 +208,8 @@
     {# The modal of this tab (D24): ip-info and the alert Test result, kept in ShellState and
        rendered on every sync; the dialog preserves its open attribute across the morph. #}
     <div id="modal-root">{{ shell.modalHtml|raw }}</div>
-    {# Tooltips and toasts are appended by JS; data-ignore-morph keeps them across syncs. #}
-    <div id="nfsen-tip-container" data-ignore-morph></div>
+    {# DOM that client code and tests add; data-ignore-morph keeps it across syncs. #}
+    <div id="client-root" data-ignore-morph></div>
     <div id="alerts-toast-container" class="toast-stack" data-ignore-morph></div>
 
     <script src="{{ basePath }}js/echarts.min.js" defer></script>
@@ -217,7 +217,7 @@
     {# Before any module script (a later import map is ignored). Versioned, so a bare import
        resolves to the instance the script tags below load. #}
     <script type="importmap">{"imports": {
-        "datastar": "{{ basePath }}js/datastar.js?v={{ shell.assetVersion }}",
+        "datastar": "{{ basePath }}js/datastar-rocket.js?v={{ shell.assetVersion }}",
         "nfsen/theme-colors": "{{ basePath }}js/components/theme-colors.js?v={{ shell.assetVersion }}",
         "nfsen/tz-utils": "{{ basePath }}js/components/tz-utils.js?v={{ shell.assetVersion }}"
     }}</script>
@@ -228,14 +228,18 @@
     </script>
 
     {# These define window.* helpers that data-init and data-effect expressions read while
-       Datastar walks the DOM, so they run before datastar.js (module order is document order). #}
+       Datastar walks the DOM, so they run before the Datastar bundle (module order is document order). #}
     <script type="module" src="{{ basePath }}js/components/nfsen-router.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/alert-template-preview.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/nfsen-filter-editor.js?v={{ shell.assetVersion }}"></script>
-    <script type="module" src="{{ basePath }}js/datastar.js?v={{ shell.assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/datastar-rocket.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ shell.assetVersion }}"></script>
     {% for component in ['nfsen-chart', 'nfsen-sankey', 'nfsen-matrix', 'nfsen-table', 'nfsen-toast', 'nfsen-tooltip', 'nfsen-controls'] %}
         <script type="module" src="{{ basePath }}js/components/{{ component }}.js?v={{ shell.assetVersion }}"></script>
+    {% endfor %}
+    {# Vendored Starbase components with "load": true in their lock; the folder name is the version. #}
+    {% for module in shell.starbaseModules %}
+        <script type="module" src="{{ basePath }}{{ module }}"></script>
     {% endfor %}
 
     {# A skipped or aborted transition still runs fn and only loses the animation, so its

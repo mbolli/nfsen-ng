@@ -1,7 +1,7 @@
 /**
  * <nfsen-filter-editor> (spec 4.5.3): keyword suggestions for the word at the cursor of the textarea
  * it wraps, announced through the region named by data-status (a textarea cannot be a combobox).
- * window.nfsenFilterEditor holds the drawer's helpers; loaded before datastar.js, which reads them.
+ * window.nfsenFilterEditor holds the drawer's helpers; loaded before the Datastar bundle, which reads them.
  */
 
 const MAX_SUGGESTIONS = 8;

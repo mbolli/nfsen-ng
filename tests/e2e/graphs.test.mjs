@@ -47,7 +47,7 @@ async function selectMostLikelyToHaveData(page) {
 /** The global window, read in one go so a patch cannot tear it. */
 async function currentWindow(page) {
     return page.evaluate(`(async function(){
-        var root = (await import(document.querySelector('script[type=module][src*="/js/datastar.js"]').src)).root;
+        var root = (await import('datastar')).root;
         var get = function(n){ return root[Object.keys(root).find(function(k){ return k.startsWith(n + '____'); })]; };
         return { from: get('datestart'), to: get('dateend'), live: get('range_live'), min: get('data_range_min') };
     })()`);

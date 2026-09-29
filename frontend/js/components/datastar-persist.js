@@ -12,14 +12,15 @@
  * `_darkMode` silently arrives as `_darkmode`, a different, bogus signal
  * path. Attribute *values* preserve case, so the signal names belong there.
  *
- * Imports 'datastar' via the bare specifier (see the import map in
- * layout.html.twig), not a relative `../datastar.js` path: a relative import
- * resolves to a URL without the main script tag's `?v=` cache-busting query
- * string, which the module loader treats as a second, entirely separate
- * Datastar instance (its own signal store, its own MutationObserver on
- * document.documentElement watching the same DOM as the first). That was the
- * actual cause of the page hanging in earlier versions of this file, not
- * anything about effect()/rx() usage. Mirrors mbolli/datastar-attribute-prop.
+ * Imports 'datastar' via the bare specifier (the import map in
+ * layout.html.twig names the Rocket bundle, `datastar-rocket.js`), not a
+ * relative `../datastar-rocket.js` path: a relative import resolves to a URL
+ * without the main script tag's `?v=` cache-busting query string, which the
+ * module loader treats as a second, entirely separate Datastar instance (its
+ * own signal store, its own MutationObserver on document.documentElement
+ * watching the same DOM as the first). That was the actual cause of the page
+ * hanging in earlier versions of this file, not anything about effect()/rx()
+ * usage. Mirrors mbolli/datastar-attribute-prop.
  */
 import { attribute, effect, mergePaths } from 'datastar';
 

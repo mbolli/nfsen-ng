@@ -128,7 +128,7 @@ can skip that and configure via `NFSEN_*` variables alone.
 ### Images and tags
 
 Only one image is published: **`ghcr.io/mbolli/nfsen-ng`**, built from
-`deploy/Dockerfile` (PHP 8.4 CLI + OpenSwoole + a source-compiled nfdump 1.7.8 +
+`deploy/Dockerfile` (PHP 8.4 CLI + OpenSwoole + a source-compiled nfdump 1.7.10 +
 the `rrd`, `inotify`, and `brotli` extensions; `pdo_sqlite` ships with the PHP
 base image). The Caddy service uses the stock
 [`caddy:latest`](https://hub.docker.com/_/caddy) image; there is no custom Caddy
@@ -166,7 +166,7 @@ nfsen-ng expects `nfcapd` files in the `-S 1` subdirectory layout
 (`YYYY/MM/DD/`). A typical invocation for nfdump ≥ 1.7.x:
 
 ```bash
-nfcapd -w /var/nfdump/profiles-data/live/<source> -z=lz4 -S 1 -T all -p <port> -D
+nfcapd -w /var/nfdump/profiles-data/live/<source> -z=lz4 -S 1 -p <port> -D
 ```
 
 | Flag | Meaning |
@@ -174,7 +174,6 @@ nfcapd -w /var/nfdump/profiles-data/live/<source> -z=lz4 -S 1 -T all -p <port> -
 | `-w <path>` | Output directory. Must be `<profiles-data>/<profile>/<source>` (e.g. `.../live/gw1`). |
 | `-z=lz4` | Compress capture files (also `=lzo`, `=zstd`). The legacy bare `-z` was removed in nfdump 1.8.x; use the explicit `=<algo>` form. |
 | `-S 1` | `YYYY/MM/DD/` subdirectory structure. **Required** for nfsen-ng to locate files. |
-| `-T all` | Capture all flow extensions (recommended). |
 | `-p <port>` | UDP listen port (e.g. `9995`). |
 | `-D` | Daemonize. |
 
@@ -185,7 +184,10 @@ nfcapd -w /var/nfdump/profiles-data/live/<source> -z=lz4 -S 1 -T all -p <port> -
 > [Configuration](configuration.md#timezones).
 
 The ready-to-use `deploy/systemd/nfcapd.service` unit already uses
-`-z=lz4 -S 1`.
+`-z=lz4 -S 1`. Its `ExecStart` has to name the `nfcapd` you want to run. It
+names `/usr/bin/nfcapd`, where a distribution package installs it; with the
+source build above, the [systemd step](#systemd-services) below points it at
+`/usr/local/nfdump/bin`.
 
 ### Install the stack
 
@@ -210,9 +212,9 @@ apt install -y git pkg-config brotli \
     rrdtool \
     flex bison libbz2-dev zlib1g-dev build-essential autoconf automake libtool unzip wget
 
-# --- nfdump 1.7.8 from source (matches the Docker image) ---
-wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.8.zip
-unzip v1.7.8.zip && cd nfdump-1.7.8
+# --- nfdump 1.7.10 from source (matches the Docker image) ---
+wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.10.zip
+unzip v1.7.10.zip && cd nfdump-1.7.10
 ./autogen.sh && ./configure --prefix=/usr/local/nfdump && make && make install && ldconfig
 cd ..
 # binary is now /usr/local/nfdump/bin/nfdump
@@ -242,6 +244,25 @@ $EDITOR backend/settings/settings.php   # set sources, ports, nfdump.binary, pro
 # Start the HTTP server (listens on port 9000):
 sudo -u www-data php backend/app.php
 ```
+
+> **Which nfdump.** nfsen-ng needs nfdump 1.7.2 or later, and the Health page
+> warns below 1.7.9. That release fixed remotely triggerable crashes in the
+> collectors (IPFIX and NetFlow v9 option templates in `nfcapd`, the sFlow
+> decoder in `sfcapd`) and out-of-bounds reads in the file parsers. Build 1.7.10:
+> gcc builds of 1.7.8 and 1.7.9 (nfdump's configure picks `-O3`) do not pair
+> bidirectional flows, so `-b`/`-B` list each direction as its own row with an
+> empty *Out* side. The **Bi-directional** aggregation on Top Talkers and Flows
+> runs `-B`, and the 1.7.8 in earlier nfsen-ng images has this fault too. Most
+> distribution packages lag behind: Debian 12 ships 1.7.1 and Ubuntu 22.04
+> ships 1.6.23, both below the minimum. Debian 13 (1.7.5), Ubuntu 24.04 (1.7.3)
+> and Ubuntu 26.04 (1.7.6) run but get the Health warning. Debian testing has
+> 1.7.10.
+>
+> To upgrade an existing source build, rerun the nfdump lines above with the new
+> version number; `make install` replaces the binaries under `/usr/local/nfdump`.
+> Capture files written by 1.7.8 read unchanged. Restart `nfcapd`, since most of
+> the fixes are in the collectors, and restart nfsen-ng, which reads the nfdump
+> version once per worker.
 
 > **Where the extensions come from.** Sury builds `php8.4-openswoole` from the
 > same 26.2.0 release the Docker image uses, with openssl, c-ares, curl and
@@ -302,6 +323,8 @@ sudo systemctl enable --now nfsen-ng.service
 
 # Capture on the same host (edit eth0 first):
 sed -i 's/eth0/YOUR_INTERFACE/g' deploy/systemd/softflowd.service
+# Only with the source build above; a packaged nfcapd stays at /usr/bin/nfcapd:
+sed -i 's|/usr/bin/nfcapd|/usr/local/nfdump/bin/nfcapd|' deploy/systemd/nfcapd.service
 sudo cp deploy/systemd/nfcapd.service deploy/systemd/softflowd.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now nfcapd.service softflowd.service

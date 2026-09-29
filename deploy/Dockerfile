@@ -33,18 +33,21 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
 # Add nfdump to PATH
 ENV PATH="/usr/local/nfdump/bin:${PATH}"
 
-# Compile and install nfdump 1.7.8
-RUN wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.8.zip \
-    && unzip v1.7.8.zip \
-    && cd nfdump-1.7.8 \
+# Compile and install nfdump. 1.7.9 fixed remotely triggerable crashes in the
+# collectors and file parsers; 1.7.10 fixed -b/-B pairing in gcc builds.
+ARG NFDUMP_VERSION=1.7.10
+RUN wget https://github.com/phaag/nfdump/archive/refs/tags/v${NFDUMP_VERSION}.zip \
+    && unzip v${NFDUMP_VERSION}.zip \
+    && cd nfdump-${NFDUMP_VERSION} \
     && ./autogen.sh \
     && ./configure --prefix=/usr/local/nfdump \
     && make \
     && make install \
     && ldconfig \
     && nfdump -V \
+    && nfdump -V | grep -q "Version: ${NFDUMP_VERSION}-" \
     && cd .. \
-    && rm -rf nfdump-1.7.8 v1.7.8.zip
+    && rm -rf nfdump-${NFDUMP_VERSION} v${NFDUMP_VERSION}.zip
 
 # Install PHP extension installer helper
 ADD --chmod=0755 https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/

@@ -2,6 +2,8 @@
  * Copying text, also over plain HTTP (nfsen/clipboard). A `button[data-copy-source]` copies the
  * element with that id: data-copy-mode text (default), rows (data-copy-rows) or loaded.
  */
+import { whenLoaded } from 'nfsen/chunks';
+
 const FLASH_MS = 1500;
 const flashes = new WeakMap();
 const clearTimers = new WeakMap();
@@ -84,8 +86,7 @@ async function sourceText(button) {
             .join('\n');
     }
     if (button.dataset.copyMode === 'loaded') {
-        const loaded = await (window.nfsenWhenLoaded?.(source) ?? source);
-        return loaded?.textContent ?? '';
+        return (await whenLoaded(source)).textContent;
     }
     return source.textContent;
 }

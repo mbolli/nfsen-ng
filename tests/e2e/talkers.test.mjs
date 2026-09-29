@@ -155,6 +155,12 @@ export default async function talkersTest() {
         await page.waitFor(`${FOR_SELECT} === 'srcip'`, { label: 'Src IP address again' });
         await page.runQuery('talkers', { timeout: 30000 });
         await page.waitFor(visible('#statsTable'), { label: 'the srcip table' });
+        const statsHost = await page.evaluate(`(function(){
+            var t = document.getElementById('statsTable');
+            return { id: t.rocketInstanceId, shadow: t.shadowRoot ? [...t.shadowRoot.childNodes].map(function(n){ return n.nodeName; }).join() : null };
+        })()`);
+        assert.ok(typeof statsHost.id === 'string' && statsHost.id !== '', `#statsTable is a Rocket host, got ${statsHost.id}`);
+        assert.equal(statsHost.shadow, 'SLOT', "#statsTable's shadow root holds only its slot (shape A)");
         const title = await page.evaluate(`document.getElementById('statsResultsTitle').textContent`);
         assert.match(title, /^Src IP address, ordered by \w+/, `results title: ${title}`);
         const announced = await page.evaluate(`document.querySelector('#statsRun [role="status"]').textContent`);

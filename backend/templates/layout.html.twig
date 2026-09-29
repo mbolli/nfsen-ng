@@ -225,7 +225,8 @@
         "nfsen/format": "{{ basePath }}js/components/format.js?v={{ shell.assetVersion }}",
         "nfsen/clipboard": "{{ basePath }}js/components/clipboard.js?v={{ shell.assetVersion }}",
         "nfsen/download": "{{ basePath }}js/components/download.js?v={{ shell.assetVersion }}",
-        "nfsen/host-state": "{{ basePath }}js/components/host-state.js?v={{ shell.assetVersion }}"
+        "nfsen/host-state": "{{ basePath }}js/components/host-state.js?v={{ shell.assetVersion }}",
+        "nfsen/chunks": "{{ basePath }}js/components/chunks.js?v={{ shell.assetVersion }}"
     }}</script>
 
     <script type="module">
@@ -233,11 +234,12 @@
         window.tzOptions = tzOptions;
     </script>
 
-    {# These define window.* helpers that data-init and data-effect expressions read while
-       Datastar walks the DOM, so they run before the Datastar bundle (module order is document order). #}
+    {# These define window.* helpers that data-init and data-effect expressions read while Datastar walks the DOM,
+       so they run before its bundle. chunks, like clipboard below, uses its import-map URL: one module instance. #}
     <script type="module" src="{{ basePath }}js/components/nfsen-router.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/alert-template-preview.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/filter-drawer.js?v={{ shell.assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/chunks.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/datastar-rocket.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ shell.assetVersion }}"></script>
     {# clipboard is also an import-map target, so its tag uses the identical URL: one module instance. #}

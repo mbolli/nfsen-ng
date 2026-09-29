@@ -13,6 +13,16 @@ async function press(page, key, code = key, keyCode = 0) {
     }
 }
 
+/** The table is a Rocket host whose shadow root only slots its light DOM (ROCKET-SPEC 6.8, shape A). */
+async function assertRocketHost(page, id) {
+    const host = await page.evaluate(`(function(){
+        var t = document.getElementById(${JSON.stringify(id)});
+        return { id: t.rocketInstanceId, shadow: t.shadowRoot ? [...t.shadowRoot.childNodes].map(function(n){ return n.nodeName; }).join() : null };
+    })()`);
+    assert.ok(typeof host.id === 'string' && host.id !== '', `#${id} is a Rocket host, got ${host.id}`);
+    assert.equal(host.shadow, 'SLOT', `#${id}'s shadow root holds only its slot`);
+}
+
 /** A real pointer press at a point, which is what closes a menu from outside. */
 async function clickAt(page, x, y) {
     for (const type of ['mousePressed', 'mouseReleased']) {
@@ -31,6 +41,7 @@ export default async function columnsTest() {
         await page.runQuery('flows', { timeout: 60000 });
 
         await page.waitFor(`!!document.querySelector('${BTN}')`, { timeout: 15000, label: 'column selector button' });
+        await assertRocketHost(page, 'flowTable');
         assert.equal(await page.evaluate(MENU_OPEN), false, 'the menu should start closed');
         assert.equal(
             await page.evaluate(`document.querySelector('${BTN}').getAttribute('aria-controls')`),
@@ -111,6 +122,7 @@ export default async function columnsTest() {
             timeout: 15000,
             label: 'stats column selector',
         });
+        await assertRocketHost(page, 'statsTable');
         await page.evaluate(`document.querySelector('#statsTable .column-selector button').click()`);
         await page.waitFor(`document.querySelector('#statsTable .column-selector-menu').hasAttribute('data-open')`, {
             label: 'stats menu to open',
@@ -144,6 +156,34 @@ export default async function columnsTest() {
             await page.evaluate(`document.querySelector('#statsTable .table-wrap').getClientRects().length > 0`),
             true,
             'and back to the table'
+        );
+
+        // A second run reuses the host; its morph drops data-view and data-overflow, and the rebuild sets both again
+        // for the new result, which opens in the table (so neither needs data-preserve-attr, K4).
+        const was = await page.evaluate(`(function(){
+            var t = window.__statsHost = document.getElementById('statsTable');
+            t.querySelector('button[data-view="original"]').click();
+            return t.dataset.result;
+        })()`);
+        await page.runQuery('talkers', { timeout: 60000 });
+        await page.waitFor(`document.getElementById('statsTable')?.dataset.result !== ${JSON.stringify(was)}`, {
+            timeout: 15000,
+            label: 'the second Top Talkers result',
+        });
+        const rerun = await page.evaluate(`(function(){
+            var t = document.getElementById('statsTable');
+            var wrap = t.querySelector('.table-wrap');
+            return {
+                reused: t === window.__statsHost, view: t.dataset.view,
+                pressed: t.querySelector('button[data-view="table"]').getAttribute('aria-pressed'),
+                original: t.querySelector('.original').hidden, table: wrap.getClientRects().length > 0,
+                overflow: t.hasAttribute('data-overflow') === wrap.scrollWidth > wrap.clientWidth + 1,
+            };
+        })()`);
+        assert.deepEqual(
+            rerun,
+            { reused: true, view: 'table', pressed: 'true', original: true, table: true, overflow: true },
+            'a new result in the reused host opens in the table, its scrollbar state measured again'
         );
 
         const errors = page.realErrors();

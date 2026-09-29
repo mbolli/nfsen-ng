@@ -9,7 +9,8 @@
  * Colours are oklch() so a "subtle" or "emphasis" variant can be mixed from the same hue
  * instead of being a second hand-picked hex, and light-dark() pairs the two themes in one
  * declaration. That works because the theme is also a real color-scheme below, which gets
- * native form controls, scrollbars and the canvas colour for free.
+ * native form controls, scrollbars and the canvas colour for free. Neutrals write their hue
+ * as `none`, so an oklch mix with a status colour keeps the status hue.
  */
 
 :root {
@@ -68,30 +69,30 @@
     color-scheme: light dark;
 
     /* Neutral surfaces, zero chroma: colour is kept for status and data. */
-    --surface-1: light-dark(oklch(97.5% 0 0), oklch(15.5% 0 0)); /* page */
-    --surface-2: light-dark(oklch(100% 0 0), oklch(20.5% 0 0)); /* cards, charts */
-    --surface-3: light-dark(oklch(96% 0 0), oklch(24.5% 0 0)); /* card headers, bands, row hover */
-    --surface-4: light-dark(oklch(92.5% 0 0), oklch(29.5% 0 0)); /* badges, pressed, current nav */
-    --surface-sidebar: light-dark(oklch(96.5% 0 0), oklch(18% 0 0));
-    --surface-inverse: light-dark(oklch(24% 0 0), oklch(93% 0 0)); /* tooltips */
+    --surface-1: light-dark(oklch(97.5% 0 none), oklch(15.5% 0 none)); /* page */
+    --surface-2: light-dark(oklch(100% 0 none), oklch(20.5% 0 none)); /* cards, charts */
+    --surface-3: light-dark(oklch(96% 0 none), oklch(24.5% 0 none)); /* card headers, bands, row hover */
+    --surface-4: light-dark(oklch(92.5% 0 none), oklch(29.5% 0 none)); /* badges, pressed, current nav */
+    --surface-sidebar: light-dark(oklch(96.5% 0 none), oklch(18% 0 none));
+    --surface-inverse: light-dark(oklch(24% 0 none), oklch(93% 0 none)); /* tooltips */
 
-    --text-1: light-dark(oklch(21% 0 0), oklch(95% 0 0));
-    --text-2: light-dark(oklch(45% 0 0), oklch(75% 0 0));
-    --text-3: light-dark(oklch(52% 0 0), oklch(63% 0 0)); /* placeholders, disabled only */
-    --text-on-inverse: light-dark(oklch(98% 0 0), oklch(18% 0 0));
+    --text-1: light-dark(oklch(21% 0 none), oklch(95% 0 none));
+    --text-2: light-dark(oklch(45% 0 none), oklch(75% 0 none));
+    --text-3: light-dark(oklch(52% 0 none), oklch(63% 0 none)); /* placeholders, disabled only */
+    --text-on-inverse: light-dark(oklch(98% 0 none), oklch(18% 0 none));
 
-    --border: light-dark(oklch(89.5% 0 0), oklch(31% 0 0)); /* decorative dividers */
-    --border-strong: light-dark(oklch(77% 0 0), oklch(44% 0 0)); /* card edges, chart axis */
+    --border: light-dark(oklch(89.5% 0 none), oklch(31% 0 none)); /* decorative dividers */
+    --border-strong: light-dark(oklch(77% 0 none), oklch(44% 0 none)); /* card edges, chart axis */
     /* Boundary of every interactive control: at least 3:1 on surface-1..3 (WCAG 1.4.11). */
-    --control-border: light-dark(oklch(62% 0 0), oklch(54% 0 0));
+    --control-border: light-dark(oklch(62% 0 none), oklch(54% 0 none));
     --backdrop: light-dark(color-mix(in oklab, var(--text-1) 40%, transparent), color-mix(in oklab, var(--surface-1) 75%, transparent));
 
     /* The primary control colour: near black in light, near white in dark. */
-    --accent: light-dark(oklch(23% 0 0), oklch(93% 0 0));
-    --accent-hover: light-dark(oklch(32% 0 0), oklch(85% 0 0));
-    --on-accent: light-dark(oklch(99% 0 0), oklch(16% 0 0));
+    --accent: light-dark(oklch(23% 0 none), oklch(93% 0 none));
+    --accent-hover: light-dark(oklch(32% 0 none), oklch(85% 0 none));
+    --on-accent: light-dark(oklch(99% 0 none), oklch(16% 0 none));
     --accent-subtle: color-mix(in oklab, var(--accent) 7%, var(--surface-2));
-    --on-danger: light-dark(oklch(99% 0 0), oklch(16% 0 0));
+    --on-danger: light-dark(oklch(99% 0 none), oklch(16% 0 none));
 
     --danger: light-dark(oklch(54% 0.2 var(--hue-danger)), oklch(68% 0.17 var(--hue-danger)));
     --warning: light-dark(oklch(68% 0.16 var(--hue-warning)), oklch(80% 0.15 var(--hue-warning)));
@@ -122,7 +123,7 @@
     --series-6: light-dark(oklch(62% 0.11 285), oklch(66.5% 0.11 285)); /* lavender */
     --series-7: light-dark(oklch(47% 0.11 120), oklch(54% 0.11 120)); /* olive */
     --series-8: light-dark(oklch(56% 0.19 315), oklch(63% 0.19 315)); /* purple */
-    --series-others: light-dark(oklch(62% 0 0), oklch(58% 0 0));
+    --series-others: light-dark(oklch(62% 0 none), oklch(58% 0 none));
 
     /* Chart chrome, consumed through theme-colors.js. */
     --chart-text: var(--text-2);

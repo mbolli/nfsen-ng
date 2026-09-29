@@ -5,6 +5,7 @@
   "catalog": "09802297b90a",
   "minFormat": "min2",
   "datastar": "Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)",
+  "datastarSha256": "eedda3e39a5cb89189f30ac83768f27bcc3c8ef09402f0ff2876150444a48576",
   "datastarPatches": {
     "0001-Rocket-finish-the-teardown-when-deleting-the-signals.patch": "sha384-k4euqb2MTwIGKvFeRPUsH5n3FcSkM2aI4Ok12VolqW4s8XEPM8hX10fDmAV9AiGH",
     "0002-Rocket-keep-the-element-as-it-is-on-an-atomic-move.patch": "sha384-ox8FYK143ehk1+kmkTXkM9YvoOP8xVNceGrhJByJgYnwoWY7EW/r8c9VGAyHy23P",

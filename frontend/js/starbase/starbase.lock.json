@@ -1,0 +1,31 @@
+{
+  "repository": "https://github.com/zweiundeins/starbase.git",
+  "commit": "d23c936b152397e8b2a12c0934b6014dda7f9fbd",
+  "describe": "v0.4.0-4-gd23c936",
+  "catalog": "09802297b90a",
+  "minFormat": "min2",
+  "datastar": "Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)",
+  "datastarPatches": {
+    "0001-Rocket-finish-the-teardown-when-deleting-the-signals.patch": "sha384-k4euqb2MTwIGKvFeRPUsH5n3FcSkM2aI4Ok12VolqW4s8XEPM8hX10fDmAV9AiGH",
+    "0002-Rocket-keep-the-element-as-it-is-on-an-atomic-move.patch": "sha384-ox8FYK143ehk1+kmkTXkM9YvoOP8xVNceGrhJByJgYnwoWY7EW/r8c9VGAyHy23P",
+    "0003-Rocket-form-associated-components-and-focus-delegati.patch": "sha384-wZPnSeL33/fUmK4B5KaoGwAZRIyr9S1/iebhotyOnuKn8QIGrAWPiG/Umzv1DA/3",
+    "0004-Rocket-bool-props-follow-HTML-boolean-attributes.patch": "sha384-9r4XhlF6C5YpPLwc76+JK8BES6qU32wYDVNMebotDElwX8S7gHFHFaTqLuwlYHBD",
+    "0005-Rocket-clean-up-the-shadow-tree-s-attributes-on-disc.patch": "sha384-eJeI9envAulqfX2KMdYB1n2DDRPhGAvp8F4EioXrDM5G/5MTJ+qQzxysLFt6mwbi",
+    "0006-Rocket-instances-share-one-constructed-stylesheet-pe.patch": "sha384-lr0gJmQbJrLS3rd3RDILWDKV2SV0w98uIkkVhUldCb9VgmyomfWTlNxN1STmAsD+",
+    "0007-Rocket-observers-hear-an-attribute-write-whose-value.patch": "sha384-qj4S+D6ReFgA+YVYlpINQIEj3BUBRO/Ee2+1Kop7Ljz/5W0QHAHwA1CP1OZ3heXh"
+  },
+  "license": "sha384-NOQoztcPboJQkR9KJWoodw+NuS/EUnH50jN20qG6Al+prs+NVtshJGGK4JL5pwCL",
+  "components": {
+    "relative-time": {
+      "tag": "sb-relative-time",
+      "version": "762857ab6a65",
+      "entry": "relative-time.js",
+      "load": false,
+      "files": {
+        "README.md": "sha384-SfUAz1VPZQRt1kL/3aOiSJrWi1owDcrSxYBKw6uH/C++fg8uxV0J+JVDYv/Q0/cA",
+        "manifest.json": "sha384-QcRFkK4JMRomQKOIpwjwWbavcZcWUjvLiUbg1UmCM/jKve03strXUC/PEGD4Ykyq",
+        "relative-time.js": "sha384-PZkU/rkMFs6+REkWS2lfQ4tuYlyyy3bP297BrPwxjLdjVYsDtknWYs+LHaXLoCCe"
+      }
+    }
+  }
+}

@@ -12,6 +12,11 @@ backend/cli/nfsen-ng.pid
 backend/nfsen-ng.pid
 profiles-data/
 vendor/
+# Starbase components and the walk fixtures carry their own vendor/ folders
+!/frontend/js/starbase/**/vendor/
+!/tests/Support/starbase-walk/**/vendor/
+# scripts/starbase-vendor.mjs pull stages here and removes it; check fails on a leftover
+/frontend/js/.starbase-stage-*/
 node_modules/
 *.cache
 *.pdf

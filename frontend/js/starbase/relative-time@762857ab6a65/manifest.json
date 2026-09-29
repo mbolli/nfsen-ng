@@ -1,0 +1,76 @@
+{
+  "tag": "sb-relative-time",
+  "props": [
+    {
+      "name": "datetime",
+      "attribute": "datetime",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "The moment: ISO 8601 (2026-09-22T08:00:00Z) or Unix time (seconds or ms)."
+      }
+    },
+    {
+      "name": "numeric",
+      "attribute": "numeric",
+      "type": "oneOf",
+      "default": "auto",
+      "required": false,
+      "values": [
+        "auto",
+        "always"
+      ],
+      "docs": {
+        "description": "\"auto\" allows words like \"yesterday\"; \"always\" says \"1 day ago\"."
+      }
+    },
+    {
+      "name": "format",
+      "attribute": "format",
+      "type": "oneOf",
+      "default": "long",
+      "required": false,
+      "values": [
+        "long",
+        "short",
+        "narrow"
+      ],
+      "docs": {
+        "description": "Length of the units (\"3 minutes\" / \"3 min.\" / \"3m\")."
+      }
+    },
+    {
+      "name": "lang",
+      "attribute": "lang",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Locale (default: the page's lang, then the browser's)."
+      }
+    },
+    {
+      "name": "threshold",
+      "attribute": "threshold",
+      "type": "number",
+      "default": 0,
+      "required": false,
+      "docs": {
+        "description": "After this many days, show the date instead (0: always relative)."
+      }
+    },
+    {
+      "name": "sync",
+      "attribute": "sync",
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "docs": {
+        "description": "Keep the text current while the page is open."
+      }
+    }
+  ],
+  "slots": [],
+  "events": []
+}

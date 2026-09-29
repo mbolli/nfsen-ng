@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/zweiundeins/starbase.git",
-  "commit": "d23c936b152397e8b2a12c0934b6014dda7f9fbd",
-  "describe": "v0.4.0-4-gd23c936",
-  "catalog": "09802297b90a",
+  "commit": "52512ae67a66f67dea7453ce47158c2f0d7eee8d",
+  "describe": "v0.4.0-11-g52512ae",
+  "catalog": "c2b423309052",
   "minFormat": "min2",
   "datastar": "Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)",
   "datastarSha256": "eedda3e39a5cb89189f30ac83768f27bcc3c8ef09402f0ff2876150444a48576",
@@ -19,13 +19,13 @@
   "components": {
     "relative-time": {
       "tag": "sb-relative-time",
-      "version": "762857ab6a65",
+      "version": "f61a977b2f83",
       "entry": "relative-time.js",
-      "load": false,
+      "load": true,
       "files": {
-        "README.md": "sha384-SfUAz1VPZQRt1kL/3aOiSJrWi1owDcrSxYBKw6uH/C++fg8uxV0J+JVDYv/Q0/cA",
-        "manifest.json": "sha384-QcRFkK4JMRomQKOIpwjwWbavcZcWUjvLiUbg1UmCM/jKve03strXUC/PEGD4Ykyq",
-        "relative-time.js": "sha384-PZkU/rkMFs6+REkWS2lfQ4tuYlyyy3bP297BrPwxjLdjVYsDtknWYs+LHaXLoCCe"
+        "README.md": "sha384-R2DrtHO+/18HF21yvhbdEshz+DRtwOeF4lOUtb8Vl2dg0hlFB8QPYB2O5BE5flBB",
+        "manifest.json": "sha384-Gaz/jgDjnFrmanIAvATrEI5RBlptmLVz4cxhGHL1RmozDoGdG2Y7fnD8zzTSEUiI",
+        "relative-time.js": "sha384-CoArF+Ee21/gKPPEwtxvJSuPLyxxDFjrNhJ1r+A11XM/yqu1Mfdx/p/eYzQqxxMG"
       }
     }
   }

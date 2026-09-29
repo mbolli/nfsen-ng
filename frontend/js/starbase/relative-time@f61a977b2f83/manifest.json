@@ -69,6 +69,40 @@
       "docs": {
         "description": "Keep the text current while the page is open."
       }
+    },
+    {
+      "name": "timeZone",
+      "attribute": "time-zone",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "IANA time zone (Europe/Zurich) of the date on hover, the threshold date and the day count (default, and for a zone the browser can't read: the browser's)."
+      }
+    },
+    {
+      "name": "titleLang",
+      "attribute": "title-lang",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Locale of the date on hover (default: the text's; \"auto\": the browser's)."
+      }
+    },
+    {
+      "name": "titleStyle",
+      "attribute": "title-style",
+      "type": "oneOf",
+      "default": "full",
+      "required": false,
+      "values": [
+        "full",
+        "numeric"
+      ],
+      "docs": {
+        "description": "\"full\" spells out the weekday and month; \"numeric\" shows what toLocaleString() does, seconds included."
+      }
     }
   ],
   "slots": [],

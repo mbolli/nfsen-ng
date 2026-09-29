@@ -7,11 +7,11 @@ applyTo: "backend/**"
 
 ## Stack
 
-- **PHP 8.4 + OpenSwoole** — single-worker coroutine HTTP server via `mbolli/php-via`
-- **Datastar** — SSE hypermedia: server pushes full-page re-renders, browser diffs the DOM
-- **Twig** — all HTML rendered server-side in `backend/templates/`
-- **PECL rrd** — primary datasource (`Rrd.php`); VictoriaMetrics is an alternative
-- **nfdump** — NetFlow processor; `Nfdump.php` shells out to the `nfdump` binary
+- **PHP 8.4 + OpenSwoole**: single-worker coroutine HTTP server via `mbolli/php-via`
+- **Datastar**: SSE hypermedia; the server pushes full-page re-renders and the browser diffs the DOM
+- **Twig**: all HTML rendered server-side in `backend/templates/`
+- **PECL rrd**: primary datasource (`Rrd.php`); VictoriaMetrics is an alternative
+- **nfdump**: NetFlow processor; `Nfdump.php` shells out to the `nfdump` binary
 
 ## Request / Action / Broadcast Flow
 
@@ -31,14 +31,14 @@ All state that must survive across tabs or across a dropped SSE connection lives
 // Client-writable: browser may update via data-bind / data-on
 $signal = $c->signal($default, 'name', clientWritable: true);
 
-// Server-owned (read-only for browser):
-$signal = $c->signal($default, 'name');
+// Server-owned: php-via ignores the browser's copy and sends the server value back
+$signal = $c->signal($default, 'name', clientWritable: false);
 
-// Read helpers — always use these, never ->getValue() directly
+// Read helpers: always use these, never ->getValue() directly
 $signal->string()   // string
 $signal->int()      // int
 $signal->bool()     // bool
-$signal->array()    // array (native — php-via stores arrays natively)
+$signal->array()    // array (native: php-via stores arrays natively)
 
 // Write without triggering a broadcast:
 $signal->setValue($value, broadcast: false);
@@ -46,11 +46,12 @@ $signal->setValue($value, broadcast: false);
 
 - Prefix `_` → client-local signal (never posted back to server, e.g. `$_currentView`)
 - `data-indicator:signal_name` → auto-manages a loading boolean signal for async actions
-- `clientWritable: false` (default) → `setValue()` still works server-side; browser just cannot write
+- `clientWritable: false` → `setValue()` still works server-side; the browser cannot write it, also not on a
+  revival. Leaving the argument out makes a TAB signal client-writable, so every declaration states it
 
 ## View Closure
 
-The view closure re-renders the full page on every `$c->sync()` (action) and every `$app->broadcast()` the tab is subscribed to. With `cacheUpdates: false`, each tab gets its own fresh render — no caching across clients.
+The view closure re-renders the full page on every `$c->sync()` (action) and every `$app->broadcast()` the tab is subscribed to. With `cacheUpdates: false`, each tab gets its own fresh render: no caching across clients.
 
 ```php
 $c->view(function (bool $isUpdate) use ($c, $signal, &$refVar): string {
@@ -68,13 +69,13 @@ $c->view(function (bool $isUpdate) use ($c, $signal, &$refVar): string {
 data-show="$graph_display == 'sources'"
 data-class:loading="$flows._indicator"
 
-{# ❌ Invalid — curly braces not valid in data-* #}
+{# ❌ Invalid: curly braces not valid in data-* #}
 data-show="${graph_display == 'sources'}"
 
 {# Signal binding (two-way, expands to data-bind="hash") #}
 {{ bind(signalObject) }}
 
-{# ⚠️ NEVER use {{ bind(signal) }} inside a data-on:* JS expression — it expands
+{# ⚠️ NEVER use {{ bind(signal) }} inside a data-on:* JS expression: it expands
    to an HTML attribute, generating invalid JS like `data - bind = "…"`. #}
 {# ✅ Use ${{ signal.id() }} for direct value reference inside event expressions #}
 data-on:click="${{ confirmRescan.id() }} = true"
@@ -100,9 +101,9 @@ Always guard broadcasts: `if (!empty($app->getClients())) { $app->broadcast('sco
 
 ```php
 $daemon = new ImportDaemon();
-// 1. Initial catch-up bulk import — run in a coroutine (blocking-safe)
+// 1. Initial catch-up bulk import: run in a coroutine (blocking-safe)
 \OpenSwoole\Coroutine::create(fn() => $daemon->initialImport());
-// 2. Ongoing inotify poll every 1s — runs in the event loop via setInterval
+// 2. Ongoing inotify poll every 1s: runs in the event loop via setInterval
 $app->setInterval(fn() => $daemon->pollOnce(fn() => $app->broadcast('rrd:live')), 1000);
 ```
 
@@ -118,7 +119,7 @@ $c->action(function (Context $c) use ($app, $daemon): void {
     $c->sync();                               // sync the initiating tab immediately
 
     \OpenSwoole\Coroutine::create(function () use ($app, $daemon): void {
-        // No $c here — it may be gone by the time this runs
+        // No $c here: it may be gone by the time this runs
         $importer->start(
             $start,
             function (array $progress) use ($app): void {
@@ -145,7 +146,7 @@ The `$onProgress` array contains: `file`, `source`, `processed`, `total`, `pct`,
 ### Import Lock
 
 `$daemon->lock()` sets `$importLocked = true`. While locked:
-- `pollOnce()` skips execution — prevents inotify from interleaving mid-bulk-import
+- `pollOnce()` skips execution, so inotify cannot interleave mid-bulk-import
 - Critical for force-rescan: `reset()` sets `last_update=0`; a stray poll would advance it to "now", breaking all subsequent historical writes
 
 Always call `$daemon->unlock()` in a `finally` block.
@@ -166,9 +167,9 @@ Reset `import_cancel` to `false` at the start of every new import run (before th
 
 ### File Layout
 
-`backend/datasources/data/{source}.rrd` — aggregate for a source  
-`backend/datasources/data/{source}_{port}.rrd` — per-source port breakdown  
-`backend/datasources/data/{port}.rrd` — cross-source port aggregate
+`backend/datasources/data/{source}.rrd`: aggregate for a source  
+`backend/datasources/data/{source}_{port}.rrd`: per-source port breakdown  
+`backend/datasources/data/{port}.rrd`: cross-source port aggregate
 
 ### RRA Structure (4 levels)
 
@@ -193,7 +194,7 @@ The "nearest" timestamp is always quantised to 5-minute boundaries: `$ts - ($ts 
 
 ### reset() Pitfall (fixed)
 
-`reset()` iterates ports then sources. The port=0 iteration has no `create()` call (only sources get created for port=0). `$return` must be initialised to `true`, **not** `false` — otherwise the `if ($return === false) return false` guard fires immediately and reset() exits without doing anything.
+`reset()` iterates ports then sources. The port=0 iteration has no `create()` call (only sources get created for port=0). `$return` must be initialised to `true`, **not** `false`: otherwise the `if ($return === false) return false` guard fires immediately and reset() exits without doing anything.
 
 ### Fields (15 data sources per RRD)
 
@@ -215,13 +216,13 @@ get_data_path('', 0)          → data/.rrd   ← avoid; port=0 means "source ag
 `Config::$cfg` is empty until `Config::initialize()` runs. **Never read config at module load time** (class properties, constructor defaults before `initialize()`).
 
 Key config paths:
-- `Config::$cfg['general']['sources']` — array of source names
-- `Config::$cfg['general']['ports']` — array of port numbers to track
-- `Config::$cfg['nfdump']['profiles-data']` — nfcapd root dir
-- `Config::$cfg['nfdump']['profile']` — active profile (default: `live`)
-- `Config::$cfg['db']['RRD']['import_years']` — RRD depth (default: 3)
-- `Config::$db` — datasource instance (Rrd or VictoriaMetrics)
-- `Config::$processorClass` — processor class (Nfdump)
+- `Config::$cfg['general']['sources']`: array of source names
+- `Config::$cfg['general']['ports']`: array of port numbers to track
+- `Config::$cfg['nfdump']['profiles-data']`: nfcapd root dir
+- `Config::$cfg['nfdump']['profile']`: active profile (default: `live`)
+- `Config::$cfg['db']['RRD']['import_years']`: RRD depth (default: 3)
+- `Config::$db`: datasource instance (Rrd or VictoriaMetrics)
+- `Config::$processorClass`: processor class (Nfdump)
 
 ## Debug / Logging
 
@@ -229,7 +230,7 @@ Key config paths:
 $debug = Debug::getInstance();
 $debug->log('message', LOG_WARNING);  // LOG_DEBUG, LOG_INFO, LOG_WARNING, LOG_ERR, LOG_CRIT
 
-// Ring buffer — populated for LOG_WARNING and above
+// Ring buffer: populated for LOG_WARNING and above
 $entries = Debug::drainBuffer();  // returns array<{ts, level, msg}> and clears the buffer
 ```
 
@@ -257,14 +258,14 @@ Files are named by the **start** of the 5-minute capture window. `Import::start(
 ]
 ```
 
-Always check `$result['decoded'] ?? []` — `decoded` is absent if nfdump returned no records. Guard: `if (empty($input['decoded'])) { return false; }` before processing.
+Always check `$result['decoded'] ?? []`: `decoded` is absent if nfdump returned no records. Guard: `if (empty($input['decoded'])) { return false; }` before processing.
 
 ## Global State Keys (import pipeline)
 
 | Key | Type | Description |
 |---|---|---|
 | `daemon` | `ImportDaemon\|null` | daemon instance, set in `onStart` |
-| `import_progress` | `int` (0–100) | current progress % |
+| `import_progress` | `int` (0 to 100) | current progress % |
 | `import_current_file` | `string` | path of file being processed |
 | `import_status_text` | `string` | human-readable status |
 | `import_eta` | `string` | formatted ETA string |
@@ -274,11 +275,11 @@ Always check `$result['decoded'] ?? []` — `decoded` is absent if nfdump return
 
 ## Common Pitfalls
 
-- **Never hold `$c` in a coroutine** — the SSE context is tab-scoped and becomes invalid if the tab closes. Store all long-running state in `$app->setGlobalState()`.
-- **Config is empty at module load** — `Config::$cfg` is `[]` until `Config::initialize()` runs in `onStart`. Don't read it in constructors or class properties.
-- **`$c->sync()` before `Coroutine::create()`** — sync the initiating tab immediately so the UI reflects "import running" before the coroutine starts. Otherwise the button stays enabled.
-- **`reset()` then `pollOnce()`** — always lock the daemon before force-rescan. An inotify event mid-reset would write a timestamp to a freshly-zeroed RRD, corrupting the import.
-- **Twig `{{ bind(signal) }}` in event handlers** — expands to an HTML attribute, producing invalid JS inside `data-on:*`. Use `${{ signal.id() }}` for direct signal value references.
-- **`data-show` with conditional rendering** — if a `div` is conditionally absent from the DOM, Datastar cannot morph it in place on the next update. Always render the container (use `invisible` CSS class or `style="display:none"` + `data-show`) rather than Twig `{% if %}` for elements that toggle.
-- **Timestamps are Unix epoch on the server** — never pass `DateTime` objects to templates for reactive display. Store as `int` (Unix epoch) and format client-side with `new Date(ts * 1000).toLocaleString('sv')`.
-- **RRD step quantisation** — always quantise timestamps to 5-minute boundaries before writing: `$ts - ($ts % 300)`. Writing a non-quantised timestamp causes "illegal attempt to update" errors.
+- **Never hold `$c` in a coroutine**: the SSE context is tab-scoped and becomes invalid if the tab closes. Store all long-running state in `$app->setGlobalState()`.
+- **Config is empty at module load**: `Config::$cfg` is `[]` until `Config::initialize()` runs in `onStart`. Don't read it in constructors or class properties.
+- **`$c->sync()` before `Coroutine::create()`**: sync the initiating tab immediately so the UI reflects "import running" before the coroutine starts. Otherwise the button stays enabled.
+- **`reset()` then `pollOnce()`**: always lock the daemon before force-rescan. An inotify event mid-reset would write a timestamp to a freshly-zeroed RRD, corrupting the import.
+- **Twig `{{ bind(signal) }}` in event handlers**: expands to an HTML attribute, producing invalid JS inside `data-on:*`. Use `${{ signal.id() }}` for direct signal value references.
+- **`data-show` with conditional rendering**: if a `div` is conditionally absent from the DOM, Datastar cannot morph it in place on the next update. Always render the container (use `invisible` CSS class or `style="display:none"` + `data-show`) rather than Twig `{% if %}` for elements that toggle.
+- **Timestamps are Unix epoch on the server**: never pass `DateTime` objects to templates for reactive display. Store as `int` (Unix epoch) and format client-side with `new Date(ts * 1000).toLocaleString('sv')`.
+- **RRD step quantisation**: always quantise timestamps to 5-minute boundaries before writing: `$ts - ($ts % 300)`. Writing a non-quantised timestamp causes "illegal attempt to update" errors.

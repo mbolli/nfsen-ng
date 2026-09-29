@@ -45,9 +45,9 @@ final class ConversationsPage implements Page {
         $c->signal('', 'sankey_upper_limit', clientWritable: true);
         $c->signal('ip', 'conv_group', clientWritable: true);
         $c->signal('both', 'conv_direction', clientWritable: true);
-        $c->signal(false, '_conv_stale');
+        $c->signal(false, '_conv_stale', clientWritable: false);
         // Pairs of the last run, for the query control's completion announcement.
-        $c->signal(0, '_conv_pairs');
+        $c->signal(0, '_conv_pairs', clientWritable: false);
     }
 
     public static function register(Context $c, Via $app, PageStates $states): void {

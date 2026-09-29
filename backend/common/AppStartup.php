@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\common;
 
 use mbolli\nfsen_ng\datasources\Rrd;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
 use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\StoreUnavailableException;
 use Mbolli\PhpVia\Via;
@@ -13,9 +14,12 @@ use OpenSwoole\Coroutine;
 /**
  * Encapsulates the server-startup logic that runs once in the onStart coroutine:
  * Config/DB initialisation, the SQLite store, AlertManager, ImportDaemon setup, gap-fill
- * import, the inotify poll interval and the top-N collector.
+ * import, the inotify poll interval and the top-N collector. shutdown() ends them again.
  */
 class AppStartup {
+    /** How long shutdown() waits for the work it ended; php-via's whole stop budget is about 2 s. */
+    public const float SHUTDOWN_WAIT_SECONDS = 1.0;
+
     /**
      * Run everything that must happen once when the OpenSwoole worker starts.
      * Pass the Via application instance so global state and intervals can be registered.
@@ -58,11 +62,15 @@ class AppStartup {
         }
 
         // The first long range after a start then reads only its partial days.
-        Coroutine::create(static function () use ($debug): void {
+        Coroutine::create(static function () use ($app, $debug): void {
             if (!Config::$db instanceof Rrd) {
                 return;
             }
             foreach (Config::$settings->sources as $source) {
+                if ($app->isShuttingDown()) {
+                    return;
+                }
+
                 try {
                     Config::$db->warmTotals($source);
                 } catch (\Throwable $e) {
@@ -155,6 +163,9 @@ class AppStartup {
 
             // Run initial (catch-up) import sequentially for each profile that has existing data.
             foreach ($daemonsToRun as $profile => $daemon) {
+                if ($app->isShuttingDown()) {
+                    return;
+                }
                 $app->setGlobalState('import_active_profile', $profile);
                 $app->setGlobalState('import_status_text', "[{$profile}] Catching up on missed files…");
                 if (!empty($app->getClients())) {
@@ -173,7 +184,7 @@ class AppStartup {
                                 $app->broadcast('admin:import');
                             }
                         },
-                        static fn (): bool => (bool) $app->globalState('import_cancel', false)
+                        static fn (): bool => $app->isShuttingDown() || (bool) $app->globalState('import_cancel', false)
                     );
                     $flushLog();
                     $app->setGlobalState('import_status_text', "[{$profile}] Up to date");
@@ -223,7 +234,7 @@ class AppStartup {
                         // Rules run once per interval, when every source's file of it is in (D17).
                         /** @var null|AlertManager $alertMgr */
                         $alertMgr = $app->globalState('alertManager', null);
-                        if ($alertMgr !== null) {
+                        if ($alertMgr !== null && !$app->isShuttingDown()) {
                             $fired = $alertMgr->onFileImported(Config::$settings->alerts, $_profile, $fileTs, $isLastSource, $source);
                             if (!empty($fired)) {
                                 $app->setGlobalState('alert_fired', ['names' => $fired, 'ts' => time()]);
@@ -238,5 +249,77 @@ class AppStartup {
                 }
             }
         }, 1000);
+    }
+
+    /**
+     * From onShutdown: ends what boot() started so a stop takes a moment, not max_wait_time.
+     * Queries and file walks are cut short; an import finishes the capture file it is on.
+     */
+    public static function shutdown(Via $app): void {
+        $started = microtime(true);
+        TopNCollector::stop();
+        $alertMgr = $app->globalState('alertManager', null);
+        if ($alertMgr instanceof AlertManager) {
+            $alertMgr->stop();
+        }
+        $daemons = $app->globalState('daemons', []);
+        foreach (\is_array($daemons) ? $daemons : [] as $daemon) {
+            if ($daemon instanceof ImportDaemon) {
+                $daemon->stop();
+            }
+        }
+
+        NfdumpSlots::close();
+        NfcapdFiles::stop();
+        $killed = 0;
+        foreach (NfdumpSlots::running() as $handle => $pids) {
+            if ($handle !== NfdumpSlots::SHARED_HANDLE) {
+                // A filtered graph checks the flag between bins; the kill ends the bin in flight.
+                QueryCancel::request($handle);
+                NfdumpSlots::kill($handle);
+                $killed += \count($pids);
+            }
+        }
+
+        $left = self::awaitCoroutines(self::SHUTDOWN_WAIT_SECONDS);
+        $ms = (int) round((microtime(true) - $started) * 1000);
+        // php-via's log reaches stdout; Debug stops echoing once an import has run.
+        $app->log(
+            $left === 0 ? 'info' : 'warn',
+            "nfsen-ng shutdown: {$killed} nfdump process(es) stopped, " . ($left === 0
+                ? "background work ended in {$ms} ms"
+                : "{$left} coroutine(s) still running after {$ms} ms: " . implode('; ', self::parkedAt())),
+        );
+    }
+
+    /** @return list<string> where each other coroutine waits, as `function (file:line)` */
+    private static function parkedAt(): array {
+        $at = [];
+        foreach (Coroutine::list() as $cid) {
+            if ($cid === Coroutine::getCid()) {
+                continue;
+            }
+            $frames = Coroutine::getBackTrace($cid, DEBUG_BACKTRACE_IGNORE_ARGS, 4) ?: [];
+            $at[] = implode(' < ', array_map(
+                static fn (array $f): string => ($f['class'] ?? '') . ($f['type'] ?? '') . ($f['function'] ?? '?') . ' (' . basename($f['file'] ?? '?') . ':' . ($f['line'] ?? 0) . ')',
+                $frames,
+            ));
+        }
+
+        return $at;
+    }
+
+    /** Waits until this is the worker's last coroutine or $seconds pass; returns how many others are left. */
+    private static function awaitCoroutines(float $seconds): int {
+        if (Coroutine::getCid() <= 0) {
+            return 0;
+        }
+
+        $deadline = microtime(true) + $seconds;
+        while (($others = (int) (Coroutine::stats()['coroutine_num'] ?? 1) - 1) > 0 && microtime(true) < $deadline) {
+            Coroutine::usleep(10_000);
+        }
+
+        return max(0, $others);
     }
 }

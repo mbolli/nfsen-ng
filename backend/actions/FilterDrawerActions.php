@@ -16,8 +16,8 @@ use Mbolli\PhpVia\Via;
 
 /**
  * The filter drawer's actions (4.5): open, and the saved filters. Outcomes go to the drawer's
- * status line (`_drawer_notice`). Closures catch \Throwable: php-via only catches \Exception,
- * and an escaped \Error kills the worker.
+ * status line (`_drawer_notice`). Closures catch \Throwable so the drawer shows the failure:
+ * php-via would only log it and answer 500.
  */
 final class FilterDrawerActions {
     public static function register(Context $c, Via $app): void {

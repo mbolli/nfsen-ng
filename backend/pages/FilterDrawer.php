@@ -40,12 +40,12 @@ final class FilterDrawer implements ShellModule {
         // Set only for the one filter-migrate-local post, which clears it again.
         $c->signal('', 'drawer_import', clientWritable: true);
         // A fresh id once that post has imported: the only thing that marks the browser done.
-        $c->signal('', '_drawer_imported');
+        $c->signal('', '_drawer_imported', clientWritable: false);
         $c->signal(false, 'drawer_open', clientWritable: true);
         // The saved filter whose expression or name the editor is changing, 0 for none.
         $c->signal(0, 'drawer_edit', clientWritable: true);
         $c->signal(0, 'drawer_rename', clientWritable: true);
-        $c->signal(self::NOTICE_DEFAULT, '_drawer_notice');
+        $c->signal(self::NOTICE_DEFAULT, '_drawer_notice', clientWritable: false);
     }
 
     public static function register(Context $c, Via $app, PageStates $states): void {
@@ -56,7 +56,7 @@ final class FilterDrawer implements ShellModule {
      * `targets` on every render (the filter fields show their Builder and Saved buttons from
      * it); the grammar and the saved list only while the drawer is open.
      *
-     * @return array{open: bool, target: string, targets: array<string, DrawerTarget>, grammar: null|array{fields: list<array{group: string, label: string, snippet: string, help: string}>, examples: list<array{expression: string, description: string}>, keywords: list<string>}, savedFilters: list<SavedFilter>, savedError: string, noticeDefault: array<string, string>}
+     * @return array{open: bool, target: string, targets: array<string, DrawerTarget>, grammar: null|array{fields: list<array{group: string, label: string, snippet: string, help: string}>, examples: list<array{expression: string, description: string}>, keywords: list<string>}, savedFilters: list<SavedFilter>, savedError: string}
      */
     public static function viewData(Context $c, Via $app, PageStates $states, bool $isUpdate, string $activePage): array {
         $open = $c->getSignal('drawer_open')?->bool() ?? false;
@@ -77,7 +77,6 @@ final class FilterDrawer implements ShellModule {
             ] : null,
             'savedFilters' => $saved['filters'],
             'savedError' => $saved['error'],
-            'noticeDefault' => self::NOTICE_DEFAULT,
         ];
     }
 

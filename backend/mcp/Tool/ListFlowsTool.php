@@ -38,6 +38,7 @@ final class ListFlowsTool implements ToolInterface {
             limit: $limit,
             filter: Guard::filter($filter),
             orderByStart: $order_by_start,
+            handle: Guard::handle(),
         );
 
         Guard::assertAffordable($query->totalBytes());

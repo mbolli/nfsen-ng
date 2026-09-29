@@ -79,6 +79,9 @@ final class TopNCollector {
     /** boot() lets push() start the worker coroutine; start() alone (tests) does not. */
     private static bool $spawnsWorker = false;
 
+    /** Set by stop(): nothing new starts, and a run the stop cut short is not stored. */
+    private static bool $stopping = false;
+
     private static bool $working = false;
 
     /** Coroutines collecting a file for the worker right now. */
@@ -172,6 +175,7 @@ final class TopNCollector {
         self::$repo = $repo;
         self::$retentionDays = max(0, $retentionDays);
         self::$profiles = $profiles;
+        self::$stopping = false;
         self::$booted = self::$retentionDays > 0;
         self::$nextGapFill = $now + self::GAP_FILL_FIRST;
         self::$nextPrune = $now + self::PRUNE_FIRST;
@@ -180,6 +184,17 @@ final class TopNCollector {
     /** Whether enqueue(), the gap filler and the pruner are armed in this process. */
     public static function booted(): bool {
         return self::$booted;
+    }
+
+    /**
+     * From shutdown: disarms the queue, gap filler and pruner; a file whose nfdump the stop
+     * killed is left for the next start, not counted as a failed attempt.
+     */
+    public static function stop(): void {
+        self::$stopping = true;
+        self::$booted = false;
+        self::$queue = [];
+        self::$queuedKeys = [];
     }
 
     /** Tests: back to a process that never booted the collector. */
@@ -191,6 +206,7 @@ final class TopNCollector {
         self::$queue = [];
         self::$queuedKeys = [];
         self::$spawnsWorker = false;
+        self::$stopping = false;
         self::$working = false;
         self::$lanes = 0;
         self::$outcomes = null;
@@ -312,7 +328,7 @@ final class TopNCollector {
             $deleted = 0;
             $oldest = $repo->oldestTs($profile);
             if ($oldest !== null && $oldest < $cutoff) {
-                for ($t = $oldest - $oldest % 3600; $t < $cutoff; $t += 3600) {
+                for ($t = $oldest - $oldest % 3600; $t < $cutoff && self::$booted; $t += 3600) {
                     $to = min($t + 3600, $cutoff);
                     foreach (TopNStat::cases() as $stat) {
                         $deleted += $repo->pruneChunk($profile, $t, $to, $stat);
@@ -331,7 +347,7 @@ final class TopNCollector {
                     if ($first === null || $first >= $cutoff) {
                         continue;
                     }
-                    for ($t = $first - $first % 86400; $t < $cutoff; $t += 86400) {
+                    for ($t = $first - $first % 86400; $t < $cutoff && self::$booted; $t += 86400) {
                         $deleted += $repo->pruneChunk($profile, $t, min($t + 86400, $cutoff), $stat, $tier);
                         self::pause(self::MAINTENANCE_PAUSE_US);
                     }
@@ -556,9 +572,13 @@ final class TopNCollector {
                 $result = self::store($outcome['collected']);
             }
         } catch (\Throwable $e) {
-            ++self::$failed;
-            $result = 'failed';
-            Debug::getInstance()->log("TopN: {$item['profile']}/{$item['source']} {$item['relPath']} not stored: " . $e->getMessage(), LOG_WARNING);
+            if (self::$stopping) {
+                Debug::getInstance()->log("TopN: {$item['profile']}/{$item['source']} {$item['relPath']} left for the next start: " . $e->getMessage(), LOG_DEBUG);
+            } else {
+                ++self::$failed;
+                $result = 'failed';
+                Debug::getInstance()->log("TopN: {$item['profile']}/{$item['source']} {$item['relPath']} not stored: " . $e->getMessage(), LOG_WARNING);
+            }
         }
 
         unset(self::$inFlight[self::itemKey($item['profile'], $item['source'], $item['ts'])]);
@@ -592,6 +612,9 @@ final class TopNCollector {
                 }
             }
         } catch (\Throwable $e) {
+            if (self::$stopping) {
+                throw $e;
+            }
             $status = TopNRepository::STATUS_FAILED;
             $rowsByStat = [];
             Debug::getInstance()->log("TopN: {$profile}/{$source} {$relPath} failed: " . $e->getMessage(), LOG_WARNING);
@@ -672,7 +695,7 @@ final class TopNCollector {
         $enqueued = 0;
 
         $day = (new \DateTimeImmutable('@' . $now))->setTimezone(Config::nfcapdTimezone())->setTime(0, 0);
-        while (true) {
+        while (self::$booted) {
             $dayStart = $day->getTimestamp();
             $dayEnd = $day->modify('+1 day')->getTimestamp();
             if ($dayEnd <= $cutoff) {
@@ -832,6 +855,9 @@ final class TopNCollector {
         $inCoroutine = Coroutine::getCid() > 0;
         while (true) {
             self::awaitSlot();
+            if (self::$stopping) {
+                throw new \RuntimeException('the collector is stopping');
+            }
 
             try {
                 NfdumpSlots::acquireMany(1, NfdumpSlots::BACKGROUND, $inCoroutine ? 0.0 : null);

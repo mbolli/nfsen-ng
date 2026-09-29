@@ -56,8 +56,8 @@ go to `_drawer_notice` (`{id, level, text}`), the status line under the saved
 list; a notice that arrives while the drawer is closed, as after the browser
 import at page load, becomes a toast. A duplicate is a warning and a bad name an
 error, and neither is logged; any other failure is logged at `LOG_ERR` too. Each
-action catches `\Throwable`, because php-via only catches `\Exception` and an
-`\Error` that escapes kills the worker.
+action catches `\Throwable`, so every failure reaches the status line: php-via
+would log it and answer `500`, which the browser does not show.
 
 ## Editor and grammar
 

@@ -40,6 +40,7 @@ final class FlowMatrixTool implements ToolInterface {
             topN: $topN,
             showPorts: $show_ports,
             filter: Guard::filter($filter),
+            handle: Guard::handle(),
         );
 
         Guard::assertAffordable($query->totalBytes());

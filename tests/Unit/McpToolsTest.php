@@ -10,6 +10,7 @@ use mbolli\nfsen_ng\mcp\HttpEndpoint;
 use mbolli\nfsen_ng\mcp\Tier;
 use mbolli\nfsen_ng\mcp\Tool\ToolInterface;
 use mbolli\nfsen_ng\mcp\ToolRegistry;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
 use Mcp\Exception\ToolCallException;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
@@ -147,6 +148,14 @@ describe('Guard', function (): void {
         ;
     });
 
+    test('each call gets its own nfdump handle, not the one a stop leaves running', function (): void {
+        $handles = [Guard::handle(), Guard::handle()];
+
+        expect($handles[0])->not->toBe($handles[1])
+            ->and($handles)->not->toContain(NfdumpSlots::SHARED_HANDLE)
+        ;
+    });
+
     test('caps the row limit and defaults a missing one', function (): void {
         expect(Guard::limit(0))->toBe(Guard::DEFAULT_LIMIT)
             ->and(Guard::limit(-5))->toBe(Guard::DEFAULT_LIMIT)
@@ -241,8 +250,8 @@ describe('MCP tool coverage of the triage loop', function (): void {
         }
     });
 
-    // Every expensive tool has to pass its window and filter through the guard, or the
-    // ceilings are advisory. Asserted on the source because the alternative is running nfdump.
+    // The guard's ceilings are advisory unless every expensive tool goes through it, and its handle
+    // lets a stop kill the tool's nfdump. Asserted on the source: the alternative is running nfdump.
     test('every expensive tool routes its arguments through the guard', function (): void {
         foreach (ToolRegistry::tools() as $tool) {
             if ($tool::tier() !== Tier::Expensive) {
@@ -255,6 +264,7 @@ describe('MCP tool coverage of the triage loop', function (): void {
                 ->and($source)->toContain('Guard::filter(')
                 ->and($source)->toContain('Guard::limit(')
                 ->and($source)->toContain('Guard::assertAffordable(')
+                ->and($source)->toContain('handle: Guard::handle()')
             ;
         }
     });

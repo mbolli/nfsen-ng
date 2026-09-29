@@ -49,6 +49,8 @@ class ImportDaemon {
     /** Timer ticks overlap while an import yields, so a tick that finds one running returns. */
     private bool $polling = false;
 
+    private bool $stopped = false;
+
     private readonly string $profile;
 
     public function __construct(string $profile = '') {
@@ -86,6 +88,23 @@ class ImportDaemon {
     /** The nfdump profile this daemon is monitoring. */
     public function getProfile(): string {
         return $this->profile;
+    }
+
+    /**
+     * From the worker's shutdown: closes the inotify descriptor and turns pollOnce() into a
+     * no-op. A running import ends through its cancel check, which also reads isShuttingDown().
+     */
+    public function stop(): void {
+        $this->stopped = true;
+        if (\is_resource($this->inotify)) {
+            fclose($this->inotify);
+        }
+        $this->inotify = false;
+        $this->watches = [];
+    }
+
+    public function isStopped(): bool {
+        return $this->stopped;
     }
 
     // ─── Public API ──────────────────────────────────────────────────────────
@@ -137,6 +156,9 @@ class ImportDaemon {
      * After this returns, pollOnce() will begin responding to inotify events.
      */
     public function setupWatchesOnly(): void {
+        if ($this->stopped) {
+            return;
+        }
         $this->importer = $this->newOngoingImporter();
 
         $this->initWatches();
@@ -149,8 +171,8 @@ class ImportDaemon {
      * @param callable(string $source, int $fileTs, bool $isLastSource): void $onImportDone invoked after each imported file
      */
     public function pollOnce(callable $onImportDone): void {
-        if ($this->inotify === false) {
-            // Watches not yet initialised (initial import still running)
+        if ($this->inotify === false || $this->stopped) {
+            // No watches yet (the initial import is still running), or stopped.
             return;
         }
 
@@ -187,6 +209,9 @@ class ImportDaemon {
             $this->debug->log('ImportDaemon: received ' . \count($events) . ' inotify event(s)', LOG_DEBUG);
 
             foreach ($events as $event) {
+                if ($this->stopped) {
+                    return;
+                }
                 $this->handleEvent($event, $onImportDone);
             }
         }
@@ -221,6 +246,9 @@ class ImportDaemon {
         $isLastSource = $source === end($sources);
 
         foreach (scandir($path) ?: [] as $filename) {
+            if ($this->stopped) {
+                return;
+            }
             if (!preg_match('/^nfcapd\.\d{12}$/', $filename)) {
                 continue;
             }
@@ -288,6 +316,11 @@ class ImportDaemon {
     }
 
     private function initWatches(): void {
+        // An initial import the stop cancelled returns here; it must not watch again.
+        if ($this->stopped) {
+            return;
+        }
+
         $inotify = @inotify_init();
         if (!\is_resource($inotify)) {
             $error = error_get_last();

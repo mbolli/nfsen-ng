@@ -44,7 +44,7 @@
 } %}
 
 <div class="stack talkers"
-     data-signals__ifmissing="{{ {_statsCatalog: t.catalog.client, _stats_panel: '', _stats_copied: '', (_stats_rows.id()): 0}|json_encode }}"
+     data-signals__ifmissing="{{ {_statsCatalog: t.catalog.client, _stats_panel: '', _stats_copied: ''}|json_encode }}"
      data-computed:_stats_run_kind="${{ query_kind.id() }} === 'talkers-panel' ? 'talkers-panel-' + $_stats_panel : ${{ query_kind.id() }}">
 
     <div class="stat-bar">

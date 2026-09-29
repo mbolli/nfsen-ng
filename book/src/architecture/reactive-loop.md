@@ -57,8 +57,18 @@ A signal has a default value, a name, and a scope:
 - **TAB scope** (the default) is private to one browser tab (one context).
 - **Shared scopes** (`ROUTE`, `SESSION`, `GLOBAL`, or a custom string like
   `rrd:live`) are one instance shared by every context in the scope.
-- `clientWritable: true` lets the browser's POST update the signal; server-owned
-  signals omit it and change only from PHP.
+- `clientWritable: true` lets the browser's POST, and a revival, update the
+  signal. `clientWritable: false` makes it server-owned: php-via ignores the
+  posted copy and sends the server's value back, so a stale copy in the browser
+  never overwrites it (`query_running`, the query progress, the stored graph's
+  figures). A signal the server sets but whose copy in the browser carries it
+  across a revival stays client-writable: `range_live`, `range_preset`,
+  `flows_graph_key`. Every declaration says which it is.
+
+php-via puts the values of the first sync into the page itself, as a
+`data-signals__ifmissing` meta at the top of `<head>`, so expressions work
+before the SSE stream connects. Templates seed only the client-local `_`
+signals they introduce.
 
 The global signals every page reads are declared by `RangeControls` and the
 shell: `page`, `datestart`, `dateend`, `range_preset`, `range_live`,
@@ -102,10 +112,12 @@ signals it needs, does its work (often in a coroutine, often shelling out to
 `$c->sync()` to re-render and push the patch, or `$c->syncSignals()` to push
 signals only (query progress, filter validation, estimates).
 
-Every action closure catches `\Throwable`: php-via's action handler catches only
-`\Exception`, and an escaped `\Error` kills the worker. Failures are reported
-through the page's notices or the `_error` signal. The full list is in the
-[Actions Reference](../api.md).
+Every action closure catches `\Throwable` and reports the failure through the
+page's notices or the `_error` signal. php-via catches what escapes, logs it and
+answers `500`, and the worker keeps running, but the tab would show nothing. A
+coroutine an action starts itself (`Coroutine::create()`) has no such guard: an
+uncaught throw there still ends the worker, so its body catches `\Throwable`
+too. The full list is in the [Actions Reference](../api.md).
 
 ## Sync and broadcast
 
@@ -113,6 +125,23 @@ through the page's notices or the `_error` signal. The full list is in the
 - `$app->broadcast($scope)` re-renders every context subscribed to a scope:
   `rrd:live` after each imported file, `admin:import` on import progress,
   `settings:saved` after a settings save, `alerts:fired` when rules fire.
+
+php-via 0.13 drops element patches for a tab with more than 1 MB still unsent
+instead of parking the tab's SSE write, and `app.php` keeps that threshold
+(`withSseMaxQueuedBytes()`). With dropping off, an import's stream of broadcasts
+parked a slow tab's write: php-via then lost patches from the full queue anyway,
+and a stop waited for the parked write. What a drop costs depends on the patch:
+
+- A render carries the whole page, so the tab's next render (an action, a live
+  tick, a broadcast) replaces a dropped one.
+- A chunk of Flows rows or raw output is appended, so no render replaces it. If
+  a chunk has not arrived 8 seconds after the page asked for it, the page asks
+  again, three requests in all, and then says which rows or output are missing;
+  running the query again fetches them.
+- A dialog opened in that state may stay closed: its markup comes with the next
+  render, but the script that opens it has already run.
+
+Signals such as `query_running` and scripts are never dropped.
 
 ## Render cost and caches
 

@@ -174,10 +174,10 @@ final class ImportActions {
                         }
                     },
                     $flushLog,
-                    static fn (): bool => (bool) $app->globalState('import_cancel', false)
+                    static fn (): bool => $app->isShuttingDown() || (bool) $app->globalState('import_cancel', false)
                 );
 
-                $cancelled = (bool) $app->globalState('import_cancel', false);
+                $cancelled = $app->isShuttingDown() || (bool) $app->globalState('import_cancel', false);
                 $app->setGlobalState('import_status_text', $noun . ($cancelled ? ' cancelled.' : ' complete.'));
                 $app->setGlobalState(HealthPage::IMPORT_OUTCOME, $cancelled ? 'cancelled' : 'complete');
                 $app->setGlobalState('import_current_file', '');

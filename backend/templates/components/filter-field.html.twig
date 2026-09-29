@@ -7,8 +7,7 @@
 {% set invalid = "(" ~ flt ~ ".checked === " ~ text ~ " && " ~ text ~ ".trim() !== '' && " ~ flt ~ ".status === 'invalid')" %}
 {% set validate = "@post('" ~ validateFilter.url() ~ "?target=" ~ target ~ "')" %}
 {% set statusId = textareaId ~ 'Status' %}
-<div class="filter-field" data-filter-field="{{ target }}"
-     data-signals__ifmissing="{{ {(meta.filterId): querykit.defaults.filter}|json_encode }}">
+<div class="filter-field" data-filter-field="{{ target }}">
     <label class="visually-hidden" for="{{ textareaId }}">{{ label ?? 'nfdump filter' }}</label>
     {# Typing is checked after the debounce; the effect checks other text and a revival's reset, blur an unanswered text. #}
     <textarea id="{{ textareaId }}" {{ bind(signal) }} rows="{{ rows ?? 3 }}"

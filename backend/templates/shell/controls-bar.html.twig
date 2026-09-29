@@ -1,25 +1,7 @@
 {# Global controls bar (4.0.2): profile, range, sources, protocol and unit for every page. The
-   seeds cover what this bar and the traffic graph read until the first sync delivers it. #}
+   server signals it reads are in php-via's seed in <head>; only the client-local ones start here. #}
 {% import 'shell/icons.html.twig' as icons %}
 {% set sources = range.sources %}
-{% set seeds = {
-    (datestart.id()): datestart.int(),
-    (dateend.id()): dateend.int(),
-    (data_range_min.id()): data_range_min.int(),
-    (data_range_max.id()): data_range_max.int(),
-    (range_preset.id()): range_preset.string(),
-    (range_live.id()): range_live.bool(),
-    (protocol.id()): protocol.string(),
-    (graph_sources.id()): graph_sources.array(),
-    (graph_ports.id()): graph_ports.array(),
-    (graph_display.id()): graph_display.string(),
-    (graph_datatype.id()): graph_datatype.string(),
-    (graph_trafficUnit.id()): graph_trafficUnit.string(),
-    (displayTz.id()): displayTz.string(),
-    (nfcapdTz.id()): nfcapdTz.string(),
-    '_controlsMore': false,
-    '_rangeEntryError': '',
-} %}
 {% set ds = '$' ~ datestart.id() %}
 {% set de = '$' ~ dateend.id() %}
 {% set live = '$' ~ range_live.id() %}
@@ -35,7 +17,7 @@
 {% set chip = range.importChip %}
 
 <div class="controls-bar" role="region" aria-label="Range and filters"
-     data-signals__ifmissing="{{ seeds|json_encode }}"
+     data-signals__ifmissing="{_controlsMore: false, _rangeEntryError: ''}"
      data-more="closed" data-attr:data-more="$_controlsMore ? 'open' : 'closed'" data-preserve-attr="data-more">
 
     {% if available_profiles.array()|length > 1 %}

@@ -115,9 +115,9 @@ function queryKitSettle(Context $c): void {
     queryKitSignalPatches($c);
 }
 
-/** The JSON a component seeds with data-signals__ifmissing. */
+/** The signal values php-via seeds a new tab's document with, from its <meta data-signals__ifmissing>. */
 function queryKitSeed(string $html): array {
-    expect(preg_match('/data-signals__ifmissing="([^"]*)"/', $html, $m))->toBe(1);
+    expect(preg_match('/<meta data-signals__ifmissing="([^"]*)">/', $html, $m))->toBe(1);
 
     return json_decode(html_entity_decode($m[1], ENT_QUOTES), true, flags: JSON_THROW_ON_ERROR);
 }
@@ -189,11 +189,12 @@ describe('target table (3.5.3)', function (): void {
         }
         expect(QueryKitActions::estimateTarget($this->c, 'alert'))->toBeNull()
             ->and(QueryKitActions::estimateTarget($this->c, 'nope'))->toBeNull()
-            // No drawer_target signal until the drawer lands, and a drawer for an alert rule has no estimate.
+            // A drawer for no target yet, or for an alert rule, has no estimate.
             ->and(QueryKitActions::estimateTarget($this->c, 'drawer'))->toBeNull()
         ;
 
-        $drawerTarget = $this->c->signal('flows', 'drawer_target', clientWritable: true);
+        $drawerTarget = $this->c->getSignal('drawer_target') ?? throw new LogicException('drawer_target is not declared');
+        $drawerTarget->setValue('flows');
         expect(QueryKitActions::estimateTarget($this->c, 'drawer'))->toBe('flows');
         $drawerTarget->setValue('alert');
         expect(QueryKitActions::estimateTarget($this->c, 'drawer'))->toBeNull();
@@ -225,7 +226,8 @@ describe('clamping per target', function (): void {
     test('the drawer takes its target\'s kind and clamping', function (): void {
         $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE, broadcast: false);
         $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 86_400, broadcast: false);
-        $drawerTarget = $this->c->signal('flows', 'drawer_target', clientWritable: true);
+        $drawerTarget = $this->c->getSignal('drawer_target') ?? throw new LogicException('drawer_target is not declared');
+        $drawerTarget->setValue('flows');
 
         expect(QueryKitActions::plan($this->c, 'drawer')['window']->clamped ?? null)->toBeFalse();
         $drawerTarget->setValue('talkers');
@@ -272,7 +274,11 @@ describe('payload shapes equal the seeded defaults', function (): void {
         ;
     });
 
-    test('the components seed exactly the defaults, under the signals\' wire ids', function (): void {
+    test('the document seeds exactly the defaults, under the signals\' wire ids, and the components nothing', function (): void {
+        $states = new PageStates();
+        $this->c->view(fn (bool $isUpdate): string => $this->c->render('layout.html.twig', Shell::render($this->c, $this->app, $states, $isUpdate)), cacheUpdates: false);
+        $document = $this->app->buildHtmlDocument($this->c);
+        $seed = queryKitSeed(substr($document, 0, (int) strpos($document, '</head>')));
         $data = [
             'querykit' => QueryKit::viewData($this->c, $this->app, new PageStates(), false, 'flows'),
             'drawer' => [],
@@ -288,12 +294,13 @@ describe('payload shapes equal the seeded defaults', function (): void {
         $estId = $this->c->getSignal('_est_flows')?->id();
         $fltId = $this->c->getSignal('_flt_flows')?->id();
 
-        expect(queryKitSeed($estimate)[$estId])->toBe(QueryKit::ESTIMATE_DEFAULT)
-            ->and(queryKitSeed($estimate))->toHaveKeys(array_map(
+        expect($seed[$estId] ?? null)->toBe(QueryKit::ESTIMATE_DEFAULT)
+            ->and($seed)->toHaveKeys(array_map(
                 fn (string $name): string => (string) $this->c->getSignal($name)?->id(),
                 ['datestart', 'dateend', 'graph_sources', 'selected_profile'],
             ))
-            ->and(queryKitSeed($field))->toBe([$fltId => QueryKit::FILTER_DEFAULT])
+            ->and($seed[$fltId] ?? null)->toBe(QueryKit::FILTER_DEFAULT)
+            ->and($estimate . $field)->not->toContain('data-signals__ifmissing')
             ->and($this->c->getSignal('_est_flows')?->getValue())->toBe(QueryKit::ESTIMATE_DEFAULT)
             ->and($this->c->getSignal('_flt_flows')?->getValue())->toBe(QueryKit::FILTER_DEFAULT)
             ->and($estimate)->toContain('data-estimate="flows"', '/_action/estimate-query?target=flows', "(true ? 'up to ' : 'about ')")
@@ -304,7 +311,8 @@ describe('payload shapes equal the seeded defaults', function (): void {
     test('the estimate posts again when a run of its own kind finishes, the drawer\'s by its target', function (): void {
         $running = (string) $this->c->getSignal('query_running')?->id();
         $kind = (string) $this->c->getSignal('query_kind')?->id();
-        $drawerTarget = $this->c->signal('flows', 'drawer_target', clientWritable: true);
+        $drawerTarget = $this->c->getSignal('drawer_target') ?? throw new LogicException('drawer_target is not declared');
+        $drawerTarget->setValue('flows');
         $data = ['querykit' => QueryKit::viewData($this->c, $this->app, new PageStates(), false, 'talkers')];
         $effect = fn (string $target): string => html_entity_decode(
             preg_match('/data-effect="([^"]*)"/', $this->c->render('components/query-estimate.html.twig', [...$data, 'target' => $target]), $m) === 1 ? $m[1] : '',
@@ -557,7 +565,8 @@ describe('estimate-query', function (): void {
     });
 
     test('a drawer with nothing to estimate drops its figures and outranks an estimate still running', function (): void {
-        $drawerTarget = $this->c->signal('flows', 'drawer_target', clientWritable: true);
+        $drawerTarget = $this->c->getSignal('drawer_target') ?? throw new LogicException('drawer_target is not declared');
+        $drawerTarget->setValue('flows');
         queryKitRun(fn () => QueryKitActions::estimate($this->c, 'drawer'));
         expect($this->c->getSignal('_est_drawer')?->getValue())->toMatchArray(['files' => 48, 'window' => '2 hours', 'pending' => false]);
 

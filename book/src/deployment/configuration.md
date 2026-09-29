@@ -318,7 +318,7 @@ The switch is saved in `preferences.json`; there is no environment variable for 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SWOOLE_WORKER_NUM` | `1` | Worker processes. Leave it at `1`. Every worker starts its own import daemon, top-N collector and alert evaluation, all of them writing the same SQLite file, so files would be imported and alerts sent once per worker. A tab's state also lives only in the worker that rendered it. |
+| `SWOOLE_WORKER_NUM` | `1` | Worker processes. Leave it at `1`. php-via 0.13 can serve a tab from any worker, but nfsen-ng keeps its nfdump slots, running queries, filtered-graph cache and the server-owned tab signals (such as whether a query runs) in each worker's memory, so a Kill or a finished query could reach a worker that does not know the query. The inotify poll and the top-N collector's timer run on the first worker only, but every worker would run the start-up catch-up import against the same files and SQLite store. |
 | `SWOOLE_MAX_REQUEST` | `0` | Requests per worker before restart. `0` (unlimited) is correct for a long-lived SSE server. |
 | `SWOOLE_MAX_COROUTINE` | `10000` | Max concurrent coroutines / SSE connections. |
 

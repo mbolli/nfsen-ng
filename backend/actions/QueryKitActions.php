@@ -18,7 +18,7 @@ use OpenSwoole\Coroutine;
 
 /**
  * validate-filter and estimate-query (3.5.3), answered with signal-only patches. Closures catch
- * \Throwable: php-via only catches \Exception, and an escaped \Error kills the worker.
+ * \Throwable so the tab shows the failure: php-via would only log it and answer 500.
  */
 final class QueryKitActions {
     /** Graph resolution when the Overview signals are missing. */

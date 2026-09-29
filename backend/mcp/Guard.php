@@ -52,6 +52,11 @@ final class Guard {
         return $configured > 0 ? $configured : self::DEFAULT_MAX_WINDOW_SECONDS;
     }
 
+    /** One handle per call, so a stop kills the call's nfdump as it does a tab's, not as an import's. */
+    public static function handle(): string {
+        return 'mcp-' . bin2hex(random_bytes(6));
+    }
+
     public static function limit(int $requested): int {
         if ($requested <= 0) {
             return self::DEFAULT_LIMIT;

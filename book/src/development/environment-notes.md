@@ -19,8 +19,10 @@ protocol the browser uses:
    are in the first response. A hash never reaches the server, so to reach
    another page, post `navigate` with the `page` signal set to its id and read
    the re-rendered page from the context's SSE stream (`GET /_sse`).
-4. Send an `Origin` header matching the request host, or expect
-   `403 Forbidden: untrusted origin`; curl sends none by default.
+4. Send an `Origin` header matching the request host; curl sends none by
+   default. Outside dev mode (`NFSEN_DEV_MODE`) a POST without one gets
+   `403 Forbidden: missing Origin`, and one naming another host
+   `403 Forbidden: untrusted origin`.
 5. Actions that take an id (`delete-alert`, `test-alert`, …) read it via
    `$c->input('id')`, not a signal: pass it as a query string on the POST
    URL.

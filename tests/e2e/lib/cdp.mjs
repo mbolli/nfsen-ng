@@ -12,7 +12,7 @@
 // docs/features (superseded by the book) and book/src/development/testing.md
 // for why nfsen-ng doesn't have one.
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -433,6 +433,9 @@ export async function withPage(fn, { width = 1400, height = 1100, port, mobile =
         }
         return await fn(page);
     } finally {
+        const exited = new Promise((resolve) =>
+            chrome.exitCode !== null || chrome.signalCode !== null ? resolve() : chrome.once('exit', resolve)
+        );
         if (page) {
             try {
                 await page.close();
@@ -440,5 +443,10 @@ export async function withPage(fn, { width = 1400, height = 1100, port, mobile =
         } else {
             chrome.kill();
         }
+        // A profile takes 100 to 200 MB; the ones left behind filled the disk.
+        await Promise.race([exited, sleep(5000)]);
+        try {
+            rmSync(userDataDir, { recursive: true, force: true, maxRetries: 3 });
+        } catch {}
     }
 }

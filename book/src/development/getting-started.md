@@ -21,9 +21,12 @@ docker compose -f deploy/docker-compose.dev.yml up -d
 docker compose -f deploy/docker-compose.dev.yml logs -f nfsen
 ```
 
-The dev image runs the app under [`entr`](https://eradman.com/entrproject/):
-any `.php`/`.twig`/`.js`/`.css` change under the mounted source kills and
-restarts the server automatically: no manual restart, no build step. The dev
+The dev container runs the app under [`entr`](https://eradman.com/entrproject/):
+any `.php`/`.twig`/`.js`/`.css` change under the mounted source stops the server,
+waits for its shutdown and starts it again: no manual restart, no build step.
+Its entrypoint, `deploy/docker-entrypoint-dev.sh`, also runs from the mounted
+source, so a change to it takes effect when `docker compose up -d` recreates the
+container, without an image rebuild. The dev
 state (preferences, alert rules and the SQLite store `nfsen-ng.sqlite`) lives in
 `backend/settings/`, next to the code, and is ignored by git.
 
@@ -46,6 +49,11 @@ pnpm run lint             # Biome lint of frontend/js/components and frontend/cs
 pnpm run format           # Biome format --write
 pnpm run test-e2e         # the browser suite against a running instance (BASE, CHROME)
 ```
+
+Until php-via 0.13.0 is published, `composer.json` takes it from the local
+repository at `/develop/php-via`, so `composer install` needs that path (mount it
+into a Composer container too). Once it is out, require `"mbolli/php-via": "^0.13.0"`,
+drop the `repositories` entry and run `composer update mbolli/php-via`.
 
 See [Project Structure](structure.md) for where things live,
 [Testing](testing.md) for the test suite in more depth, and

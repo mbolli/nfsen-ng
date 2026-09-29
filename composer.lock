@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "1f7879f2032c8f1a0582231a60363baa",
+    "content-hash": "937b136e747619c58c048209a140be51",
     "packages": [
         {
             "name": "doctrine/deprecations",
@@ -121,22 +121,16 @@
         },
         {
             "name": "mbolli/php-via",
-            "version": "v0.12.0",
+            "version": "dev-master",
             "source": {
                 "type": "git",
-                "url": "https://github.com/mbolli/php-via.git",
-                "reference": "1def23262edf01d5627ecb50a5a4ac5e3f96906e"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/mbolli/php-via/zipball/1def23262edf01d5627ecb50a5a4ac5e3f96906e",
-                "reference": "1def23262edf01d5627ecb50a5a4ac5e3f96906e",
-                "shasum": ""
+                "url": "/develop/php-via",
+                "reference": "5ff9d25a735bb9735f2a42ab1a041a459a08d797"
             },
             "require": {
-                "ext-openswoole": "*",
+                "ext-openswoole": "^26.0",
                 "nyholm/psr7": "^1.8",
-                "openswoole/core": "^22.2",
+                "openswoole/core": "^26.2",
                 "php": "^8.4",
                 "psr/http-server-middleware": "^1.0",
                 "starfederation/datastar-php": "^1.0",
@@ -144,13 +138,12 @@
             },
             "require-dev": {
                 "friendsofphp/php-cs-fixer": "^3.90.0",
-                "openswoole/ide-helper": "^22.1",
-                "pestphp/pest": "^4.0",
+                "openswoole/ide-helper": "^26.2",
+                "pestphp/pest": "^5.0",
                 "phpstan/extension-installer": "^1.4",
                 "phpstan/phpstan": "^2.1.0",
                 "phpstan/phpstan-deprecation-rules": "^2.0",
-                "rector/type-perfect": "^2.1",
-                "tomasvotruba/type-coverage": "^2.0"
+                "tomasvotruba/type-coverage": "^2.3"
             },
             "suggest": {
                 "ext-brotli": "Required for Config::withBrotli(): Native Brotli compression for pages, static assets, and SSE streams"
@@ -161,7 +154,31 @@
                     "Mbolli\\PhpVia\\": "src/"
                 }
             },
-            "notification-url": "https://packagist.org/downloads/",
+            "autoload-dev": {
+                "psr-4": {
+                    "Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "dev": [
+                    "bash scripts/dev.sh"
+                ],
+                "test": [
+                    "vendor/bin/pest"
+                ],
+                "watch-test": [
+                    "find src tests -name '*.php' | entr -c vendor/bin/pest"
+                ],
+                "css": [
+                    "cd website && pnpm build"
+                ],
+                "phpstan": [
+                    "phpstan analyse --configuration=.phpstan.neon"
+                ],
+                "cs-fix": [
+                    "php-cs-fixer fix -v --config=.php-cs-fixer.php"
+                ]
+            },
             "license": [
                 "MIT"
             ],
@@ -172,11 +189,7 @@
                 }
             ],
             "description": "Real-time engine for building reactive web applications in PHP",
-            "support": {
-                "issues": "https://github.com/mbolli/php-via/issues",
-                "source": "https://github.com/mbolli/php-via/tree/v0.12.0"
-            },
-            "time": "2026-07-08T11:17:09+00:00"
+            "time": "2026-09-29T17:16:10+00:00"
         },
         {
             "name": "mcp/sdk",
@@ -343,21 +356,21 @@
         },
         {
             "name": "openswoole/core",
-            "version": "22.2.0",
+            "version": "26.2.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/openswoole/core.git",
-                "reference": "d611dd826aa4a9bdd094e4e0d493af4545cf1564"
+                "reference": "cc83e3d9b769380555bb7a4508368a8edc3a7ab1"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/openswoole/core/zipball/d611dd826aa4a9bdd094e4e0d493af4545cf1564",
-                "reference": "d611dd826aa4a9bdd094e4e0d493af4545cf1564",
+                "url": "https://api.github.com/repos/openswoole/core/zipball/cc83e3d9b769380555bb7a4508368a8edc3a7ab1",
+                "reference": "cc83e3d9b769380555bb7a4508368a8edc3a7ab1",
                 "shasum": ""
             },
             "require": {
-                "ext-openswoole": ">=22.0",
-                "php": ">=7.4",
+                "ext-openswoole": ">=26.2.0",
+                "php": ">=8.3",
                 "psr/http-message": "^1.0 || ^2.0",
                 "psr/http-server-middleware": "^1.0.0"
             },
@@ -365,9 +378,9 @@
                 "ext-curl": "*",
                 "ext-sockets": "*",
                 "friendsofphp/php-cs-fixer": "^3.6",
-                "openswoole/ide-helper": "^22.0",
+                "openswoole/ide-helper": "^26.2",
                 "php-http/psr7-integration-tests": "^1.1",
-                "phpunit/phpunit": "^9.5"
+                "phpunit/phpunit": "^10.5"
             },
             "suggest": {
                 "ext-mysqli": "*",
@@ -410,7 +423,7 @@
                 "pull-request": "https://github.com/openswoole/openswoole/pulls",
                 "source": "https://github.com/openswoole/openswoole"
             },
-            "time": "2024-09-08T21:58:46+00:00"
+            "time": "2026-07-27T11:48:01+00:00"
         },
         {
             "name": "opis/json-schema",
@@ -7338,9 +7351,18 @@
             "time": "2025-12-08T11:19:18+00:00"
         }
     ],
-    "aliases": [],
+    "aliases": [
+        {
+            "package": "mbolli/php-via",
+            "version": "9999999-dev",
+            "alias": "0.13.0",
+            "alias_normalized": "0.13.0.0"
+        }
+    ],
     "minimum-stability": "dev",
-    "stability-flags": {},
+    "stability-flags": {
+        "mbolli/php-via": 20
+    },
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

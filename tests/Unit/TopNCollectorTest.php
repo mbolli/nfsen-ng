@@ -897,3 +897,51 @@ describe('TopNCollector::stats()', function (): void {
         ;
     });
 });
+
+describe('TopNCollector::stop()', function (): void {
+    beforeEach(function (): void {
+        topncLane()::reset();
+        topncReleaseSlots();
+    });
+
+    test('disarms the queue, the gap filler and the pruner', function (): void {
+        TopNCollector::start($this->repo, 31, $this->now, ['live']);
+        topncCapture($this->root, 'gw', $this->ts);
+        TopNCollector::enqueue('live', 'gw', topncRelPath($this->ts - 300), $this->ts - 300);
+
+        TopNCollector::stop();
+        TopNCollector::enqueue('live', 'gw', topncRelPath($this->ts - 600), $this->ts - 600);
+
+        expect(TopNCollector::booted())->toBeFalse()
+            ->and(TopNCollector::queued())->toBe(0)
+            ->and(TopNCollector::fillAllGaps())->toBe(0)
+            ->and(TopNCollector::prune($this->now + 400 * 86400))->toBe(0)
+        ;
+    });
+
+    // The shutdown kills the collector's nfdump, which the lane processor stands in for by throwing.
+    test('the worker ends after the files in flight, and a file the stop cut short is left for the next start', function (): void {
+        Config::$settings = topncSettings($this->root, 4);
+        topncLane()::$sleepUs = 150_000;
+        $stamps = array_map(fn (int $i): int => $this->ts - $i * 300, range(0, 5));
+        $coroutinesAfter = null;
+
+        topncBooted($this->db, function () use ($stamps, &$coroutinesAfter): void {
+            foreach ($stamps as $ts) {
+                TopNCollector::enqueue('live', 'gw', topncCapture($this->root, 'gw', $ts), $ts);
+            }
+            Coroutine::usleep(50_000);
+            TopNCollector::stop();
+            topncLane()::$throw = new NfdumpException('nfdump was killed', 'fake-nfdump', '', 143);
+            topncWaitFor(static fn (): bool => Coroutine::stats()['coroutine_num'] === 1, 3.0);
+            $coroutinesAfter = Coroutine::stats()['coroutine_num'];
+        });
+
+        expect($coroutinesAfter)->toBe(1)
+            ->and(topncLane()::$calls)->toHaveCount(NfdumpSlots::backgroundMax())
+            ->and($this->db->value('SELECT COUNT(*) FROM topn_interval'))->toBe(0)
+            ->and(TopNCollector::stats())->toMatchArray(['queued' => 0, 'processed' => 0, 'failed' => 0])
+            ->and(NfdumpSlots::inUse())->toBe(0)
+        ;
+    });
+});

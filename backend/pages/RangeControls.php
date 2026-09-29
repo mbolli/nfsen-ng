@@ -47,10 +47,11 @@ final class RangeControls implements ShellModule {
         $c->signal($now - self::PRESETS[$preset], 'datestart', clientWritable: true);
         $c->signal($now, 'dateend', clientWritable: true);
         // Data coverage, from the datasource's first and last sample; bounds the range picker.
-        $c->signal($now - Config::$settings->importYears * 365 * 86400, 'data_range_min');
-        $c->signal($now, 'data_range_max');
-        $c->signal($preset, 'range_preset');
-        $c->signal(true, 'range_live');
+        $c->signal($now - Config::$settings->importYears * 365 * 86400, 'data_range_min', clientWritable: false);
+        $c->signal($now, 'data_range_max', clientWritable: false);
+        // Set by the server, but the browser's copy keeps a pinned window pinned across a revival.
+        $c->signal($preset, 'range_preset', clientWritable: true);
+        $c->signal(true, 'range_live', clientWritable: true);
 
         $c->signal(Config::$settings->sources, 'graph_sources', clientWritable: true);
         $c->signal(self::normalizeProtocol(Config::$settings->defaultGraphProtocols[0] ?? 'any'), 'protocol', clientWritable: true);
@@ -63,7 +64,7 @@ final class RangeControls implements ShellModule {
             $selected = $profiles[0] ?? 'live';
         }
         $c->signal($selected, 'selected_profile', clientWritable: true);
-        $c->signal($profiles, 'available_profiles');
+        $c->signal($profiles, 'available_profiles', clientWritable: false);
     }
 
     public static function register(Context $c, Via $app, PageStates $states): void {

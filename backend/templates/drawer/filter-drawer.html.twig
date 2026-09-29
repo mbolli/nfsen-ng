@@ -23,21 +23,8 @@
 {% set close = "@post('" ~ drawerClose.url() ~ "')" %}
 {# The field's status line is turned on first: an applied text is the user's edit, so its answer is announced. #}
 {% set apply = "const t = " ~ target ~ "; const id = " ~ ids ~ "[t]; el.closest('dialog').close(); if (id) { document.querySelector('[data-filter-status=\"' + t + '\"]')?.setAttribute('aria-live', 'polite'); $[id] = " ~ text ~ " } " ~ dismiss ~ " id ? @post('" ~ validateFilter.url() ~ "?target=' + t) : " ~ close %}
-{% set seeds = {
-    (querykit.targets.drawer.filterId): querykit.defaults.filter,
-    (_drawer_notice.id()): drawer.noticeDefault,
-    (_drawer_imported.id()): _drawer_imported.string(),
-    (drawer_target.id()): drawer_target.string(),
-    (drawer_filter.id()): drawer_filter.string(),
-    (drawer_name.id()): drawer_name.string(),
-    (drawer_open.id()): drawer_open.bool(),
-    (drawer_edit.id()): drawer_edit.int(),
-    (drawer_rename.id()): drawer_rename.int(),
-    '_drawer_search': '',
-    '_drawer_restored': false,
-} %}
 <dialog id="filter-drawer" class="drawer" aria-labelledby="drawerTitle" data-preserve-attr="open"
-        data-signals__ifmissing="{{ seeds|json_encode }}"
+        data-signals__ifmissing="{_drawer_search: '', _drawer_restored: false}"
         data-on:nfsen-open-drawer__window="const d = evt.detail || {}; const t = String(d.target || ''); const id = {{ ids }}[t];
             if (id) {
                 const keep = $_drawer_draftFor === t;

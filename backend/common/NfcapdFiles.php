@@ -20,6 +20,16 @@ final class NfcapdFiles {
     /** Matches a rotated capture file and captures its YYYYMMDDHHII stamp; `nfcapd.current.*` never matches. */
     private const FILE_PATTERN = '/^nfcapd\.(\d{12})$/';
 
+    private static bool $stopped = false;
+
+    /**
+     * From shutdown: a running walk throws at its next day directory, since sizing a year of
+     * captures on a slow disk outlasts the stop budget. False resumes (tests).
+     */
+    public static function stop(bool $stopped = true): void {
+        self::$stopped = $stopped;
+    }
+
     /**
      * List every nfcapd file whose timestamp falls within [$ds, $de], ascending by timestamp.
      *
@@ -162,6 +172,9 @@ final class NfcapdFiles {
      * @return array<string, int> file name => timestamp from the name
      */
     private static function stampsIn(string $dayPath): array {
+        if (self::$stopped) {
+            throw new \RuntimeException('nfsen-ng is stopping, so the capture files are not listed.');
+        }
         if (!is_dir($dayPath)) {
             return [];
         }

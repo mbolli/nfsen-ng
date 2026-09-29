@@ -370,7 +370,7 @@ final class HealthPage implements Page {
         $cache = self::stored($app);
         $checksDue = $cache === null || $now - $cache['ts'] >= ($active ? self::CACHE_TTL : self::IDLE_TTL);
         $metricsDue = $active && ($cache === null || $cache['metrics'] === null || $now - $cache['metrics']['ts'] >= self::CACHE_TTL);
-        if (!$checksDue && !$metricsDue) {
+        if ((!$checksDue && !$metricsDue) || $app->isShuttingDown()) {
             return $cache;
         }
 
@@ -396,7 +396,7 @@ final class HealthPage implements Page {
                     self::$waiting = [];
                 }
                 // After a failure the tabs retry on their next render instead of at once.
-                foreach ($landed ? $waiting : [] as $tab) {
+                foreach ($landed && !$app->isShuttingDown() ? $waiting : [] as $tab) {
                     try {
                         $tab->sync();
                     } catch (\Throwable) {

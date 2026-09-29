@@ -42,9 +42,19 @@ real state: per-tab results, alert cooldowns, file-watch handles, caches. A
 deploy is a process restart, not just a new request. When php-via revives a
 tab's context (it re-runs the page handler under the same context id), `Revival`
 hands the tab its results back; a reload gets a new context and starts clean.
+Signals only the server sets start from scratch on a revival, so a query that
+was running when the tab went to the background does not leave it waiting
+forever.
+
+A stop (`docker stop`, `systemctl stop`, Ctrl-C) runs `AppStartup::shutdown()`
+from php-via's `onShutdown`: the import daemon, the top-N collector and the
+alert checks end, the nfdump runs of the tabs' queries and of MCP calls and the
+capture file walks stop, an import finishes the capture file it is on, and the
+process exits within about a second rather than being killed after
+`max_wait_time`.
 
 In development, `deploy/docker-compose.dev.yml` runs this same process under
-`entr`, which kills and restarts it whenever a watched `.php`/`.twig`/`.js`/
+`entr`, which stops and restarts it whenever a watched `.php`/`.twig`/`.js`/
 `.css` file changes. There's no build step, but also no hot-module reload: a
 restart means every open browser tab's Datastar session reconnects the SSE stream
 and gets a resynced page.

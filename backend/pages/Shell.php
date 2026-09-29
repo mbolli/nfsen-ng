@@ -43,22 +43,22 @@ final class Shell {
     public static function signals(Context $c): void {
         // New signals are pushed on the first sync; the client seeds this one itself (1.2).
         $c->signal(self::defaultPage(), 'page', clientWritable: true)->markSynced();
-        $c->signal('', '_error');
-        $c->signal(false, 'import_running');
+        $c->signal('', '_error', clientWritable: false);
+        $c->signal(false, 'import_running', clientWritable: false);
 
         // serverTz: the container's timezone; nfcapdTz: the one nfcapd names its files in.
-        $c->signal(date_default_timezone_get(), 'serverTz');
-        $c->signal(Config::nfcapdTimezone()->getName(), 'nfcapdTz');
+        $c->signal(date_default_timezone_get(), 'serverTz', clientWritable: false);
+        $c->signal(Config::nfcapdTimezone()->getName(), 'nfcapdTz', clientWritable: false);
         $c->signal(Config::$settings->displayTimezone, 'displayTz', clientWritable: true);
 
-        // One query per tab. query_exact tells a known bin count from a byte-sampled
-        // estimate; query_kind names the page the query belongs to (1.6).
-        $c->signal(false, 'query_running');
-        $c->signal(0, 'query_permille');
-        $c->signal('', 'query_status');
-        $c->signal('', 'query_eta');
-        $c->signal(true, 'query_exact');
-        $c->signal('', 'query_kind');
+        // One query per tab, so the browser's copy never clears query_running. query_exact tells
+        // a known bin count from a byte-sampled estimate; query_kind names the query's page (1.6).
+        $c->signal(false, 'query_running', clientWritable: false);
+        $c->signal(0, 'query_permille', clientWritable: false);
+        $c->signal('', 'query_status', clientWritable: false);
+        $c->signal('', 'query_eta', clientWritable: false);
+        $c->signal(true, 'query_exact', clientWritable: false);
+        $c->signal('', 'query_kind', clientWritable: false);
     }
 
     public static function register(Context $c, Via $app, PageStates $states): void {

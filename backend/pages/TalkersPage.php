@@ -86,7 +86,7 @@ final class TalkersPage implements Page {
         $c->signal('none', 'stats_agg_dstip', clientWritable: true);
         $c->signal('', 'stats_agg_dstip_prefix', clientWritable: true);
         // Rows of the last run, for the Run control's completion announcement.
-        $c->signal(0, '_stats_rows');
+        $c->signal(0, '_stats_rows', clientWritable: false);
     }
 
     public static function register(Context $c, Via $app, PageStates $states): void {

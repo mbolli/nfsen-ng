@@ -331,6 +331,24 @@ describe('HealthChecker::run without a writable state directory', function (): v
         ;
     });
 
+    test('a stopping server keeps a stale cache and starts no refresh', function (): void {
+        $app = new Via(new ViaConfig());
+        $stale = ['ts' => time() - 3600, 'checks' => [], 'level' => 'warning', 'metrics' => null];
+        $app->setGlobalState(HealthPage::CACHE, $stale);
+        new ReflectionProperty(Via::class, 'shuttingDown')->setValue($app, true);
+
+        $inline = HealthPage::level($app, time());
+        $inCoroutine = '';
+        Coroutine::run(static function () use ($app, &$inCoroutine): void {
+            $inCoroutine = HealthPage::level($app, time());
+        });
+
+        expect($inline)->toBe('warning')
+            ->and($inCoroutine)->toBe('warning')
+            ->and($app->globalState(HealthPage::CACHE))->toBe($stale)
+        ;
+    });
+
     test('names NFSEN_SKIP_DAEMON when it is what disabled the daemon', function (): void {
         putenv('NFSEN_SKIP_DAEMON=1');
         $row = array_column(HealthChecker::run(true), null, 'id')['daemon_status'];

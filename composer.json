@@ -5,6 +5,12 @@
   "license": "Apache-2.0",
   "minimum-stability": "dev",
   "prefer-stable": true,
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "/develop/php-via"
+    }
+  ],
   "require": {
     "php": "^8.4",
     "ext-inotify": "*",
@@ -12,7 +18,7 @@
     "ext-openswoole": "*",
     "ext-rrd": "*",
     "maxmind-db/reader": "^1.12",
-    "mbolli/php-via": "~0.12.0",
+    "mbolli/php-via": "dev-master as 0.13.0",
     "mcp/sdk": "^0.8.1"
   },
   "require-dev": {

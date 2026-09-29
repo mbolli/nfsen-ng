@@ -594,7 +594,7 @@ describe('NfdumpSlots ownership', function (): void {
         expect(NfdumpSlots::running())->toBe(['tab-a' => [111], 'tab-b' => [222]]);
     });
 
-    // The import daemon and every MCP call share the default handle, so two runs can own it at
+    // The import daemon and the alert checks share the default handle, so two runs can own it at
     // once. A scalar meant the second overwrote the first and then erased it on exit, leaving a
     // live process that Kill could not find.
     test('one handle can own several concurrent processes', function (): void {
@@ -653,5 +653,72 @@ describe('NfdumpSlots leak safety', function (): void {
         // Still usable afterwards, which is the point.
         NfdumpSlots::acquire(0.2);
         expect(NfdumpSlots::inUse())->toBe(1);
+    });
+});
+
+describe('NfdumpSlots when the worker stops', function (): void {
+    beforeEach(function (): void {
+        releaseAllSlots();
+    });
+
+    afterEach(function (): void {
+        NfdumpSlots::close(false);
+        releaseAllSlots();
+    });
+
+    test('a closed pool refuses user queries at once and still serves background work', function (): void {
+        slotSettings(4);
+        NfdumpSlots::close();
+
+        try {
+            NfdumpSlots::acquire(5.0);
+            $thrown = null;
+        } catch (RuntimeException $e) {
+            $thrown = $e;
+        }
+        NfdumpSlots::acquire(0.0, NfdumpSlots::BACKGROUND);
+
+        expect($thrown?->getCode())->toBe(NfdumpSlots::CLOSED)
+            ->and(NfdumpSlots::timedOut($thrown ?? new RuntimeException()))->toBeFalse()
+            ->and(NfdumpSlots::isClosed())->toBeTrue()
+            ->and(NfdumpSlots::inUse(NfdumpSlots::INTERACTIVE))->toBe(0)
+            ->and(NfdumpSlots::inUse(NfdumpSlots::BACKGROUND))->toBe(1)
+        ;
+
+        NfdumpSlots::close(false);
+        NfdumpSlots::acquire(0.0);
+        expect(NfdumpSlots::inUse(NfdumpSlots::INTERACTIVE))->toBe(1);
+    });
+
+    test('a user query waiting for a slot gives up as soon as the pool closes', function (): void {
+        slotSettings(1);
+        $outcome = null;
+
+        Coroutine::run(static function () use (&$outcome): void {
+            NfdumpSlots::acquire();
+            $started = microtime(true);
+            Coroutine::create(static function () use (&$outcome, $started): void {
+                try {
+                    NfdumpSlots::acquire(5.0);
+                    $outcome = ['granted', 0.0];
+                } catch (RuntimeException $e) {
+                    $outcome = [$e->getCode(), microtime(true) - $started];
+                }
+            });
+            Coroutine::usleep(100_000);
+            NfdumpSlots::close();
+            Coroutine::usleep(200_000);
+        });
+
+        expect($outcome[0] ?? null)->toBe(NfdumpSlots::CLOSED)
+            ->and($outcome[1] ?? 9.0)->toBeLessThan(1.0)
+            ->and(NfdumpSlots::waiting())->toBe(0)
+        ;
+    });
+
+    test('runs that name no handle share the one the shutdown leaves alone', function (): void {
+        slotSettings(2);
+
+        expect(new Nfdump()->queryHandle())->toBe(NfdumpSlots::SHARED_HANDLE);
     });
 });

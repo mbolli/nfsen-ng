@@ -11,7 +11,7 @@ services:
       - "9000"  # Swoole HTTP server (internal only)
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng:ro
-      - nfsen-data:/var/lib/nfsen-ng  # RRD database + state (preferences, alert rules/state/log) — survives image upgrades
+      - nfsen-data:/var/lib/nfsen-ng  # RRD database + state (preferences, alert rules/state/log), survives image upgrades
       - ../backend/settings/settings.php:/var/www/html/nfsen-ng/backend/settings/settings.php:ro  # Custom settings (deprecated)
     environment:
       - TZ=UTC
@@ -21,7 +21,7 @@ services:
       # RRD files and app state persist under the nfsen-data volume by default
       # (image sets NFSEN_RRD_PATH=/var/lib/nfsen-ng/rrd). Override only to relocate.
 
-      # Import configuration — docs: https://mbolli.github.io/nfsen-ng/deployment/configuration.html
+      # Import configuration, docs: https://mbolli.github.io/nfsen-ng/deployment/configuration.html
       # - NFSEN_SKIP_INITIAL_IMPORT=true  # Skip initial import on startup
       # - NFSEN_IMPORT_YEARS=5            # Import last N years (default: 3)
       
@@ -29,7 +29,7 @@ services:
       # - NFSEN_LOG_LEVEL=INFO            # DEBUG, INFO, NOTICE, WARNING, ERR, CRIT, ALERT, EMERG
       
       # Swoole HTTP server performance tuning
-      # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 1, set to CPU cores)
+      # - SWOOLE_WORKER_NUM=1             # Keep at 1: nfsen-ng keeps queries and tab state per worker
       # - SWOOLE_MAX_REQUEST=50000        # Max requests per worker before restart (default: 0 = unlimited)
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
     restart: unless-stopped
@@ -50,6 +50,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  nfsen-data:  # nfsen-ng's own data — rrd/ (RRD database) + state/ (preferences, alert rules/state/log)
+  nfsen-data:  # nfsen-ng's own data: rrd/ (RRD database) + state/ (preferences, alert rules/state/log)
   caddy_data:
   caddy_config:

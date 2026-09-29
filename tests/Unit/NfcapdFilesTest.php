@@ -282,3 +282,30 @@ describe('NfcapdFiles::names', function (): void {
         expect(NfcapdFiles::names($base, $base, 'gateway', ''))->toBe([$base]);
     });
 });
+
+describe('NfcapdFiles::stop', function (): void {
+    $base = 1704067200; // 2024-01-01 00:00 UTC
+
+    beforeEach(function (): void {
+        $this->root = sys_get_temp_dir() . '/nfsen-ng-test-' . bin2hex(random_bytes(6));
+        useCaptureTree($this->root);
+    });
+
+    afterEach(function (): void {
+        NfcapdFiles::stop(false);
+        removeTree($this->root);
+    });
+
+    // A stopping worker must not sit out max_wait_time sizing a year of captures.
+    test('a walk throws once the worker stops, and walks again when it resumes', function () use ($base): void {
+        writeCaptureFile($this->root, 'gateway', $base);
+        NfcapdFiles::stop();
+
+        expect(fn () => NfcapdFiles::list($base, $base + 86400, ['gateway'], 'live'))->toThrow(RuntimeException::class, 'stopping')
+            ->and(fn () => NfcapdFiles::names($base, $base, 'gateway', 'live'))->toThrow(RuntimeException::class, 'stopping')
+        ;
+
+        NfcapdFiles::stop(false);
+        expect(NfcapdFiles::names($base, $base, 'gateway', 'live'))->toBe([$base]);
+    });
+});

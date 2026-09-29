@@ -93,18 +93,18 @@ final class OverviewPage implements Page {
         // through an nfdump filter, which only run-filtered-graph may do, never a render.
         $c->signal('stored', 'graph_mode', clientWritable: true);
         $c->signal('', 'graph_filter', clientWritable: true);
-        $c->signal(false, 'graph_isLive');
-        $c->signal(0, 'graph_actualResolution');
-        $c->signal(0, 'graph_lastUpdate');
-        $c->signal(0, 'graph_step');
+        $c->signal(false, 'graph_isLive', clientWritable: false);
+        $c->signal(0, 'graph_actualResolution', clientWritable: false);
+        $c->signal(0, 'graph_lastUpdate', clientWritable: false);
+        $c->signal(0, 'graph_step', clientWritable: false);
 
         $c->signal('talkers', 'ov_tab', clientWritable: true);
         $c->signal('src', 'ov_dir', clientWritable: true);
         $c->signal(10, 'ov_limit', clientWritable: true);
         $c->signal('bytes', 'ov_order', clientWritable: true);
-        $c->signal(false, '_ov_topn_pending');
+        $c->signal(false, '_ov_topn_pending', clientWritable: false);
         // Rows of the last exact run, for the completion announcement ("12 rows returned", 2.5).
-        $c->signal(0, '_ov_exact_rows');
+        $c->signal(0, '_ov_exact_rows', clientWritable: false);
     }
 
     public static function register(Context $c, Via $app, PageStates $states): void {

@@ -60,9 +60,9 @@ final class FlowsPage implements Page {
         $c->signal(false, 'flows_graph_shown', clientWritable: true);
         $c->signal('bytes', 'flows_graph_unit', clientWritable: true);
         // The cache key and fingerprint of the last build, so a moving window does not blank
-        // a graph someone waited for.
-        $c->signal('', 'flows_graph_key');
-        $c->signal('', 'flows_graph_fingerprint');
+        // a graph someone waited for. The browser's copy brings them back after a revival.
+        $c->signal('', 'flows_graph_key', clientWritable: true);
+        $c->signal('', 'flows_graph_fingerprint', clientWritable: true);
         $c->signal(Config::$settings->defaultFlowLimit, 'flows_limit', clientWritable: true);
         $c->signal(false, 'flows_agg_bidirectional', clientWritable: true);
         $c->signal(false, 'flows_agg_proto', clientWritable: true);
@@ -76,10 +76,10 @@ final class FlowsPage implements Page {
         // Byte thresholds, composed into the filter as bytes > / bytes <.
         $c->signal('', 'flows_lower_limit', clientWritable: true);
         $c->signal('', 'flows_upper_limit', clientWritable: true);
-        $c->signal(0, 'flows_count');
+        $c->signal(0, 'flows_count', clientWritable: false);
         // "flows" for listed records, "rows" once aggregation merged them (the Run announcement).
-        $c->signal('flows', 'flows_count_label');
-        $c->signal(QueryKit::ESTIMATE_DEFAULT, FlowActions::SUMMARY_ESTIMATE);
+        $c->signal('flows', 'flows_count_label', clientWritable: false);
+        $c->signal(QueryKit::ESTIMATE_DEFAULT, FlowActions::SUMMARY_ESTIMATE, clientWritable: false);
     }
 
     public static function register(Context $c, Via $app, PageStates $states): void {

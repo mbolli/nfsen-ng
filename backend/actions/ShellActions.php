@@ -11,8 +11,8 @@ use mbolli\nfsen_ng\pages\Shell;
 use Mbolli\PhpVia\Context;
 
 /**
- * Shell actions (1.6). Closures catch \Throwable: php-via only catches \Exception, and an
- * escaped \Error kills the worker.
+ * Shell actions (1.6). Closures catch \Throwable so the tab shows the failure: php-via would
+ * only log it and answer 500.
  */
 final class ShellActions {
     public static function register(Context $c, PageStates $states): void {

@@ -40,6 +40,7 @@ final class TopTalkersTool implements ToolInterface {
             orderBy: $order_by,
             limit: $limit,
             filter: Guard::filter($filter),
+            handle: Guard::handle(),
         );
 
         Guard::assertAffordable($query->totalBytes());

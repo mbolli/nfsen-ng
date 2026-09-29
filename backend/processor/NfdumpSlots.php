@@ -27,8 +27,8 @@ use OpenSwoole\Coroutine;
  * acquireMany() and, after each bin, gives one back to a waiting user query or to background
  * work that needs it. runInHeldSlot() runs work in a slot taken that way.
  *
- * Single-worker only, like the rest of php-via's process-local state. Raising the worker count
- * would need the counters in shared memory to mean anything across processes.
+ * Process-local, which is one reason nfsen-ng runs one worker: a second would hand out its own
+ * slots and could not kill the runs of the first.
  *
  * @phpstan-type Scope array{class: string, held: bool, wait: ?float, waited: float, until: ?float}
  */
@@ -38,6 +38,9 @@ final class NfdumpSlots {
     public const string BACKGROUND = 'background';
 
     public const array CLASSES = [self::INTERACTIVE, self::BACKGROUND];
+
+    /** Nfdump's handle for runs that name none: imports and alert checks. */
+    public const string SHARED_HANDLE = 'default';
 
     /** How long an interactive caller waits for a slot before giving up. */
     public const float DEFAULT_WAIT_SECONDS = 30.0;
@@ -50,6 +53,9 @@ final class NfdumpSlots {
 
     /** Exception code of an acquire that timed out. */
     public const int TIMED_OUT = 1;
+
+    /** Exception code of an interactive acquire refused because the worker is stopping. */
+    public const int CLOSED = 2;
 
     /** How often a waiter re-checks for a free slot. */
     private const float POLL_INTERVAL_SECONDS = 0.05;
@@ -68,11 +74,13 @@ final class NfdumpSlots {
     /**
      * @var array<string, list<int>> query handle => the pids it currently owns
      *
-     * A list, not one pid: concurrent runs can share a handle (the import daemon and every
-     * MCP call use the default one), and a scalar meant the second run overwrote the first and
+     * A list, not one pid: concurrent runs can share a handle (the import daemon and the alert
+     * checks use the default one), and a scalar meant the second run overwrote the first and
      * then erased it on exit, so a kill found nothing while a process was still going
      */
     private static array $pids = [];
+
+    private static bool $closed = false;
 
     /** Slots in total: the configured or derived process limit. */
     public static function max(): int {
@@ -117,6 +125,10 @@ final class NfdumpSlots {
 
         try {
             while (true) {
+                if (self::$closed && $class === self::INTERACTIVE) {
+                    throw new \RuntimeException('nfsen-ng is stopping, so no new query starts.', self::CLOSED);
+                }
+
                 $free = self::grantable($class);
                 if ($free > 0 && !self::queuedAhead($class, $ticket)) {
                     $granted = max(1, min($n, $free));
@@ -161,6 +173,18 @@ final class NfdumpSlots {
     /** Whether $e is an acquire that timed out, rather than nfdump failing. */
     public static function timedOut(\Throwable $e): bool {
         return $e::class === \RuntimeException::class && $e->getCode() === self::TIMED_OUT;
+    }
+
+    /**
+     * From shutdown: interactive callers, waiting or new, get CLOSED since the tab is gone; an
+     * import keeps its background slots to finish its file. False reopens (tests).
+     */
+    public static function close(bool $closed = true): void {
+        self::$closed = $closed;
+    }
+
+    public static function isClosed(): bool {
+        return self::$closed;
     }
 
     /** Gives back $n slots of $class. */

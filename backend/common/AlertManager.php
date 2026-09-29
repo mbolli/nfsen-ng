@@ -78,6 +78,8 @@ final class AlertManager {
 
     private bool $stateWriteFailed = false;
 
+    private bool $stopped = false;
+
     /** @param null|AlertEventRepository $events null: opened from Database::shared() on first use */
     public function __construct(
         private readonly Datasource $db,
@@ -92,6 +94,18 @@ final class AlertManager {
     // ── Scheduling and evaluation ──────────────────────────────────────────────
 
     /**
+     * From shutdown: evaluates no further slot, since a stop cuts file walks short and a source
+     * still importing would look down.
+     */
+    public function stop(): void {
+        $this->stopped = true;
+    }
+
+    public function isStopped(): bool {
+        return $this->stopped;
+    }
+
+    /**
      * Evaluates each slot of the profile once, in order, when every configured source has reported
      * it or a newer file, whatever the arrival order (D17). A source with nothing waiting on disk
      * once a later interval is in counts as down and is left out until it reports again.
@@ -102,6 +116,9 @@ final class AlertManager {
      * @return list<string> names of the rules that fired
      */
     public function onFileImported(array $rules, string $profile, int $fileTs, bool $isLastSource, ?string $source = null): array {
+        if ($this->stopped) {
+            return [];
+        }
         $this->dropMissingRules($rules);
         // Taken before the first read can yield: a forget() after it discards that rule's evaluation.
         $generations = $this->generation;
@@ -130,7 +147,7 @@ final class AlertManager {
         $fired = self::inBackground(function () use ($rules, $profile, $sources, $generations): array {
             $fired = [];
             foreach (array_keys($this->pending[$profile] ?? []) as $slot) {
-                if (!$this->complete($profile, $slot, $sources)) {
+                if ($this->stopped || !$this->complete($profile, $slot, $sources)) {
                     break;
                 }
                 $reports = $this->pending[$profile][$slot];
@@ -521,6 +538,9 @@ final class AlertManager {
         $changed = false;
 
         foreach ($rules as $rule) {
+            if ($this->stopped) {
+                break;
+            }
             $generation = $generations[$rule->id] ?? 0;
             if ($rule->profile !== $profile || ($this->generation[$rule->id] ?? 0) !== $generation) {
                 // A changed generation: forget() ran since $rules was read, so this copy of the rule is stale.

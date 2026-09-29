@@ -953,6 +953,21 @@ describe('AlertManager::onFileImported()', function (): void {
         ;
     });
 
+    test('after stop() no slot is evaluated, so a stop fires, resolves and notifies nothing', function (): void {
+        $ds = makeDatasource(alertBytes(0.0));
+        $mgr = alertManager($this, $ds);
+        $rules = [makeRule(['sources' => ['gw1', 'gw2'], 'cooldownSlots' => 0])];
+        alertImport($mgr, $ds, $rules, 'gw1', 300, 2000.0);
+        $mgr->stop();
+
+        expect(alertImport($mgr, $ds, $rules, 'gw2', 300, 2000.0))->toBe([])
+            ->and($mgr->runPeriodic($rules, 'live', 300))->toBe([])
+            ->and($mgr->isStopped())->toBeTrue()
+            ->and($mgr->states())->toBe([])
+            ->and(alertEvents($this->db))->toBe([])
+        ;
+    });
+
     test('keeps the profiles apart', function (): void {
         $ds = makeDatasource(alertBytes(2000.0));
         $mgr = alertManager($this, $ds);

@@ -13,6 +13,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use mbolli\nfsen_ng\common\AppStartup;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\EnvRegistry;
+use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\mcp\HttpEndpoint;
 use mbolli\nfsen_ng\pages\PageRegistry;
 use mbolli\nfsen_ng\pages\PageStates;
@@ -22,7 +23,14 @@ use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
 
 $isDev = (bool) EnvRegistry::value('NFSEN_DEV_MODE');
-$logLevel = preg_replace('/^log_/i', '', (string) EnvRegistry::value('NFSEN_LOG_LEVEL')) ?: 'info';
+$priority = Settings::logLevelFromString((string) EnvRegistry::value('NFSEN_LOG_LEVEL'));
+// php-via knows debug, info, warn and error: notice is info, anything above err is error.
+$logLevel = match (true) {
+    $priority <= LOG_ERR => 'error',
+    $priority === LOG_WARNING => 'warn',
+    $priority === LOG_DEBUG => 'debug',
+    default => 'info',
+};
 
 $viaConfig = (new ViaConfig())
     ->withHost('0.0.0.0')
@@ -48,8 +56,12 @@ $viaConfig = (new ViaConfig())
     ->withLogLevel($logLevel)
     ->withH2c()
     ->withBrotli()
+    // php-via's default, on purpose: at 0, import broadcasts parked a slow tab's SSE write and held the stop.
+    // The next render replaces a dropped one; a dropped Flows chunk is asked for 3 times, then shown as missing.
+    ->withSseMaxQueuedBytes(1024 * 1024)
     ->withSwooleSettings([
-        'worker_num' => (int) EnvRegistry::value('SWOOLE_WORKER_NUM'), // php-via is single-worker
+        // Keep at 1: nfdump slots, running queries and server-owned tab signals live in process memory.
+        'worker_num' => (int) EnvRegistry::value('SWOOLE_WORKER_NUM'),
         'max_request' => (int) EnvRegistry::value('SWOOLE_MAX_REQUEST'), // 0 = unlimited, for long-lived SSE
         'max_coroutine' => (int) EnvRegistry::value('SWOOLE_MAX_COROUTINE'),
         // openswoole 26.2's native-curl hook segfaults on any name lookup with libcurl >= 8.20.0
@@ -68,6 +80,8 @@ $viaConfig = (new ViaConfig())
 $app = new Via($viaConfig);
 
 $app->onStart(static fn () => AppStartup::boot($app));
+// Runs once per worker on SIGTERM or SIGINT (docker stop, systemctl stop, Ctrl-C).
+$app->onShutdown(static fn () => AppStartup::shutdown($app));
 
 // MCP over HTTP. Registered unconditionally because routes are built before settings load;
 // the middleware answers 404 while NFSEN_MCP_HTTP is off and every request otherwise.

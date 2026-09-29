@@ -19,7 +19,7 @@ The dev state (preferences, alert rules, `nfsen-ng.sqlite`) lives in `backend/se
 ## Useful Commands
 
 ```bash
-composer install        # Install PHP deps
+composer install        # Install PHP deps (php-via comes from /develop/php-via for now, see below)
 composer test           # Run Pest tests (run them in the app image, see Testing)
 composer test-phpstan   # Static analysis (level 8, set in phpstan.neon)
 composer fix            # Auto-format PHP
@@ -32,6 +32,10 @@ pnpm run test-e2e       # Browser suite against a running instance (BASE, CHROME
 ```
 
 **Always run `composer before-commit` after a set of PHP changes and fix any reported errors before committing.**
+
+Until php-via 0.13.0 is published, `composer.json` takes `mbolli/php-via` from the local git repository at
+`/develop/php-via` (`dev-master as 0.13.0`), so Composer needs that path, also inside a container. Once it is
+out, require `^0.13.0`, drop the `repositories` entry and run `composer update mbolli/php-via`.
 
 ## Architecture
 
@@ -146,9 +150,13 @@ $display = $graphDisplay->string();
 
 - Scalar signals (string/int/bool): use `->string()`, `->int()`, `->bool()` helpers directly
 - Array signals: use `->array()` helper
-- Client-writable: `$c->signal($default, 'name', clientWritable: true)`; normalise the value on read, the client
-  can post anything
-- Server-owned (read-only for browser): omit `clientWritable`
+- Every `$c->signal()` says `clientWritable: true` or `false`; leaving it out means `true` for a TAB signal
+- `clientWritable: true`: the browser writes it (`data-bind`, an expression) and its value is taken on every
+  action; normalise it on read, the client can post anything. A server-set signal whose browser copy carries it
+  across a context revival is `true` too (`range_live`, `range_preset`, `flows_graph_key`)
+- `clientWritable: false`: server-owned. php-via ignores the posted copy on actions and revivals and sends the
+  server's value back, so the server must rebuild it after a revival (first render, `restoreSignals()`).
+  `query_running` is one, so a stale browser copy cannot start a second query in the tab
 - Global signals (every page): `page`, `datestart`, `dateend`, `range_preset`, `range_live`, `graph_sources`,
   `protocol`, `graph_trafficUnit`, `selected_profile`
 
@@ -195,7 +203,7 @@ Actions belong to a page (or a shell module) and are registered from its `regist
 // backend/pages/ConversationsPage.php
 public static function signals(Context $c): void {
     $c->signal('ip', 'conv_group', clientWritable: true);
-    $c->signal(false, '_conv_stale'); // server-owned
+    $c->signal(false, '_conv_stale', clientWritable: false);
 }
 
 public static function register(Context $c, Via $app, PageStates $states): void {
@@ -219,7 +227,7 @@ private static function run(Context $c, ConversationsState $state): void {
         QueryRunner::run($c, 'conversations', static fn (): int => $query->totalBytes(), 'Starting nfdump…',
             static function () use ($query, $state, $p): void { /* run nfdump, store the result in $state */ });
     } catch (\Throwable $e) {
-        // php-via only catches \Exception, and an escaped \Error kills the worker
+        // Shown in the tab; php-via would only log it and answer 500
         self::storeFailure($state, $e, false); // plain-text notice, the command in its own code block
         $c->sync();                            // re-renders the tab, pushes the patch over SSE
     }
@@ -295,6 +303,10 @@ CHROME=/usr/bin/chromium BASE=http://localhost:8080 node book/_capture.mjs   # O
 - **nfcapd path structure**: `<profile>/<source>/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`
 - **Import daemon**: embedded in `app.php`; `AppStartup::boot()` (from `onStart()`) runs the catch-up in a coroutine
   and polls inotify every second with `setInterval` (`ImportDaemon::pollOnce()`)
+- **Shutdown**: `AppStartup::shutdown()` (from `onShutdown()`, on every stop) stops the daemons, the top-N
+  collector and the alert checks, refuses new interactive nfdump slots and kills the runs of tabs and MCP calls.
+  A new loop or coroutine that can run for more than a moment ends there or checks `$app->isShuttingDown()`, or it
+  holds every stop for `max_wait_time`
 - **`{{ bind() }}` in event handlers**: `{{ bind(signal) }}` expands to `data-bind="hash"` (an HTML attribute).
   Using it inside a `data-on:*` JS expression generates invalid JS and silently breaks the entire handler. Use
   `${{ signal.id() }}` for direct signal assignment inside event expressions.

@@ -79,15 +79,60 @@ async function firstSyncSignals() {
                 .join('');
             return Object.keys(JSON.parse(json));
         });
-    return { keys, suffix };
+    return { keys, suffix, html };
+}
+
+/** php-via's seed: the signal values the first sync sends, in a <meta> ahead of the SSE bootstrap. */
+function headSeed(html) {
+    const head = html.slice(0, html.indexOf('</head>'));
+    const attr = head.match(/<meta data-signals__ifmissing="([^"]*)">/)?.[1];
+    assert.ok(attr, 'the head carries a signal seed');
+    const json = attr
+        .replace(/&quot;/g, '"')
+        .replace(/&#0?39;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+    return { seed: JSON.parse(json), head };
 }
 
 export default async function routerTest() {
     // Appendix A: the first sync pushes the new signals but not page, which the client seeds
     // itself (1.2); an echo would send a tab back to the server's page.
-    const { keys, suffix } = await firstSyncSignals();
+    const { keys, suffix, html } = await firstSyncSignals();
     assert.ok(keys.includes(`query_running${suffix}`), `the first sync pushes the shell signals: ${keys.slice(0, 5).join(', ')}`);
     assert.ok(!keys.includes(`page${suffix}`), 'the first sync does not contain page');
+
+    // The same values are in the page itself, ahead of the layout's one via_ctx seed and SSE bootstrap.
+    const { seed, head } = headSeed(html);
+    assert.equal(seed[`query_running${suffix}`], false, 'the seed has the shell signals');
+    assert.equal(typeof seed[`nfcapdTz${suffix}`], 'string', 'the seed has the timezones');
+    assert.ok(!(`page${suffix}` in seed), 'the seed leaves page to the client');
+    assert.equal(head.match(/via_ctx/g)?.length, 1, "one via_ctx seed, the layout's");
+    assert.ok(head.search(/<meta data-signals__ifmissing=/) < head.indexOf("_sse'"), 'the seed comes before the SSE bootstrap');
+
+    // Seeded, a tab works before its stream connects: here it never does.
+    await withPage(async (page) => {
+        await page.send('Network.enable');
+        await page.send('Network.setBlockedURLs', { urls: ['*/_sse*'] });
+        await page.navigate(BASE + '/');
+        await page.waitForBoot();
+        const offline = await page.evaluate(`(async function(){
+            var root = (await import('datastar')).root;
+            var get = function(n){ return root[Object.keys(root).find(function(k){ return k.startsWith(n + '____'); })]; };
+            return {
+                running: get('query_running'),
+                live: get('range_live'),
+                range: document.querySelector('#rangeMenu .menu-toggle span').textContent.trim(),
+                runnable: !!document.querySelector('button[data-run]:not(:disabled)'),
+            };
+        })()`);
+        assert.equal(offline.running, false, 'query_running is seeded');
+        assert.equal(offline.live, true, 'range_live is seeded');
+        assert.doesNotMatch(offline.range, /undefined|NaN|Invalid/, `the range label is computed from the seed: "${offline.range}"`);
+        assert.ok(offline.runnable, 'a Run button is enabled without a sync');
+        assert.deepEqual(page.realErrors(), [], 'no console error without the SSE stream');
+    });
 
     await withPage(async (page) => {
         await page.navigate(BASE + '/');

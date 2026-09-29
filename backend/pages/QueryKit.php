@@ -48,10 +48,10 @@ final class QueryKit implements ShellModule {
     public static function signals(Context $c): void {
         foreach (self::TARGETS as $target => $meta) {
             if ($meta['filter'] !== '') {
-                $c->signal(self::FILTER_DEFAULT, self::filterSignal($target));
+                $c->signal(self::FILTER_DEFAULT, self::filterSignal($target), clientWritable: false);
             }
             if ($meta['kind'] !== '') {
-                $c->signal(self::ESTIMATE_DEFAULT, self::estimateSignal($target));
+                $c->signal(self::ESTIMATE_DEFAULT, self::estimateSignal($target), clientWritable: false);
             }
         }
     }
@@ -64,8 +64,7 @@ final class QueryKit implements ShellModule {
      * Per target: its signals' wire ids, and whether a run may stop early (the estimate says "up to").
      *
      * @return array{targets: array<string, array{filterSignal: string, kind: string, clamped: bool, validates: bool,
-     *               estimates: bool, filterId: string, estimateId: string, earlyStop: bool}>,
-     *               defaults: array{filter: array<string, mixed>, estimate: array<string, mixed>}}
+     *               estimates: bool, filterId: string, estimateId: string, earlyStop: bool}>}
      */
     public static function viewData(Context $c, Via $app, PageStates $states, bool $isUpdate, string $activePage): array {
         $targets = [];
@@ -82,10 +81,7 @@ final class QueryKit implements ShellModule {
             ];
         }
 
-        return [
-            'targets' => $targets,
-            'defaults' => ['filter' => self::FILTER_DEFAULT, 'estimate' => self::ESTIMATE_DEFAULT],
-        ];
+        return ['targets' => $targets];
     }
 
     /** `_flt_<target>`, with '_' for '-'. */

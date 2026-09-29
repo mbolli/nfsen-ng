@@ -76,14 +76,14 @@ async function save(page, button = 'settingsSave') {
     await page.evaluate(`document.querySelectorAll('#alerts-toast-container nfsen-toast').forEach(function(t){ t.remove(); })`);
     await page.evaluate(`document.getElementById('${button}').click()`);
     await page.waitFor(
-        `[...document.querySelectorAll('#alerts-toast-container nfsen-toast')].some(function(t){ return t.dataset.type === 'error' || t.dataset.message === 'Settings saved.'; })`,
+        `[...document.querySelectorAll('#alerts-toast-container nfsen-toast')].some(function(t){ return t.level === 'error' || t.message === 'Settings saved.'; })`,
         {
             timeout: 10000,
             label: 'the save to answer',
         }
     );
     const error = await page.evaluate(
-        `[...document.querySelectorAll('#alerts-toast-container nfsen-toast')].filter(function(t){ return t.dataset.type === 'error'; }).map(function(t){ return t.dataset.message; }).join(' ')`
+        `[...document.querySelectorAll('#alerts-toast-container nfsen-toast')].filter(function(t){ return t.level === 'error'; }).map(function(t){ return t.message; }).join(' ')`
     );
     assert.equal(error, '', 'the save succeeds');
 }

@@ -435,7 +435,7 @@ export default async function drawerTest() {
             assert.equal(await flag(), null, 'not marked done before the server has imported');
             await page.waitFor(`localStorage.getItem('nfsen-filters-migrated') === '1'`, { timeout: 15000, label: 'migration flag' });
             assert.equal(await page.signalValue('drawer_import'), '', 'drawer_import is empty afterwards');
-            await page.waitFor(`[...document.querySelectorAll('nfsen-toast')].some((t) => (t.dataset.message || t.textContent).includes('Imported 2 saved filters from this browser'))`, {
+            await page.waitFor(`[...document.querySelectorAll('nfsen-toast')].some((t) => String(t.message).includes('Imported 2 saved filters from this browser'))`, {
                 label: 'import toast',
             });
             await page.send('Fetch.disable');

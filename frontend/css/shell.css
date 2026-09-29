@@ -532,37 +532,6 @@ nfsen-toast:is(:hover, :focus-within) .toast-progress {
     }
 }
 
-/* ── Tooltip (nfsen-tooltip.js) ─────────────────────────────────────────── */
-
-.tip-icon {
-    display: inline-flex;
-    align-items: center;
-    padding: 0;
-    border: none;
-    border-radius: var(--radius-round);
-    background: none;
-    color: var(--text-2);
-    cursor: help;
-}
-
-.tip-icon:hover:not(:disabled) {
-    background: none;
-    color: var(--text-1);
-}
-
-.nfsen-tip-popup {
-    position: fixed;
-    z-index: var(--layer-tooltip);
-    max-inline-size: 16rem;
-    padding: var(--size-1) var(--size-2);
-    border-radius: var(--radius-1);
-    background: var(--surface-inverse);
-    color: var(--text-on-inverse);
-    font-size: var(--font-size-00);
-    line-height: 1.4;
-    white-space: normal;
-}
-
 /* ── Mobile tab bar ─────────────────────────────────────────────────────── */
 
 .tabbar {

@@ -211,6 +211,8 @@
     {# DOM that client code and tests add; data-ignore-morph keeps it across syncs. #}
     <div id="client-root" data-ignore-morph></div>
     <div id="alerts-toast-container" class="toast-stack" data-ignore-morph></div>
+    {# nfsen/clipboard announces copies here; a dialog that holds a copy button adds its own [data-announcer]. #}
+    <p id="nfsen-announcer" class="visually-hidden" role="status" data-ignore-morph></p>
 
     <script src="{{ basePath }}js/echarts.min.js" defer></script>
 
@@ -219,7 +221,11 @@
     <script type="importmap">{"imports": {
         "datastar": "{{ basePath }}js/datastar-rocket.js?v={{ shell.assetVersion }}",
         "nfsen/theme-colors": "{{ basePath }}js/components/theme-colors.js?v={{ shell.assetVersion }}",
-        "nfsen/tz-utils": "{{ basePath }}js/components/tz-utils.js?v={{ shell.assetVersion }}"
+        "nfsen/tz-utils": "{{ basePath }}js/components/tz-utils.js?v={{ shell.assetVersion }}",
+        "nfsen/format": "{{ basePath }}js/components/format.js?v={{ shell.assetVersion }}",
+        "nfsen/clipboard": "{{ basePath }}js/components/clipboard.js?v={{ shell.assetVersion }}",
+        "nfsen/download": "{{ basePath }}js/components/download.js?v={{ shell.assetVersion }}",
+        "nfsen/host-state": "{{ basePath }}js/components/host-state.js?v={{ shell.assetVersion }}"
     }}</script>
 
     <script type="module">
@@ -234,7 +240,8 @@
     <script type="module" src="{{ basePath }}js/components/nfsen-filter-editor.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/datastar-rocket.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ shell.assetVersion }}"></script>
-    {% for component in ['nfsen-chart', 'nfsen-sankey', 'nfsen-matrix', 'nfsen-table', 'nfsen-toast', 'nfsen-tooltip', 'nfsen-controls'] %}
+    {# clipboard is also an import-map target, so its tag uses the identical URL: one module instance. #}
+    {% for component in ['nfsen-chart', 'nfsen-sankey', 'nfsen-matrix', 'nfsen-table', 'nfsen-toast', 'nfsen-controls', 'clipboard'] %}
         <script type="module" src="{{ basePath }}js/components/{{ component }}.js?v={{ shell.assetVersion }}"></script>
     {% endfor %}
     {# Vendored Starbase components with "load": true in their lock; the folder name is the version. #}

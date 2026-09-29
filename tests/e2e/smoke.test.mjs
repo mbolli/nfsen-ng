@@ -285,6 +285,14 @@ export default async function smokeTest() {
         await page.waitFor(`!!document.querySelector('#ip-modal-inner > .toast-stack nfsen-toast .notice')`, {
             label: 'the toast in the modal',
         });
+        assert.deepEqual(
+            await page.evaluate(`(function(){
+                var t = document.querySelector('#ip-modal-inner > .toast-stack nfsen-toast');
+                return { rocket: t.rocketInstanceId !== undefined, name: t.querySelector('button[data-variant=close]').getAttribute('aria-label') };
+            })()`),
+            { rocket: true, name: 'Dismiss notification' },
+            'the toast in the modal is a Rocket host with a named close button'
+        );
         const close = await page.evaluate(`(function(){
             var b = document.querySelector('#ip-modal-inner > .toast-stack nfsen-toast button[data-variant=close]').getBoundingClientRect();
             var x = b.x + b.width / 2, y = b.y + b.height / 2;
@@ -354,10 +362,21 @@ export default async function smokeTest() {
         await page.evaluate(`window.showMessage('error', 'x <b>y</b>', true)`);
         await page.waitFor(`!!document.querySelector('#alerts-toast-container nfsen-toast .notice')`, { label: 'the toast' });
         const toast = await page.evaluate(`(function(){
-            var n = document.querySelector('#alerts-toast-container nfsen-toast .notice');
-            return { role: n.getAttribute('role'), markup: !!n.querySelector('b'), live: document.getElementById('alerts-toast-container').getAttribute('aria-live') };
+            var t = document.querySelector('#alerts-toast-container nfsen-toast');
+            var n = t.querySelector('.notice');
+            return {
+                rocket: t.rocketInstanceId !== undefined,
+                role: n.getAttribute('role'),
+                markup: !!n.querySelector('b'),
+                live: document.getElementById('alerts-toast-container').getAttribute('aria-live'),
+                name: n.querySelector('button[data-variant=close]').getAttribute('aria-label'),
+            };
         })()`);
-        assert.deepEqual(toast, { role: 'alert', markup: false, live: null }, 'an error toast is an alert of plain text');
+        assert.deepEqual(
+            toast,
+            { rocket: true, role: 'alert', markup: false, live: null, name: 'Dismiss notification' },
+            'an error toast is a Rocket host, an alert of plain text, with a named close button'
+        );
         await page.waitFor(`document.querySelector('#alerts-toast-container .toast-message')?.textContent === 'x <b>y</b>'`, {
             label: 'the literal toast text',
         });

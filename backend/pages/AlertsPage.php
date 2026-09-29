@@ -22,7 +22,7 @@ use Mbolli\PhpVia\Via;
  *
  * @phpstan-type RuleRow array{id: string, key: string, name: string, enabled: bool, status: string, level: string,
  *                             statusLabel: string, condition: string, threshold: string, sources: string, filter: string,
- *                             lastFired: ?int, lastFiredIso: string, lastFiredLabel: string, form: array<string, mixed>}
+ *                             lastFired: ?int, lastFiredLabel: string, form: array<string, mixed>}
  * @phpstan-type EventRow array{id: int, ts: int, iso: string, kind: string, label: string, level: string,
  *                              ruleName: string, profile: string, value: string}
  * @phpstan-type TestView array{title: string, level: string, headline: string, detail: string, notification: string,
@@ -58,6 +58,28 @@ final class AlertsPage implements Page {
         'defaultEmailBodyTemplate' => 'settings_defaultEmailBodyTemplate',
         'defaultWebhookTitleTemplate' => 'settings_defaultWebhookTitleTemplate',
         'defaultWebhookMessageTemplate' => 'settings_defaultWebhookMessageTemplate',
+    ];
+
+    /** relativeTime()'s units, largest first, in seconds: a month is a twelfth of a 365 day year, as in sb-relative-time. */
+    private const array UNITS = [
+        'year' => 31_536_000,
+        'month' => 2_628_000,
+        'week' => 604_800,
+        'day' => 86_400,
+        'hour' => 3_600,
+        'minute' => 60,
+        'second' => 1,
+    ];
+
+    /** The words Intl.RelativeTimeFormat('en', {numeric: 'auto'}) says instead of a count. */
+    private const array RELATIVE_WORDS = [
+        'second' => [0 => 'now'],
+        'minute' => [0 => 'this minute'],
+        'hour' => [0 => 'this hour'],
+        'day' => [-1 => 'yesterday', 0 => 'today', 1 => 'tomorrow'],
+        'week' => [-1 => 'last week', 0 => 'this week', 1 => 'next week'],
+        'month' => [-1 => 'last month', 0 => 'this month', 1 => 'next month'],
+        'year' => [-1 => 'last year', 0 => 'this year', 1 => 'next year'],
     ];
 
     private const array EVENT_KINDS = [
@@ -147,7 +169,8 @@ final class AlertsPage implements Page {
         }
 
         return [
-            'rules' => self::ruleRows($settings->alerts, $manager?->states() ?? [], $available ? $manager->lastFired() : null, $now),
+            // Days count in nfcapd's timezone: the display's for "server", and the browser's is unknown here.
+            'rules' => self::ruleRows($settings->alerts, $manager?->states() ?? [], $available ? $manager->lastFired() : null, $now, Config::nfcapdTimezone()),
             'history' => [
                 'available' => $available,
                 'error' => match (true) {
@@ -247,10 +270,11 @@ final class AlertsPage implements Page {
      * @param list<AlertRule>           $rules
      * @param array<string, AlertState> $states    rule ID => runtime state
      * @param null|array<string, int>   $lastFired rule ID => ts of the newest fired event, null while the history is unavailable
+     * @param \DateTimeZone             $zone      the calendar the Last triggered days are counted in
      *
      * @return list<RuleRow>
      */
-    public static function ruleRows(array $rules, array $states, ?array $lastFired, int $now): array {
+    public static function ruleRows(array $rules, array $states, ?array $lastFired, int $now, \DateTimeZone $zone): array {
         $rows = [];
         foreach ($rules as $rule) {
             $firing = $rule->enabled && ($states[$rule->id] ?? null)?->firing === true;
@@ -274,8 +298,7 @@ final class AlertsPage implements Page {
                 'sources' => self::sourcesLabel($rule->sources),
                 'filter' => $rule->nfdumpFilter ?? '',
                 'lastFired' => $last,
-                'lastFiredIso' => $last !== null ? gmdate('Y-m-d\TH:i:s\Z', $last) : '',
-                'lastFiredLabel' => $last !== null ? self::relativeTime($last, $now) : ($lastFired === null ? 'Unknown' : 'Never'),
+                'lastFiredLabel' => $last !== null ? self::relativeTime($last, $now, $zone) : ($lastFired === null ? 'Unknown' : 'Never'),
                 'form' => self::formValues($rule),
             ];
         }
@@ -399,16 +422,32 @@ final class AlertsPage implements Page {
         return self::WINDOWS[$window] ?? $window;
     }
 
-    /** "just now", "12 min ago", "5 h ago" (up to two days), "3 days ago". */
-    public static function relativeTime(int $ts, int $now): string {
-        $age = $now - $ts;
+    /**
+     * "12 minutes ago", "yesterday": sb-relative-time's text (format long, numeric auto), so nothing
+     * changes when it upgrades. A port of its relative(), counting calendar days in $zone.
+     */
+    public static function relativeTime(int $ts, int $now, \DateTimeZone $zone): string {
+        $diff = $ts - $now;
+        $units = array_keys(self::UNITS);
+        $i = 0;
+        while ($i < \count($units) - 1 && abs($diff) < self::UNITS[$units[$i]]) {
+            ++$i;
+        }
+        $unit = $units[$i];
+        // "60 minutes ago" reads as "1 hour ago".
+        if ($i > 0 && abs(self::jsRound($diff / self::UNITS[$unit])) * self::UNITS[$unit] >= self::UNITS[$units[$i - 1]]) {
+            $unit = $units[$i - 1];
+        }
+        $n = $unit === 'day'
+            ? self::calendarDay($ts, $zone) - self::calendarDay($now, $zone)
+            : self::jsRound($diff / self::UNITS[$unit]);
 
-        return match (true) {
-            $age < 60 => 'just now',
-            $age < 3600 => intdiv($age, 60) . ' min ago',
-            $age < 2 * 86400 => intdiv($age, 3600) . ' h ago',
-            default => intdiv($age, 86400) . ' days ago',
-        };
+        if (isset(self::RELATIVE_WORDS[$unit][$n])) {
+            return self::RELATIVE_WORDS[$unit][$n];
+        }
+        $count = number_format(abs($n)) . ' ' . $unit . (abs($n) === 1 ? '' : 's');
+
+        return $n < 0 ? $count . ' ago' : 'in ' . $count;
     }
 
     /**
@@ -571,6 +610,16 @@ final class AlertsPage implements Page {
         }
 
         return 'No notification sent: ' . ($reasons !== [] ? implode(', and ', $reasons) : 'the rule has no email or webhook set up') . '.';
+    }
+
+    /** Math.round(): halves round towards positive infinity. */
+    private static function jsRound(float $value): int {
+        return (int) floor($value + 0.5);
+    }
+
+    /** The calendar date $ts falls on in $zone, as days since 1970-01-01. */
+    private static function calendarDay(int $ts, \DateTimeZone $zone): int {
+        return (int) floor(($ts + $zone->getOffset(new \DateTimeImmutable('@' . $ts))) / 86_400);
     }
 
     /**

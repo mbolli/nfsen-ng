@@ -77,8 +77,9 @@
                                         <td>{{ row.sources }}</td>
                                         <td data-kind="time">
                                             {% if row.lastFired is not null %}
-                                                <time datetime="{{ row.lastFiredIso }}"
-                                                      data-attr:title="new Date({{ row.lastFired }} * 1000).toLocaleString(undefined, tzOptions(${{ displayTz.id() }}, ${{ nfcapdTz.id() }}))">{{ row.lastFiredLabel }}</time>
+                                                <sb-relative-time datetime="{{ row.lastFired }}" format="long" numeric="auto" title-lang="auto" title-style="numeric"
+                                                                  data-attr:time-zone="${{ displayTz.id() }} === 'server' ? ${{ nfcapdTz.id() }} : ''"
+                                                                  data-preserve-attr="time-zone">{{ row.lastFiredLabel }}</sb-relative-time>
                                             {% else %}
                                                 {{ row.lastFiredLabel }}
                                             {% endif %}

@@ -218,16 +218,39 @@ describe('labels', function (): void {
         ;
     });
 
-    test('relative times', function (int $age, string $expected): void {
-        expect(AlertsPage::relativeTime(1_000_000 - $age, 1_000_000))->toBe($expected);
+    // Each text is what the vendored sb-relative-time (format long, numeric auto) shows in Chromium
+    // for the same moments and zone. 1_790_686_800 is 2026-09-29 13:00 UTC.
+    test('relative times read as sb-relative-time writes them', function (int $now, int $age, string $zone, string $expected): void {
+        expect(AlertsPage::relativeTime($now - $age, $now, new DateTimeZone($zone)))->toBe($expected);
     })->with([
-        [-30, 'just now'],
-        [59, 'just now'],
-        [60, '1 min ago'],
-        [3599, '59 min ago'],
-        [3600, '1 h ago'],
-        [47 * 3600, '47 h ago'],
-        [3 * 86400, '3 days ago'],
+        'now' => [1_790_686_800, 0, 'UTC', 'now'],
+        'one second' => [1_790_686_800, 1, 'UTC', '1 second ago'],
+        'seconds' => [1_790_686_800, 30, 'UTC', '30 seconds ago'],
+        'the last second before a minute' => [1_790_686_800, 59, 'UTC', '59 seconds ago'],
+        'one minute' => [1_790_686_800, 60, 'UTC', '1 minute ago'],
+        'a half rounds up, as Math.round does' => [1_790_686_800, 90, 'UTC', '1 minute ago'],
+        'past a half' => [1_790_686_800, 91, 'UTC', '2 minutes ago'],
+        'minutes' => [1_790_686_800, 720, 'UTC', '12 minutes ago'],
+        '59.5 minutes' => [1_790_686_800, 3570, 'UTC', '59 minutes ago'],
+        'what rounds to 60 minutes reads as an hour' => [1_790_686_800, 3571, 'UTC', '1 hour ago'],
+        'hours' => [1_790_686_800, 5 * 3600, 'UTC', '5 hours ago'],
+        'yesterday' => [1_790_686_800, 26 * 3600, 'UTC', 'yesterday'],
+        'days' => [1_790_686_800, 50 * 3600, 'UTC', '2 days ago'],
+        'what rounds to 7 days reads as a week' => [1_790_686_800, 570_240, 'UTC', 'last week'],
+        'weeks' => [1_790_686_800, 14 * 86_400, 'UTC', '2 weeks ago'],
+        'last month' => [1_790_686_800, 31 * 86_400, 'UTC', 'last month'],
+        'months' => [1_790_686_800, 95 * 86_400, 'UTC', '3 months ago'],
+        'last year' => [1_790_686_800, 400 * 86_400, 'UTC', 'last year'],
+        'years' => [1_790_686_800, 800 * 86_400, 'UTC', '2 years ago'],
+        'a future moment' => [1_790_686_800, -30, 'UTC', 'in 30 seconds'],
+        'tomorrow' => [1_790_686_800, -26 * 3600, 'UTC', 'tomorrow'],
+        // 23:00 on the 28th to 00:30 on the 30th in Zurich, 21:00 on the 28th to 22:30 on the 29th in UTC.
+        'past midnight in the zone' => [1_790_721_000, 91_800, 'Europe/Zurich', '2 days ago'],
+        'before midnight in UTC' => [1_790_721_000, 91_800, 'UTC', 'yesterday'],
+        // Zurich falls back on 2026-10-25: 00:10 CEST to 23:50 CET is 24 h 40 min on one date.
+        'today, on a 25 hour day' => [1_792_968_600, 88_800, 'Europe/Zurich', 'today'],
+        'the same moments in UTC' => [1_792_968_600, 88_800, 'UTC', 'yesterday'],
+        'in 2 days across the change' => [1_792_968_600, -88_800, 'Europe/Zurich', 'in 2 days'],
     ]);
 
     test('rule keys are distinct lower case signal-name fragments without Datastar modifiers', function (): void {
@@ -251,13 +274,13 @@ describe('rows', function (): void {
         ];
         $firing = AlertState::fromArray(['firing' => true]);
         // A disabled rule is never shown as firing, whatever its stale state says.
-        $rows = AlertsPage::ruleRows($rules, ['r1' => $firing, 'r3' => $firing], ['r1' => 1_000_000 - 600], 1_000_000);
+        $rows = AlertsPage::ruleRows($rules, ['r1' => $firing, 'r3' => $firing], ['r1' => 1_000_000 - 600], 1_000_000, new DateTimeZone('UTC'));
 
         expect(array_column($rows, 'status'))->toBe(['firing', 'ok', 'disabled'])
             ->and(array_column($rows, 'statusLabel'))->toBe(['Firing', 'OK', 'Disabled'])
             ->and(array_column($rows, 'level'))->toBe(['error', '', ''])
-            ->and($rows[0]['lastFiredLabel'])->toBe('10 min ago')
-            ->and($rows[0]['lastFiredIso'])->toBe('1970-01-12T13:36:40Z')
+            ->and($rows[0]['lastFiredLabel'])->toBe('10 minutes ago')
+            ->and($rows[0]['lastFired'])->toBe(1_000_000 - 600)
             ->and($rows[1]['lastFired'])->toBeNull()
             ->and($rows[1]['lastFiredLabel'])->toBe('Never')
             ->and($rows[2]['filter'])->toBe('proto icmp')
@@ -266,14 +289,14 @@ describe('rows', function (): void {
     });
 
     test('Last triggered says Unknown, not Never, while the history is unavailable', function (): void {
-        $rows = AlertsPage::ruleRows([alertsPageTestRule()], [], null, 1_000_000);
+        $rows = AlertsPage::ruleRows([alertsPageTestRule()], [], null, 1_000_000, new DateTimeZone('UTC'));
 
         expect($rows[0]['lastFiredLabel'])->toBe('Unknown');
     });
 
     test('Edit gets every field of the rule, the sources included', function (): void {
         $rule = alertsPageTestRule(['sources' => ['gw1', 'gw2'], 'notifyEmail' => 'noc@example.net', 'webhookTitleTemplate' => 'T {rule}']);
-        $form = AlertsPage::ruleRows([$rule], [], [], 0)[0]['form'];
+        $form = AlertsPage::ruleRows([$rule], [], [], 0, new DateTimeZone('UTC'))[0]['form'];
 
         expect(array_keys($form))->toBe(AlertsPage::FORM_FIELDS)
             ->and(array_keys(AlertsPage::formDefaults()))->toBe(AlertsPage::FORM_FIELDS)
@@ -630,6 +653,41 @@ describe('templates', function (): void {
             expect($state?->textContent)->toContain('No alert rules yet', 'New rule')
                 ->and($children)->toBe(['svg', 'h2', 'p', 'button'])
                 ->and($html)->toContain('0 rules')
+            ;
+        } finally {
+            if ($prefsBefore !== null) {
+                Config::$prefsFile = $prefsBefore;
+            }
+        }
+    });
+
+    test('Last triggered is an sb-relative-time around the server label, its zone following displayTz', function (): void {
+        $prefs = new ReflectionProperty(Config::class, 'prefsFile');
+        $prefsBefore = $prefs->isInitialized() ? Config::$prefsFile : null;
+
+        try {
+            $rules = [alertsPageTestRule(), alertsPageTestRule(['id' => 'r2', 'name' => 'Quiet'])];
+            [$c, $data] = alertsPageTestRender($rules);
+            $now = 1_790_686_800;
+            $data['pages']['alerts']['rules'] = AlertsPage::ruleRows($rules, [], ['r1' => $now - 720], $now, new DateTimeZone('UTC'));
+            $cells = HTMLDocument::createFromString($c->render('pages/alerts.html.twig', $data), LIBXML_NOERROR)
+                ->querySelectorAll('#alertRules tbody td[data-kind="time"]')
+            ;
+            $host = $cells->item(0)?->querySelector('sb-relative-time');
+            $displayTz = $c->getSignal('displayTz')?->id();
+            $nfcapdTz = $c->getSignal('nfcapdTz')?->id();
+
+            expect($host)->not->toBeNull()
+                ->and($host?->getAttribute('datetime'))->toBe((string) ($now - 720))
+                ->and($host?->textContent)->toBe('12 minutes ago')
+                ->and($host?->childElementCount)->toBe(0)
+                ->and(array_map(static fn (string $name): ?string => $host?->getAttribute($name), ['format', 'numeric', 'title-lang', 'title-style']))
+                ->toBe(['long', 'auto', 'auto', 'numeric'])
+                ->and($host?->getAttribute('data-attr:time-zone'))->toBe("\${$displayTz} === 'server' ? \${$nfcapdTz} : ''")
+                ->and($host?->getAttribute('data-preserve-attr'))->toBe('time-zone')
+                ->and($host?->hasAttribute('data-init'))->toBeFalse()
+                ->and(trim($cells->item(1)->textContent ?? ''))->toBe('Never')
+                ->and($cells->item(1)?->querySelector('sb-relative-time'))->toBeNull()
             ;
         } finally {
             if ($prefsBefore !== null) {

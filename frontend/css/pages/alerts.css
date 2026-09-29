@@ -38,6 +38,11 @@
     font-weight: var(--font-weight-normal);
 }
 
+/* Room for "30 seconds ago", so the column keeps its width while sb-relative-time counts the seconds. */
+.alert-rules td[data-kind='time'] {
+    min-inline-size: 15ch;
+}
+
 .alert-rule-status,
 .alert-rule-actions {
     display: flex;

@@ -3,7 +3,10 @@
 // event, focus returns to the Test button), switch it on and off from its row while it is in the
 // form, save a default template with another profile selected and see the template, the profile
 // and the disabled rule survive a reload, then delete the rule. A second tab (a fresh context)
-// follows the create, the template save and the delete without a reload.
+// follows the create, the template save and the delete without a reload. After that, saving
+// nothing: Last triggered's sb-relative-time keeps the server's label when it upgrades, counts on
+// its own, and its hover date follows displayTz together with Recent alerts. Only the live
+// evaluation records a firing, so these checks are skipped where no rule has one.
 // The rule stays disabled whenever its condition can hold, so the live evaluation never fires it.
 // Mutates backend/settings/preferences.json and restores it, also after a failure. The two Test
 // events stay in the alert history: the store has no way to remove them.
@@ -184,6 +187,234 @@ async function reloadAlerts(page) {
     await page.reload();
     await page.waitForBoot();
     await openAlerts(page);
+}
+
+/** The rules' sb-relative-time hosts (rules with a recorded firing), as an array expression. */
+const HOSTS = `[...document.querySelectorAll('${SECTION} #alertRules td[data-kind="time"] sb-relative-time')]`;
+
+/** The first host whose firing Recent alerts lists, with that event's <time>; null if none. */
+const LISTED = `(function(){
+    for (var h of ${HOSTS}) {
+        var iso = new Date(Number(h.getAttribute('datetime')) * 1000).toISOString().replace('.000Z', 'Z');
+        var event = document.querySelector('#alertHistory time[datetime="' + iso + '"]');
+        if (event) return { host: h, event: event };
+    }
+    return null;
+})()`;
+
+/** How many rules have a recorded firing, and whether Recent alerts lists one of those firings. */
+async function recordedFirings() {
+    return withPage(async (page) => {
+        await page.navigate(`${BASE}/`);
+        await page.waitForBoot();
+        await openAlerts(page);
+        return page.evaluate(`({ rules: ${HOSTS}.length, listed: !!${LISTED} })`);
+    });
+}
+
+/** Set a signal on the client alone, as the Settings radio does before a save. */
+async function setClientSignal(page, name, value) {
+    await page.evaluate(`(async function(){
+        var root = (await import('datastar')).root;
+        var key = Object.keys(root).find(function(k){ return k === ${JSON.stringify(name)} || k.startsWith(${JSON.stringify(`${name}____`)}); });
+        root[key] = ${JSON.stringify(value)};
+    })()`);
+}
+
+/**
+ * Before sb-relative-time loads, each rule with a firing shows the server's label; the module then
+ * upgrades it with the same text. Retried when a unit edge falls between the render and the upgrade.
+ */
+async function upgradeKeepsTheLabel() {
+    for (let attempt = 1; ; attempt++) {
+        const run = await withPage(async (page) => {
+            await page.send('Network.enable');
+            await page.send('Network.setBlockedURLs', { urls: ['*/relative-time.js*'] });
+            await page.navigate(`${BASE}/`);
+            await page.waitForBoot();
+            await openAlerts(page);
+            // The browser in nfcapd's timezone, so both sides count the same calendar days.
+            await page.send('Emulation.setTimezoneOverride', { timezoneId: await page.signalValue('nfcapdTz') });
+            await setClientSignal(page, 'displayTz', 'browser');
+
+            const src = await page.evaluate(`[...document.scripts].find(function(s){ return /\\/js\\/starbase\\/relative-time@[0-9a-f]{12}\\/relative-time\\.js$/.test(s.src); })?.src`);
+            assert.ok(src, 'the layout loads sb-relative-time from the Starbase lock');
+            const before = await page.evaluate(`(function(){
+                return { defined: !!customElements.get('sb-relative-time'), cells: ${HOSTS}.map(function(h){
+                    return { datetime: h.getAttribute('datetime'), upgraded: !!h.shadowRoot, shown: h.closest('td').innerText.trim() };
+                }) };
+            })()`);
+            assert.ok(before.cells.length > 0, 'a rule with a recorded firing');
+            assert.equal(before.defined, false, 'the module is held back');
+            for (const cell of before.cells) {
+                assert.equal(cell.upgraded, false);
+                assert.match(cell.shown, /\S/, 'before the module loads, the cell shows the server label');
+            }
+
+            await page.send('Network.setBlockedURLs', { urls: [] });
+            await page.evaluate(`import(${JSON.stringify(`${src}?late`)}).then(function(){ return true; })`);
+            await page.waitFor(`${HOSTS}.every(function(h){ return !!h.shadowRoot?.querySelector('time')?.textContent; })`, {
+                label: 'sb-relative-time to upgrade',
+            });
+            const after = await page.evaluate(`${HOSTS}.map(function(h){
+                var time = h.shadowRoot.querySelector('time');
+                var light = document.createRange();
+                light.selectNodeContents(h);
+                return { datetime: h.getAttribute('datetime'), text: time.textContent, visible: time.getClientRects().length > 0, lightShown: light.getClientRects().length > 0 };
+            })`);
+            return { before: before.cells, after, errors: page.realErrors() };
+        });
+
+        assert.deepEqual(run.errors, [], `no console errors around the upgrade, got:\n${run.errors.join('\n')}`);
+        assert.deepEqual(
+            run.after.map((c) => c.datetime),
+            run.before.map((c) => c.datetime),
+            'the same rules before and after the upgrade'
+        );
+        for (const cell of run.after) {
+            assert.ok(cell.visible && !cell.lightShown, 'the upgraded text shows instead of the server label, not beside it');
+        }
+        const same = run.after.every((c, i) => c.text === run.before[i].shown);
+        if (same) return;
+        if (attempt === 3) {
+            assert.deepEqual(
+                run.after.map((c) => c.text),
+                run.before.map((c) => c.shown),
+                'the upgraded text equals the server label'
+            );
+        }
+    }
+}
+
+/**
+ * The upgraded cell counts on its own: no morph touches the light DOM while the seconds tick, the
+ * column keeps its width, and the text looks like the cells beside it in light, dark and forced colours.
+ */
+async function countsWithoutASync() {
+    await withPage(async (page) => {
+        await page.navigate(`${BASE}/`);
+        await page.waitForBoot();
+        await openAlerts(page);
+        await page.waitFor(`${HOSTS}.length > 0 && ${HOSTS}.every(function(h){ return !!h.shadowRoot?.querySelector('time')?.textContent; })`, {
+            label: 'an upgraded Last triggered cell',
+        });
+
+        for (const [mode, dark] of [
+            ['light', false],
+            ['dark', true],
+        ]) {
+            await setClientSignal(page, '_darkMode', dark);
+            await page.waitFor(`document.documentElement.dataset.theme === ${JSON.stringify(mode)}`, { label: `the ${mode} theme` });
+            await assertLooksLikeItsNeighbours(page, mode);
+        }
+        await page.withForcedColors(async () => {
+            await sleep(200);
+            await assertLooksLikeItsNeighbours(page, 'forced colours');
+            await page.screenshot('/tmp/alerts-last-triggered-forced-colors.png');
+        });
+        await setClientSignal(page, '_darkMode', false);
+
+        // Eight seconds ago, counted on the client alone; the next server render puts the real moment back.
+        // Sampled again when a sync lands meanwhile (the dev stack imports every five minutes).
+        const sample = () =>
+            page.evaluate(`(async function(){
+                var host = ${HOSTS}[0];
+                var cell = host.closest('td');
+                var tbody = cell.closest('tbody');
+                host.setAttribute('datetime', String(Math.floor(Date.now() / 1000) - 8));
+                var morphs = 0;
+                var observer = new MutationObserver(function(records){ morphs += records.length; });
+                observer.observe(tbody, { subtree: true, childList: true, characterData: true, attributes: true });
+                var out = [];
+                for (var i = 0; i < 24; i++) {
+                    out.push({ text: host.shadowRoot.querySelector('time').textContent, width: cell.getBoundingClientRect().width });
+                    await new Promise(function(r){ setTimeout(r, 200); });
+                }
+                observer.disconnect();
+                return { out: out, morphs: morphs };
+            })()`);
+        let samples = await sample();
+        for (let attempt = 2; samples.morphs > 0 && attempt <= 3; attempt++) samples = await sample();
+        const texts = [...new Set(samples.out.map((s) => s.text))];
+        assert.equal(samples.morphs, 0, 'nothing from the server touched the rules while the seconds counted');
+        assert.ok(texts.length >= 3, `the text counts up without a sync, got ${texts.join(' | ')}`);
+        for (const text of texts) assert.match(text, /^\d+ seconds ago$/);
+        assert.ok(
+            texts.some((t) => /^\d seconds/.test(t)) && texts.some((t) => /^\d\d seconds/.test(t)),
+            `the count passes from one digit to two, got ${texts.join(' | ')}`
+        );
+        const widths = [...new Set(samples.out.map((s) => s.width.toFixed(1)))];
+        assert.equal(widths.length, 1, `the column keeps its width while the seconds count, got ${widths.join(', ')} px`);
+        // The header alone can hold the column today, so the cell's own floor must fit the widest seconds text.
+        const room = await page.evaluate(`(function(){
+            var cell = ${HOSTS}[0].closest('td');
+            var s = getComputedStyle(cell);
+            var probe = document.createElement('span');
+            probe.style.whiteSpace = 'nowrap';
+            probe.textContent = '59 seconds ago';
+            cell.append(probe);
+            var text = probe.getBoundingClientRect().width;
+            probe.remove();
+            var box = s.boxSizing === 'border-box' ? parseFloat(s.paddingInlineStart) + parseFloat(s.paddingInlineEnd) + parseFloat(s.borderInlineStartWidth) + parseFloat(s.borderInlineEndWidth) : 0;
+            return { floor: (parseFloat(s.minInlineSize) || 0) - box, text: text };
+        })()`);
+        assert.ok(room.floor >= room.text, `the time cell keeps room for '59 seconds ago' (${room.text.toFixed(1)} px), its floor is ${room.floor.toFixed(1)} px`);
+        assert.deepEqual(page.realErrors(), []);
+    });
+}
+
+/** The upgraded text takes the colour, font and figures of its cell, and the colour of the cells beside it. */
+async function assertLooksLikeItsNeighbours(page, mode) {
+    const styles = await page.evaluate(`(function(){
+        var pick = function(el){ var s = getComputedStyle(el); return [s.color, s.fontFamily, s.fontSize, s.fontWeight, s.fontVariantNumeric, s.whiteSpace].join(' / '); };
+        var host = ${HOSTS}[0];
+        var cell = host.closest('td');
+        return { time: pick(host.shadowRoot.querySelector('time')), cell: pick(cell), condition: getComputedStyle(cell.parentElement.children[1]).color };
+    })()`);
+    assert.equal(styles.time, styles.cell, `in ${mode}, the time looks like its cell`);
+    assert.equal(styles.time.split(' / ')[0], styles.condition, `in ${mode}, the time has the colour of the Condition cell`);
+}
+
+/**
+ * Flipping displayTz on the client, without a save, moves the rule's hover date and the Recent
+ * alerts time together, in the same format, to nfcapd's wall time for "server".
+ */
+async function titleFollowsTheDisplayTimezone() {
+    await withPage(async (page) => {
+        await page.navigate(`${BASE}/`);
+        await page.waitForBoot();
+        const nfcapdTz = await page.signalValue('nfcapdTz');
+        // A browser timezone other than nfcapd's, so the two displays differ.
+        const browserTz = nfcapdTz === 'Asia/Kolkata' ? 'America/Sao_Paulo' : 'Asia/Kolkata';
+        await page.send('Emulation.setTimezoneOverride', { timezoneId: browserTz });
+        await page.reload();
+        await page.waitForBoot();
+        await openAlerts(page);
+        await page.waitFor(`${HOSTS}.length > 0 && ${HOSTS}.every(function(h){ return !!h.shadowRoot?.querySelector('time')?.title; })`, {
+            label: 'an upgraded Last triggered cell with its hover date',
+        });
+
+        // A rule whose last firing is in Recent alerts: the same moment in both places.
+        const pair = `(function(){
+            var p = ${LISTED};
+            return p && { ts: Number(p.host.getAttribute('datetime')), zone: p.host.getAttribute('time-zone'), title: p.host.shadowRoot.querySelector('time').title, event: p.event.textContent.trim() };
+        })()`;
+        const read = async (displayTz, zone) => {
+            await setClientSignal(page, 'displayTz', displayTz);
+            await page.waitFor(
+                `(function(){ var p = ${pair}; return !!p && p.zone === ${JSON.stringify(zone)} && p.title === p.event && p.title === new Date(p.ts * 1000).toLocaleString(undefined, ${JSON.stringify(zone ? { timeZone: zone } : {})}); })()`,
+                { label: `the hover date and Recent alerts in ${displayTz} time` }
+            );
+            return page.evaluate(pair);
+        };
+
+        assert.ok(await page.evaluate(pair), 'a rule whose last firing is listed in Recent alerts');
+        const browser = await read('browser', '');
+        const server = await read('server', nfcapdTz);
+        assert.notEqual(server.title, browser.title, `${browserTz} and ${nfcapdTz} show different wall times`);
+        assert.match(server.title, /\d{1,2}:\d{2}:\d{2}/, 'the hover date has seconds, like Recent alerts');
+        assert.deepEqual(page.realErrors(), []);
+    });
 }
 
 /** Pick a profile in the controls bar and wait for change-profile to have saved it. */
@@ -442,6 +673,16 @@ export default async function alertsTest() {
         const errors = [...page.realErrors(), ...otherErrors];
         assert.deepEqual(errors, [], `expected no console errors during the Alerts test, got:\n${errors.join('\n')}`);
     });
+
+    const firings = await recordedFirings();
+    if (firings.rules === 0) {
+        console.log('  (alerts: no rule has a recorded firing here, Last triggered checks skipped)');
+        return;
+    }
+    await upgradeKeepsTheLabel();
+    await countsWithoutASync();
+    if (firings.listed) await titleFollowsTheDisplayTimezone();
+    else console.log("  (alerts: no rule's last firing is among the Recent alerts, hover date check skipped)");
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

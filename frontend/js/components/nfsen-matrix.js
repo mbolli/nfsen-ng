@@ -1,8 +1,11 @@
 /**
- * Conversations Matrix (4.4.4): a heat grid of the top sources (rows) against the top
- * destinations (columns) of one result, on the neutral ramp (D25). A cell whose pair is not
- * among the ranked pairs is hatched: its traffic is unknown, not zero.
+ * <nfsen-matrix data-conversation> (4.4.4; ROCKET-SPEC 6.6, shape A): top sources against top destinations (D25).
+ * A cell whose pair is not among the ranked pairs is hatched: its traffic is unknown, not zero.
  */
+import { rocket } from 'datastar';
+import { downloadUrl } from 'nfsen/download';
+import { escapeHtml, fitLabel, formatMetric, labelWidth } from 'nfsen/format';
+import { hostState, peekState, whenGone } from 'nfsen/host-state';
 import { chartTheme, onThemeChange, sequentialRamp } from 'nfsen/theme-colors';
 
 /** Rows and columns shown at most, the busiest first. */
@@ -22,50 +25,10 @@ const TEXT_GAP = 6;
 const ITEM_GAP = 12;
 const LEGEND_ROW = 20;
 
-const escapeHtml = (text) =>
-    String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-
-function formatBytes(value) {
-    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
-    let n = Number(value) || 0;
-    let i = 0;
-    while (n >= 1024 && i < units.length - 1) {
-        n /= 1024;
-        i++;
-    }
-    return `${i === 0 ? Math.round(n) : n.toFixed(n < 10 ? 2 : 1)} ${units[i]}`;
-}
-
-function formatMetric(value, metric) {
-    return metric === 'packets' ? `${Math.round(Number(value) || 0).toLocaleString('en')} packets` : formatBytes(value);
-}
-
 /** "64%", or one decimal below 10 %, as ConversationActions::percent(). */
 function formatShare(share) {
     const pct = share * 100;
     return `${pct.toFixed(pct > 0 && pct < 10 ? 1 : 0)}%`;
-}
-
-let measureContext = null;
-
-/** The width of an axis or legend label in pixels. */
-function labelWidth(text) {
-    measureContext ??= document.createElement('canvas').getContext('2d');
-    if (!measureContext) return String(text).length * LABEL_FONT_SIZE * 0.6;
-    measureContext.font = `${LABEL_FONT_SIZE}px sans-serif`;
-    return measureContext.measureText(String(text)).width;
-}
-
-/** The label shortened from the middle, as nfsen-sankey.js does: hosts of one network differ at the end. */
-export function fitLabel(text, width, measure = labelWidth) {
-    const label = String(text);
-    if (measure(label) <= width) return label;
-    for (let keep = label.length - 1; keep > 1; keep--) {
-        const head = Math.ceil(keep * 0.4);
-        const fitted = `${label.slice(0, head)}…${label.slice(label.length - (keep - head))}`;
-        if (measure(fitted) <= width) return fitted;
-    }
-    return '…';
 }
 
 /** "5.80 to 13.6 MiB": the unit once when both ends share it. */
@@ -188,189 +151,210 @@ function hatch(theme) {
     return { image: canvas, repeat: 'repeat' };
 }
 
-export class NfsenMatrix extends HTMLElement {
-    static get observedAttributes() {
-        return ['data-conversation'];
+/** The payload the host holds, parsed again only when the attribute changed. */
+function payloadOf(host, state) {
+    if (state.text !== host.dataConversation) {
+        state.text = host.dataConversation;
+        state.payload = parsePayload(state.text);
     }
-
-    connectedCallback() {
-        this.canvas = this.querySelector('.matrix-canvas');
-        this.payload = parsePayload(this.dataset.conversation);
-        // Also sees the view become visible. A full render, not chart.resize(): a theme change
-        // while hidden was skipped, since a chart without a size is not drawn.
-        this.resizeObserver = new ResizeObserver(() => {
-            cancelAnimationFrame(this.frame);
-            this.frame = requestAnimationFrame(() => this.render());
-        });
-        this.resizeObserver.observe(this);
-        this.stopTheme = onThemeChange(() => this.render());
-        this.render();
-    }
-
-    disconnectedCallback() {
-        cancelAnimationFrame(this.frame);
-        this.resizeObserver?.disconnect();
-        this.stopTheme?.();
-        this.chart?.dispose();
-        this.chart = null;
-    }
-
-    attributeChangedCallback(_name, oldValue, newValue) {
-        if (oldValue === newValue || !this.isConnected) return;
-        this.payload = parsePayload(newValue);
-        this.render();
-    }
-
-    resize() {
-        this.render();
-    }
-
-    downloadPng() {
-        if (!this.chart) return;
-        const href = this.chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: chartTheme().surface });
-        const a = document.createElement('a');
-        a.href = href;
-        a.download = 'conversations-matrix.png';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-    }
-
-    message(text) {
-        this.chart?.dispose();
-        this.chart = null;
-        const p = document.createElement('p');
-        p.className = 'conv-chart-message';
-        p.textContent = text;
-        this.canvas.replaceChildren(p);
-    }
-
-    render() {
-        if (!this.canvas) return;
-        if (!this.payload?.pairs.length) {
-            this.message('No conversations in this result.');
-            return;
-        }
-        if (this.clientWidth === 0) return;
-        if (!window.echarts) {
-            setTimeout(() => this.render(), 100);
-            return;
-        }
-
-        const grid = matrixGrid(this.payload);
-        this.grid = grid;
-        const format = (v) => formatMetric(v, grid.metric);
-        const pieces = rampPieces(grid.min, grid.max, sequentialRamp(6), format);
-        const layout = matrixLayout(grid, pieces, this.canvas.clientWidth || this.clientWidth);
-        this.canvas.style.height = `${Math.max(MIN_HEIGHT, GRID_TOP + grid.sources.length * CELL_PX + layout.bottom)}px`;
-
-        if (!this.chart) {
-            this.canvas.replaceChildren();
-            this.chart = window.echarts.init(this.canvas);
-        } else {
-            this.chart.resize();
-        }
-        this.chart.setOption(this.option(grid, pieces, layout), true);
-    }
-
-    option(grid, pieces, layout) {
-        const theme = chartTheme();
-        const { metric } = grid;
-        const topN = this.payload.meta?.topN ?? this.payload.pairs.length;
-        const format = (v) => formatMetric(v, metric);
-        const axis = {
-            type: 'category',
-            axisLine: { lineStyle: { color: theme.axis } },
-            axisTick: { show: false },
-            splitArea: { show: false },
-        };
-
-        return {
-            backgroundColor: 'transparent',
-            animation: false,
-            grid: {
-                top: GRID_TOP,
-                right: 16,
-                bottom: layout.bottom,
-                left: 8,
-                // Labels that need more room shrink the grid, never run into the legend.
-                outerBounds: { top: 0, right: 0, bottom: layout.legend + 8, left: 0 },
-            },
-            tooltip: {
-                backgroundColor: theme.tooltipBg,
-                borderColor: theme.tooltipBorder,
-                textStyle: { color: theme.text },
-                formatter: (params) => {
-                    const [x, y, value, share] = params.data;
-                    const pair = `${escapeHtml(grid.sources[y])} → ${escapeHtml(grid.destinations[x])}`;
-                    if (params.seriesIndex === 1) return `${pair}<br>not in top ${escapeHtml(topN)}`;
-                    const of = share === null ? '' : ` (${formatShare(share)} of ${metric})`;
-                    return `${pair}<br><b>${escapeHtml(format(value))}</b>${of}`;
-                },
-            },
-            xAxis: {
-                ...axis,
-                data: grid.destinations,
-                name: 'Destination',
-                nameLocation: 'middle',
-                nameGap: layout.nameGap,
-                nameTextStyle: { color: theme.text, fontSize: LABEL_FONT_SIZE },
-                axisLabel: {
-                    color: theme.text,
-                    fontSize: LABEL_FONT_SIZE,
-                    margin: LABEL_MARGIN,
-                    interval: 0,
-                    rotate: X_ROTATE,
-                    formatter: (name) => layout.xLabels.get(name) ?? name,
-                },
-            },
-            yAxis: {
-                ...axis,
-                data: grid.sources,
-                inverse: true,
-                axisLabel: {
-                    color: theme.text,
-                    fontSize: LABEL_FONT_SIZE,
-                    margin: LABEL_MARGIN,
-                    interval: 0,
-                    formatter: (name) => layout.yLabels.get(name) ?? name,
-                },
-            },
-            visualMap: {
-                type: 'piecewise',
-                seriesIndex: 0,
-                dimension: 2,
-                orient: layout.vertical ? 'vertical' : 'horizontal',
-                left: layout.vertical ? 8 : 'center',
-                bottom: 0,
-                padding: 0,
-                itemWidth: SWATCH,
-                itemHeight: 10,
-                itemGap: layout.vertical ? LEGEND_ROW - 10 : ITEM_GAP,
-                textGap: TEXT_GAP,
-                textStyle: { color: theme.text, fontSize: LABEL_FONT_SIZE },
-                pieces,
-            },
-            series: [
-                {
-                    type: 'heatmap',
-                    data: grid.data,
-                    itemStyle: { borderColor: theme.surface, borderWidth: 1 },
-                    emphasis: { itemStyle: { borderColor: theme.text, borderWidth: 1 } },
-                },
-                {
-                    type: 'heatmap',
-                    data: grid.missing,
-                    itemStyle: { color: hatch(theme), borderColor: theme.surface, borderWidth: 1 },
-                    emphasis: { disabled: true },
-                },
-            ],
-        };
-    }
-
-    toJSON() {
-        return this.tagName;
-    }
+    return state.payload;
 }
 
-customElements.define('nfsen-matrix', NfsenMatrix);
+function release(state) {
+    state.chart?.dispose();
+    state.chart = null;
+}
+
+function note(state, canvas, text) {
+    release(state);
+    state.drawn = null;
+    const p = document.createElement('p');
+    p.className = 'conv-chart-message';
+    p.textContent = text;
+    canvas.replaceChildren(p);
+}
+
+/** One redraw per burst of prop changes, after the morph that made them (K15). */
+function schedule(host) {
+    const state = peekState(host);
+    if (!state || state.queued) return;
+    state.queued = true;
+    queueMicrotask(() => {
+        state.queued = false;
+        draw(host);
+    });
+}
+
+/** A full draw, not chart.resize(), since a theme change while hidden was skipped; `force` redraws what is drawn. */
+function draw(host, force = false) {
+    const state = peekState(host);
+    const canvas = host.querySelector('.matrix-canvas');
+    if (!state || !canvas || !host.isConnected) return;
+    const payload = payloadOf(host, state);
+    if (!payload?.pairs.length) {
+        note(state, canvas, 'No conversations in this result.');
+        return;
+    }
+    if (host.clientWidth === 0) return;
+    if (!window.echarts) {
+        clearTimeout(state.retry);
+        state.retry = setTimeout(() => draw(host, force), 100);
+        return;
+    }
+    const theme = chartTheme();
+    const width = canvas.clientWidth || host.clientWidth;
+    const drawn = state.drawn;
+    if (!force && state.chart && drawn?.text === state.text && drawn.theme === theme && drawn.width === width) return;
+
+    const grid = matrixGrid(payload);
+    const format = (v) => formatMetric(v, grid.metric);
+    const pieces = rampPieces(grid.min, grid.max, sequentialRamp(6), format);
+    const layout = matrixLayout(grid, pieces, width);
+    canvas.style.height = `${Math.max(MIN_HEIGHT, GRID_TOP + grid.sources.length * CELL_PX + layout.bottom)}px`;
+
+    if (state.chart) {
+        state.chart.resize();
+    } else {
+        canvas.replaceChildren();
+        state.chart = window.echarts.init(canvas);
+    }
+    state.chart.setOption(option(payload, grid, pieces, layout, theme), true);
+    state.drawn = { text: state.text, theme, width };
+}
+
+function option(payload, grid, pieces, layout, theme) {
+    const { metric } = grid;
+    const topN = payload.meta?.topN ?? payload.pairs.length;
+    const format = (v) => formatMetric(v, metric);
+    const axis = {
+        type: 'category',
+        axisLine: { lineStyle: { color: theme.axis } },
+        axisTick: { show: false },
+        splitArea: { show: false },
+    };
+
+    return {
+        backgroundColor: 'transparent',
+        animation: false,
+        grid: {
+            top: GRID_TOP,
+            right: 16,
+            bottom: layout.bottom,
+            left: 8,
+            // Labels that need more room shrink the grid, never run into the legend.
+            outerBounds: { top: 0, right: 0, bottom: layout.legend + 8, left: 0 },
+        },
+        tooltip: {
+            backgroundColor: theme.tooltipBg,
+            borderColor: theme.tooltipBorder,
+            textStyle: { color: theme.text },
+            formatter: (params) => {
+                const [x, y, value, share] = params.data;
+                const pair = `${escapeHtml(grid.sources[y])} → ${escapeHtml(grid.destinations[x])}`;
+                if (params.seriesIndex === 1) return `${pair}<br>not in top ${escapeHtml(topN)}`;
+                const of = share === null ? '' : ` (${formatShare(share)} of ${metric})`;
+                return `${pair}<br><b>${escapeHtml(format(value))}</b>${of}`;
+            },
+        },
+        xAxis: {
+            ...axis,
+            data: grid.destinations,
+            name: 'Destination',
+            nameLocation: 'middle',
+            nameGap: layout.nameGap,
+            nameTextStyle: { color: theme.text, fontSize: LABEL_FONT_SIZE },
+            axisLabel: {
+                color: theme.text,
+                fontSize: LABEL_FONT_SIZE,
+                margin: LABEL_MARGIN,
+                interval: 0,
+                rotate: X_ROTATE,
+                formatter: (name) => layout.xLabels.get(name) ?? name,
+            },
+        },
+        yAxis: {
+            ...axis,
+            data: grid.sources,
+            inverse: true,
+            axisLabel: {
+                color: theme.text,
+                fontSize: LABEL_FONT_SIZE,
+                margin: LABEL_MARGIN,
+                interval: 0,
+                formatter: (name) => layout.yLabels.get(name) ?? name,
+            },
+        },
+        visualMap: {
+            type: 'piecewise',
+            seriesIndex: 0,
+            dimension: 2,
+            orient: layout.vertical ? 'vertical' : 'horizontal',
+            left: layout.vertical ? 8 : 'center',
+            bottom: 0,
+            padding: 0,
+            itemWidth: SWATCH,
+            itemHeight: 10,
+            itemGap: layout.vertical ? LEGEND_ROW - 10 : ITEM_GAP,
+            textGap: TEXT_GAP,
+            textStyle: { color: theme.text, fontSize: LABEL_FONT_SIZE },
+            pieces,
+        },
+        series: [
+            {
+                type: 'heatmap',
+                data: grid.data,
+                itemStyle: { borderColor: theme.surface, borderWidth: 1 },
+                emphasis: { itemStyle: { borderColor: theme.text, borderWidth: 1 } },
+            },
+            {
+                type: 'heatmap',
+                data: grid.missing,
+                itemStyle: { color: hatch(theme), borderColor: theme.surface, borderWidth: 1 },
+                emphasis: { disabled: true },
+            },
+        ],
+    };
+}
+
+function downloadPng(host) {
+    const chart = peekState(host)?.chart;
+    if (!chart) return;
+    downloadUrl(chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: chartTheme().surface }), 'conversations-matrix.png');
+}
+
+rocket('nfsen-matrix', {
+    mode: 'open',
+    props: ({ number, string }) => ({
+        dataConversation: string.docs({ description: 'The result as ConversationPayload JSON: ranked pairs, Others, totals and meta.' }),
+        dataSeconds: number.docs({ description: 'The length of the result window in seconds, as nfsen-sankey takes it.' }),
+        dataUnit: string.docs({ description: 'bits or bytes, as nfsen-sankey takes it; the grid shows totals, not rates.' }),
+    }),
+    manifest: { events: [] },
+    setup: ({ cleanup, defineHostProp, host, observeProps }) => {
+        if (!host.shadowRoot.firstChild) host.shadowRoot.append(document.createElement('slot'));
+        const state = hostState(host, () => ({ chart: null, text: null, payload: null, drawn: null, frame: 0, retry: 0, queued: false }));
+
+        defineHostProp('chart', { get: () => peekState(host)?.chart ?? null });
+        defineHostProp('resize', { value: () => draw(host, true) });
+        defineHostProp('downloadPng', { value: () => downloadPng(host) });
+        defineHostProp('toJSON', { value: () => host.tagName });
+
+        observeProps(() => schedule(host), 'dataConversation');
+        // Also sees the view become visible: a chart drawn while hidden has no size.
+        const resizes = new ResizeObserver(() => {
+            cancelAnimationFrame(state.frame);
+            state.frame = requestAnimationFrame(() => draw(host));
+        });
+        resizes.observe(host);
+        const stopTheme = onThemeChange(() => draw(host));
+        schedule(host);
+
+        cleanup(() => {
+            resizes.disconnect();
+            stopTheme();
+            cancelAnimationFrame(state.frame);
+            clearTimeout(state.retry);
+            whenGone(host, release);
+        });
+    },
+});

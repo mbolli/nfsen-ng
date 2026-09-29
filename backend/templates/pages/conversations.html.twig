@@ -221,7 +221,7 @@
                     <div role="tabpanel" id="convPanel-{{ id }}" aria-labelledby="convView-{{ id }}" tabindex="0" class="conv-panel"
                          {% if not loop.first %}hidden{% endif %}
                          data-attr:hidden="$_conv_view !== '{{ id }}'" data-preserve-attr="hidden"
-                         {% if id != 'pairs' %}data-effect="$_conv_view === '{{ id }}' && requestAnimationFrame(() => el.querySelector('nfsen-{{ id }}')?.resize())"{% endif %}>
+                         {% if id != 'pairs' %}data-effect="$_conv_view === '{{ id }}' && requestAnimationFrame(() => el.querySelector('nfsen-{{ id }}')?.resize?.())"{% endif %}>
                         {{ rh.host('conv-' ~ id, cv.result.id, cv.result.send, content) }}
                     </div>
                 {% endfor %}

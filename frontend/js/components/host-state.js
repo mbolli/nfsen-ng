@@ -20,8 +20,8 @@ export function peekState(host) {
 }
 
 /**
- * For a cleanup: a move reconnects the host before the microtask runs, a removal does not.
- * Datastar keeps every removed host (D3), so a removed one drops its state and empties itself.
+ * For a cleanup: after a microtask, a host no move reconnected drops its state, empties itself and leaves
+ * its old parent, which Datastar's hold on every removed host (D3) would otherwise keep alive with it.
  */
 export function whenGone(host, release) {
     queueMicrotask(() => {
@@ -31,5 +31,9 @@ export function whenGone(host, release) {
         if (state !== undefined) release?.(state);
         host.replaceChildren();
         host.shadowRoot?.replaceChildren();
+        // Also resets the props, so no copy of a payload or message stays; Rocket dropped the host's prop
+        // observers at disconnect, so no observeProps handler sees it.
+        for (const name of host.getAttributeNames()) host.removeAttribute(name);
+        host.remove();
     });
 }

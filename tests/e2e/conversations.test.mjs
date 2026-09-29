@@ -11,10 +11,34 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const payload = `JSON.parse(document.querySelector('#convPanel-sankey nfsen-sankey')?.dataset.conversation ?? 'null')`;
 const visible = (selector) =>
     `(function(){ var e = document.querySelector(${JSON.stringify(selector)}); return !!e && e.getClientRects().length > 0; })()`;
-const sankeyModule = `import(document.querySelector('script[src*="/nfsen-sankey.js"]').src)`;
+const formatModule = `import('nfsen/format')`;
 const hostId = `document.querySelector('#convPanel-sankey .result-host')?.id ?? ''`;
 const themeText = `import('nfsen/theme-colors').then(function(m){ return m.chartTheme().text; })`;
 const sankeyNames = `document.querySelector('nfsen-sankey').chart.getOption().series[0].data.map(function(n){ return n.name; })`;
+const sankeyLabelColour = `document.querySelector('nfsen-sankey').chart.getOption().series[0].label.color`;
+const matrixLabelColour = `document.querySelector('nfsen-matrix').chart.getOption().yAxis[0].axisLabel.color`;
+
+/** The chart of `tag` is drawn at its canvas's current width. */
+const fits = (tag) => `(function(){
+    var host = document.querySelector('#conversationsResults ${tag}');
+    var canvas = host && host.querySelector('.${tag.replace('nfsen-', '')}-canvas');
+    var chart = host && host.chart;
+    return !!chart && canvas.clientWidth > 0 && Math.abs(chart.getWidth() - canvas.clientWidth) <= 1;
+})()`;
+const canvasWidth = (tag) => `document.querySelector('#conversationsResults .${tag.replace('nfsen-', '')}-canvas').clientWidth`;
+
+/** The Sankey chart's own tooltip for a 1 MB link, at the result's length and the host's unit. */
+const chartRate = `document.querySelector('nfsen-sankey').chart.getOption().tooltip[0].formatter({ dataType: 'edge', data: { source: 'a', target: 'b', bytes: 1000000, packets: 1, flows: 1 } })`;
+const RATE_UNIT = { bytes: /\d (?:[KMGTP]i)?B\/s on average/, bits: /\d [kMGTP]?b\/s on average/ };
+
+/** Saves the PNG of the chart at `selector` and returns its file name and the start of its data URL. */
+const png = (selector) => `(function(){
+    var before = window.__downloads.length;
+    document.querySelector(${JSON.stringify(selector)}).downloadPng();
+    var d = window.__downloads[before];
+    return d ? d.download + '|' + d.href.slice(0, 22) : null;
+})()`;
+const PNG_URL = 'data:image/png;base64,';
 
 /**
  * Texts drawn by a Matrix: legend steps that touch an axis label or the axis name, and texts
@@ -93,14 +117,168 @@ async function key(page, name, code = name, keyCode = 0) {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code, windowsVirtualKeyCode: keyCode });
 }
 
+/** Clicks node `index` of the shown Sankey with the mouse, so the chart's own click handler runs; returns its name. */
+async function clickNode(page, index) {
+    const node = `(function(){
+        var host = document.querySelector('#convPanel-sankey nfsen-sankey');
+        var series = host.chart.getModel().getSeriesByIndex(0);
+        var item = series.getData().getItemLayout(${index});
+        var box = host.querySelector('.sankey-canvas').getBoundingClientRect();
+        var x = box.left + series.layoutInfo.x + item.x + item.dx / 2;
+        var y = box.top + series.layoutInfo.y + item.y + item.dy / 2;
+        return { name: series.getData().getName(${index}), x: x, y: y, hit: host.contains(document.elementFromPoint(x, y)) };
+    })()`;
+    await page.waitFor(`${visible('#convPanel-sankey')} && ${fits('nfsen-sankey')}`, { label: 'the Sankey drawn' });
+    const before = await page.evaluate(node);
+    await page.evaluate(`window.scrollBy({ top: ${before.y} - innerHeight / 2, behavior: 'instant' })`);
+    const point = await page.evaluate(node);
+    assert.ok(point.hit, `node ${index} (${point.name}) is on screen at ${point.x}, ${point.y}`);
+    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+        await page.send('Input.dispatchMouseEvent', { type, x: point.x, y: point.y, button: 'left', clickCount: 1 });
+    }
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+    return point.name;
+}
+
 async function choose(page, selector, value) {
     await page.setSelectValue(selector, value);
     await sleep(300);
 }
 
+async function show(page, view) {
+    await page.evaluate(`document.getElementById('convView-${view}').click()`);
+    await page.waitFor(visible(`#convPanel-${view}`), { label: `the ${view} view` });
+}
+
+/** Runs `check(mode)` in the stack's theme, in the other theme and in forced colours, each once the Sankey is drawn in it. */
+async function inEachMode(page, check) {
+    const before = await page.evaluate(`({ choice: window.__nfsenTheme.choice ?? null, dark: window.__nfsenTheme.dark })`);
+    const [stack, other] = before.dark ? ['dark', 'light'] : ['light', 'dark'];
+    const drawnIn = async (mode) => {
+        await show(page, 'sankey');
+        const text = await page.evaluate(themeText);
+        await page.waitFor(`${sankeyLabelColour} === ${JSON.stringify(text)}`, { label: `the Sankey in ${mode}` });
+    };
+    await drawnIn(stack);
+    await check(stack);
+    await page.evaluate(`window.__nfsenTheme.choose('${other}')`);
+    try {
+        await page.waitFor(`document.documentElement.dataset.theme === '${other}'`, { label: `the ${other} theme` });
+        await drawnIn(other);
+        await check(other);
+    } finally {
+        await page.evaluate(`window.__nfsenTheme.choose(${JSON.stringify(before.choice)})`);
+    }
+    await page.withForcedColors(async () => {
+        await drawnIn('forced colours');
+        await check('forced colours');
+    });
+    await drawnIn(stack);
+}
+
+/** A width change while both charts are hidden reaches each once its tab shows it. */
+async function resizeOnTabSwitch(page, narrow, mode) {
+    for (const [width, compare] of [
+        [`${narrow}px`, `< ${narrow}`],
+        ['', `> ${narrow}`],
+    ]) {
+        await show(page, 'pairs');
+        await page.evaluate(`document.querySelector('.conversations').style.maxInlineSize = '${width}'`);
+        for (const view of ['sankey', 'matrix']) {
+            await show(page, view);
+            await page.waitFor(`${fits(`nfsen-${view}`)} && ${canvasWidth(`nfsen-${view}`)} ${compare}`, {
+                label: `the ${view} ${width ? 'narrower' : 'at full width'} in ${mode}`,
+            });
+        }
+    }
+}
+
+/** Three pairs from `n.0.0.x`, every payload the same size, so a redraw keeps the chart's height. */
+const smallPayload = (n) =>
+    JSON.stringify({
+        meta: { metric: 'bytes', groupBy: 'ip', direction: 'forward', topN: 3, approximate: false, command: '' },
+        totals: null,
+        pairs: [1, 2, 3].map((i) => ({
+            rank: i,
+            src: `${n}.0.0.${i}`,
+            dst: `192.0.2.${i}`,
+            port: null,
+            bytes: 4000 - i * 1000,
+            packets: 4 - i,
+            flows: 1,
+            share: null,
+            reverse: null,
+            series: i,
+        })),
+        others: null,
+    });
+const drawnSources = {
+    'nfsen-sankey': `chart.getOption().series[0].data.filter(function(n){ return n.kind === 'source'; })
+        .map(function(n){ return n.text; })`,
+    'nfsen-matrix': `chart.getOption().yAxis[0].data`,
+};
+
+/**
+ * On a live `tag` host, two data-conversation writes in one task give one redraw after the task, with the
+ * second payload (K15); a bad payload shows the message and a good one draws again.
+ */
+async function propBurst(page, tag) {
+    const view = tag.replace('nfsen-', '');
+    const probe = `document.querySelector('#convBurst ${tag}')`;
+    await show(page, view);
+    await page.evaluate(`(function(){
+        var box = document.createElement('div');
+        box.id = 'convBurst';
+        box.innerHTML = '<${tag}><div class="${view}-container"><div class="${view}-canvas"></div></div></${tag}>';
+        box.firstChild.dataset.conversation = ${JSON.stringify(smallPayload(1))};
+        document.getElementById('convPanel-${view}').append(box);
+    })()`);
+    try {
+        await page.waitFor(`!!${probe}?.chart`, { label: `the ${tag} fixture drawn` });
+        const burst = await page.evaluate(`(async function(){
+            var host = ${probe}, chart = host.chart, calls = 0, setOption = chart.setOption;
+            chart.setOption = function(){ calls++; return setOption.apply(this, arguments); };
+            host.dataset.conversation = ${JSON.stringify(smallPayload(2))};
+            host.dataset.conversation = ${JSON.stringify(smallPayload(3))};
+            var inTask = calls;
+            // Queued after the observer's microtask; a ResizeObserver draw would wait for a frame.
+            await null;
+            var afterMicrotask = calls;
+            await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
+            var sources = ${drawnSources[tag]};
+            return { inTask: inTask, afterMicrotask: afterMicrotask, calls: calls, sameChart: host.chart === chart, sources: sources };
+        })()`);
+        assert.deepEqual(
+            burst,
+            { inTask: 0, afterMicrotask: 1, calls: 1, sameChart: true, sources: ['3.0.0.1', '3.0.0.2', '3.0.0.3'] },
+            `${tag}: one redraw after a burst of prop writes, with the last payload`
+        );
+        await page.evaluate(`${probe}.dataset.conversation = 'not json'`);
+        await page.waitFor(
+            `${probe}.chart === null && ${probe}.querySelector('.conv-chart-message')?.textContent === 'No conversations in this result.'`,
+            { label: `${tag}: the message for a bad payload` }
+        );
+        await page.evaluate(`${probe}.dataset.conversation = ${JSON.stringify(smallPayload(4))}`);
+        await page.waitFor(`!!${probe}.chart && !${probe}.querySelector('.conv-chart-message')`, {
+            label: `${tag}: drawn again after a good payload`,
+        });
+    } finally {
+        await page.evaluate(`document.getElementById('convBurst')?.remove()`);
+    }
+}
+
+/** page.runQuery waits 8 s for the Run button, which stays disabled while any query of the tab runs or waits for a slot. */
+async function runWhenReady(page) {
+    await page.waitFor(`!!document.querySelector('button[data-run="conversations"]:not(:disabled)')`, {
+        timeout: 30000,
+        label: 'run button for conversations',
+    });
+    await page.runQuery('conversations', { timeout: 30000 });
+}
+
 async function run(page) {
     const before = await page.evaluate(hostId);
-    await page.runQuery('conversations', { timeout: 30000 });
+    await runWhenReady(page);
     await page.waitFor(`(${hostId}) !== ${JSON.stringify(before)} || !!document.querySelector('#conversationsResults .empty-state')`, {
         label: 'a new result',
         timeout: 10000,
@@ -196,6 +374,64 @@ export default async function conversationsTest() {
             /^Sankey of the top .* The IP pairs view lists the same pairs as a table\.$/
         );
 
+        // Both charts are Rocket hosts whose shadow root only slots the light DOM (shape A).
+        const hosts = await page.evaluate(`['nfsen-sankey', 'nfsen-matrix'].map(function(tag){
+            var el = document.querySelector('#conversationsResults ' + tag);
+            return { tag: tag, id: el.rocketInstanceId, shadow: el.shadowRoot ? [...el.shadowRoot.childNodes].map(function(n){ return n.nodeName; }).join() : null,
+                     json: JSON.stringify({ chart: el }) };
+        })`);
+        for (const host of hosts) {
+            assert.ok(typeof host.id === 'string' && host.id !== '', `${host.tag} is a Rocket host, got ${host.id}`);
+            assert.equal(host.shadow, 'SLOT', `${host.tag}'s shadow root holds only its slot`);
+            assert.equal(host.json, `{"chart":"${host.tag.toUpperCase()}"}`, `${host.tag} serialises to its tag name`);
+        }
+
+        // A move keeps the chart: moveBefore is atomic, insertBefore disconnects and connects again (K14).
+        const moves = await page.evaluate(`(async function(){
+            var host = document.querySelector('#convPanel-sankey nfsen-sankey');
+            var chart = host.chart;
+            var canvas = host.querySelector('.sankey-canvas canvas');
+            var parent = host.parentNode;
+            var out = [];
+            for (var how of ['moveBefore', 'insertBefore']) {
+                if (typeof parent[how] !== 'function') continue;
+                parent[how](host, host.nextSibling);
+                await new Promise(function(r){ setTimeout(r, 200); });
+                out.push({ how: how, chart: host.chart === chart && !chart.isDisposed(), canvas: host.querySelector('.sankey-canvas canvas') === canvas,
+                           shadow: host.shadowRoot.childNodes.length });
+            }
+            return out;
+        })()`);
+        assert.ok(
+            moves.some((m) => m.how === 'insertBefore'),
+            'the reconnect case ran'
+        );
+        for (const move of moves) {
+            assert.deepEqual(
+                { chart: move.chart, canvas: move.canvas, shadow: move.shadow },
+                { chart: true, canvas: true, shadow: 1 },
+                `after ${move.how} the Sankey keeps its chart and canvas`
+            );
+        }
+
+        const wide = await page.evaluate(canvasWidth('nfsen-sankey'));
+
+        // Downloads and copies are recorded from here on instead of saved.
+        await page.evaluate(`(function(){
+            window.__downloads = [];
+            HTMLAnchorElement.prototype.click = function(){
+                var entry = { download: this.download, href: this.href, text: null };
+                window.__downloads.push(entry);
+                if (this.href.startsWith('blob:')) fetch(this.href).then(function(r){ return r.text(); }).then(function(t){ entry.text = t; });
+            };
+            document.execCommand = function(){ window.__copied = document.activeElement && document.activeElement.value; return true; };
+        })()`);
+        assert.equal(
+            await page.evaluate(png('#convPanel-sankey nfsen-sankey')),
+            `conversations-sankey.png|${PNG_URL}`,
+            'the Sankey saves a PNG'
+        );
+
         // Rates in the traffic graph's units, and long labels shortened from the middle.
         const rate = await page.evaluate(`(function(){
             var s = document.querySelector('nfsen-sankey');
@@ -206,8 +442,33 @@ export default async function conversationsTest() {
             rate.unit === 'bytes' ? /\(122 KiB\/s on average\)/ : /\(1 Mb\/s on average\)/,
             `the tooltip rate, got ${rate.text}`
         );
+        // A unit switch reaches both hosts' prop through data-attr, and the chart's tooltip follows it.
+        const chartTip = await page.evaluate(chartRate);
+        assert.match(chartTip, RATE_UNIT[rate.unit], `the chart tooltip in the graph unit, got ${chartTip}`);
+        const unitSignal = await page.evaluate(
+            `import('datastar').then(function(m){ return Object.keys(m.root).find(function(k){ return k.startsWith('graph_trafficUnit____'); }); })`
+        );
+        const setUnit = (value) =>
+            page.evaluate(`import('datastar').then(function(m){ m.root[${JSON.stringify(unitSignal)}] = ${JSON.stringify(value)}; })`);
+        const otherUnit = rate.unit === 'bytes' ? 'bits' : 'bytes';
+        try {
+            await setUnit(otherUnit);
+            await page.waitFor(
+                `['nfsen-sankey', 'nfsen-matrix'].every(function(tag){ return document.querySelector('#conversationsResults ' + tag).dataUnit === ${JSON.stringify(otherUnit)}; })`,
+                { label: `the ${otherUnit} unit on both hosts` }
+            );
+            const switched = await page.evaluate(chartRate);
+            assert.match(switched, RATE_UNIT[otherUnit], `the chart tooltip in ${otherUnit}, got ${switched}`);
+        } finally {
+            await setUnit(rate.unit);
+        }
+        await page.waitFor(`document.querySelector('nfsen-sankey').dataUnit === ${JSON.stringify(rate.unit)}`, {
+            label: 'the unit restored',
+        });
+        assert.match(await page.evaluate(chartRate), RATE_UNIT[rate.unit], 'and back');
+        await propBurst(page, 'nfsen-sankey');
         const fitted = await page.evaluate(
-            `${sankeyModule}.then(function(m){ return m.fitLabel('2a02:1210:5e0c:f300:1c3d:82ff:fe4b:9a1', 110); })`
+            `${formatModule}.then(function(m){ return m.fitLabel('2a02:1210:5e0c:f300:1c3d:82ff:fe4b:9a1', 110); })`
         );
         assert.ok(
             fitted.includes('…') && fitted.endsWith('9a1') && fitted.startsWith('2a02'),
@@ -253,11 +514,17 @@ export default async function conversationsTest() {
             );
             assert.equal(probe.legend, 6, 'every step of the ramp is in the legend');
         }
+        await propBurst(page, 'nfsen-matrix');
 
-        // A theme switch while the Matrix is hidden reaches it once it is shown again.
-        const labelColour = `document.querySelector('nfsen-matrix').chart.getOption().yAxis[0].axisLabel.color`;
+        assert.equal(
+            await page.evaluate(png('#convPanel-matrix nfsen-matrix')),
+            `conversations-matrix.png|${PNG_URL}`,
+            'the Matrix saves a PNG'
+        );
+
+        // A theme switch redraws the shown Sankey, and reaches the hidden Matrix once it is shown again.
         const themeBefore = await page.evaluate(`({ choice: window.__nfsenTheme.choice ?? null, dark: window.__nfsenTheme.dark })`);
-        const shownColour = await page.evaluate(labelColour);
+        const shownColour = await page.evaluate(matrixLabelColour);
         await page.evaluate(`document.getElementById('convView-sankey').click()`);
         await page.waitFor(visible('#convPanel-sankey'), { label: 'the Sankey view' });
         await page.evaluate(`window.__nfsenTheme.choose(${JSON.stringify(themeBefore.dark ? 'light' : 'dark')})`);
@@ -266,12 +533,15 @@ export default async function conversationsTest() {
         });
         const otherText = await page.evaluate(themeText);
         assert.notEqual(otherText, shownColour, 'the two themes have different text colours');
+        await page.waitFor(`${sankeyLabelColour} === ${JSON.stringify(otherText)}`, { label: 'the Sankey in the new theme' });
+        assert.equal(await page.evaluate(png('#convPanel-sankey nfsen-sankey')), `conversations-sankey.png|${PNG_URL}`, 'and its PNG');
         await sleep(200);
-        assert.equal(await page.evaluate(labelColour), shownColour, 'the hidden Matrix has not been drawn again');
+        assert.equal(await page.evaluate(matrixLabelColour), shownColour, 'the hidden Matrix has not been drawn again');
         await page.evaluate(`document.getElementById('convView-matrix').click()`);
-        await page.waitFor(`${labelColour} === ${JSON.stringify(otherText)}`, { label: 'the Matrix in the new theme' });
+        await page.waitFor(`${matrixLabelColour} === ${JSON.stringify(otherText)}`, { label: 'the Matrix in the new theme' });
+        assert.equal(await page.evaluate(png('#convPanel-matrix nfsen-matrix')), `conversations-matrix.png|${PNG_URL}`, 'and its PNG');
         await page.evaluate(`window.__nfsenTheme.choose(${JSON.stringify(themeBefore.choice)})`);
-        await page.waitFor(`${labelColour} === ${JSON.stringify(shownColour)}`, { label: 'the Matrix back in the first theme' });
+        await page.waitFor(`${matrixLabelColour} === ${JSON.stringify(shownColour)}`, { label: 'the Matrix back in the first theme' });
 
         // Arrow keys move between the view tabs (automatic activation).
         await page.evaluate(`document.getElementById('convView-matrix').focus()`);
@@ -303,19 +573,26 @@ export default async function conversationsTest() {
             );
         }
         await key(page, 'Home', 'Home', 36);
-        await page.waitFor(visible('#convPanel-sankey'), { label: 'back to the Sankey' });
+        await page.waitFor(visible('#convPanel-sankey'), { label: 'Home back to the Sankey' });
+        const narrow = 720;
+        assert.ok(wide > narrow, `the page is wider than ${narrow} px (${wide})`);
+        await inEachMode(page, (mode) => resizeOnTabSwitch(page, narrow, mode));
+        // A scrollbar in the Sankey's container narrows the canvas but not the host; the chart follows the canvas.
+        const sankeyContainer = `document.querySelector('#conversationsResults .sankey-container')`;
+        const hostWidth = `document.querySelector('#conversationsResults nfsen-sankey').clientWidth`;
+        const unscrolled = await page.evaluate(canvasWidth('nfsen-sankey'));
+        await page.evaluate(`${sankeyContainer}.style.maxBlockSize = '200px'`);
+        await page.waitFor(`${fits('nfsen-sankey')} && ${canvasWidth('nfsen-sankey')} < ${hostWidth}`, {
+            label: "the Sankey beside its container's scrollbar",
+        });
+        await page.evaluate(`${sankeyContainer}.style.maxBlockSize = ''`);
+        await page.waitFor(`${fits('nfsen-sankey')} && ${canvasWidth('nfsen-sankey')} === ${unscrolled}`, {
+            label: 'the Sankey at its width before',
+        });
         assert.equal(log.count('conversations-run'), 1, 'switching views posts no run');
 
         // ── Export menu ──────────────────────────────────────────────────────
-        await page.evaluate(`(function(){
-            window.__downloads = [];
-            HTMLAnchorElement.prototype.click = function(){
-                var entry = { download: this.download, href: this.href, text: null };
-                window.__downloads.push(entry);
-                if (this.href.startsWith('blob:')) fetch(this.href).then(function(r){ return r.text(); }).then(function(t){ entry.text = t; });
-            };
-            document.execCommand = function(){ window.__copied = document.activeElement && document.activeElement.value; return true; };
-        })()`);
+        await page.evaluate(`window.__downloads.length = 0`);
         await page.evaluate(`document.getElementById('convExportToggle').focus()`);
         await key(page, 'Enter', 'Enter', 13);
         await page.waitFor(`document.getElementById('convExportMenu').hasAttribute('data-open')`, { label: 'the Export menu to open' });
@@ -335,16 +612,34 @@ export default async function conversationsTest() {
         const byName = Object.fromEntries(downloads.map((d) => [d.download, d]));
         assert.ok(byName['conversations-pairs.csv']?.text?.includes(first.pairs[0].src), 'the CSV holds the pairs');
         assert.ok(byName['conversations-pairs.json']?.text?.startsWith('['), 'the JSON is a list');
-        assert.ok(byName['conversations-sankey.png']?.href.startsWith('data:image/png'), 'the PNG of the current chart');
+        assert.ok(byName['conversations-sankey.png']?.href.startsWith(PNG_URL), 'the PNG of the current chart');
         assert.match((await page.evaluate(`window.__copied`)) ?? '', /nfdump .*-A/, 'Copy nfdump command copies the command');
-
-        // A source node opens the IP info of its address.
-        await page.evaluate(
-            `document.querySelector('nfsen-sankey').onClick({ dataType: 'node', data: { text: ${JSON.stringify(first.pairs[0].src)}, kind: 'source' } })`
+        const copyToast = `[...document.querySelectorAll('nfsen-toast')].some(function(t){ return t.message === 'Copied the nfdump command.'; })`;
+        await page.waitFor(copyToast, { label: 'the copy toast' });
+        // With the Matrix shown, the menu saves the Matrix.
+        await page.evaluate(`document.getElementById('convView-matrix').click()`);
+        await page.waitFor(`${visible('#convPanel-matrix')} && !!document.querySelector('nfsen-matrix').chart`, {
+            label: 'the Matrix view',
+        });
+        await page.evaluate(`document.getElementById('convExportToggle').click()`);
+        await page.evaluate(`document.querySelector('#convExportMenu [data-export="png"]').click()`);
+        await page.waitFor(
+            `window.__downloads.some(function(d){ return d.download === 'conversations-matrix.png' && d.href.startsWith(${JSON.stringify(PNG_URL)}); })`,
+            { label: 'the PNG of the Matrix from the menu' }
         );
-        await page.waitFor(`!!document.getElementById('ip-modal-inner')?.open`, { label: 'the IP info of a clicked node', timeout: 40000 });
-        assert.ok((await page.evaluate(`document.getElementById('ip-modal-inner').textContent`)).includes(first.pairs[0].src));
-        await page.evaluate(`document.getElementById('ip-modal-inner').close()`);
+        await page.evaluate(`document.getElementById('convView-sankey').click()`);
+        await page.waitFor(visible('#convPanel-sankey'), { label: 'the Sankey view' });
+
+        // A click on a source node opens the IP info of its address, through the onClick the reconnect above defined again.
+        await inEachMode(page, async (mode) => {
+            assert.equal(await clickNode(page, 0), `src:${first.pairs[0].src}`, `the first node is the top source in ${mode}`);
+            await page.waitFor(`!!document.getElementById('ip-modal-inner')?.open`, {
+                label: `the IP info of a clicked node in ${mode}`,
+                timeout: 40000,
+            });
+            assert.ok((await page.evaluate(`document.getElementById('ip-modal-inner').textContent`)).includes(first.pairs[0].src));
+            await page.evaluate(`document.getElementById('ip-modal-inner').close()`);
+        });
 
         // ── Kill: pressed as soon as the run shows, it ends cancelled and the result stays ──
         const kept = await page.evaluate(hostId);
@@ -362,7 +657,7 @@ export default async function conversationsTest() {
             });
             observer.observe(control, { attributes: true, attributeFilter: ['data-query-state'] });
         })()`);
-        await page.runQuery('conversations', { timeout: 30000 });
+        await runWhenReady(page);
         assert.deepEqual(await page.evaluate(`window.__kill`), { visible: true, progress: true }, 'the run showed Kill and its progress');
         assert.equal(await page.signalValue('query_kind'), 'conversations');
         await page.waitFor(`document.querySelector('#conversationsRun .query-progress-line').textContent.includes('Query cancelled.')`, {
@@ -388,7 +683,9 @@ export default async function conversationsTest() {
         assert.equal(log.count('conversations-run'), 2, 'the drawer ran nothing');
 
         // ── /24 subnets: stale first, then a new result replaces the charts ──
-        const oldSankey = await page.evaluate(`(window.__oldSankey = document.querySelector('nfsen-sankey'), true)`);
+        const oldSankey = await page.evaluate(
+            `(window.__oldSankey = document.querySelector('nfsen-sankey'), window.__oldMatrix = document.querySelector('nfsen-matrix'), window.__oldChart = window.__oldSankey.chart, true)`
+        );
         assert.ok(oldSankey);
         await choose(page, '#convGroupBy', 'net24');
         await page.waitFor(visible('#convStale'), { label: 'the stale notice after an edit' });
@@ -400,13 +697,53 @@ export default async function conversationsTest() {
             'group by /24 labels end in /24'
         );
         assert.equal(await page.evaluate(`window.__oldSankey.isConnected`), false, 'the second run replaced the Sankey');
+        // A removed host drops its chart, its children and attributes, and leaves its old parent: it keeps next to nothing alive (K14).
+        assert.deepEqual(
+            await page.evaluate(`['__oldSankey', '__oldMatrix'].map(function(name){
+                var host = window[name];
+                var parts = [host.childNodes.length, host.shadowRoot.childNodes.length, host.attributes.length, String(host.chart),
+                    String(host.parentNode)];
+                return host.localName + ':' + parts.join('/');
+            }).concat(window.__oldChart.isDisposed())`),
+            ['nfsen-sankey:0/0/0/null/null', 'nfsen-matrix:0/0/0/null/null', true],
+            'the replaced hosts are empty and detached, and their charts disposed'
+        );
+        // That reset of the props reaches no observeProps handler: Rocket dropped them at the disconnect.
+        const gone = await page.evaluate(`(async function(){
+            var ds = await import('datastar'), hs = await import('nfsen/host-state');
+            window.__goneSeen = [];
+            if (!customElements.get('e2e-gone-probe')) ds.rocket('e2e-gone-probe', {
+                mode: 'open',
+                props: function(p){ return { dataValue: p.string }; },
+                setup: function(ctx){
+                    ctx.observeProps(function(){ window.__goneSeen.push(ctx.host.dataValue); }, 'dataValue');
+                    ctx.cleanup(function(){ hs.whenGone(ctx.host); });
+                },
+            });
+            var box = document.createElement('div');
+            box.innerHTML = '<e2e-gone-probe data-value="first"></e2e-gone-probe>';
+            var host = box.firstChild;
+            document.body.append(box);
+            await new Promise(function(r){ setTimeout(r, 50); });
+            host.dataset.value = 'second';
+            box.remove();
+            await new Promise(function(r){ setTimeout(r, 50); });
+            return { seen: window.__goneSeen, attributes: host.attributes.length, value: host.dataValue };
+        })()`);
+        assert.deepEqual(gone, { seen: ['second'], attributes: 0, value: '' }, 'a gone host resets its props without a handler seeing it');
+        assert.notEqual(
+            await page.evaluate(`document.querySelector('nfsen-sankey').rocketInstanceId`),
+            await page.evaluate(`window.__oldSankey.rocketInstanceId`),
+            'the new Sankey is a new Rocket host'
+        );
         assert.equal(await page.evaluate(visible('#convStale')), false, 'a fresh result is not stale');
         // A subnet node copies its filter instead.
-        await page.evaluate(
-            `document.querySelector('nfsen-sankey').onClick({ dataType: 'node', data: { text: ${JSON.stringify(subnets.pairs[0].src)}, kind: 'source' } })`
-        );
-        await page.waitFor(`window.__copied === ${JSON.stringify(`net ${subnets.pairs[0].src}`)}`, {
-            label: 'the subnet filter to be copied',
+        await inEachMode(page, async (mode) => {
+            await page.evaluate('window.__copied = null');
+            assert.equal(await clickNode(page, 0), `src:${subnets.pairs[0].src}`, `the first node is the top source subnet in ${mode}`);
+            await page.waitFor(`window.__copied === ${JSON.stringify(`net ${subnets.pairs[0].src}`)}`, {
+                label: `the subnet filter to be copied in ${mode}`,
+            });
         });
         assert.ok(
             (await page.evaluate(sankeyNames)).every((n) => n.endsWith('/24') || n.endsWith(':*')),
@@ -435,9 +772,18 @@ export default async function conversationsTest() {
         await sleep(300);
         assert.equal(await page.signalValue('conv_direction'), 'both');
 
+        // Forced colours: both charts redraw in the system palette and still save a PNG.
         await page.withForcedColors(async () => {
-            await sleep(300);
+            const forcedText = await page.evaluate(themeText);
+            await page.evaluate(`document.getElementById('convView-sankey').click()`);
+            await page.waitFor(`${sankeyLabelColour} === ${JSON.stringify(forcedText)}`, { label: 'the Sankey in forced colours' });
+            assert.equal(await page.evaluate(png('#convPanel-sankey nfsen-sankey')), `conversations-sankey.png|${PNG_URL}`);
             await page.screenshot('/tmp/nfsen-conversations-forced-colors.png');
+            await page.evaluate(`document.getElementById('convView-matrix').click()`);
+            await page.waitFor(`${matrixLabelColour} === ${JSON.stringify(forcedText)}`, { label: 'the Matrix in forced colours' });
+            assert.equal(await page.evaluate(png('#convPanel-matrix nfsen-matrix')), `conversations-matrix.png|${PNG_URL}`);
+            await page.screenshot('/tmp/nfsen-conversations-matrix-forced-colors.png');
+            await page.evaluate(`document.getElementById('convView-sankey').click()`);
         });
 
         const errors = page.realErrors();

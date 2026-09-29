@@ -1,0 +1,69 @@
+/* Starbase components (frontend/js/starbase/) take nfsen-ng's tokens. Values are references, so one
+   block serves light and dark. */
+/* Adopting one (ROCKET-SPEC 5.3): map every --sb-* token it reads, add its ::part() rules under a comment naming its tag
+   (no host tokens on a slotting one), make states differ in more than weight, and use -emphasis for warn and danger text. */
+:root {
+    --sb-notch: 0;
+    --sb-frame-step: 1px;
+    --sb-frame-color: var(--border-strong);
+
+    --sb-bg: var(--surface-1);
+    --sb-surface-card: var(--surface-2);
+    --sb-surface-raised: var(--surface-2);
+    --sb-surface-inset: var(--surface-3);
+    --sb-surface-hover: var(--surface-3);
+    --sb-surface-overlay: var(--backdrop);
+
+    --sb-border: var(--border);
+    --sb-border-subtle: var(--border);
+    --sb-border-strong: var(--border-strong);
+
+    --sb-text-1: var(--text-1);
+    --sb-text-2: var(--text-2);
+    --sb-text-muted: var(--text-2);
+    --sb-text-on-brand: var(--on-accent);
+    --sb-text-on-danger: var(--on-danger);
+
+    --sb-brand: var(--accent);
+    --sb-brand-hover: var(--accent-hover);
+    --sb-brand-light: var(--focus-color);
+    --sb-brand-subtle: var(--accent-subtle);
+    --sb-accent: var(--text-2);
+    --sb-datastar: var(--text-2);
+
+    --sb-ok: var(--success);
+    --sb-warn: var(--warning);
+    --sb-danger: var(--danger);
+    --sb-info: var(--info);
+
+    --sb-control-bg: var(--surface-2);
+    --sb-control-border: var(--control-border);
+    --sb-control-border-hover: var(--control-border);
+    --sb-control-text: var(--text-1);
+    --sb-control-placeholder: var(--text-3);
+    --sb-control-radius: var(--radius-2);
+
+    --sb-radius: var(--radius-3);
+    --sb-radius-sm: var(--radius-2);
+    --sb-radius-lg: var(--radius-3);
+    --sb-focus-ring: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--focus-color);
+    --sb-selection: color-mix(in oklab, var(--text-1) 18%, transparent);
+
+    --sb-z-toast: var(--layer-toast);
+    --sb-z-tooltip: var(--layer-tooltip);
+
+    --sb-code-keyword: var(--text-1);
+    --sb-code-function: var(--text-1);
+    --sb-code-tag: var(--text-1);
+    --sb-code-string: var(--text-2);
+    --sb-code-number: var(--text-1);
+
+    --sb-chart-1: var(--series-1);
+    --sb-chart-2: var(--series-2);
+    --sb-chart-3: var(--series-3);
+    --sb-chart-4: var(--series-4);
+    --sb-chart-5: var(--series-5);
+    --sb-chart-6: var(--series-6);
+    --sb-chart-7: var(--series-7);
+    --sb-chart-8: var(--series-8);
+}

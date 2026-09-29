@@ -9,6 +9,7 @@ final class StarbaseVendorTest {
     public const string MIN_FORMAT = 'min2';
     public const string DIR = __DIR__ . '/../../frontend/js/starbase';
     public const string WALK = __DIR__ . '/../Support/starbase-walk';
+    public const string BUNDLE = __DIR__ . '/../../frontend/js/datastar-rocket.js';
 
     /** Starbase's slugRe and tagRe (internal/catalog/catalog.go). */
     public const string SLUG_RE = '/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/';
@@ -125,15 +126,60 @@ final class StarbaseVendorTest {
         return true;
     }
 
+    /** The first line of a Datastar bundle without '// ', or null when the file is missing. */
+    public static function banner(string $bundle = self::BUNDLE): ?string {
+        if (!is_file($bundle)) {
+            return null;
+        }
+
+        return preg_replace('~^// ~', '', explode("\n", (string) file_get_contents($bundle), 2)[0]);
+    }
+
+    /**
+     * Where the engine the lock expects, by banner and bytes, differs from the bundle nfsen-ng ships. Objects stay
+     * objects, so a `"datastarPatches": []` fails here as it does in the script.
+     *
+     * @return list<string>
+     */
+    public static function engineProblems(string $json, string $bundle = self::BUNDLE): array {
+        $lock = json_decode($json, false, 16, JSON_THROW_ON_ERROR);
+        if (!$lock instanceof stdClass) {
+            return ['starbase.lock.json is not an object'];
+        }
+        $problems = [];
+        $shipped = self::banner($bundle);
+        $datastar = $lock->datastar ?? null;
+        if ($shipped === null) {
+            $problems[] = 'frontend/js/datastar-rocket.js is missing';
+        } elseif (is_string($datastar) && $datastar !== $shipped) {
+            $problems[] = "lock: datastar is '{$datastar}', frontend/js/datastar-rocket.js is '{$shipped}'";
+        }
+        if (!($lock->datastarPatches ?? null) instanceof stdClass) {
+            $problems[] = 'lock: datastarPatches is missing';
+        }
+        $sha = $lock->datastarSha256 ?? null;
+        if (!property_exists($lock, 'datastarSha256')) {
+            $problems[] = 'lock: datastarSha256 is missing, pull records it';
+        } elseif (!is_string($sha) || preg_match('/^[0-9a-f]{64}$/', $sha) !== 1) {
+            $problems[] = 'lock: datastarSha256 is not 64 hex characters';
+        } elseif ($shipped !== null && ($ours = (string) hash_file('sha256', $bundle)) !== $sha) {
+            $problems[] = 'lock: datastarSha256 is ' . substr($sha, 0, 12) . ', frontend/js/datastar-rocket.js hashes to ' . substr($ours, 0, 12);
+        }
+
+        return $problems;
+    }
+
     /** @return list<string> the problems check() reports for a vendored directory */
-    public static function problems(string $dir): array {
+    public static function problems(string $dir, string $bundle = self::BUNDLE): array {
         $lockFile = $dir . '/starbase.lock.json';
         if (!is_file($lockFile)) {
             return ['starbase.lock.json is missing'];
         }
 
+        $json = (string) file_get_contents($lockFile);
+
         try {
-            $lock = json_decode((string) file_get_contents($lockFile), true, 16, JSON_THROW_ON_ERROR);
+            $lock = json_decode($json, true, 16, JSON_THROW_ON_ERROR);
         } catch (JsonException $e) {
             return ['starbase.lock.json: ' . $e->getMessage()];
         }
@@ -159,6 +205,7 @@ final class StarbaseVendorTest {
         if ($components === []) {
             $problems[] = 'lock: no components';
         }
+        array_push($problems, ...self::engineProblems($json, $bundle));
 
         if (!is_file($dir . '/LICENSE')) {
             $problems[] = 'LICENSE is missing';
@@ -297,8 +344,10 @@ final class StarbaseVendorTest {
 
 describe('Starbase vendoring', function (): void {
     afterEach(function (): void {
-        if (isset($this->tmp) && is_dir($this->tmp)) {
-            StarbaseVendorTest::removeTree($this->tmp);
+        foreach (['tmp', 'engine'] as $dir) {
+            if (isset($this->{$dir}) && is_dir($this->{$dir})) {
+                StarbaseVendorTest::removeTree($this->{$dir});
+            }
         }
     });
 
@@ -318,6 +367,17 @@ describe('Starbase vendoring', function (): void {
                 ->and($c['files'])->toHaveKey($c['entry'])
             ;
         }
+    });
+
+    test('the lock names the engine nfsen-ng ships, by banner and bytes, and records its patch set', function (): void {
+        $lock = StarbaseVendorTest::lock();
+
+        expect($lock['datastar'])->toBe(StarbaseVendorTest::banner())
+            ->and($lock['datastarSha256'] ?? null)->toBe(hash_file('sha256', StarbaseVendorTest::BUNDLE))
+            ->and($lock['datastarPatches'])->toBeArray()
+            ->and(array_filter($lock['datastarPatches'], static fn ($v, $k): bool => !str_ends_with((string) $k, '.patch') || !str_starts_with((string) $v, 'sha384-'), ARRAY_FILTER_USE_BOTH))->toBe([])
+            ->and(StarbaseVendorTest::engineProblems((string) file_get_contents(StarbaseVendorTest::DIR . '/starbase.lock.json')))->toBe([])
+        ;
     });
 
     test('the vendored folders pass every offline check', function (): void {
@@ -442,6 +502,72 @@ describe('Starbase vendoring', function (): void {
             ->toContain("lock: bad slug '9lives'")
             ->not->toContain('../escape: folder ../escape@' . $lock['components'][$slug]['version'] . ' is missing')
         ;
+    });
+
+    test('an edited datastar field fails the check', function (): void {
+        [$this->tmp] = StarbaseVendorTest::tempCopy();
+        $lock = StarbaseVendorTest::lock($this->tmp);
+        $shipped = $lock['datastar'];
+        $lock['datastar'] = 'Datastar v1.0.4 + Rocket beta.2';
+        file_put_contents($this->tmp . '/starbase.lock.json', json_encode($lock));
+
+        expect(StarbaseVendorTest::problems($this->tmp))
+            ->toContain("lock: datastar is 'Datastar v1.0.4 + Rocket beta.2', frontend/js/datastar-rocket.js is '{$shipped}'")
+        ;
+    });
+
+    test('a bundle with another banner, or none, fails the check', function (): void {
+        [$this->tmp] = StarbaseVendorTest::tempCopy();
+        $this->engine = $this->tmp . '-engine';
+        mkdir($this->engine);
+        file_put_contents($this->engine . '/datastar-rocket.js', "// Datastar v1.0.5 + Rocket beta.3\nexport {};\n");
+        $locked = StarbaseVendorTest::lock($this->tmp)['datastar'];
+
+        expect(StarbaseVendorTest::problems($this->tmp, $this->engine . '/datastar-rocket.js'))
+            ->toContain("lock: datastar is '{$locked}', frontend/js/datastar-rocket.js is 'Datastar v1.0.5 + Rocket beta.3'")
+            ->and(StarbaseVendorTest::problems($this->tmp, $this->engine . '/missing.js'))
+            ->toContain('frontend/js/datastar-rocket.js is missing')
+        ;
+    });
+
+    test('a lock without datastarSha256, or whose patch set is not an object, fails; an empty patch set passes', function (): void {
+        [$this->tmp] = StarbaseVendorTest::tempCopy();
+        $lock = StarbaseVendorTest::lock($this->tmp);
+        unset($lock['datastarSha256']);
+        $lock['datastarPatches'] = [];
+        file_put_contents($this->tmp . '/starbase.lock.json', json_encode($lock));
+
+        expect(StarbaseVendorTest::problems($this->tmp))
+            ->toContain('lock: datastarSha256 is missing, pull records it')
+            ->toContain('lock: datastarPatches is missing')
+        ;
+
+        // An unpatched pin records no patches.
+        $lock['datastarSha256'] = hash_file('sha256', StarbaseVendorTest::BUNDLE);
+        $lock['datastarPatches'] = new stdClass();
+        file_put_contents($this->tmp . '/starbase.lock.json', json_encode($lock));
+        expect(StarbaseVendorTest::problems($this->tmp))->toBe([]);
+    });
+
+    test('the bundle bytes must hash to datastarSha256', function (): void {
+        [$this->tmp] = StarbaseVendorTest::tempCopy();
+        $this->engine = $this->tmp . '-engine';
+        mkdir($this->engine);
+        $lock = StarbaseVendorTest::lock($this->tmp);
+        $sha = (string) hash_file('sha256', StarbaseVendorTest::BUNDLE);
+        $lock['datastarSha256'] = $sha;
+        file_put_contents($this->tmp . '/starbase.lock.json', json_encode($lock));
+        expect(StarbaseVendorTest::problems($this->tmp))->toBe([]);
+
+        $bundle = $this->engine . '/datastar-rocket.js';
+        file_put_contents($bundle, (string) file_get_contents(StarbaseVendorTest::BUNDLE) . "\n");
+        expect(StarbaseVendorTest::problems($this->tmp, $bundle))
+            ->toBe(['lock: datastarSha256 is ' . substr($sha, 0, 12) . ', frontend/js/datastar-rocket.js hashes to ' . substr((string) hash_file('sha256', $bundle), 0, 12)])
+        ;
+
+        $lock['datastarSha256'] = strtoupper($sha);
+        file_put_contents($this->tmp . '/starbase.lock.json', json_encode($lock));
+        expect(StarbaseVendorTest::problems($this->tmp))->toBe(['lock: datastarSha256 is not 64 hex characters']);
     });
 
     test('an empty lock fails instead of passing', function (): void {

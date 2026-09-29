@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = join(ROOT, 'frontend', 'js', 'starbase');
 const LOCK = join(DIR, 'starbase.lock.json');
+const BUNDLE = join(ROOT, 'frontend', 'js', 'datastar-rocket.js');
+const PATCHES = join(ROOT, 'patches', 'rocket');
 const STAGE_PREFIX = '.starbase-stage-';
 const MIN_FORMAT = 'min2';
 const DEFAULT_REPOSITORY = 'https://github.com/zweiundeins/starbase.git';
@@ -37,6 +39,7 @@ class UsageError extends Error {}
 const byName = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const sortedEntries = (dir) => readdirSync(dir, { withFileTypes: true }).sort((a, b) => byName(a.name, b.name));
 const sri = (buf) => `sha384-${createHash('sha384').update(buf).digest('base64')}`;
+const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 
 // The files Starbase's embed pattern (components.go) takes from one folder, in fs.WalkDir order.
 export function embeddedFiles(dir) {
@@ -142,6 +145,7 @@ function writeLock(lock, file = LOCK) {
         catalog: lock.catalog,
         minFormat: lock.minFormat,
         datastar: lock.datastar,
+        datastarSha256: lock.datastarSha256,
         datastarPatches: lock.datastarPatches ?? {},
         license: lock.license,
         components,
@@ -159,8 +163,60 @@ function ignoredPaths(paths) {
     throw new Error(`git check-ignore failed: ${(r.stderr || r.error?.message || '').trim()}`);
 }
 
+/** The first line of a Datastar bundle without '// ', or null when the file is missing. */
+export function bundleBanner(file = BUNDLE) {
+    if (!existsSync(file)) return null;
+    return readFileSync(file, 'utf8')
+        .split('\n')[0]
+        .replace(/^\/\/ /, '');
+}
+
+/** Name to sha384 of every .patch file in a folder; an absent folder is an empty set. */
+export function patchSet(dir = PATCHES) {
+    const set = {};
+    if (!existsSync(dir)) return set;
+    for (const e of sortedEntries(dir)) {
+        if (e.isFile() && e.name.endsWith('.patch')) set[e.name] = sri(readFileSync(join(dir, e.name)));
+    }
+    return set;
+}
+
+/** How a recorded patch set (name to sha384) differs from the .patch files in a folder. */
+export function patchDifferences(locked, { patches = PATCHES, label = 'lock' } = {}) {
+    const out = [];
+    const ours = patchSet(patches);
+    const where = relative(ROOT, patches);
+    for (const name of [...new Set([...Object.keys(locked), ...Object.keys(ours)])].sort(byName)) {
+        if (!Object.hasOwn(ours, name)) out.push(`${label}: has patch ${name}, ${where} does not`);
+        else if (!Object.hasOwn(locked, name)) out.push(`${where}/${name}: ${label} has no such patch`);
+        else if (ours[name] !== locked[name]) out.push(`${where}/${name}: differs from ${label}`);
+    }
+    return out;
+}
+
+/** Where the engine the lock expects, by banner and bytes, differs from frontend/js/datastar-rocket.js. */
+export function engineProblems(lock, { bundle = BUNDLE, label = 'lock' } = {}) {
+    const problems = [];
+    const where = relative(ROOT, bundle);
+    const shipped = bundleBanner(bundle);
+    if (shipped === null) problems.push(`${where} is missing`);
+    else if (typeof lock.datastar === 'string' && lock.datastar !== shipped) {
+        problems.push(`${label}: datastar is '${lock.datastar}', ${where} is '${shipped}'`);
+    }
+    const locked = lock.datastarPatches;
+    if (locked === null || typeof locked !== 'object' || Array.isArray(locked)) problems.push(`${label}: datastarPatches is missing`);
+    const sha = lock.datastarSha256;
+    if (sha === undefined) problems.push(`${label}: datastarSha256 is missing, pull records it`);
+    else if (typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha)) problems.push(`${label}: datastarSha256 is not 64 hex characters`);
+    else if (shipped !== null) {
+        const ours = sha256(readFileSync(bundle));
+        if (ours !== sha) problems.push(`${label}: datastarSha256 is ${sha.slice(0, 12)}, ${where} hashes to ${ours.slice(0, 12)}`);
+    }
+    return problems;
+}
+
 /** Every offline check of ROCKET-SPEC 3.7; returns the problems found. */
-export function checkProblems(dir = DIR, { gitIgnore = true } = {}) {
+export function checkProblems(dir = DIR, { gitIgnore = true, bundle = BUNDLE } = {}) {
     const problems = [];
     const lockPath = join(dir, 'starbase.lock.json');
     if (!existsSync(lockPath)) return [`${relative(ROOT, lockPath)} is missing`];
@@ -178,6 +234,7 @@ export function checkProblems(dir = DIR, { gitIgnore = true } = {}) {
     if (typeof lock.catalog === 'string' && !VERSION_RE.test(lock.catalog)) problems.push('lock: catalog is not 12 hex characters');
     const components = lock.components && typeof lock.components === 'object' ? lock.components : {};
     if (Object.keys(components).length === 0) problems.push('lock: no components');
+    problems.push(...engineProblems(lock, { bundle }));
 
     const licensePath = join(dir, 'LICENSE');
     if (!existsSync(licensePath)) problems.push('LICENSE is missing');
@@ -341,12 +398,24 @@ function pull(args) {
         const archive = run('git', ['-C', from, 'archive', '--format=tar', commit, ...paths]);
         run('tar', ['-x', '-C', tmp], { input: archive });
 
-        const datastar = readFileSync(join(tmp, 'static/vendor/datastar-rocket.js'), 'utf8').split('\n')[0].replace(/^\/\/ /, '');
-        const datastarPatches = {};
-        if (existsSync(join(tmp, 'patches/rocket'))) {
-            for (const e of sortedEntries(join(tmp, 'patches/rocket'))) {
-                if (e.isFile() && e.name.endsWith('.patch')) datastarPatches[e.name] = sri(readFileSync(join(tmp, 'patches/rocket', e.name)));
-            }
+        const theirs = join(tmp, 'static/vendor/datastar-rocket.js');
+        const datastar = bundleBanner(theirs);
+        const datastarSha256 = sha256(readFileSync(theirs));
+        const datastarPatches = patchSet(join(tmp, 'patches/rocket'));
+        // Step 2 of ROCKET-SPEC 3.6: the components must expect the engine nfsen-ng ships, byte for byte.
+        const label = `Starbase ${describe}`;
+        const engine = engineProblems({ datastar, datastarSha256, datastarPatches }, { label });
+        const patchNotes = patchDifferences(datastarPatches, { label });
+        if (engine.length > 0) {
+            for (const p of engine) console.error(`FAIL ${p}`);
+            for (const p of patchNotes) console.error(`  ${p}`);
+            const ours = existsSync(BUNDLE) ? sha256(readFileSync(BUNDLE)).slice(0, 12) : 'none';
+            console.error(`${label}: ${datastar}, sha256 ${datastarSha256.slice(0, 12)}`);
+            console.error(`nfsen-ng: ${bundleBanner() ?? 'no bundle'}, sha256 ${ours}`);
+            console.error(
+                `pull aborted, ${relative(ROOT, DIR)} is unchanged: bump Datastar first (scripts/vendor-rocket.sh --from), or pin a Starbase commit with this engine`
+            );
+            return 1;
         }
 
         // Starbase's catalog skips folders whose names start with '.' or '_' (catalog.go, Load).
@@ -367,6 +436,7 @@ function pull(args) {
             catalog: catalogHash(versions),
             minFormat: MIN_FORMAT,
             datastar,
+            datastarSha256,
             datastarPatches,
             license: sri(readFileSync(join(tmp, 'LICENSE'))),
             components: {},
@@ -422,6 +492,7 @@ function pull(args) {
 
         const status = check();
         console.log(`\nStarbase ${describe} (${commit}), catalog ${lock.catalog}, ${datastar}`);
+        for (const p of patchNotes) console.log(`note: same bundle bytes, but ${p}`);
         for (const line of report) console.log(line);
         return status;
     } finally {

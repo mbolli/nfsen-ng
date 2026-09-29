@@ -399,20 +399,27 @@ describe('HealthChecker nfdump group', function (): void {
         expect(HealthChecker::nfdumpVersionCheck('1.6.23'))->toMatchArray(['status' => 'error', 'detail' => 'v1.6.23. nfsen-ng requires nfdump 1.7.2 or later.']);
     });
 
-    // 1.7.9 and 1.7.10 bring the security fixes; nothing in nfsen-ng breaks below them.
-    test('an nfdump below 1.7.9 is a warning that names the security fixes', function (string $version): void {
+    // 1.7.9 brings the security fixes, 1.7.10 the -B pairing fix for gcc builds of 1.7.8 and 1.7.9;
+    // nothing in nfsen-ng breaks below them.
+    test('an nfdump below 1.7.10 is a warning that names the fixes it lacks', function (string $version, bool $security, bool $pairing): void {
         $check = HealthChecker::nfdumpVersionCheck($version);
 
         expect($check['status'])->toBe('warning')
-            ->and($check['detail'])->toBe("v{$version}. nfdump 1.7.9 or later is recommended.")
-            ->and($check['hint'])->toContain('security')
-            ->and($check['hint'])->toContain('1.7.10')
+            ->and($check['detail'])->toBe("v{$version}. nfdump 1.7.10 or later is recommended.")
+            ->and(str_contains($check['hint'], 'security'))->toBe($security)
+            ->and(str_contains($check['hint'], 'Bi-directional'))->toBe($pairing)
+            ->and($check['hint'])->toEndWith('Upgrade to nfdump 1.7.10.')
         ;
-    })->with(['1.7.2', '1.7.6', '1.7.8']);
+    })->with([
+        '1.7.2' => ['1.7.2', true, false],
+        '1.7.7' => ['1.7.7', true, false],
+        '1.7.8' => ['1.7.8', true, true],
+        '1.7.9' => ['1.7.9', false, true],
+    ]);
 
-    test('1.7.9 and later pass', function (string $version): void {
-        expect(HealthChecker::nfdumpVersionCheck($version))->toBe(['status' => 'ok', 'detail' => '1.7.9 or later', 'hint' => '']);
-    })->with(['1.7.9', '1.7.10', '1.8.0']);
+    test('1.7.10 and later pass', function (string $version): void {
+        expect(HealthChecker::nfdumpVersionCheck($version))->toBe(['status' => 'ok', 'detail' => '1.7.10 or later', 'hint' => '']);
+    })->with(['1.7.10', '1.8.0']);
 
     $budget = static fn (array $over = []): array => [
         'cores' => 20, 'coresSource' => 'affinity', 'coresOrigin' => 'nproc', 'coresFrom' => 'the CPU affinity', 'coresDetail' => 'Cpus_allowed_list 0-19',
@@ -459,7 +466,7 @@ describe('HealthChecker nfdump group', function (): void {
     // The checks are cached for up to five minutes; the slot count is not.
     test('withLiveSlots() recounts only the slots row', function () use ($budget, $idle): void {
         $cached = [
-            ['id' => 'nfdump_version', 'label' => 'Minimum version', 'status' => 'ok', 'detail' => '1.7.9 or later', 'group' => 'nfdump', 'code' => false, 'hint' => '', 'epoch' => 0],
+            ['id' => 'nfdump_version', 'label' => 'Minimum version', 'status' => 'ok', 'detail' => '1.7.10 or later', 'group' => 'nfdump', 'code' => false, 'hint' => '', 'epoch' => 0],
             ...HealthChecker::processBudgetChecks($budget(), $idle),
         ];
         $busy = [...$idle, 'inUse' => 4, 'byClass' => ['interactive' => 2, 'background' => 2]];

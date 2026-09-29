@@ -23,9 +23,9 @@ use OpenSwoole\Coroutine;
  * background work; it waits only for a running nfdump to end.
  * Waiters are served in arrival order within those rules.
  *
- * A slot is taken per nfdump invocation rather than per query: a filtered-graph build runs
- * hundreds of processes, and holding a slot for the whole build would starve other callers.
- * acquireMany() and runInHeldSlot() exist for callers that run several at once.
+ * A slot is taken per nfdump invocation. A filtered-graph build holds a pool of them from
+ * acquireMany() and, after each bin, gives one back to a waiting user query or to background
+ * work that needs it. runInHeldSlot() runs work in a slot taken that way.
  *
  * Single-worker only, like the rest of php-via's process-local state. Raising the worker count
  * would need the counters in shared memory to mean anything across processes.
@@ -307,8 +307,8 @@ final class NfdumpSlots {
     }
 
     /**
-     * Sends SIGTERM to every process owned by $handle. A chunked build has one in flight at a
-     * time, but a handle shared by concurrent callers can own several.
+     * Sends SIGTERM to every process owned by $handle: a filtered-graph build has one in flight
+     * per slot it holds, and a handle shared by concurrent callers can own several too.
      *
      * @return ?int the last pid signalled, or null when that query owns nothing right now
      */

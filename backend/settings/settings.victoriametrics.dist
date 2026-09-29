@@ -85,10 +85,15 @@ $nfsen_config = [
         'profile' => 'live',
 
         /**
-         * Maximum concurrent nfdump processes
-         * Higher values = faster queries but more resource usage
+         * Parallel nfdump processes: 'auto' (a third of the CPU cores, 2 to 8) or a number.
+         * Each process uses about 2 to 3 CPU cores.
          */
-        'max-processes' => 1,
+        'max-processes' => getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 'auto',
+
+        /**
+         * nfdump filter threads per process (-W); 0 = nfdump's own default.
+         */
+        'workers' => getenv('NFSEN_NFDUMP_WORKERS') === false ? 2 : getenv('NFSEN_NFDUMP_WORKERS'),
     ],
 
     /**

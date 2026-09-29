@@ -196,7 +196,7 @@ describe('StatisticCatalog', function (): void {
         Config::$settings = Settings::fromArray(mockSettings());
     });
 
-    // Verified on 1.7.8: the release build has no NEL statistics.
+    // Verified on 1.7.8 and 1.7.10: the release build has no NEL statistics.
     test('probes the real binary', function (): void {
         $binary = '/usr/local/nfdump/bin/nfdump';
         if (!is_executable($binary)) {
@@ -206,7 +206,8 @@ describe('StatisticCatalog', function (): void {
         $unsupported = StatisticCatalog::unsupported($binary);
 
         expect(array_diff(array_keys($unsupported), StatisticCatalog::PROBED))->toBe([]);
-        if (Nfdump::version($binary) === '1.7.8') {
+        $version = Nfdump::version($binary);
+        if (version_compare($version, '1.7.8', '>=') && version_compare($version, '1.8', '<')) {
             expect(array_keys($unsupported))->toBe(StatisticCatalog::PROBED)
                 ->and($unsupported['nevent'])->toBe('Unknown statistic: nevent')
             ;

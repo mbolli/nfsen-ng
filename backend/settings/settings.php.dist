@@ -103,7 +103,8 @@ $nfsen_config = [
         'binary' => getenv('NFSEN_NFDUMP_BINARY') ?: '/usr/bin/nfdump',
         'profiles-data' => getenv('NFSEN_NFDUMP_PROFILES') ?: '/var/nfdump/profiles-data',
         'profile' => getenv('NFSEN_NFDUMP_PROFILE') ?: 'live',
-        'max-processes' => (int) (getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 1),
+        'max-processes' => getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 'auto',
+        'workers' => getenv('NFSEN_NFDUMP_WORKERS') === false ? 2 : getenv('NFSEN_NFDUMP_WORKERS'),
     ],
     'db' => [
         'RRD' => [

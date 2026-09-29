@@ -673,7 +673,7 @@ describe('SettingsPage', function (): void {
         $rows = array_column(SettingsPage::deployment(), null, 'label');
 
         expect($rows['nfdump binary'])->toBe(['label' => 'nfdump binary', 'value' => '/opt/nfdump/bin/nfdump', 'code' => true, 'origin' => 'settings.php'])
-            ->and($rows['nfdump processes'])->toMatchArray(['value' => '4', 'origin' => 'NFSEN_NFDUMP_MAX_PROCESSES'])
+            ->and($rows['Parallel nfdump processes'])->toMatchArray(['value' => '4', 'origin' => 'NFSEN_NFDUMP_MAX_PROCESSES'])
             ->and($rows['Default theme'])->toMatchArray(['value' => 'Dark', 'origin' => 'settings.php'])
             ->and($rows['Statistics window limit']['value'])->toBe('Unlimited')
             ->and($rows['Filter presets']['value'])->toStartWith('2 expressions')

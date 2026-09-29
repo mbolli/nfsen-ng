@@ -146,7 +146,7 @@
 
     {# One nfdump per bin (#166), so it builds only on a click, after saying what that costs. #}
     <section class="card flows-graph" id="flowsGraph" aria-labelledby="flowsGraphTitle"
-             data-computed:flows._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ['any'], ports: [], display: ((${{ graph_sources.id() }}.includes('any') || ${{ graph_sources.id() }}.length === 0 ? {{ shell.sources|length }} : ${{ graph_sources.id() }}.length) > 1 ? 'sources' : 'protocols'), type: (${{ flows_graph_unit.id() }} === 'bytes' ? 'traffic' : ${{ flows_graph_unit.id() }}), trafficUnit: 'bytes', logscale: false, stacked: false, stepplot: true, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}">
+             data-computed:flows._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ['any'], ports: [], display: ((${{ graph_sources.id() }}.includes('any') || ${{ graph_sources.id() }}.length === 0 ? {{ shell.sources|length }} : ${{ graph_sources.id() }}.length) > 1 ? 'sources' : 'protocols'), type: (${{ flows_graph_unit.id() }} === 'bytes' ? 'traffic' : ${{ flows_graph_unit.id() }}), trafficUnit: 'bytes', unit: ${{ flows_graph_unit.id() }}, logscale: false, stacked: false, stepplot: true, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}">
         <header>
             <h2 id="flowsGraphTitle">
                 <button type="button" class="flows-disclosure" aria-controls="flowsGraphBody"

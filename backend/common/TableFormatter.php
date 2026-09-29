@@ -177,6 +177,11 @@ class TableFormatter {
             return self::formatNumber($value);
         }
 
+        // Bytes per packet is a size, not a rate.
+        if ($fieldLower === 'bpp') {
+            return is_numeric($value) ? self::formatNumber($value) . ' B' : (string) $value;
+        }
+
         // Format bitrate/bandwidth (bps, pps)
         if (preg_match(self::PATTERN_BITRATE_FIELDS, $fieldLower)
             || preg_match(self::PATTERN_BITRATE_SUFFIX, $fieldLower)) {

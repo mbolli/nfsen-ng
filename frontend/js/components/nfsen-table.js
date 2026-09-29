@@ -588,8 +588,8 @@ export class NfsenTable extends HTMLElement {
         const select = pager.querySelector('select');
         if (select && select.value !== String(this.pageSize)) select.value = String(this.pageSize);
 
-        // A pressed page button was rebuilt: focus its successor, or the current page.
-        if (focused !== undefined && !pager.contains(document.activeElement)) {
+        // A pressed page button was rebuilt or disabled (Next on the last page): focus its successor, or the current page.
+        if (focused !== undefined && (!pager.contains(document.activeElement) || document.activeElement.disabled)) {
             const again = pager.querySelector(`[data-page="${focused}"]:not(:disabled)`) ?? pager.querySelector('[aria-current="page"]');
             again?.focus();
         }

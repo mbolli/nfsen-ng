@@ -9,6 +9,7 @@ use mbolli\nfsen_ng\actions\UtilityActions;
 use mbolli\nfsen_ng\common\AlertManager;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\HealthChecker;
+use mbolli\nfsen_ng\common\HealthMetrics;
 use mbolli\nfsen_ng\common\ImportDaemon;
 use mbolli\nfsen_ng\pages\state\ShellState;
 use Mbolli\PhpVia\Context;
@@ -24,8 +25,11 @@ final class Shell {
 
     public const int STATUS_TTL = 30;
 
-    /** A last capture older than this is a warning, older than an hour an error. */
-    private const int CAPTURE_FRESH = 600;
+    /**
+     * A last capture older than this is a warning, older than an hour an error. The last update is the
+     * newest file's interval start, so it is 600 s old just before the next file lands: Health's limit.
+     */
+    private const int CAPTURE_FRESH = HealthMetrics::STALE_AFTER;
 
     /** Top-level Twig key of each shell module. */
     private const array MODULE_KEYS = [

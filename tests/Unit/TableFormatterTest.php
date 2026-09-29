@@ -174,6 +174,10 @@ describe('TableFormatter', function (): void {
             $result = TableFormatter::formatCellValue(10000000000, 'bps', ['linkIpAddresses' => false]);
             expect($result)->toContain('Gbps');
         });
+
+        test('formats bytes per packet as a size, not a rate', function (): void {
+            expect(TableFormatter::formatCellValue(100, 'bpp', ['linkIpAddresses' => false]))->toBe('100 B');
+        });
     });
 
     describe('IP address formatting', function (): void {

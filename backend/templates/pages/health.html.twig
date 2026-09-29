@@ -421,7 +421,7 @@
     {# ── Recent log ─────────────────────────────────────────────────────────── #}
     {# The level filter is client-side: data-filter on the card hides rows by data-level (health.css). #}
     <section class="card health-log" id="healthLog" aria-labelledby="healthLogTitle"
-             data-signals__ifmissing="{_log_level: 'all', _log_copied: false}"
+             data-signals__ifmissing="{_log_level: 'all', _log_copied: ''}"
              data-filter="all" data-attr:data-filter="$_log_level" data-preserve-attr="data-filter">
         <header>
             <h2 id="healthLogTitle">Recent log</h2>
@@ -434,16 +434,16 @@
                 <input type="radio" id="healthLogErrors" name="healthLogLevel" value="error" data-bind="_log_level">
                 <label for="healthLogErrors">Errors</label>
             </div>
-            {# navigator.clipboard needs a secure context; plain HTTP falls back to a selected textarea,
-               then gives the focus back. #}
+            {# Copies the rows the level filter shows; the tr[data-empty] placeholders have no data-level. #}
             <button type="button" id="healthLogCopy" data-size="sm"
-                    data-on:click="((text) => (window.isSecureContext && navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.resolve(((t) => (t.value = text, t.readOnly = true, t.style.position = 'fixed', t.style.opacity = '0', document.body.append(t), t.select(), document.execCommand('copy'), t.remove(), el.focus()))(document.createElement('textarea')))).then(() => ($_log_copied = true, setTimeout(() => ($_log_copied = false), 2000))))([...el.closest('section').querySelectorAll('tbody tr[data-level]')].filter((r) => r.getClientRects().length > 0).map((r) => [...r.cells].map((c) => c.textContent.trim()).join('  ')).join('\n'))">
-                <span data-text="$_log_copied ? 'Copied' : 'Copy'">Copy</span>
+                    data-copy-source="healthLogTable" data-copy-mode="rows" data-copy-rows="tbody tr[data-level]"
+                    data-copy-announce="The visible log lines were copied."
+                    data-on:nfsen-copy="$_log_copied = evt.detail.label; clearTimeout(el.copiedTimer); el.copiedTimer = setTimeout(() => ($_log_copied = ''), 2000)">
+                <span data-text="$_log_copied || 'Copy'">Copy</span>
             </button>
-            <span class="visually-hidden" role="status" data-text="$_log_copied ? 'The visible log lines were copied.' : ''"></span>
         </header>
         <div class="table-wrap health-scroll" tabindex="0" role="region" aria-label="Recent log lines">
-            <table>
+            <table id="healthLogTable">
                 <thead>
                     <tr>
                         <th scope="col">Time</th>

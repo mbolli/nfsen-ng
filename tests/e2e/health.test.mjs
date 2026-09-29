@@ -59,6 +59,45 @@ const logSnapshot = `(() => {
     };
 })()`;
 
+/**
+ * Records each nfsen-copy with the log rows and placeholders shown then, and each text #nfsen-announcer
+ * says; __region holds every state of the region with the number of copies so far.
+ */
+const WATCH_COPIES = `(() => {
+    if (window.__copies) return;
+    window.__copies = [];
+    window.__said = [];
+    window.__region = [];
+    let viaExecCommand = null;
+    const shown = (selector) => [...document.querySelectorAll(selector)].filter((r) => r.getClientRects().length > 0);
+    const line = (r) => [...r.cells].map((c) => c.textContent.trim()).join('  ');
+    document.addEventListener('copy', (e) => {
+        const t = e.target;
+        viaExecCommand = t instanceof HTMLTextAreaElement ? t.value.slice(t.selectionStart, t.selectionEnd) : null;
+    }, true);
+    document.addEventListener('nfsen-copy', (e) => {
+        window.__copies.push({
+            ok: e.detail.ok,
+            text: e.detail.text,
+            viaExecCommand,
+            rows: shown('#healthLogTable tbody tr[data-level]').map(line).join('\\n'),
+            placeholders: shown('#healthLogTable tr[data-empty]').map((r) => r.textContent.trim()),
+        });
+        viaExecCommand = null;
+    });
+    new MutationObserver((records) => {
+        for (const r of records) {
+            const text = [...r.addedNodes].map((n) => n.textContent).join('');
+            if (text) window.__said.push(text);
+            window.__region.push([text, window.__copies.length]);
+        }
+    }).observe(document.getElementById('nfsen-announcer'), { childList: true });
+})()`;
+
+const COPY_LABEL = `document.getElementById('healthLogCopy').textContent.trim()`;
+const ANNOUNCER = `document.getElementById('nfsen-announcer').textContent`;
+const COPIED = 'The visible log lines were copied.';
+
 const passes = { all: () => true, warning: (l) => l === 'warning' || l === 'error', error: (l) => l === 'error' };
 
 /** Exactly the rows of the filter's levels are visible, and an empty filter says so. */
@@ -240,6 +279,11 @@ async function walkHealth(page) {
                 await page.waitForPage('health', { timeout: 20000 });
             }
         }
+    } else {
+        const reason = await page.evaluate(`document.getElementById('topnFill').getAttribute('aria-busy') === 'true'
+            ? 'a fill is running'
+            : document.querySelector('#page-health .health-topn > span')?.textContent.trim()`);
+        console.log(`health: #topnFill is disabled, so the top-N fill check is skipped: ${reason}`);
     }
 
     // Rescan (RRD): Tab reaches every profile's buttons in order; Enter opens the shared
@@ -348,14 +392,77 @@ async function walkHealth(page) {
     assert.equal(await page.evaluate(`document.getElementById('healthLog').dataset.filter`), 'error', 'a refresh keeps the level filter');
     assert.ok(await page.evaluate(`document.getElementById('healthLogErrors').checked`), 'a refresh keeps the checked level');
 
-    // Back to All, then Tab to Copy and press Enter. Copy works on plain HTTP too (the
-    // textarea fallback) and says so.
-    if (!(await page.evaluate(`document.activeElement?.name === 'healthLogLevel'`))) await fromImportHeading(page, logRadio);
+    // Errors on without error lines (removed here; a refresh bringing them back repeats the round):
+    // the placeholder shows but is never copied, and Copy says there is nothing to copy.
+    await page.evaluate(WATCH_COPIES);
+    const insecure = !(await page.evaluate('window.isSecureContext'));
+    for (let attempt = 1; ; attempt++) {
+        if (!(await page.evaluate(`document.activeElement?.name === 'healthLogLevel'`))) await fromImportHeading(page, logRadio);
+        assert.equal(await page.evaluate(`document.getElementById('healthLog').dataset.filter`), 'error', 'Errors is still on');
+        await page.evaluate(`document.querySelectorAll('#healthLog tbody tr[data-level="error"]').forEach((r) => r.remove())`);
+        await press(page, 'Tab');
+        assert.equal(await page.evaluate(`document.activeElement?.id`), 'healthLogCopy', 'Tab leaves the filter for Copy');
+        const [before, saidBefore] = await page.evaluate('[window.__copies.length, window.__said.length]');
+        await press(page, 'Enter');
+        await page.waitFor(`window.__copies.length > ${before}`, { label: 'the copy with Errors on' });
+        const copy = await page.evaluate(`window.__copies.at(-1)`);
+        if (!copy.placeholders.includes('No errors in these lines.')) {
+            assert.ok(attempt < 3, `the Errors placeholder never showed at the copy: ${JSON.stringify(copy)}`);
+            await press(page, 'Tab', { shift: true });
+            continue;
+        }
+        assert.doesNotMatch(copy.text, /No errors in these lines\./, 'the placeholder row is not copied');
+        assert.equal(copy.text, '', 'with no error line shown there is nothing to copy');
+        assert.equal(copy.ok, false, 'a blank copy does not count as copied');
+        await page.waitFor(`window.__said.length > ${saidBefore}`, { label: '#nfsen-announcer after the blank copy' });
+        assert.equal(await page.evaluate('window.__said.at(-1)'), 'Nothing to copy.', '#nfsen-announcer says there is nothing to copy');
+        await page.waitFor(`${COPY_LABEL} === 'Nothing to copy'`, { label: 'the label to say there is nothing to copy' });
+        break;
+    }
+    await press(page, 'Tab', { shift: true });
+    assert.equal(await page.evaluate(`document.activeElement?.id`), 'healthLogErrors', 'Shift+Tab returns to Errors');
+
+    // Back to All, Copy by keyboard (the textarea fallback on plain HTTP): once, again when the label
+    // reads Copy, and a third time at once, while the announcer still shows the second message.
     await arrowTo(page, 'ArrowRight', 'all');
     await press(page, 'Tab');
     assert.equal(await page.evaluate(`document.activeElement?.id`), 'healthLogCopy', 'Tab leaves the filter for Copy');
+    const said = await page.evaluate('window.__said.length');
+    const copies = await page.evaluate('window.__copies.length');
+    await page.waitFor(`${COPY_LABEL} === 'Copy'`, { timeout: 4000, label: 'the label to read Copy before the copy' });
     await press(page, 'Enter');
     await page.waitFor(`document.getElementById('healthLogCopy').textContent.trim() === 'Copied'`, { label: 'copy confirmation' });
+    await page.waitFor(`window.__said.length > ${said}`, { label: '#nfsen-announcer to announce the copy' });
+    assert.equal(await page.evaluate(ANNOUNCER), COPIED, '#nfsen-announcer says what was copied');
+    await page.waitFor(`${COPY_LABEL} === 'Copy'`, { timeout: 4000, label: 'the label to read Copy again' });
+    await page.waitFor(`${ANNOUNCER} === ''`, { timeout: 4000, label: 'the announcer to empty' });
+    assert.equal(await page.evaluate(`document.activeElement?.id`), 'healthLogCopy', 'Copy keeps the focus');
+    const region = await page.evaluate('window.__region.length');
+    await press(page, 'Enter');
+    await page.waitFor(`${COPY_LABEL} === 'Copied'`, { label: 'the second copy to say Copied' });
+    await page.waitFor(`window.__said.length > ${said + 1}`, { label: 'a second copy to be announced again' });
+    assert.equal(await page.evaluate(ANNOUNCER), COPIED, 'the second message still shows');
+    await press(page, 'Enter');
+    await page.waitFor(`window.__said.length > ${said + 2}`, { label: 'a copy right after to be announced again' });
+    assert.deepEqual(
+        await page.evaluate(`window.__region.slice(${region}, ${region + 3})`),
+        [
+            [COPIED, copies + 2],
+            ['', copies + 3],
+            [COPIED, copies + 3],
+        ],
+        'the third copy empties the region while it shows the message, then sets it again'
+    );
+    assert.deepEqual(await page.evaluate(`window.__said.slice(${said})`), [COPIED, COPIED, COPIED], 'each copy sets the announcer text');
+    assert.equal(await page.evaluate(COPY_LABEL), 'Copied', 'the label says Copied through the repeat');
+    await page.waitFor(`window.__copies.length === ${copies + 3}`, { label: 'all three copies' });
+    for (const copy of await page.evaluate(`window.__copies.slice(${copies})`)) {
+        assert.equal(copy.ok, true, `the copy succeeded: ${JSON.stringify(copy).slice(0, 300)}`);
+        assert.ok(copy.rows.length > 0, 'All shows log lines to copy');
+        assert.equal(copy.text, copy.rows, 'Copy holds the shown log lines, their cells two spaces apart');
+        assert.deepEqual(copy.placeholders, [], 'All with log lines shows no placeholder');
+        if (insecure) assert.equal(copy.viaExecCommand, copy.text, 'over plain HTTP the textarea fallback copied the text');
+    }
     await press(page, 'Tab', { shift: true });
     assert.equal(await page.evaluate(`document.activeElement?.id`), 'healthLogAll', 'Shift+Tab returns to the checked level');
 

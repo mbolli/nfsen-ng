@@ -14,7 +14,6 @@
 {% set tz = '$' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() %}
 {# Only a statistic with a stored run needs the server; the rest switches in the browser. #}
 {% set show = t.stored|json_encode ~ '.includes(' ~ forId ~ ') && ' ~ forId ~ ' !== ' ~ (t.result ? t.result.element : '')|json_encode ~ " && @post('" ~ talkersSelect.url() ~ "')" %}
-{% set copy = "((text) => (window.isSecureContext && navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.resolve(((a) => (a.value = text, a.readOnly = true, a.style.position = 'fixed', a.style.opacity = '0', document.body.append(a), a.select(), document.execCommand('copy'), a.remove(), el.focus()))(document.createElement('textarea')))).then(() => ($_stats_copied = true, setTimeout(() => ($_stats_copied = false), 2000))))" %}
 
 {# Whether the fields differ from a run's inputs as its fingerprint sees them (no post needed);
    `aggregation` is the -A it ran with, rebuilt as Nfdump::buildAggregationString() does. #}
@@ -45,7 +44,7 @@
 } %}
 
 <div class="stack talkers"
-     data-signals__ifmissing="{{ {_statsCatalog: t.catalog.client, _stats_panel: '', _stats_copied: false, (_stats_rows.id()): 0}|json_encode }}"
+     data-signals__ifmissing="{{ {_statsCatalog: t.catalog.client, _stats_panel: '', _stats_copied: '', (_stats_rows.id()): 0}|json_encode }}"
      data-computed:_stats_run_kind="${{ query_kind.id() }} === 'talkers-panel' ? 'talkers-panel-' + $_stats_panel : ${{ query_kind.id() }}">
 
     <div class="stat-bar">
@@ -304,9 +303,9 @@
                     <div class="talkers-command" data-attr:hidden="!({{ current }})" data-preserve-attr="hidden">
                         <span class="talkers-command-label">nfdump:</span>
                         <code id="statsCommand">{{ r.command }}</code>
-                        <button type="button" data-size="sm" aria-label="Copy the nfdump command"
-                                data-on:click="{{ copy }}(document.getElementById('statsCommand').textContent)">
-                            <span data-text="$_stats_copied ? 'Copied' : 'Copy'">Copy</span>
+                        <button type="button" data-size="sm" aria-label="Copy the nfdump command" data-copy-source="statsCommand"
+                                data-on:nfsen-copy="$_stats_copied = evt.detail.label; clearTimeout(el.copiedTimer); el.copiedTimer = setTimeout(() => ($_stats_copied = ''), 2000)">
+                            <span data-text="$_stats_copied || 'Copy'">Copy</span>
                         </button>
                         <small>{{ r.elapsed }} s</small>
                         {% if r.notes is not empty %}

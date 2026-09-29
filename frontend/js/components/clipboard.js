@@ -94,13 +94,20 @@ document.addEventListener('click', async (event) => {
     const button = event.target instanceof Element ? event.target.closest('button[data-copy-source]') : null;
     if (!button || button.disabled) return;
     const text = await sourceText(button);
-    const ok = text !== null && (await copyText(text));
-    if (!button.querySelector('[data-text]')) flash(button, ok ? 'Copied' : 'Copy failed');
-    announce(ok ? (button.dataset.copyAnnounce ?? 'Copied.') : 'Copy failed.');
-    button.dispatchEvent(new CustomEvent('nfsen-copy', { bubbles: true, detail: { ok, text: text ?? '' } }));
+    const blank = text !== null && text.trim() === '';
+    const ok = text !== null && !blank && (await copyText(text));
+    const [label, message] = ok
+        ? ['Copied', button.dataset.copyAnnounce ?? 'Copied.']
+        : blank
+          ? ['Nothing to copy', 'Nothing to copy.']
+          : ['Copy failed', 'Copy failed.'];
+    // A button with a [data-text] label shows detail.label through its own signal.
+    if (!button.querySelector('[data-text]')) flash(button, label);
+    announce(message);
+    button.dispatchEvent(new CustomEvent('nfsen-copy', { bubbles: true, detail: { ok, text: text ?? '', label } }));
 });
 
-// The Flows copy buttons call this until they move to data-copy-source (WP-R7).
+// No template calls this since the copy buttons use data-copy-source; WP-R11 removes it.
 window.nfsenCopyText ??= async (text, button = null) => {
     const ok = await copyText(text);
     if (button) flash(button, ok ? 'Copied' : 'Copy failed');

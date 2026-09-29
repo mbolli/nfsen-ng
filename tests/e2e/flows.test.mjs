@@ -56,6 +56,58 @@ async function captureExport(page, item) {
     return JSON.parse(result);
 }
 
+/** A real press and release on the element: over plain HTTP only user activation lets execCommand copy. */
+async function clickAt(page, expr) {
+    const { x, y } = await page.evaluate(`(function(){
+        var el = ${expr};
+        el.scrollIntoView({ block: 'center' });
+        var r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    })()`);
+    for (const type of ['mousePressed', 'mouseReleased']) {
+        await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+    }
+}
+
+/**
+ * Records each nfsen-copy and each text #nfsen-announcer says. Over plain HTTP the textarea's
+ * execCommand fires a copy event, whose selection is what reached the clipboard.
+ */
+const WATCH_COPIES = `(function(){
+    if (window.__copies) return;
+    window.__copies = [];
+    window.__said = [];
+    var viaExecCommand = null;
+    document.addEventListener('copy', function(e){
+        var t = e.target;
+        viaExecCommand = t instanceof HTMLTextAreaElement ? t.value.slice(t.selectionStart, t.selectionEnd) : null;
+    }, true);
+    document.addEventListener('nfsen-copy', function(e){
+        window.__copies.push({ source: e.target.dataset.copySource, ok: e.detail.ok, text: e.detail.text, viaExecCommand: viaExecCommand });
+        viaExecCommand = null;
+    });
+    new MutationObserver(function(records){
+        records.forEach(function(r){ r.addedNodes.forEach(function(n){ if (n.textContent) window.__said.push(n.textContent); }); });
+    }).observe(document.getElementById('nfsen-announcer'), { childList: true, subtree: true, characterData: true });
+})()`;
+
+/** Clicks a copy button that reads Copy and checks what it copied, its Copied label and the announcement. */
+async function copyWith(page, button, expected, label) {
+    await page.waitFor(`${button}.textContent === 'Copy'`, { timeout: 4000, label: `${label}: the button to read Copy first` });
+    const [copies, said] = await page.evaluate('[window.__copies.length, window.__said.length]');
+    await clickAt(page, button);
+    await page.waitFor(`window.__copies.length > ${copies}`, { timeout: 15000, label: `${label}: the copy` });
+    const copy = await page.evaluate('window.__copies.at(-1)');
+    assert.equal(copy.ok, true, `${label}: the copy succeeded`);
+    assert.equal(copy.text, expected, `${label}: what is copied`);
+    if (!(await page.evaluate('window.isSecureContext'))) {
+        assert.equal(copy.viaExecCommand, expected, `${label}: over plain HTTP the textarea fallback copied it`);
+    }
+    await page.waitFor(`${button}.textContent === 'Copied'`, { label: `${label}: the button to say Copied` });
+    await page.waitFor(`window.__said.length > ${said}`, { label: `${label}: #nfsen-announcer` });
+    assert.equal(await page.evaluate(`window.__said.at(-1)`), 'Copied.', `${label}: the announcement`);
+}
+
 async function shot(page, path, selector) {
     const box = JSON.parse(
         await page.evaluate(
@@ -106,6 +158,9 @@ export default async function flowsTest() {
         await page.setSelectValue('#filterFlowsLimit select', 100);
         await page.runQuery('flows', { timeout: 60000 });
         await page.waitFor(loaded('> 0'), { timeout: 15000, label: 'the flow rows' });
+        await page.waitFor(`/^[\\d,]+ (flows|rows) returned\\./.test(document.querySelector('#flowsRun [role="status"]').textContent)`, {
+            label: 'the Run control to announce the count',
+        });
         const notice = await page.evaluate(`document.getElementById('flowMessage').textContent`);
         assert.match(notice, /nfdump:/, `the notice quotes the command: ${notice}`);
         assert.doesNotMatch(notice, /error/i, `no error: ${notice}`);
@@ -202,6 +257,26 @@ export default async function flowsTest() {
         assert.match(await page.evaluate(`document.getElementById('flowsRawCommand').textContent`), /nfdump -M /, 'the clean command');
         assert.ok((await page.evaluate(`${rawOutput}.textContent.length`)) > 0, 'nfdump stdout');
         assert.equal(await page.evaluate(`document.getElementById('flowsPanel-flows').hidden`), true);
+
+        // Each of the three Copy buttons (nfsen/clipboard) copies twice over plain HTTP; the second copy,
+        // once the label reads Copy again, also says Copied and is announced again.
+        await page.evaluate(WATCH_COPIES);
+        const copyCommand = `document.querySelector('#flowsPanel-raw button[data-copy-source="flowsRawCommand"]')`;
+        const command = await page.evaluate(`document.getElementById('flowsRawCommand').textContent`);
+        await copyWith(page, copyCommand, command, 'Raw command');
+        await copyWith(page, copyCommand, command, 'Raw command again');
+        assert.deepEqual(await page.evaluate('window.__said.slice(-2)'), ['Copied.', 'Copied.'], 'each copy is announced');
+        const rawId = await page.evaluate(`${rawOutput}.id`);
+        const copyOutput = `document.querySelector('#flowsPanel-raw button[data-copy-source="${rawId}"][data-copy-mode="loaded"]')`;
+        const output = await page.evaluate(`${rawOutput}.textContent`);
+        await copyWith(page, copyOutput, output, 'Raw output');
+        await copyWith(page, copyOutput, output, 'Raw output again');
+        const noticeCode = `document.querySelector('#flowMessage code[id^="flowsNotice-"]')`;
+        const copyNotice = `document.querySelector('#flowMessage button[data-copy-source="' + ${noticeCode}.id + '"]')`;
+        const noticeCommand = await page.evaluate(`${noticeCode}.textContent`);
+        await copyWith(page, copyNotice, noticeCommand, 'Notice command');
+        await copyWith(page, copyNotice, noticeCommand, 'Notice command again');
+        await page.evaluate(`document.getElementById('flowsTab-raw').focus()`);
 
         await press(page, 'ArrowRight', 'ArrowRight', 39);
         await page.waitFor(`${activeId} === 'flowsTab-summary' && !document.getElementById('flowsPanel-summary').hidden`, {

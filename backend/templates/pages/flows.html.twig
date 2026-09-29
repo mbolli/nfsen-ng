@@ -4,8 +4,6 @@
 {% set f = pages.flows %}
 {% set tz = '$' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() %}
 {% set shown = '$' ~ flows_graph_shown.id() %}
-{% set copy = "window.nfsenCopyText(document.getElementById(el.dataset.copy)?.textContent ?? '', el)" %}
-{% set copyLoaded = "window.nfsenWhenLoaded(document.getElementById(el.dataset.copy)).then((t) => window.nfsenCopyText(t?.textContent ?? '', el))" %}
 {% set progress = {
     killAction: killNfdump.url(),
     running: query_running.id(),
@@ -249,8 +247,8 @@
                             {{ n.message }}
                             {% if n.code %}
                                 <code id="flowsNotice-{{ n.id }}">{{ n.code }}</code>
-                                <button type="button" data-size="sm" data-variant="ghost" data-copy="flowsNotice-{{ n.id }}"
-                                        aria-label="Copy the command" data-on:click="{{ copy }}">Copy</button>
+                                <button type="button" data-size="sm" data-variant="ghost" data-copy-source="flowsNotice-{{ n.id }}"
+                                        aria-label="Copy the command">Copy</button>
                             {% endif %}
                         </span>
                         <button type="button" data-variant="close" aria-label="Dismiss this notice"
@@ -293,7 +291,7 @@
                             <section class="stack" aria-labelledby="flowsRawCommandTitle">
                                 <div class="cluster" data-justify="between">
                                     <h3 id="flowsRawCommandTitle">Command</h3>
-                                    <button type="button" data-size="sm" data-copy="flowsRawCommand" data-on:click="{{ copy }}">Copy</button>
+                                    <button type="button" data-size="sm" data-copy-source="flowsRawCommand">Copy</button>
                                 </div>
                                 <pre class="flows-command"><code id="flowsRawCommand">{{ f.command }}</code></pre>
                                 {% if f.notes %}
@@ -306,7 +304,7 @@
                                 <div class="cluster" data-justify="between">
                                     <h3 id="flowsRawOutputTitle">nfdump output</h3>
                                     <div class="cluster">
-                                        <button type="button" data-size="sm" data-copy="{{ rawId }}" data-on:click="{{ copyLoaded }}">Copy</button>
+                                        <button type="button" data-size="sm" data-copy-source="{{ rawId }}" data-copy-mode="loaded">Copy</button>
                                         <button type="button" data-size="sm" data-copy="{{ rawId }}"
                                                 data-on:click="window.nfsenWhenLoaded(document.getElementById(el.dataset.copy)).then((t) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t?.textContent ?? ''], {type: 'text/plain'})); a.download = '{{ f.downloadName|e('js') }}'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000) })">Download</button>
                                     </div>

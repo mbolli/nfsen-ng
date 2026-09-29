@@ -2,7 +2,7 @@
 // results are kept per statistic, the side panels run on their own with the protocol colours of
 // the picker graph, and a brush on that graph only changes the range. Includes the keyboard walk
 // and a forced-colors screenshot (V-A11Y). NFDUMP_HAS_NEL=1 is for an nfdump that computes the
-// NEL statistics; the dev image's 1.7.8 does not.
+// NEL statistics; the dev image's 1.7.10 does not, nor did 1.7.8.
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
 
@@ -37,6 +37,41 @@ async function tabTo(page, selector, max = 30) {
 }
 
 const queries = (log) => log.names().filter((n) => QUERIES.includes(n));
+
+/** A real press and release on the element: over plain HTTP only user activation lets execCommand copy. */
+async function clickAt(page, expr) {
+    const { x, y } = await page.evaluate(`(function(){
+        var el = ${expr};
+        el.scrollIntoView({ block: 'center' });
+        var r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    })()`);
+    for (const type of ['mousePressed', 'mouseReleased']) {
+        await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+    }
+}
+
+/**
+ * Records each nfsen-copy and each text #nfsen-announcer says. Over plain HTTP the textarea's
+ * execCommand fires a copy event, whose selection is what reached the clipboard.
+ */
+const WATCH_COPIES = `(function(){
+    if (window.__copies) return;
+    window.__copies = [];
+    window.__said = [];
+    var viaExecCommand = null;
+    document.addEventListener('copy', function(e){
+        var t = e.target;
+        viaExecCommand = t instanceof HTMLTextAreaElement ? t.value.slice(t.selectionStart, t.selectionEnd) : null;
+    }, true);
+    document.addEventListener('nfsen-copy', function(e){
+        window.__copies.push({ ok: e.detail.ok, text: e.detail.text, viaExecCommand: viaExecCommand });
+        viaExecCommand = null;
+    });
+    new MutationObserver(function(records){
+        records.forEach(function(r){ r.addedNodes.forEach(function(n){ if (n.textContent) window.__said.push(n.textContent); }); });
+    }).observe(document.getElementById('nfsen-announcer'), { childList: true, subtree: true, characterData: true });
+})()`;
 
 /** Runs a side panel; once more when the dev app restarted under the first click (status reset to ''). */
 async function runPanel(page, panel) {
@@ -101,14 +136,14 @@ export default async function talkersTest() {
         await page.waitFor(`document.getElementById('statsDir-src').checked`, { label: 'the More item’s direction' });
         assert.equal(await page.evaluate(`document.getElementById('statsDir-src').disabled`), false);
 
-        // nfdump 1.7.8 has no NEL statistics: they are offered disabled, with the reason (D23).
+        // nfdump 1.7.10 has no NEL statistics: they are offered disabled, with the reason (D23).
         const nel = await page.evaluate(
             `(function(){ var o = document.querySelector('#statsFilterForSelection option[value="nevent"]'); return [o.disabled, o.title, o.textContent]; })()`
         );
         if (process.env.NFDUMP_HAS_NEL === '1') {
             assert.equal(nel[0], false, 'this nfdump computes the NEL statistics');
         } else {
-            assert.equal(nel[0], true, `NAT Event type is disabled on nfdump 1.7.8, got ${JSON.stringify(nel)}`);
+            assert.equal(nel[0], true, `NAT Event type is disabled on a release nfdump such as 1.7.10, got ${JSON.stringify(nel)}`);
             assert.match(nel[1], /\S/, 'a disabled NEL statistic says why');
             assert.match(nel[2], /not supported by this nfdump/);
         }
@@ -126,6 +161,27 @@ export default async function talkersTest() {
         assert.match(announced, /^[\d,]+ rows? returned\. Done in /, `the Run control announces the row count, got: ${announced}`);
         const ran = log.count('stats-actions');
         assert.equal(ran, 1, 'Run posted stats-actions once');
+
+        // Copy (nfsen/clipboard) takes the command over plain HTTP too; the $_stats_copied label
+        // says Copied and #nfsen-announcer says it for each of two copies.
+        await page.evaluate(WATCH_COPIES);
+        const COPY = `document.querySelector('#statsMessage button[data-copy-source="statsCommand"]')`;
+        const command = await page.evaluate(`document.getElementById('statsCommand').textContent`);
+        const plain = !(await page.evaluate('window.isSecureContext'));
+        for (const round of [1, 2]) {
+            await page.waitFor(`${COPY}.textContent.trim() === 'Copy'`, { timeout: 5000, label: `copy ${round}: the label reads Copy first` });
+            await clickAt(page, COPY);
+            await page.waitFor(`window.__copies.length === ${round} && window.__said.length === ${round}`, {
+                label: `copy ${round} and its announcement`,
+            });
+            const copy = await page.evaluate('window.__copies.at(-1)');
+            assert.equal(copy.ok, true, `copy ${round} succeeded`);
+            assert.equal(copy.text, command, `copy ${round} holds the nfdump command`);
+            if (plain) assert.equal(copy.viaExecCommand, command, `copy ${round}: over plain HTTP the textarea fallback copied it`);
+            await page.waitFor(`${COPY}.textContent.trim() === 'Copied'`, { label: `copy ${round}: the label says Copied` });
+        }
+        assert.deepEqual(await page.evaluate('window.__said'), ['Copied.', 'Copied.'], 'both copies are announced');
+        await page.waitFor(`${COPY}.textContent.trim() === 'Copy'`, { timeout: 5000, label: 'the label reads Copy again' });
 
         await page.evaluate(`document.getElementById('talkersTab-ports').click()`);
         await page.waitFor(`${FOR_SELECT} === 'srcport'`, { label: 'Src port' });

@@ -563,9 +563,9 @@ async function pageCases(page, requests, consoleText) {
         await page.evaluate(`${tagged('walk')}.dismiss()`);
         await page.waitFor(`!${tagged('walk')}`, { label: 'the walk toast to go' });
 
-        // ── window.nfsenCopyText on Flows: the Raw tab's Copy of the command ──
+        // ── nfsen/clipboard on Flows: the Raw tab's Copy of the command ──
         await page.evaluate(`document.getElementById('flowsTab-raw').click()`);
-        const copyCommand = `document.querySelector('#flowsPanel-raw button[data-copy="flowsRawCommand"]')`;
+        const copyCommand = `document.querySelector('#flowsPanel-raw button[data-copy-source="flowsRawCommand"]')`;
         await page.waitFor(`!document.getElementById('flowsPanel-raw').hidden && !!${copyCommand}`, {
             timeout: 15000,
             label: "the Raw tab's command and its Copy button",

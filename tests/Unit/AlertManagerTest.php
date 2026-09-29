@@ -6,11 +6,15 @@ use mbolli\nfsen_ng\common\AlertManager;
 use mbolli\nfsen_ng\common\AlertRule;
 use mbolli\nfsen_ng\common\AlertState;
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Datasource;
+use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
 use mbolli\nfsen_ng\store\AlertEventRepository;
 use mbolli\nfsen_ng\store\Database;
+use OpenSwoole\Coroutine;
 
 /**
  * Build a minimal AlertRule for testing.
@@ -164,6 +168,15 @@ function alertCaptureFile(string $source, int $ts): void {
         mkdir($dir, 0o777, true);
     }
     touch($dir . '/nfcapd.' . $day->format('YmdHi'));
+}
+
+/** Settings for filtered rules: nfdump-canned answers, with $maxProcesses slots. */
+function alertCannedSettings(object $test, int $maxProcesses, int $logPriority = LOG_ERR): Settings {
+    return Settings::fromArray([
+        'general' => ['sources' => ['gw1', 'gw2'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump'],
+        'nfdump' => ['binary' => dirname(__DIR__) . '/Support/bin/nfdump-canned', 'profiles-data' => $test->dir . '/profiles', 'profile' => 'live', 'max-processes' => $maxProcesses],
+        'log' => ['priority' => $logPriority],
+    ]);
 }
 
 function alertRemoveTree(string $path): void {
@@ -573,6 +586,112 @@ describe('AlertManager::runPeriodic()', function (): void {
             ['ts' => 1_000, 'kind' => 'test', 'value' => 1500.0, 'threshold' => null],
             ['ts' => 2_000, 'kind' => 'fired', 'value' => 1500.0, 'threshold' => 1000.0],
         ]);
+    });
+});
+
+// ── Live evaluation and nfdump slots ───────────────────────────────────────
+
+describe('AlertManager live evaluation and nfdump slots', function (): void {
+    afterEach(function (): void {
+        foreach (NfdumpSlots::CLASSES as $class) {
+            NfdumpSlots::release($class, NfdumpSlots::inUse($class));
+        }
+        putenv('NFDUMP_STUB_STDOUT');
+    });
+
+    test('one evaluation takes background slots with LIVE_SLOT_BUDGET_SECONDS for all its rules together', function (): void {
+        $ds = makeDatasource(alertBytes(2000.0));
+        $mgr = alertManager($this, $ds);
+        $scopes = [];
+        $firstRead = null;
+        $ds->onRead = static function () use (&$scopes, &$firstRead): void {
+            $firstRead ??= microtime(true);
+            $scopes[] = NfdumpSlots::scope() + ['left' => NfdumpSlots::waitFor(NfdumpSlots::scope())];
+            usleep(150_000);
+        };
+        $started = microtime(true);
+
+        $fired = $mgr->runPeriodic([makeRule(), makeRule(['id' => 'second', 'name' => 'Second'])], 'live', 300);
+
+        // The scope opens between $started and the first read, so its deadline lies between those plus the budget.
+        expect($fired)->toBe(['Test rule', 'Second'])
+            ->and(array_column($scopes, 'class'))->toBe([NfdumpSlots::BACKGROUND, NfdumpSlots::BACKGROUND])
+            ->and($scopes[1]['until'])->toBe($scopes[0]['until'])
+            ->and($scopes[0]['until'])->toBeGreaterThanOrEqual($started + AlertManager::LIVE_SLOT_BUDGET_SECONDS)
+            ->and($scopes[0]['until'])->toBeLessThanOrEqual($firstRead + AlertManager::LIVE_SLOT_BUDGET_SECONDS)
+            ->and($scopes[1]['left'])->toBeLessThan(AlertManager::LIVE_SLOT_BUDGET_SECONDS - 0.14)
+            ->and(NfdumpSlots::scope()['until'])->toBeNull()
+        ;
+    });
+
+    // An outer budget of 1 s stands in for the 60 s one: the first rule waits it out, the second is
+    // skipped at once, and neither is evaluated on zeros. The test above pins that rules share one budget.
+    test('filtered rules left without a slot are skipped, and a spent budget ends every later wait', function (): void {
+        Config::$settings = alertCannedSettings($this, 1, LOG_INFO);
+        putenv('NFDUMP_STUB_STDOUT=[{"in_packets":2,"in_bytes":100}]');
+        $slot = intdiv(time(), 300) * 300 - 300;
+        alertCaptureFile('gw1', $slot);
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
+        $rules = [
+            makeRule(['nfdumpFilter' => 'proto tcp', 'thresholdValue' => 1.0]),
+            makeRule(['id' => 'second', 'name' => 'Second', 'nfdumpFilter' => 'proto udp', 'thresholdValue' => 1.0]),
+        ];
+        $seq = Debug::recent(1)[0]['seq'] ?? 0;
+        NfdumpSlots::acquire();
+        $started = microtime(true);
+        // Debug echoes INFO lines on the CLI.
+        ob_start();
+
+        try {
+            $fired = NfdumpSlots::runAs(NfdumpSlots::BACKGROUND, static fn (): array => $mgr->runPeriodic($rules, 'live', $slot), budget: 1.0);
+        } finally {
+            $elapsed = microtime(true) - $started;
+            ob_end_clean();
+            NfdumpSlots::release();
+        }
+        $skipped = array_values(array_filter(
+            array_column(Debug::recentSince($seq), 'message'),
+            static fn (string $line): bool => str_ends_with($line, 'not evaluated: no free nfdump process'),
+        ));
+
+        expect($fired)->toBe([])
+            ->and($elapsed)->toBeGreaterThan(0.95)
+            ->and($elapsed)->toBeLessThan(1.8)
+            ->and($skipped)->toHaveCount(2)
+            ->and($mgr->states())->toBe([])
+            ->and(alertEvents($this->db))->toBe([])
+            ->and(NfdumpSlots::waiting())->toBe(0)
+        ;
+    });
+
+    test('a filtered rule still fires when the shared Nfdump instance is reset while the rule waits for its slot', function (): void {
+        Config::$settings = alertCannedSettings($this, 1);
+        putenv('NFDUMP_STUB_STDOUT=[{"in_packets":2,"in_bytes":100},{"in_packets":3,"in_bytes":200}]');
+        $slot = intdiv(time(), 300) * 300 - 300;
+        alertCaptureFile('gw1', $slot);
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
+        $rule = makeRule(['nfdumpFilter' => 'proto tcp', 'thresholdValue' => 250.0]);
+        $fired = null;
+        $waiting = null;
+
+        Coroutine::run(static function () use ($mgr, $rule, $slot, &$fired, &$waiting): void {
+            NfdumpSlots::acquire();
+            Coroutine::create(static function () use (&$waiting): void {
+                Coroutine::usleep(100_000);
+                $waiting = NfdumpSlots::waiting(NfdumpSlots::BACKGROUND);
+                // What another caller of the shared instance does between its own runs.
+                Nfdump::getInstance()->reset();
+                Nfdump::getInstance()->setOption('-o', 'csv');
+                NfdumpSlots::release();
+            });
+            $fired = $mgr->runPeriodic([$rule], 'live', $slot);
+        });
+
+        expect($waiting)->toBe(1)
+            ->and($fired)->toBe(['Test rule'])
+            ->and(alertSlotValues($this->db))->toBe([[$slot, 300.0]])
+            ->and(NfdumpSlots::inUse())->toBe(0)
+        ;
     });
 });
 

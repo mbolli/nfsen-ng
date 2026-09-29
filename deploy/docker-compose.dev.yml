@@ -26,7 +26,8 @@ services:
       - NFSEN_NFDUMP_BINARY=/usr/local/nfdump/bin/nfdump
       - NFSEN_NFDUMP_PROFILES=/data/nfsen-ng  # Must match the container-side volume mount path
       # - NFSEN_NFDUMP_PROFILE=live
-      # - NFSEN_NFDUMP_MAX_PROCESSES=1
+      # - NFSEN_NFDUMP_MAX_PROCESSES=auto  # Parallel nfdump processes (default auto: a third of the CPU cores, 2 to 8)
+      # - NFSEN_NFDUMP_WORKERS=2          # Filter threads per nfdump process, passed as -W (default 2)
 
       # ── RRD storage ────────────────────────────────────────────────────────
       # - NFSEN_RRD_PATH=/custom/rrd  # Default in dev: backend/datasources/data (mounted source)
@@ -54,7 +55,7 @@ services:
       - nfsen
     restart: unless-stopped
 
-  # nfcapd — NetFlow collector for local development with softflowd.
+  # nfcapd: NetFlow collector for local development with softflowd.
   #
   # Usage:
   #   1. Uncomment this service.
@@ -81,7 +82,7 @@ services:
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng
     entrypoint: ["/usr/local/nfdump/bin/nfcapd"]
-    command: ["-w", "/data/nfsen-ng/live/all", "-z", "-S", "1", "-T", "all", "-p", "9995"]
+    command: ["-w", "/data/nfsen-ng/live/all", "-z=lz4", "-S", "1", "-p", "9995"]
     restart: unless-stopped
 
   # Second nfcapd writing to the 'test' profile (port 9996).
@@ -95,7 +96,7 @@ services:
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng
     entrypoint: ["/usr/local/nfdump/bin/nfcapd"]
-    command: ["-w", "/data/nfsen-ng/test/all", "-z", "-S", "1", "-T", "all", "-p", "9996"]
+    command: ["-w", "/data/nfsen-ng/test/all", "-z=lz4", "-S", "1", "-p", "9996"]
     restart: unless-stopped
 
 # volumes:

@@ -246,7 +246,7 @@ sudo -u www-data php backend/app.php
 ```
 
 > **Which nfdump.** nfsen-ng needs nfdump 1.7.2 or later, and the Health page
-> warns below 1.7.9. That release fixed remotely triggerable crashes in the
+> warns below 1.7.10. Release 1.7.9 fixed remotely triggerable crashes in the
 > collectors (IPFIX and NetFlow v9 option templates in `nfcapd`, the sFlow
 > decoder in `sfcapd`) and out-of-bounds reads in the file parsers. Build 1.7.10:
 > gcc builds of 1.7.8 and 1.7.9 (nfdump's configure picks `-O3`) do not pair

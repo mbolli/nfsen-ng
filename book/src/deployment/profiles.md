@@ -35,10 +35,10 @@ top-level directory:
 
 ```bash
 # Live collector: port 9995 → profiles-data/live/all/
-nfcapd -w /var/nfdump/profiles-data/live/all -z=lz4 -S 1 -T all -p 9995 -D
+nfcapd -w /var/nfdump/profiles-data/live/all -z=lz4 -S 1 -p 9995 -D
 
 # Test/secondary collector: port 9996 → profiles-data/test/all/
-nfcapd -w /var/nfdump/profiles-data/test/all -z=lz4 -S 1 -T all -p 9996 -D
+nfcapd -w /var/nfdump/profiles-data/test/all -z=lz4 -S 1 -p 9996 -D
 ```
 
 ### Docker Compose example
@@ -47,7 +47,7 @@ nfcapd -w /var/nfdump/profiles-data/test/all -z=lz4 -S 1 -T all -p 9996 -D
 nfcapd-test:
   image: ghcr.io/mbolli/nfsen-ng:latest
   entrypoint: ["/usr/local/nfdump/bin/nfcapd"]
-  command: ["-w", "/data/nfsen-ng/test/all", "-z=lz4", "-S", "1", "-T", "all", "-p", "9996"]
+  command: ["-w", "/data/nfsen-ng/test/all", "-z=lz4", "-S", "1", "-p", "9996"]
   volumes:
     - /var/nfdump/profiles-data:/data/nfsen-ng
   ports:

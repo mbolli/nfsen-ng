@@ -48,7 +48,8 @@ services:
       - NFSEN_NFDUMP_BINARY=/usr/local/nfdump/bin/nfdump
       - NFSEN_NFDUMP_PROFILES=/data/nfsen-ng  # Must match the container-side volume mount path
       # - NFSEN_NFDUMP_PROFILE=live
-      # - NFSEN_NFDUMP_MAX_PROCESSES=1
+      # - NFSEN_NFDUMP_MAX_PROCESSES=auto  # Parallel nfdump processes (default auto: a third of the CPU cores, 2 to 8)
+      # - NFSEN_NFDUMP_WORKERS=2          # Filter threads per nfdump process, passed as -W (default 2)
       # - NFSEN_MAX_STATS_WINDOW=604800   # Max window of Top Talkers, Conversations and filtered graphs in seconds (default: 0 = unlimited)
 
       # ── RRD storage ──────────────────────────────────────────────────────────

@@ -5,6 +5,8 @@ declare(strict_types=1);
 use mbolli\nfsen_ng\query\TopNStat;
 use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\TopNRepository;
+use Random\Engine\Mt19937;
+use Random\Randomizer;
 
 const TOPN_TOTALS = ['flows' => 10, 'packets' => 100, 'bytes' => 10_000];
 
@@ -30,10 +32,10 @@ function topnRows(array $bytesByKey): array {
  *
  * @return list<array{key: string, flows: int, packets: int, bytes: int}>
  */
-function topnRandomRows(int $count, int $pool, string $prefix = '10.0.0.'): array {
+function topnRandomRows(Randomizer $rng, int $count, int $pool, string $prefix = '10.0.0.'): array {
     $keys = [];
     while (count($keys) < $count) {
-        $keys[$prefix . random_int(1, $pool)] = random_int(1, 50) * 100;
+        $keys[$prefix . $rng->getInt(1, $pool)] = $rng->getInt(1, 50) * 100;
     }
 
     return topnRows($keys);
@@ -100,14 +102,14 @@ function topnRangeFixture(): array {
         return $fixture;
     }
 
-    srand(20260828);
+    $rng = new Randomizer(new Mt19937(20260828));
     $db = Database::open(':memory:');
     $repo = new TopNRepository($db);
     for ($ts = TOPN_DAY0 - 86400; $ts < TOPN_DAY0 + 32 * 86400; $ts += 300) {
         foreach (['gw', 'core'] as $source) {
             $repo->storeInterval('live', $source, $ts, TOPN_TOTALS, TopNRepository::STATUS_OK, $ts + 300, [
-                TopNStat::SrcIp->value => topnRandomRows(4, 70),
-                TopNStat::InIf->value => topnRandomRows(2, 4, ''),
+                TopNStat::SrcIp->value => topnRandomRows($rng, 4, 70),
+                TopNStat::InIf->value => topnRandomRows($rng, 2, 4, ''),
             ]);
         }
     }
@@ -205,21 +207,21 @@ describe('TopNRepository::storeInterval()', function (): void {
     });
 
     test('after random intervals, re-collections and several sources, every rollup row equals the sum of its 5 minute rows', function (): void {
-        srand(7);
+        $rng = new Randomizer(new Mt19937(7));
         $stats = [TopNStat::SrcIp, TopNStat::DstPort, TopNStat::OutIf];
         $slots = [];
         for ($i = 0; $i < 400; ++$i) {
             // Three days around a day boundary, random order, some slots hit more than once.
-            $ts = TOPN_DAY0 - 86400 + random_int(0, 3 * 288 - 1) * 300;
-            $source = ['gw', 'core', 'edge'][random_int(0, 2)];
+            $ts = TOPN_DAY0 - 86400 + $rng->getInt(0, 3 * 288 - 1) * 300;
+            $source = ['gw', 'core', 'edge'][$rng->getInt(0, 2)];
             $rows = [];
             foreach ($stats as $stat) {
-                if (random_int(0, 4) > 0) {
-                    $rows[$stat->value] = topnRandomRows(random_int(1, 6), 12, $stat->name . '-');
+                if ($rng->getInt(0, 4) > 0) {
+                    $rows[$stat->value] = topnRandomRows($rng, $rng->getInt(1, 6), 12, $stat->name . '-');
                 }
             }
             $status = $rows === [] ? TopNRepository::STATUS_EMPTY : TopNRepository::STATUS_OK;
-            $this->repo->storeInterval(random_int(0, 5) === 0 ? 'other' : 'live', $source, $ts, TOPN_TOTALS, $status, $i, $rows);
+            $this->repo->storeInterval($rng->getInt(0, 5) === 0 ? 'other' : 'live', $source, $ts, TOPN_TOTALS, $status, $i, $rows);
             $slots["{$source}/{$ts}"] = true;
         }
 
@@ -231,6 +233,38 @@ describe('TopNRepository::storeInterval()', function (): void {
             ->and($hour)->toBe($hourSum)
             ->and($day)->toBe($daySum)
             ->and($this->db->value('SELECT COUNT(*) FROM topn_1h WHERE flows <= 0 AND packets <= 0 AND bytes <= 0'))->toBe(0)
+        ;
+    });
+
+    // Parallel collection stores intervals in the order their files finish, not in time order.
+    test('the stored tables do not depend on the order the intervals are written in', function (): void {
+        $rng = new Randomizer(new Mt19937(20260929));
+        $intervals = [];
+        foreach (['gw', 'core'] as $source) {
+            for ($ts = TOPN_DAY0 - 3600; $ts < TOPN_DAY0 + 3600; $ts += 300) {
+                $rows = $rng->getInt(0, 5) === 0 ? [] : [
+                    TopNStat::SrcIp->value => topnRandomRows($rng, $rng->getInt(1, 5), 8),
+                    TopNStat::OutIf->value => topnRandomRows($rng, $rng->getInt(1, 2), 3, ''),
+                ];
+                $intervals[] = [$source, $ts, $rows === [] ? TopNRepository::STATUS_EMPTY : TopNRepository::STATUS_OK, $rows];
+            }
+        }
+        $tables = static function (array $order): array {
+            $db = Database::open(':memory:');
+            $repo = new TopNRepository($db);
+            foreach ($order as [$source, $ts, $status, $rows]) {
+                $repo->storeInterval('live', $source, $ts, TOPN_TOTALS, $status, $ts + 300, $rows, 1);
+            }
+
+            return array_map(static fn (string $table): array => $db->all("SELECT * FROM {$table} ORDER BY 1, 2, 3, 4, 5"), ['topn_interval', 'topn_5m', 'topn_1h', 'topn_1d']);
+        };
+        $inOrder = $tables($intervals);
+
+        foreach (range(1, 5) as $_) {
+            expect($tables($rng->shuffleArray($intervals)))->toBe($inOrder);
+        }
+        expect($inOrder[2])->not->toBeEmpty()
+            ->and($inOrder[3])->not->toBeEmpty()
         ;
     });
 

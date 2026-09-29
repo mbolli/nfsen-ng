@@ -1,10 +1,10 @@
-# nfsen-ng — all-in-one stack for Unraid (Compose Manager plugin)
+# nfsen-ng: all-in-one stack for Unraid (Compose Manager plugin)
 #
 # One image, two roles, one shared appdata volume:
-#   • nfsen      — the web UI + import daemon (reads flow files)
-#   • nfcapd     — the NetFlow/sFlow/IPFIX collector (writes flow files)
+#   • nfsen:  the web UI + import daemon (reads flow files)
+#   • nfcapd: the NetFlow/sFlow/IPFIX collector (writes flow files)
 #
-# Both run ghcr.io/mbolli/nfsen-ng — nfdump, nfcapd and the app all ship in the
+# Both run ghcr.io/mbolli/nfsen-ng. nfdump, nfcapd and the app all ship in the
 # one image, so nothing extra is built.
 #
 # ── Requirements you can't put in a container ────────────────────────────────
@@ -19,7 +19,7 @@
 # native one-click route instead, use the two CA templates in this folder.
 #
 # The source name is just the sub-directory the collector writes into and the
-# UI reads from — it MUST match in both services (NFSEN_SOURCES == the last path
+# UI reads from, so it MUST match in both services (NFSEN_SOURCES == the last path
 # segment of nfcapd's -w). Default here: "flows".
 
 services:
@@ -30,7 +30,7 @@ services:
       - "9000:9000"          # Web UI (front with SWAG / Nginx Proxy Manager for TLS)
     volumes:
       - /mnt/user/appdata/nfsen-ng:/data/nfsen-ng
-      - /mnt/user/appdata/nfsen-ng-data:/var/lib/nfsen-ng  # RRD database + state (preferences, alert rules/state/log) — survives image upgrades
+      - /mnt/user/appdata/nfsen-ng-data:/var/lib/nfsen-ng  # RRD database + state (preferences, alert rules/state/log), survives image upgrades
     environment:
       - TZ=UTC
       - NFSEN_SOURCES=flows           # must equal the collector's source dir below
@@ -46,7 +46,7 @@ services:
     image: ghcr.io/mbolli/nfsen-ng:latest
     container_name: nfsen-ng-nfcapd
     entrypoint: ["/usr/local/nfdump/bin/nfcapd"]
-    command: ["-w", "/data/nfsen-ng/live/flows", "-z=lz4", "-S", "1", "-T", "all", "-p", "9995"]
+    command: ["-w", "/data/nfsen-ng/live/flows", "-z=lz4", "-S", "1", "-p", "9995"]
     ports:
       - "9995:9995/udp"      # where your router sends NetFlow/sFlow/IPFIX
     volumes:

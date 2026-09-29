@@ -7,6 +7,8 @@ use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\TopNCollector;
 use mbolli\nfsen_ng\processor\NfdumpException;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
+use mbolli\nfsen_ng\processor\Processor;
 use mbolli\nfsen_ng\query\TopNStat;
 use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\TopNRepository;
@@ -95,6 +97,105 @@ function topncRemoveTree(string $dir): void {
     rmdir($dir);
 }
 
+/**
+ * A processor that answers the collector's three runs by their options and sleeps inside each,
+ * so the collecting coroutines of a booted worker overlap. It records every run with the
+ * coroutine it ran in. The state is static because the collector builds an instance per run.
+ */
+function topncLane(): Processor {
+    static $lane = null;
+
+    return $lane ??= new class implements Processor {
+        public static int $sleepUs = 20_000;
+        public static string $summary = TOPNC_SUMMARY;
+        public static ?Exception $throw = null;
+        public static int $running = 0;
+        public static int $peak = 0;
+
+        /** @var list<array{relPath: string, run: string, cid: int}> */
+        public static array $calls = [];
+
+        /** @var array<string, mixed> */
+        private array $options = [];
+
+        public static function reset(): void {
+            self::$sleepUs = 20_000;
+            self::$summary = TOPNC_SUMMARY;
+            self::$throw = null;
+            self::$running = 0;
+            self::$peak = 0;
+            self::$calls = [];
+        }
+
+        public function setOption(string $option, $value): void {
+            $this->options[$option] = $value;
+        }
+
+        public function setFilter(string $filter): void {}
+
+        public function setQueryHandle(string $handle): void {}
+
+        public function setProfile(string $profile): void {}
+
+        public function execute(): array {
+            $run = array_key_exists('-I', $this->options) ? 'totals' : (count((array) $this->options['-s']) === 8 ? 'eight' : 'outif');
+            self::$calls[] = ['relPath' => (string) $this->options['-r'], 'run' => $run, 'cid' => Coroutine::getCid()];
+            self::$peak = max(self::$peak, ++self::$running);
+
+            try {
+                if (self::$sleepUs > 0) {
+                    Coroutine::usleep(self::$sleepUs);
+                }
+                if (self::$throw !== null) {
+                    throw self::$throw;
+                }
+            } finally {
+                --self::$running;
+            }
+
+            $raw = match ($run) {
+                'totals' => self::$summary,
+                'eight' => topncEightStats(),
+                default => topncBlock([['any', '2', 51300]]),
+            };
+
+            return ['command' => 'fake-nfdump', 'rawOutput' => $raw, 'decoded' => [], 'notes' => [], 'exitCode' => 0];
+        }
+    };
+}
+
+function topncSettings(string $root, int $maxProcesses): Settings {
+    return Settings::fromArray([
+        'general' => ['sources' => ['gw', 'core'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump'],
+        'nfdump' => ['binary' => '/nonexistent/nfdump', 'profiles-data' => $root, 'profile' => 'live', 'max-processes' => $maxProcesses],
+        'log' => ['priority' => LOG_ERR],
+    ])->withTopnRetentionDays(31);
+}
+
+/** Runs $body in a coroutine with the collector booted on $db and the lane processor answering nfdump. */
+function topncBooted(Database $db, Closure $body): void {
+    Database::useShared($db);
+    Config::$processorClass = topncLane();
+    Coroutine::run(static function () use ($body): void {
+        TopNCollector::boot(new Via(new ViaConfig()));
+        $body();
+    });
+}
+
+/** Waits inside a coroutine until $done holds, at most $seconds. */
+function topncWaitFor(Closure $done, float $seconds = 10.0): void {
+    $deadline = microtime(true) + $seconds;
+    while (!$done() && microtime(true) < $deadline) {
+        Coroutine::usleep(5_000);
+    }
+}
+
+function topncReleaseSlots(): void {
+    foreach (NfdumpSlots::CLASSES as $class) {
+        NfdumpSlots::release($class, NfdumpSlots::inUse($class));
+    }
+}
+
 /** Runs the worker's loop body until the queue is empty; returns the results in order. */
 function topncDrain(): array {
     $results = [];
@@ -130,6 +231,8 @@ afterEach(function (): void {
     TopNCollector::reset();
     Database::resetShared();
     FakeProcessor::reset();
+    topncLane()::reset();
+    topncReleaseSlots();
     Debug::drainBuffer();
     topncRemoveTree($this->root);
     if ($this->settingsBefore !== null) {
@@ -510,6 +613,39 @@ describe('TopNCollector::maintain()', function (): void {
     });
 });
 
+describe('TopNCollector backfill passes', function (): void {
+    beforeEach(function (): void {
+        TopNCollector::start($this->repo, 31, $this->now, ['live']);
+        for ($i = 0; $i < 5; ++$i) {
+            topncCapture($this->root, 'gw', $this->ts - $i * 300);
+        }
+    });
+
+    test('while a backfill has files left, the minute tick starts the next pass without waiting 10 minutes', function (): void {
+        $first = TopNCollector::fillAllGaps(2, $this->now);
+        FakeProcessor::queueRaw("Ident: none\nFlows: 0\nPackets: 0\nBytes: 0\n");
+        FakeProcessor::queueRaw("Ident: none\nFlows: 0\nPackets: 0\nBytes: 0\n");
+        topncDrain();
+        TopNCollector::maintain($this->now + 1);
+
+        expect([$first, TopNCollector::queued()])->toBe([2, 3]);
+    });
+
+    test('a failure since the last pass leaves the next one to the 10 minute timer', function (): void {
+        TopNCollector::fillAllGaps(2, $this->now);
+        FakeProcessor::$throw = new NfdumpException('nfdump: not found', 'nfdump -I');
+        $results = topncDrain();
+        TopNCollector::maintain($this->now + 1);
+        $early = TopNCollector::queued();
+        TopNCollector::maintain($this->now + TopNCollector::GAP_FILL_FIRST);
+
+        expect($results)->toBe(['failed', 'failed'])
+            ->and($early)->toBe(0)
+            ->and(TopNCollector::queued())->toBe(5)
+        ;
+    });
+});
+
 describe('TopNCollector worker coroutine', function (): void {
     test('exists only while the queue has items', function (): void {
         Database::useShared($this->db);
@@ -528,6 +664,219 @@ describe('TopNCollector worker coroutine', function (): void {
         expect($coroutines)->toBe([1, 1])
             ->and(TopNCollector::stats()['processed'])->toBe(1)
             ->and($this->repo->intervalState('live', 'gw', $this->ts)['status'] ?? null)->toBe(TopNRepository::STATUS_EMPTY)
+        ;
+    });
+});
+
+describe('TopNCollector parallel collection', function (): void {
+    beforeEach(function (): void {
+        topncLane()::reset();
+        topncReleaseSlots();
+    });
+
+    test('collects up to backgroundMax() files at once, each file\'s runs in one coroutine, and writes from one other coroutine', function (int $maxProcesses, int $lanes): void {
+        Config::$settings = topncSettings($this->root, $maxProcesses);
+        $writers = [];
+        $this->db->pdo()->sqliteCreateFunction('topnc_writer', static function () use (&$writers): int {
+            $writers[] = Coroutine::getCid();
+
+            return 0;
+        }, 0);
+        $this->db->exec('CREATE TEMP TRIGGER topnc_writes AFTER INSERT ON topn_interval BEGIN SELECT topnc_writer(); END');
+        $stamps = array_map(fn (int $i): int => $this->ts - $i * 300, range(0, 7));
+        $coroutinesAfter = null;
+
+        topncBooted($this->db, function () use ($stamps, &$coroutinesAfter): void {
+            foreach ($stamps as $ts) {
+                TopNCollector::enqueue('live', 'gw', topncCapture($this->root, 'gw', $ts), $ts);
+            }
+            topncWaitFor(static fn (): bool => TopNCollector::stats()['processed'] === 8);
+            Coroutine::usleep(20_000);
+            $coroutinesAfter = Coroutine::stats()['coroutine_num'];
+        });
+
+        $byFile = [];
+        foreach (topncLane()::$calls as $call) {
+            $byFile[$call['relPath']]['runs'][] = $call['run'];
+            $byFile[$call['relPath']]['cids'][$call['cid']] = true;
+        }
+        $laneCids = array_unique(array_column(topncLane()::$calls, 'cid'));
+
+        expect(topncLane()::$peak)->toBe($lanes)
+            ->and(NfdumpSlots::backgroundMax())->toBe($lanes)
+            ->and($laneCids)->toHaveCount($lanes)
+            ->and($byFile)->toHaveCount(8)
+            ->and(array_unique(array_map(static fn (array $file): string => implode(',', $file['runs']), $byFile)))->toBe([array_key_first($byFile) => 'totals,eight,outif'])
+            ->and(array_map(static fn (array $file): int => count($file['cids']), array_values($byFile)))->toBe(array_fill(0, 8, 1))
+            ->and($writers)->toHaveCount(8)
+            ->and(array_unique($writers))->toHaveCount(1)
+            ->and(in_array($writers[0], $laneCids, true))->toBeFalse()
+            ->and(array_column($this->db->all('SELECT status FROM topn_interval'), 'status'))->toBe(array_fill(0, 8, TopNRepository::STATUS_OK))
+            ->and($this->db->value('SELECT SUM(bytes) FROM topn_1h'))->toBe($this->db->value('SELECT SUM(bytes) FROM topn_5m'))
+            ->and(TopNCollector::stats())->toMatchArray(['queued' => 0, 'processed' => 8, 'failed' => 0])
+            ->and(TopNCollector::generation('live'))->toBeGreaterThan(0)
+            ->and(NfdumpSlots::inUse())->toBe(0)
+            ->and($coroutinesAfter)->toBe(1)
+        ;
+    })->with([
+        'one slot' => [1, 1],
+        'two slots' => [2, 1],
+        'four slots' => [4, 2],
+        'eight slots' => [8, 4],
+    ]);
+
+    // The collector polls for a slot instead of queueing, so an import that waits in the slot
+    // queue gets the slot a user query frees before the collector's first run.
+    test('waits for a slot outside the slot queue, so a waiting import goes first', function (): void {
+        Config::$settings = topncSettings($this->root, 2);
+        $order = [];
+        $waiting = null;
+
+        topncBooted($this->db, function () use (&$order, &$waiting): void {
+            NfdumpSlots::acquire(1.0);
+            TopNCollector::enqueue('live', 'gw', topncCapture($this->root, 'gw', $this->ts), $this->ts);
+            Coroutine::create(static function () use (&$order): void {
+                NfdumpSlots::acquire(5.0, NfdumpSlots::BACKGROUND);
+                $order[] = ['import', topncLane()::$calls];
+                Coroutine::usleep(200_000);
+                NfdumpSlots::release(NfdumpSlots::BACKGROUND);
+            });
+            Coroutine::usleep(100_000);
+            $waiting = [NfdumpSlots::waiting(NfdumpSlots::INTERACTIVE), NfdumpSlots::waiting(NfdumpSlots::BACKGROUND), count(topncLane()::$calls)];
+            NfdumpSlots::release();
+            topncWaitFor(static fn (): bool => TopNCollector::stats()['processed'] === 1);
+        });
+
+        expect($waiting)->toBe([0, 1, 0])
+            ->and($order)->toBe([['import', []]])
+            ->and(topncLane()::$calls)->toHaveCount(3)
+            ->and($this->repo->intervalState('live', 'gw', $this->ts)['status'] ?? null)->toBe(TopNRepository::STATUS_OK)
+            ->and(NfdumpSlots::inUse())->toBe(0)
+        ;
+    });
+
+    test('a user query that waits for a slot gets the one a collector run frees before the collector\'s next run', function (): void {
+        Config::$settings = topncSettings($this->root, 2);
+        topncLane()::$sleepUs = 300_000;
+        $during = null;
+        $granted = null;
+
+        topncBooted($this->db, function () use (&$during, &$granted): void {
+            TopNCollector::enqueue('live', 'gw', topncCapture($this->root, 'gw', $this->ts), $this->ts);
+            Coroutine::usleep(50_000);
+            Coroutine::create(static function (): void {
+                NfdumpSlots::acquire(1.0);
+                Coroutine::usleep(600_000);
+                NfdumpSlots::release();
+            });
+            Coroutine::create(static function () use (&$granted): void {
+                NfdumpSlots::acquire(5.0);
+                $granted = [count(topncLane()::$calls), topncLane()::$running];
+                Coroutine::usleep(100_000);
+                NfdumpSlots::release();
+            });
+            Coroutine::usleep(50_000);
+            $during = [NfdumpSlots::waiting(NfdumpSlots::INTERACTIVE), NfdumpSlots::inUse(NfdumpSlots::BACKGROUND), count(topncLane()::$calls)];
+            topncWaitFor(static fn (): bool => TopNCollector::stats()['processed'] === 1);
+        });
+
+        expect($during)->toBe([1, 1, 1])
+            ->and($granted)->toBe([1, 0])
+            ->and(array_column(topncLane()::$calls, 'run'))->toBe(['totals', 'eight', 'outif'])
+            ->and($this->repo->intervalState('live', 'gw', $this->ts)['status'] ?? null)->toBe(TopNRepository::STATUS_OK)
+            ->and(NfdumpSlots::inUse())->toBe(0)
+        ;
+    });
+
+    test('a file queued again while it is being collected waits for that collection, then the skip rule drops it', function (): void {
+        Config::$settings = topncSettings($this->root, 8);
+        $during = null;
+
+        topncBooted($this->db, function () use (&$during): void {
+            $rel = topncCapture($this->root, 'gw', $this->ts, 1_700_000_000);
+            TopNCollector::enqueue('live', 'gw', $rel, $this->ts);
+            Coroutine::usleep(5_000);
+            TopNCollector::enqueue('live', 'gw', $rel, $this->ts);
+            Coroutine::usleep(5_000);
+            $during = [TopNCollector::queued(), TopNCollector::stats()['queued'], topncLane()::$running, count(topncLane()::$calls)];
+            topncWaitFor(static fn (): bool => TopNCollector::stats()['processed'] === 1 && TopNCollector::queued() === 0);
+            Coroutine::usleep(20_000);
+        });
+
+        expect($during)->toBe([1, 1, 1, 1])
+            ->and(topncLane()::$calls)->toHaveCount(3)
+            ->and(TopNCollector::stats())->toMatchArray(['queued' => 0, 'processed' => 1, 'failed' => 0])
+            ->and($this->repo->intervalState('live', 'gw', $this->ts))->toBe(['status' => 0, 'attempts' => 1, 'fileMtime' => 1_700_000_000])
+        ;
+    });
+
+    test('a gap filler pass does not queue the files being collected again, and stats() counts them as queued', function (): void {
+        // One day of retention keeps a pass short next to the 300 ms runs.
+        Config::$settings = topncSettings($this->root, 8)->withTopnRetentionDays(1);
+        topncLane()::$sleepUs = 300_000;
+        topncLane()::$summary = "Ident: none\nFlows: 0\nPackets: 0\nBytes: 0\n";
+        for ($i = 0; $i < 6; ++$i) {
+            topncCapture($this->root, 'gw', $this->ts - $i * 300);
+        }
+        $passes = [];
+        $during = null;
+
+        topncBooted($this->db, function () use (&$passes, &$during): void {
+            $passes[] = TopNCollector::fillAllGaps();
+            topncWaitFor(static fn (): bool => topncLane()::$running === 4);
+            $passes[] = TopNCollector::fillAllGaps();
+            $during = [TopNCollector::queued(), TopNCollector::stats()['queued'], topncLane()::$running];
+            topncWaitFor(static fn (): bool => TopNCollector::stats()['processed'] === 6);
+            Coroutine::usleep(20_000);
+        });
+
+        expect($passes)->toBe([6, 0])
+            ->and($during)->toBe([2, 6, 4])
+            ->and(topncLane()::$calls)->toHaveCount(6)
+            ->and(TopNCollector::stats())->toMatchArray(['queued' => 0, 'processed' => 6, 'failed' => 0])
+        ;
+    });
+
+    test('a backfill starts the next gap filler pass before the queue runs dry', function (): void {
+        Config::$settings = topncSettings($this->root, 8);
+        topncLane()::$sleepUs = 0;
+        topncLane()::$summary = "Ident: none\nFlows: 0\nPackets: 0\nBytes: 0\n";
+        $files = TopNCollector::GAP_FILL_MAX + 100;
+        for ($i = 0; $i < $files; ++$i) {
+            topncCapture($this->root, 'gw', $this->ts - $i * 300);
+        }
+        $firstPass = null;
+
+        topncBooted($this->db, function () use ($files, &$firstPass): void {
+            $firstPass = TopNCollector::fillAllGaps();
+            topncWaitFor(fn (): bool => $this->db->value('SELECT COUNT(*) FROM topn_interval') === $files);
+            Coroutine::usleep(50_000);
+        });
+
+        expect($firstPass)->toBe(TopNCollector::GAP_FILL_MAX)
+            ->and($this->db->value('SELECT COUNT(*) FROM topn_interval WHERE status = ?', [TopNRepository::STATUS_EMPTY]))->toBe($files)
+            ->and(topncLane()::$calls)->toHaveCount($files)
+            ->and(TopNCollector::stats())->toMatchArray(['queued' => 0, 'processed' => $files, 'failed' => 0])
+        ;
+    });
+
+    test('after a failure the next gap filler pass waits for the 10 minute timer', function (): void {
+        Config::$settings = topncSettings($this->root, 8);
+        topncLane()::$sleepUs = 0;
+        topncLane()::$throw = new NfdumpException('nfdump: not found', 'nfdump -I');
+        for ($i = 0; $i < TopNCollector::GAP_FILL_MAX + 100; ++$i) {
+            topncCapture($this->root, 'gw', $this->ts - $i * 300);
+        }
+
+        topncBooted($this->db, function (): void {
+            TopNCollector::fillAllGaps();
+            topncWaitFor(static fn (): bool => TopNCollector::stats()['failed'] === TopNCollector::GAP_FILL_MAX);
+            Coroutine::usleep(200_000);
+        });
+
+        expect($this->db->value('SELECT COUNT(*) FROM topn_interval WHERE status = ?', [TopNRepository::STATUS_FAILED]))->toBe(TopNCollector::GAP_FILL_MAX)
+            ->and($this->db->value('SELECT COUNT(*) FROM topn_interval'))->toBe(TopNCollector::GAP_FILL_MAX)
+            ->and(TopNCollector::queued())->toBe(0)
         ;
     });
 });

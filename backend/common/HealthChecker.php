@@ -41,8 +41,8 @@ class HealthChecker {
     /** -o json field names (ts, td, pr, sa, ...) differ in 1.6.x; 1.7.2 was the first production-ready 1.7. */
     public const string NFDUMP_MIN = '1.7.2';
 
-    /** 1.7.9 fixed a series of security issues in the collectors and in reading capture files. */
-    public const string NFDUMP_RECOMMENDED = '1.7.9';
+    /** 1.7.9 fixed security issues in the collectors and file parsers; 1.7.10 fixed -B pairing in gcc builds. */
+    public const string NFDUMP_RECOMMENDED = '1.7.10';
 
     /** Human-readable elapsed time; non-positive values (clock skew) read as "just now". */
     public static function ageStr(int $seconds): string {
@@ -584,11 +584,19 @@ class HealthChecker {
             ];
         }
         if (version_compare($version, self::NFDUMP_RECOMMENDED, '<')) {
+            $security = version_compare($version, '1.7.9', '<')
+                ? 'nfdump 1.7.9 fixes security issues in the NetFlow v9, IPFIX and sFlow collectors and in reading'
+                    . ' malformed capture files (out-of-bounds reads, a use-after-free, integer overflows). '
+                : '';
+            $pairing = version_compare($version, '1.7.8', '>=')
+                ? 'Built with gcc, nfdump 1.7.8 and 1.7.9 list the two directions of a flow as separate rows in'
+                    . ' Bi-directional results. '
+                : '';
+
             return [
                 'status' => 'warning',
                 'detail' => 'v' . $version . '. nfdump ' . self::NFDUMP_RECOMMENDED . ' or later is recommended.',
-                'hint' => 'nfdump 1.7.9 fixes security issues in the NetFlow v9, IPFIX and sFlow collectors and in reading'
-                    . ' malformed capture files (out-of-bounds reads, a use-after-free, integer overflows). Upgrade to nfdump 1.7.10.',
+                'hint' => $security . $pairing . 'Upgrade to nfdump 1.7.10.',
             ];
         }
 

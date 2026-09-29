@@ -2,7 +2,8 @@
 // the KPI strip and the top-N card right under the graph, the KPI values after #topnFill, top-N
 // tabs by keyboard, TCP in slot 1 while the graph shows protocols, a brush that sets the range,
 // the exact nfdump run out of retention with its row count announced, and no stale answer on the
-// way back. V-A11Y: keyboard walk and a forced-colors screenshot to /tmp.
+// way back. The graph is a Rocket element whose drag posts set-range once. V-A11Y: keyboard walk
+// and a forced-colors screenshot to /tmp.
 //
 // The dev data has one day of flows about four weeks back, so the checks that need rows use the
 // 30 day preset, and the empty 24 hour window checks the states instead.
@@ -147,10 +148,12 @@ export default async function overviewTest() {
         await page.evaluate(`document.getElementById('ovTab-talkers').click(); document.getElementById('graphOptionsToggle').click()`);
         await page.waitFor(`${CHART}.dataset.chartConfig?.includes('"display":"sources"')`, { label: 'the graph back on sources' });
 
-        // A brush across the plot sets the range (1.8); Previous range brings the preset back.
+        // A brush across the plot sets the range (1.8) with one post (6.9); Previous range brings the preset back.
         await page.waitFor(`!!${CHART}.chart`, { label: 'the chart' });
+        assert.equal(await page.evaluate(`${CHART}.rocketInstanceId !== undefined`), true, 'the traffic graph is a Rocket host');
         await page.evaluate(`${CHART}.scrollIntoView({ block: 'center' })`);
         await sleep(300);
+        const log = await page.requestLog();
         const before = await page.evaluate(`[${CHART}.getAttribute('aria-label')]`);
         const grid = await page.evaluate(`(function(){
             var el = ${CHART};
@@ -178,6 +181,8 @@ export default async function overviewTest() {
             brushed = await page.evaluate(window);
         }
         assert.equal(brushed.live, false, 'a brushed range is fixed');
+        await sleep(1000);
+        assert.equal(log.count('set-range'), 1, `one drag posts set-range once, got ${log.names().join(', ')}`);
         assert.ok(brushed.to - brushed.from < 30 * 86400 * 0.5, `the brush narrowed the 30 day window (${brushed.to - brushed.from} s)`);
         assert.equal(brushed.from % 300, 0, 'the brushed start is on a 5 minute boundary');
         assert.ok(before[0], 'the chart carries an accessible name');

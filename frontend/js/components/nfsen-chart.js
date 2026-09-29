@@ -1,7 +1,8 @@
 /**
- * <nfsen-chart>: the traffic graph on Apache ECharts (spec 1.8, 4.1.3).
+ * <nfsen-chart>: the traffic graph on Apache ECharts (spec 1.8, 4.1.3; ROCKET-SPEC 6.9, shape A).
+ * The canvas sits in an ignored container in the light DOM, so a morph never touches it.
  *
- * Attributes: data-chart-data (GraphData JSON), data-chart-config (the server's part of the
+ * Props: data-chart-data (GraphData JSON), data-chart-config (the server's part of the
  * configuration), data-chart-style (the client-local style toggles), data-mode
  * (overview | picker | picker-total), data-aria-base (the first part of the accessible name),
  * data-external-prefix (ids of the Series and Legend panels, Overview only).
@@ -10,6 +11,9 @@
  * graph-zoom {from, to} after a Ctrl + wheel zoom and after new data is drawn (ms; isZoomed()
  * says whether the view is a preview), brush-armed {armed}.
  */
+import { rocket } from 'datastar';
+import { escapeHtml, isGap, scaled, UNITS } from 'nfsen/format';
+import { hostState, peekState, whenGone } from 'nfsen/host-state';
 import { chartTheme, linePattern, onThemeChange } from 'nfsen/theme-colors';
 import { tzOptions } from 'nfsen/tz-utils';
 
@@ -24,60 +28,17 @@ const INTERVAL_MS = 300_000;
 /** A drag narrower than this is a click, which does nothing. */
 const MIN_BRUSH_PX = 4;
 const HINT_MS = 2000;
-const GAP_TEXT = 'no data';
 
-const UNITS = {
-    bits: {
-        base: 1000,
-        axis: ['', ' k', ' M', ' G', ' T', ' P'],
-        rate: [' b/s', ' kb/s', ' Mb/s', ' Gb/s', ' Tb/s', ' Pb/s'],
-        name: 'bits/s',
-    },
-    bytes: {
-        base: 1024,
-        axis: ['', ' Ki', ' Mi', ' Gi', ' Ti', ' Pi'],
-        rate: [' B/s', ' KiB/s', ' MiB/s', ' GiB/s', ' TiB/s', ' PiB/s'],
-        name: 'bytes/s',
-    },
-    packets: {
-        base: 1000,
-        axis: ['', ' k', ' M', ' G', ' T', ' P'],
-        rate: [' pkt/s', ' k pkt/s', ' M pkt/s', ' G pkt/s', ' T pkt/s', ' P pkt/s'],
-        name: 'packets/s',
-    },
-    flows: {
-        base: 1000,
-        axis: ['', ' k', ' M', ' G', ' T', ' P'],
-        rate: [' flows/s', ' k flows/s', ' M flows/s', ' G flows/s', ' T flows/s', ' P flows/s'],
-        name: 'flows/s',
-    },
+const coarse = window.matchMedia('(pointer: coarse)');
+
+/** Which redraw each prop asks for. */
+const PROP_WORK = {
+    dataChartData: 'data',
+    dataChartConfig: 'data',
+    dataMode: 'data',
+    dataChartStyle: 'style',
+    dataAriaBase: 'aria',
 };
-
-/**
- * True for anything that cannot be drawn or formatted as a number: the null the datasources
- * use for an empty bucket (#154), and NaN, Infinity or a non-number. The formatters run inside
- * ECharts' hover handling, out of reach of the update path's error handling (#160).
- */
-function isGap(value) {
-    return value == null || value === '' || !Number.isFinite(Number(value));
-}
-
-/** Three significant digits and the prefix that keeps the number below the base. */
-function scaled(value, base, units) {
-    if (isGap(value)) return GAP_TEXT;
-    let v = Math.abs(Number(value));
-    let i = 0;
-    while (v >= base && i < units.length - 1) {
-        v /= base;
-        i++;
-    }
-    const digits = v === 0 || v >= 100 ? 0 : v >= 10 ? 1 : 2;
-    return `${Number(value) < 0 ? '-' : ''}${Number(v.toFixed(digits))}${units[i]}`;
-}
-
-function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-}
 
 function parseJson(text, fallback) {
     if (!text) return fallback;
@@ -86,6 +47,15 @@ function parseJson(text, fallback) {
     } catch {
         return fallback;
     }
+}
+
+async function waitForECharts(timeout = 5000) {
+    const start = Date.now();
+    while (!window.echarts) {
+        if (Date.now() - start > timeout) return false;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return true;
 }
 
 /** A view transition scoped to the element where the browser has them, with its promises handled. */
@@ -106,19 +76,21 @@ function transition(el, fn) {
     }
 }
 
-export class NfsenChart extends HTMLElement {
-    static get observedAttributes() {
-        return ['data-chart-data', 'data-chart-config', 'data-chart-style', 'data-mode', 'data-aria-base'];
-    }
-
-    constructor() {
-        super();
+/**
+ * What a chart keeps across a move (K14): the ECharts instance, the drawn data, the hidden series,
+ * the brush and the zoom. Setup binds listeners to it; the host API reads it through peekState.
+ */
+class ChartState {
+    constructor(host) {
+        this.host = host;
         this.chart = null;
         this.container = null;
+        this.hint = null;
         this.rows = [];
         this.names = [];
         this.slots = [];
         this.config = {};
+        this.configText = '';
         this.chartStyle = { logscale: false, stacked: false, stepplot: true };
         this.hiddenSeries = new Set();
         this.drawnData = null;
@@ -126,86 +98,67 @@ export class NfsenChart extends HTMLElement {
         this.seriesKey = '';
         this.brushArmed = false;
         this.brushOnce = false;
-        this.coarse = window.matchMedia('(pointer: coarse)');
-        this.scheduled = false;
+        this.pending = new Set();
         this.hintTimer = 0;
         this.dateFmt = (ms, extra = {}) => new Date(ms).toLocaleString(undefined, extra);
     }
 
-    connectedCallback() {
-        this.container = this.querySelector('.chart-canvas');
-        this.hint = this.querySelector('.chart-hint');
-
-        // The inner container can still be settling when the element already has its size.
-        this.resizeObserver = new ResizeObserver(() => this.chart?.resize());
-        this.resizeObserver.observe(this);
-        if (this.container) this.resizeObserver.observe(this.container);
-
-        this.unsubscribeTheme = onThemeChange(() => this.chart && this.render({ keepZoom: true }));
-        this.onPointerChange = () => this.syncBrush();
-        this.coarse.addEventListener('change', this.onPointerChange);
-        // A plain wheel scrolls the page; only Ctrl + wheel zooms (D6), which the hint says. The
-        // inside dataZoom cancels every wheel it receives, so a plain one never reaches it.
-        this.onWheel = (event) => {
-            if (!this.chart || event.ctrlKey || event.metaKey || !this.container?.contains(event.target)) return;
-            event.stopPropagation();
-            this.showHint();
-        };
-        this.addEventListener('wheel', this.onWheel, { passive: true, capture: true });
-
-        this.schedule();
+    /** From setup: find the canvas (a new one drops the instance bound to the old) and catch up on the props. */
+    attach() {
+        const container = this.host.querySelector('.chart-canvas');
+        if (container !== this.container) {
+            this.destroy();
+            this.drawnData = null;
+            this.container = container;
+        }
+        this.hint = this.host.querySelector('.chart-hint');
+        for (const work of ['data', 'style', 'aria']) this.queue(work);
     }
 
-    disconnectedCallback() {
-        this.resizeObserver?.disconnect();
-        this.resizeObserver = null;
-        this.unsubscribeTheme?.();
-        this.unsubscribeTheme = null;
-        this.coarse.removeEventListener('change', this.onPointerChange);
-        this.removeEventListener('wheel', this.onWheel, { capture: true });
+    release() {
         clearTimeout(this.hintTimer);
         this.destroy();
+        this.container = null;
     }
 
-    attributeChangedCallback(name, oldValue, newValue) {
-        if (oldValue === newValue || !this.isConnected) return;
-        if (name === 'data-chart-style') {
-            this.applyStyle();
-            return;
-        }
-        if (name === 'data-aria-base') {
-            this.updateAria();
-            return;
-        }
-        // An emptied or removed data attribute keeps the last chart (1.2).
-        if (name === 'data-chart-data' && !newValue) return;
-        this.schedule();
+    emit(type, detail) {
+        this.host.dispatchEvent(new CustomEvent(type, { bubbles: true, composed: true, detail }));
     }
 
-    /** A morph changes several attributes in one task; draw once, after all of them. */
-    schedule() {
-        if (this.scheduled) return;
-        this.scheduled = true;
+    /** Props change in the middle of a morph (K15): note what they ask for and do it once, after the morph. */
+    queue(work) {
+        const first = this.pending.size === 0;
+        this.pending.add(work);
+        if (!first) return;
         queueMicrotask(() => {
-            this.scheduled = false;
-            this.load();
+            const pending = new Set(this.pending);
+            this.pending.clear();
+            if (!this.host.isConnected) return;
+            if (pending.has('data')) this.load();
+            if (pending.has('style')) this.applyStyle();
+            // Before the first draw the server's label stands; the draw writes the full one.
+            if (pending.has('aria') && this.drawnData !== null) this.updateAria();
         });
     }
 
     async load() {
         if (!this.container) {
-            this.container = this.querySelector('.chart-canvas');
+            this.container = this.host.querySelector('.chart-canvas');
+            this.hint = this.host.querySelector('.chart-hint');
             if (!this.container) return;
         }
-        if (!window.echarts && !(await this.waitForECharts())) {
+        if (!window.echarts && !(await waitForECharts())) {
             this.showMessage('The chart library failed to load.');
             return;
         }
+        if (!this.host.isConnected) return;
 
-        const dataText = this.dataset.chartData;
+        // An emptied or removed data or config attribute keeps the last chart (1.2, K5).
+        const dataText = this.host.dataChartData;
         if (!dataText) return;
-        const config = parseJson(this.dataset.chartConfig, {});
-        const key = `${this.dataset.mode}|${this.dataset.chartConfig}|${dataText}`;
+        if (this.host.dataChartConfig) this.configText = this.host.dataChartConfig;
+        const config = parseJson(this.configText, {});
+        const key = `${this.host.dataMode}|${this.configText}|${dataText}`;
         if (key === this.drawnData && this.chart) return;
 
         const data = parseJson(dataText, null);
@@ -214,28 +167,19 @@ export class NfsenChart extends HTMLElement {
             this.announceView();
             return;
         }
-        this.chartStyle = { ...this.chartStyle, ...parseJson(this.dataset.chartStyle, {}) };
+        this.chartStyle = { ...this.chartStyle, ...parseJson(this.host.dataChartStyle, {}) };
         this.drawnData = key;
         const zoom = this.chart && this.isZoomed() ? this.getCurrentRange() : null;
         const sameWindow = (config.window ?? '') === (this.config.window ?? '');
         const seriesKey = this.seriesKey;
         this.setData(data, config);
-        this.render({ zoom: sameWindow && seriesKey === this.seriesKey ? this.zoomInside(zoom) : null, announce: true });
+        this.draw({ zoom: sameWindow && seriesKey === this.seriesKey ? this.zoomInside(zoom) : null, announce: true });
     }
 
     /** A zoom that still lies inside the drawn data, so a refresh of the same window keeps the preview (D6). */
     zoomInside(zoom) {
         if (!zoom || this.rows.length === 0) return null;
         return zoom.from >= this.rows[0][0] && zoom.to <= this.rows[this.rows.length - 1][0] ? zoom : null;
-    }
-
-    async waitForECharts(timeout = 5000) {
-        const start = Date.now();
-        while (!window.echarts) {
-            if (Date.now() - start > timeout) return false;
-            await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-        return true;
     }
 
     /** GraphData ({data: {ts: [values]}, legend}) as rows of [ms, ...values], plus names and slots. */
@@ -265,7 +209,7 @@ export class NfsenChart extends HTMLElement {
     }
 
     mode() {
-        return this.dataset.mode || this.config.mode || 'overview';
+        return this.host.dataMode || this.config.mode || 'overview';
     }
 
     unit() {
@@ -326,7 +270,7 @@ export class NfsenChart extends HTMLElement {
      * Draws the current data and style. keepZoom holds the view across a style or theme change,
      * zoom restores a given one; announce reports the resulting view (graph-zoom) after new data.
      */
-    render({ keepZoom = false, zoom: restore = null, announce = false }) {
+    draw({ keepZoom = false, zoom: restore = null, announce = false }) {
         if (!this.container) return;
         if (this.rows.length === 0 || this.names.length === 0) {
             this.showMessage('No data available for the selected range.');
@@ -538,7 +482,7 @@ export class NfsenChart extends HTMLElement {
 
     /** One of this chart's external panels (Series, Legend), scoped by data-external-prefix. */
     externalEl(name) {
-        const prefix = this.getAttribute('data-external-prefix');
+        const prefix = this.host.dataExternalPrefix;
         return document.getElementById(prefix ? `${prefix}-${name}` : name);
     }
 
@@ -642,9 +586,9 @@ export class NfsenChart extends HTMLElement {
 
     /** "Traffic by protocol, Stored data · 5 min resolution, Sep 24 14:20 to Sep 25 14:20, peak 3.1 Gb/s at 08:50" (1.8). */
     updateAria() {
-        const base = this.dataset.ariaBase || 'Traffic graph';
+        const base = this.host.dataAriaBase || 'Traffic graph';
         if (this.rows.length === 0) {
-            this.setAttribute('aria-label', `${base}, no data in this range`);
+            this.host.setAttribute('aria-label', `${base}, no data in this range`);
             return;
         }
         const plan = this.names.map((name) => !this.hiddenSeries.has(name));
@@ -662,7 +606,7 @@ export class NfsenChart extends HTMLElement {
         const unit = this.unit();
         const parts = [base, `${this.dateFmt(first, short)} to ${this.dateFmt(last, short)}`];
         if (peak) parts.push(`peak ${scaled(peak.total, unit.base, unit.rate)} at ${this.dateFmt(peak.at, short)}`);
-        this.setAttribute('aria-label', parts.join(', '));
+        this.host.setAttribute('aria-label', parts.join(', '));
     }
 
     // ── Brush (1.8) ─────────────────────────────────────────────────────────
@@ -670,15 +614,15 @@ export class NfsenChart extends HTMLElement {
     /** Armed after every draw on fine pointers; on coarse ones only by armBrushOnce(). */
     syncBrush() {
         if (!this.chart) return;
-        const armed = !this.coarse.matches || this.brushOnce;
+        const armed = !coarse.matches || this.brushOnce;
         this.chart.dispatchAction({
             type: 'takeGlobalCursor',
             key: 'brush',
             brushOption: armed ? { brushType: 'lineX', brushMode: 'single' } : { brushType: false },
         });
-        if (armed !== this.brushArmed || this.coarse.matches) {
+        if (armed !== this.brushArmed || coarse.matches) {
             this.brushArmed = armed;
-            this.dispatchEvent(new CustomEvent('brush-armed', { bubbles: true, detail: { armed: this.coarse.matches && armed } }));
+            this.emit('brush-armed', { armed: coarse.matches && armed });
         }
     }
 
@@ -704,15 +648,19 @@ export class NfsenChart extends HTMLElement {
         if (!Number.isFinite(width) || width < MIN_BRUSH_PX) return;
         const from = Math.floor(Math.min(a, b) / INTERVAL_MS) * INTERVAL_MS;
         const to = Math.max(from + INTERVAL_MS, Math.ceil(Math.max(a, b) / INTERVAL_MS) * INTERVAL_MS);
-        this.dispatchEvent(new CustomEvent('range-select', { bubbles: true, detail: { from, to } }));
+        this.emit('range-select', { from, to });
     }
 
-    showHint() {
+    /** A plain wheel scrolls the page; only Ctrl + wheel zooms (D6), which the hint says. */
+    wheel(event) {
+        if (!this.chart || event.ctrlKey || event.metaKey || !this.container?.contains(event.target)) return;
+        // The inside dataZoom cancels every wheel it receives, so a plain one must not reach it.
+        event.stopPropagation();
         if (!this.hint) return;
         this.hint.hidden = false;
         clearTimeout(this.hintTimer);
         this.hintTimer = setTimeout(() => {
-            this.hint.hidden = true;
+            if (this.hint) this.hint.hidden = true;
         }, HINT_MS);
     }
 
@@ -721,13 +669,13 @@ export class NfsenChart extends HTMLElement {
     handleZoom() {
         const range = this.getCurrentRange();
         if (!range) return;
-        this.dispatchEvent(new CustomEvent('graph-zoom', { bubbles: true, detail: { from: range.from, to: range.to } }));
+        this.emit('graph-zoom', { from: range.from, to: range.to });
     }
 
     /** After new data: the kept preview again, or a view that is not zoomed, which ends it. */
     announceView() {
         const range = this.getCurrentRange() ?? { from: 0, to: 0 };
-        this.dispatchEvent(new CustomEvent('graph-zoom', { bubbles: true, detail: { from: range.from, to: range.to } }));
+        this.emit('graph-zoom', { from: range.from, to: range.to });
     }
 
     handleLegendSelect(params) {
@@ -756,12 +704,6 @@ export class NfsenChart extends HTMLElement {
         return null;
     }
 
-    /** @returns {Array|null} [from, to] in ms */
-    xAxisRange() {
-        const range = this.getCurrentRange();
-        return range ? [range.from, range.to] : null;
-    }
-
     isZoomed() {
         if (!this.chart) return false;
         const range = this.getCurrentRange();
@@ -773,27 +715,12 @@ export class NfsenChart extends HTMLElement {
         this.chart?.dispatchAction({ type: 'dataZoom', start: 0, end: 100 });
     }
 
-    // ── Public API kept from the Dygraphs era ───────────────────────────────
-
-    resize() {
-        this.chart?.resize();
-    }
-
-    /** Style keys the old templates sent: logscale, stackedGraph, fillGraph, stepPlot. */
-    updateOptions(options = {}) {
-        if ('logscale' in options) this.chartStyle.logscale = !!options.logscale;
-        if ('stackedGraph' in options) this.chartStyle.stacked = !!options.stackedGraph;
-        if ('fillGraph' in options) this.chartStyle.stacked = !!options.fillGraph;
-        if ('stepPlot' in options) this.chartStyle.stepplot = !!options.stepPlot;
-        if (this.chart) this.render({ keepZoom: true });
-    }
-
     /** data-chart-style changed: the client-local toggles of the Options panel. */
     applyStyle() {
-        const next = { ...this.chartStyle, ...parseJson(this.dataset.chartStyle, {}) };
+        const next = { ...this.chartStyle, ...parseJson(this.host.dataChartStyle, {}) };
         if (JSON.stringify(next) === JSON.stringify(this.chartStyle)) return;
         this.chartStyle = next;
-        if (this.chart) this.render({ keepZoom: true });
+        if (this.chart) this.draw({ keepZoom: true });
     }
 
     /**
@@ -832,10 +759,91 @@ export class NfsenChart extends HTMLElement {
         this.panelKey = '';
         this.brushArmed = false;
     }
-
-    toJSON() {
-        return this.tagName;
-    }
 }
 
-customElements.define('nfsen-chart', NfsenChart);
+/** A host method that finds the state on each call (K14), so the host holds no reference to it. */
+function method(host, name, fallback) {
+    return { value: (...args) => peekState(host)?.[name](...args) ?? fallback };
+}
+
+rocket('nfsen-chart', {
+    mode: 'open',
+    props: ({ string }) => ({
+        dataChartData: string.docs({ description: 'GraphData JSON ({data: {ts: [values]}, legend}); empty keeps the last chart.' }),
+        dataChartConfig: string.docs({
+            description:
+                "The server's part of the configuration as JSON (unit, mode, series names and slots, time zones); empty keeps the last.",
+        }),
+        dataChartStyle: string.docs({
+            description: 'The client-local style toggles as JSON: logscale, stacked, stepplot; empty keeps the last.',
+        }),
+        dataMode: string.docs({ description: 'overview, picker or picker-total; empty takes the mode of the configuration.' }),
+        dataAriaBase: string.docs({ description: 'The first part of the accessible name the chart writes on every draw.' }),
+        dataExternalPrefix: string.docs({ description: 'The id prefix of the Series and Legend panels (Overview only).' }),
+    }),
+    manifest: {
+        events: [
+            {
+                name: 'range-select',
+                kind: 'custom-event',
+                bubbles: true,
+                composed: true,
+                description: 'A brush ended; detail {from, to} in ms, on 5 minute boundaries.',
+            },
+            {
+                name: 'graph-zoom',
+                kind: 'custom-event',
+                bubbles: true,
+                composed: true,
+                description:
+                    'After a Ctrl + wheel zoom and after new data is drawn; detail {from, to} in ms. isZoomed() says whether it is a preview.',
+            },
+            {
+                name: 'brush-armed',
+                kind: 'custom-event',
+                bubbles: true,
+                composed: true,
+                description: 'The brush changed; detail.armed is true while a coarse pointer has it armed for one selection.',
+            },
+        ],
+    },
+    setup: ({ cleanup, defineHostProp, host, observeProps }) => {
+        if (!host.shadowRoot.firstChild) host.shadowRoot.append(document.createElement('slot'));
+        const state = hostState(host, () => new ChartState(host));
+
+        defineHostProp('chart', { get: () => peekState(host)?.chart ?? null });
+        defineHostProp('getCurrentRange', method(host, 'getCurrentRange', null));
+        defineHostProp('isZoomed', method(host, 'isZoomed', false));
+        for (const name of ['resetZoom', 'armBrushOnce', 'disarmBrush', 'setVisibility', 'showMessage']) {
+            defineHostProp(name, method(host, name));
+        }
+        defineHostProp('resize', { value: () => peekState(host)?.chart?.resize() });
+        defineHostProp('toJSON', { value: () => host.tagName });
+
+        observeProps(
+            (_, changes) => {
+                for (const name of Object.keys(changes)) state.queue(PROP_WORK[name]);
+            },
+            ...Object.keys(PROP_WORK)
+        );
+
+        state.attach();
+        // The inner container can still be settling when the element already has its size.
+        const resizes = new ResizeObserver(() => peekState(host)?.chart?.resize());
+        resizes.observe(host);
+        if (state.container) resizes.observe(state.container);
+        const stopTheme = onThemeChange(() => state.chart && state.draw({ keepZoom: true }));
+        const onPointer = () => state.syncBrush();
+        coarse.addEventListener('change', onPointer);
+        const onWheel = (event) => state.wheel(event);
+        host.addEventListener('wheel', onWheel, { passive: true, capture: true });
+
+        cleanup(() => {
+            resizes.disconnect();
+            stopTheme();
+            coarse.removeEventListener('change', onPointer);
+            host.removeEventListener('wheel', onWheel, { capture: true });
+            whenGone(host, (gone) => gone.release());
+        });
+    },
+});

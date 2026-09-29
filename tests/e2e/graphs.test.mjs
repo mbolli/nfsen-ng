@@ -1,10 +1,11 @@
 // Overview's traffic graph (spec 1.8, 4.1.3, 5.4): the chart mounts at the real container size,
 // a Ctrl + wheel zoom shows #zoomPreview whose Apply sets the global window, Sync now and Follow
 // graph zoom do the same from the Live menu, a plain wheel scrolls the page and leaves the zoom
-// alone, a zoomed preview survives the live tick and new data for the same window, a brush sets
-// the range and Previous range restores the one before, the style toggles in #graphOptions
-// apply, the picker's legend keeps a hidden protocol across new data, the header controls work
-// from the keyboard, and dark mode re-themes.
+// alone, a zoomed preview survives the live tick and new data for the same window, a move keeps
+// hidden series and the zoom, a brush sets the range with one post and Previous range restores
+// the one before, the style toggles in #graphOptions apply and survive a sync, the picker's
+// legend keeps a hidden protocol across new data, the header controls work from the keyboard,
+// and dark mode re-themes. The Flows chart keeps its configuration and its name across a sync.
 //
 // Data-dependent assertions only run if the widest range has data in some datatype: a fresh
 // environment has none, and the test fails on wrong behaviour, not on missing data.
@@ -59,6 +60,7 @@ export default async function graphsTest() {
         await page.waitForBoot();
         await page.gotoPage('overview');
         await page.waitFor(CHART, { label: 'chart element to exist' });
+        const log = await page.requestLog();
 
         // The style toggles and the datatype live in #graphOptions, opened by #graphOptionsToggle.
         await page.evaluate(`document.getElementById('graph_linestacked_line').click(); document.getElementById('graph_linlog_linear').click()`);
@@ -98,10 +100,36 @@ export default async function graphsTest() {
             out.patterns = [o.series[0].lineStyle.type, o.series[8].lineStyle.type, o.series[16].lineStyle.type];
             out.endLabels = o.series.filter(function(s){ return s.endLabel && s.endLabel.show; }).length;
             out.swatch = document.querySelectorAll('#e2eMany-series .series-swatch')[8].dataset.pattern;
+
+            // A move keeps the state (K14): an atomic move, and a remove and insert, which runs
+            // cleanup and setup again.
+            out.rocket = el.rocketInstanceId !== undefined;
+            var instance = el.chart;
+            el.setVisibility(0, false);
+            el.chart.dispatchAction({ type: 'dataZoom', startValue: 1790000000000 + 5 * 300000, endValue: 1790000000000 + 12 * 300000 });
+            await wait();
+            var kept = function(){
+                return { hidden: el.chart.getOption().legend[0].selected['1'] === false, zoomed: el.isZoomed(), range: el.getCurrentRange(), same: el.chart === instance };
+            };
+            out.before = kept();
+            el.parentNode.moveBefore(el, el.nextSibling);
+            await wait();
+            out.moved = kept();
+            el.parentNode.insertBefore(el, el.nextSibling);
+            await wait();
+            out.reinserted = kept();
             host.remove();
+            await wait();
+            out.gone = { chart: el.chart, children: el.childElementCount };
             return out;
         })()`);
-        assert.deepEqual(many, {
+        const { rocket, before, moved, reinserted, gone, ...counts } = many;
+        assert.equal(rocket, true, 'nfsen-chart is a Rocket host');
+        assert.deepEqual(before, { hidden: true, zoomed: true, range: { from: 1790001500000, to: 1790003600000 }, same: true });
+        assert.deepEqual(moved, before, 'moveBefore keeps the hidden series, the zoom and the instance');
+        assert.deepEqual(reinserted, before, 'a remove and insert keeps the hidden series, the zoom and the instance');
+        assert.deepEqual(gone, { chart: null, children: 0 }, 'a removed chart lets its instance go and empties itself');
+        assert.deepEqual(counts, {
             stackedSeries: 9,
             last: 'Others',
             others: 315,
@@ -222,15 +250,38 @@ export default async function graphsTest() {
         await page.evaluate(`document.body.style.paddingBlockEnd = ''; window.scrollTo(0, 0)`);
         await sleep(300);
 
-        // A brush (dispatched as ECharts reports one) sets the range on 5 minute boundaries.
+        // A move keeps a hidden series and the zoom (6.9, K14): an atomic move, then a remove and insert,
+        // which runs cleanup and setup again. A lone series stays visible, or there is nothing to zoom.
+        const names = await page.evaluate(`${CHART}.chart.getOption().series.map(function(s){ return s.name; })`);
+        const hide = names.length > 1 ? names.length - 1 : -1;
+        if (hide >= 0) await page.evaluate(`${CHART}.setVisibility(${hide}, false)`);
+        const moveZoom = await zoomTo();
+        const keptView = `(function(){
+            var el = ${CHART};
+            return { hidden: ${hide} < 0 || el.chart.getOption().legend[0].selected[${JSON.stringify(names[hide] ?? '')}] === false, zoomed: el.isZoomed(), range: el.getCurrentRange() };
+        })()`;
+        for (const move of ['moveBefore', 'insertBefore']) {
+            await page.evaluate(`(function(){ var el = ${CHART}; el.parentNode.${move}(el, el.nextSibling); })()`);
+            await sleep(300);
+            assert.deepEqual(await page.evaluate(keptView), { hidden: true, zoomed: true, range: moveZoom }, `${move} keeps the hidden series and the zoom`);
+        }
+        if (hide >= 0) await page.evaluate(`${CHART}.setVisibility(${hide}, true)`);
+        await page.evaluate(`document.getElementById('zoomReset').click()`);
+        await page.waitFor(`document.getElementById('zoomPreview').hidden`, { label: 'Reset after the move' });
+
+        // A brush (dispatched as ECharts reports one) sets the range on 5 minute boundaries, with
+        // one post: the host's range-select handler is bound once, also after the move above.
         const brushTarget = await page.evaluate(`(function(){
             var src = ${CHART}.chart.getOption().dataset[0].source;
             var first = Math.max(src[0][0], ${(await currentWindow(page)).min} * 1000), last = src[src.length - 1][0];
             return [first + (last - first) * 0.6, first + (last - first) * 0.8];
         })()`);
+        log.clear();
         await page.evaluate(`${CHART}.chart.dispatchAction({ type: 'brush', areas: [{ brushType: 'lineX', xAxisIndex: 0, coordRange: ${JSON.stringify(brushTarget)} }] })`);
         await page.evaluate(`${CHART}.chart.dispatchAction({ type: 'brushEnd', areas: [{ brushType: 'lineX', xAxisIndex: 0, coordRange: ${JSON.stringify(brushTarget)} }] })`);
         await windowMatches({ from: Math.floor(brushTarget[0] / 300000) * 300000, to: Math.ceil(brushTarget[1] / 300000) * 300000 });
+        await sleep(1000);
+        assert.equal(log.count('set-range'), 1, `one brush posts set-range once, got ${log.names().join(', ')}`);
         const brushed = await currentWindow(page);
         assert.equal(brushed.live, false, 'a brushed range is fixed');
         assert.equal(brushed.from % 300, 0, 'the brushed start is on a 5 minute boundary');
@@ -306,11 +357,30 @@ export default async function graphsTest() {
         await page.evaluate(`document.getElementById('graph_lineplot_curve').click()`);
         await page.waitFor(`${CHART}.chart.getOption().series[0].step === false`, { label: 'no step after clicking Curve' });
 
-        // The Series panel toggles a series with a listener of its own (Datastar skips the panel).
+        // A sync keeps them (K4): the host preserves data-chart-style, which data-attr set, so the
+        // morph neither drops it nor draws the chart linear again. The marker goes with the morph.
+        await page.evaluate(`document.getElementById('trafficGraphTitle').setAttribute('data-e2e-sync', '')`);
+        log.clear();
+        await page.evaluate(`document.getElementById('filterDisplaySelect').dispatchEvent(new Event('change', { bubbles: true }))`);
+        await page.waitFor(`!document.getElementById('trafficGraphTitle').hasAttribute('data-e2e-sync')`, { timeout: 10000, label: 'a sync of the graph' });
+        assert.ok(log.count('refresh-graphs') >= 1, 'the sync came from refresh-graphs');
+        await sleep(500);
+        const afterSync = await page.evaluate(`(function(){
+            var el = ${CHART}, o = el.chart.getOption();
+            return { style: JSON.parse(el.getAttribute('data-chart-style') || 'null'), y: o.yAxis[0].type, stack: o.series[0].stack, step: o.series[0].step,
+                     named: / to .*(peak|no data)/.test(el.getAttribute('aria-label') || '') };
+        })()`);
+        assert.deepEqual(afterSync, { style: { logscale: true, stacked: true, stepplot: false }, y: 'log', stack: 'total', step: false, named: true });
+
+        // The Series panel toggles a series with a listener of its own (Datastar skips the panel), by
+        // keyboard too (V-A11Y).
         const firstName = await page.evaluate(`document.querySelector('#trafficGraph-series .series-name')?.textContent`);
-        await page.evaluate(`document.querySelector('#trafficGraph-series input[type=checkbox]').click()`);
-        await page.waitFor(`${CHART}.chart.getOption().legend[0].selected[${JSON.stringify(firstName)}] === false`, { label: 'the series hidden from the panel' });
-        await page.evaluate(`document.querySelector('#trafficGraph-series input[type=checkbox]').click()`);
+        const selectedFirst = `${CHART}.chart.getOption().legend[0].selected[${JSON.stringify(firstName)}]`;
+        await page.evaluate(`document.querySelector('#trafficGraph-series input[type=checkbox]').focus()`);
+        await press(page, 'Space');
+        await page.waitFor(`${selectedFirst} === false`, { label: 'Space in the panel to hide the series' });
+        await press(page, 'Space');
+        await page.waitFor(`${selectedFirst} === true`, { label: 'Space again to show it' });
 
         // Back to the defaults for whatever runs next.
         await page.evaluate(
@@ -355,6 +425,55 @@ export default async function graphsTest() {
 
         const errors = page.realErrors();
         assert.deepEqual(errors, [], `expected no console errors during the Graphs test, got:\n${errors.join('\n')}`);
+    });
+
+    // The Flows "Traffic over time" chart (6.9): a Rocket host with a role and a name of its own, and a
+    // configuration from data-attr that a sync keeps (K4), the display timezone chosen on the client included.
+    await withPage(async (page) => {
+        // A browser zone apart from the server's, so the two display timezones draw different labels.
+        await page.send('Emulation.setTimezoneOverride', { timezoneId: 'Pacific/Auckland' });
+        await page.navigate(BASE + '/#/flows');
+        await page.waitForBoot();
+        await page.waitForPage('flows');
+        // One day keeps the build to a few seconds.
+        await page.setRangePreset('24h');
+        await page.evaluate(`(function(){ var b = document.querySelector('#flowsGraph .flows-disclosure'); if (b.getAttribute('aria-expanded') !== 'true') b.click(); })()`);
+        await page.waitFor(`!!document.querySelector('button[data-run="flows-graph"]:not(:disabled)')`, { timeout: 30000, label: 'the Build graph button' });
+        await page.runQuery('flows-graph', { timeout: 120000 });
+
+        const FLOWS = "document.querySelector('#flowsGraph nfsen-chart')";
+        const flowsChart = `(function(){
+            var el = ${FLOWS};
+            return { role: el.getAttribute('role'), label: el.getAttribute('aria-label'), config: JSON.parse(el.getAttribute('data-chart-config') || 'null'),
+                     y: el.chart ? el.chart.getOption().yAxis[0].name : null };
+        })()`;
+        await page.waitFor(`${FLOWS}?.rocketInstanceId !== undefined && /^Traffic over time, /.test(${FLOWS}.getAttribute('aria-label') || '')`, {
+            timeout: 15000,
+            label: 'the Flows chart to draw and name itself',
+        });
+        const first = await page.evaluate(flowsChart);
+        assert.equal(first.role, 'img');
+        assert.match(first.label, /^Traffic over time, (.+ to .+|no data in this range)/);
+        assert.ok(first.config?.displayTz, `the configuration came from data-attr: ${JSON.stringify(first.config)}`);
+
+        const next = first.config.displayTz === 'server' ? 'browser' : 'server';
+        await page.evaluate(`(async function(){
+            var root = (await import('datastar')).root;
+            root[Object.keys(root).find(function(k){ return k.startsWith('displayTz____'); })] = ${JSON.stringify(next)};
+        })()`);
+        await page.waitFor(`JSON.parse(${FLOWS}.getAttribute('data-chart-config')).displayTz === ${JSON.stringify(next)}`, { label: 'the other display timezone' });
+        await sleep(800);
+        const chosen = await page.evaluate(flowsChart);
+        if (/ to /.test(first.label)) assert.notEqual(chosen.label, first.label, 'the name follows the display timezone');
+
+        await page.evaluate(`document.getElementById('flowsGraphTitle').setAttribute('data-e2e-sync', '')`);
+        await page.evaluate(`document.querySelector('input[name=flowsGraphUnit]:checked').dispatchEvent(new Event('change', { bubbles: true }))`);
+        await page.waitFor(`!document.getElementById('flowsGraphTitle').hasAttribute('data-e2e-sync')`, { timeout: 10000, label: 'a sync of the Flows page' });
+        await sleep(800);
+        assert.deepEqual(await page.evaluate(flowsChart), chosen, 'a sync keeps the configuration, its timezone and the name');
+
+        const errors = page.realErrors();
+        assert.deepEqual(errors, [], `expected no console errors with the Flows chart, got:\n${errors.join('\n')}`);
     });
 }
 

@@ -199,7 +199,9 @@
             {% endif %}
 
             {% if f.graph.built %}
-                <nfsen-chart data-external-prefix="flowsGraph" data-builtin-legend
+                <nfsen-chart data-external-prefix="flowsGraph" role="img"
+                             aria-label="Traffic over time" data-aria-base="Traffic over time"
+                             data-preserve-attr="aria-label data-chart-config"
                              data-attr:data-chart-config="$flows._config"
                              data-chart-data="{{ f.graph.data }}">
                     <div class="chart-container" data-ignore-morph data-ignore>

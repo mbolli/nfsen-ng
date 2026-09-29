@@ -88,7 +88,9 @@ export default async function graphsPortsTest() {
         assert.deepEqual(await page.signalValue('graph_ports'), [port], `the server normalizes graph_ports back to [${port}]`);
         assert.deepEqual(await page.evaluate(`${config}.seriesNames`), [String(port)], 'the one series is named after the port');
 
-        // 2. After an error wipes the chart, the next update must rebuild it.
+        // 2. After an error wipes the chart, the next update must rebuild it. showMessage() is part of
+        //    the Rocket host's API.
+        assert.equal(await page.evaluate(`${CHART}.rocketInstanceId !== undefined`), true, 'the traffic graph is a Rocket host');
         await page.evaluate(`${CHART}.showMessage('simulated failure')`);
         assert.equal(await page.evaluate(`${CHART}.chart`), null, 'showMessage() should dispose the chart instance');
 

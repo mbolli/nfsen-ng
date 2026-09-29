@@ -1,11 +1,13 @@
 // The phone and tablet shell (spec 2.6, 4.9, 2.7.11, 5.5): tab bar and More, graph first, the
-// phone-only "Show filters", swipes that scroll, nothing wider than 390 px, the tablet default.
+// phone-only "Show filters", swipes that scroll, "Select range" arming the graph's brush from the
+// keyboard and across a move, nothing wider than 390 px, the tablet default.
 import assert from 'node:assert/strict';
 import { withPage, BASE, isBenignError } from './lib/cdp.mjs';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const PAGES = ['overview', 'talkers', 'flows', 'conversations', 'alerts', 'health', 'settings'];
 const PHONE = { width: 390, height: 844, mobile: true };
+const GRAPH = "document.getElementById('trafficGraph')";
 
 async function press(page, key) {
     const codes = { Escape: 27, Enter: 13, Tab: 9 };
@@ -27,6 +29,28 @@ async function swipe(page, from, distance) {
     }
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await sleep(700);
+}
+
+/** A one-finger drag across the traffic graph, over 60% to 90% of its stored data, as real touch events. */
+async function dragAcrossGraph(page) {
+    const { data_range_min: min } = await page.signalValues(['data_range_min']);
+    await page.evaluate(`${GRAPH}.scrollIntoView({ block: 'center' })`);
+    await sleep(300);
+    const at = await page.evaluate(`(function(){
+        var el = ${GRAPH}, c = el.chart, r = el.querySelector('.chart-canvas').getBoundingClientRect();
+        var src = c.getOption().dataset[0].source, g = c.getModel().getComponent('grid').coordinateSystem.getRect();
+        var first = Math.max(src[0][0], ${min} * 1000), last = src[src.length - 1][0];
+        var x = function(f){ return r.left + c.convertToPixel({ xAxisIndex: 0 }, first + (last - first) * f); };
+        return { from: x(0.6), to: x(0.9), y: Math.round(r.top + g.y + g.height / 2) };
+    })()`);
+    const point = (i) => ({ x: Math.round(at.from + ((at.to - at.from) * i) / 10), y: at.y });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point(0)] });
+    for (let i = 1; i <= 10; i++) {
+        await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [point(i)] });
+        await sleep(20);
+    }
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await sleep(1000);
 }
 
 const visible = (selector) =>
@@ -192,8 +216,56 @@ export default async function mobileTest() {
         );
         assert.ok(Math.abs(graphHeight - 13) < 0.5, `the phone graph is about 13rem tall (${graphHeight.toFixed(2)}rem)`);
 
-        // Nothing is wider than the phone, on any page, with results on the pages that hold them.
+        // "Select range" arms the brush for one selection on a coarse pointer, through the graph's host
+        // API and its brush-armed event; pressed again, it disarms (1.8). By keyboard (V-A11Y).
         await page.setRangePreset('1y');
+        assert.equal(await page.evaluate(`matchMedia('(pointer: coarse)').matches && ${GRAPH}.rocketInstanceId !== undefined`), true);
+        const year = `JSON.parse(${GRAPH}.dataset.chartConfig || '{}').window`;
+        await page.waitFor(`Math.abs(Number((${year} || '').replace('live:', '')) - 31536000) <= 300`, {
+            timeout: 15000,
+            label: 'the year to reach the phone graph',
+        });
+        const rows = await page.evaluate(`(function(){
+            var d = JSON.parse(${GRAPH}.dataset.chartData || 'null');
+            return d && Array.isArray(d.legend) && d.legend.length > 0 && d.data ? Object.keys(d.data).length : 0;
+        })()`);
+        if (rows > 0) {
+            await page.waitFor(`!!${GRAPH}.chart`, { timeout: 15000, label: 'the phone graph to draw its rows' });
+            const pressed = `document.getElementById('brushToggle').getAttribute('aria-pressed')`;
+            await page.evaluate(`document.getElementById('brushToggle').focus()`);
+            await press(page, 'Enter');
+            await page.waitFor(`${pressed} === 'true'`, { label: 'Select range to arm the brush' });
+            assert.equal(await page.signalValue('_brushArmed'), true);
+            await press(page, 'Enter');
+            await page.waitFor(`${pressed} === 'false'`, { label: 'a second press to disarm it' });
+            const log = await page.requestLog();
+            await dragAcrossGraph(page);
+            assert.equal(log.count('set-range'), 0, `an unarmed drag selects nothing, got ${log.names().join(', ')}`);
+
+            // Armed, the brush survives a move (6.9, K14): an atomic one, and a remove and insert.
+            await page.evaluate(`document.getElementById('brushToggle').focus()`);
+            await press(page, 'Enter');
+            await page.waitFor(`${pressed} === 'true'`, { label: 'Select range to arm the brush again' });
+            await page.evaluate(`void (window.e2eChart = ${GRAPH}.chart)`);
+            for (const move of ['moveBefore', 'insertBefore']) {
+                await page.evaluate(`(function(){ var el = ${GRAPH}; el.parentNode.${move}(el, el.nextSibling); })()`);
+                await sleep(300);
+                const kept = await page.evaluate(`({ pressed: ${pressed}, same: ${GRAPH}.chart === window.e2eChart })`);
+                kept.armed = await page.signalValue('_brushArmed');
+                assert.deepEqual(kept, { pressed: 'true', same: true, armed: true }, `${move} keeps the brush armed`);
+            }
+            log.clear();
+            await dragAcrossGraph(page);
+            assert.equal(log.count('set-range'), 1, `the armed drag after the moves posts set-range once, got ${log.names().join(', ')}`);
+            await page.waitFor(`${pressed} === 'false'`, { label: 'one selection to disarm the brush' });
+            for (let i = 0; i < 40 && (await page.signalValue('range_live')); i++) await sleep(150);
+            assert.equal(await page.signalValue('range_live'), false, 'the selected range is fixed');
+            await page.setRangePreset('1y');
+        } else {
+            console.log('  (mobile: no graph data in a year here, the Select range checks did not run)');
+        }
+
+        // Nothing is wider than the phone, on any page, with results on the pages that hold them.
         await page.runQuery('flows', { timeout: 30000 });
         await page.gotoPage('talkers');
         await page.runQuery('talkers', { timeout: 30000 });

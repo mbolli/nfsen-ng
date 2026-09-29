@@ -231,7 +231,7 @@
     <div class="traffic-graph-body" {% if overview %}data-side="open" data-attr:data-side="$_ov_seriesOpen ? 'open' : 'closed'" data-preserve-attr="data-side"{% endif %}>
         <nfsen-chart id="trafficGraph" data-ref="graph._widget" data-external-prefix="trafficGraph"
                      data-mode="{{ graph.mode }}" role="img"
-                     aria-label="{{ graph.ariaLabel }}" data-aria-base="{{ graph.ariaLabel }}" data-preserve-attr="aria-label"
+                     aria-label="{{ graph.ariaLabel }}" data-aria-base="{{ graph.ariaLabel }}" data-preserve-attr="aria-label data-chart-style"
                      data-chart-config="{{ graph.config }}"
                      data-attr:data-chart-style="JSON.stringify({logscale: $_graph_logscale, stacked: $_graph_stacked, stepplot: $_graph_stepplot})"
                      data-on:range-select="{{ remember }}; @post('{{ setRange.url() }}?op=abs&from=' + Math.floor(evt.detail.from / 1000) + '&to=' + Math.ceil(evt.detail.to / 1000))"

@@ -58,9 +58,13 @@
     justify-content: space-between;
 }
 
-nfsen-filter-editor {
+.filter-editor {
     position: relative;
-    display: block;
+}
+
+/* A controller without content (ROCKET-SPEC 6.7): the textarea and the list are its siblings. */
+nfsen-filter-editor {
+    display: none;
 }
 
 /* Under the textarea, above what follows it; the highlighted row is the one Enter or Tab accepts. */

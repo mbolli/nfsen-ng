@@ -1,325 +1,240 @@
-/**
- * <nfsen-filter-editor> (spec 4.5.3): keyword suggestions for the word at the cursor of the textarea
- * it wraps, announced through the region named by data-status (a textarea cannot be a combobox).
- * window.nfsenFilterEditor holds the drawer's helpers; loaded before the Datastar bundle, which reads them.
- */
+/** Keyword suggestions for the textarea `for` (spec 4.5.3, ROCKET-SPEC 6.7, shape C); a textarea cannot be a combobox. */
+import { rocket } from 'datastar';
+import { hostState, peekState, whenGone } from 'nfsen/host-state';
 
 const MAX_SUGGESTIONS = 8;
 const WORD_CHAR = /[A-Za-z0-9-]/;
 const PLACEHOLDER = /<[a-z]+>/;
-const LEGACY_KEY = 'stored_filters';
-const MIGRATED_KEY = 'nfsen-filters-migrated';
+const PLACEHOLDERS = /<[a-z]+>/g;
 
-class NfsenFilterEditor extends HTMLElement {
-    static get observedAttributes() {
-        return ['data-grammar'];
+const byId = (id) => (id ? document.getElementById(id) : null);
+
+/** The keywords of the current grammar, decoded again only when the prop changed. */
+function keywordsOf(host, state) {
+    if (state.grammar !== host.grammar) {
+        state.grammar = host.grammar;
+        const words = state.grammar?.keywords;
+        state.keywords = Array.isArray(words) ? words.map(String) : [];
     }
-
-    constructor() {
-        super();
-        this.keywords = [];
-        this.matches = [];
-        this.active = -1;
-        this.word = null;
-        this.accepting = false;
-        this.onInput = this.onInput.bind(this);
-        this.onKeydown = this.onKeydown.bind(this);
-        this.onFocusout = this.onFocusout.bind(this);
-        this.onPointerdown = this.onPointerdown.bind(this);
-    }
-
-    attributeChangedCallback() {
-        try {
-            const grammar = JSON.parse(this.dataset.grammar || '{}');
-            this.keywords = Array.isArray(grammar.keywords) ? grammar.keywords.map(String) : [];
-        } catch {
-            this.keywords = [];
-        }
-    }
-
-    connectedCallback() {
-        this.addEventListener('input', this.onInput);
-        this.addEventListener('keydown', this.onKeydown);
-        this.addEventListener('focusout', this.onFocusout);
-        this.addEventListener('pointerdown', this.onPointerdown);
-    }
-
-    disconnectedCallback() {
-        this.removeEventListener('input', this.onInput);
-        this.removeEventListener('keydown', this.onKeydown);
-        this.removeEventListener('focusout', this.onFocusout);
-        this.removeEventListener('pointerdown', this.onPointerdown);
-    }
-
-    get textarea() {
-        return this.querySelector('textarea');
-    }
-
-    get list() {
-        let list = this.querySelector('.suggestions');
-        if (!list) {
-            list = document.createElement('ul');
-            list.className = 'suggestions';
-            list.setAttribute('role', 'listbox');
-            list.setAttribute('aria-label', 'Suggestions');
-            list.hidden = true;
-            this.append(list);
-        }
-        if (!list.id) list.id = `${this.textarea?.id || 'filter'}Suggestions`;
-        return list;
-    }
-
-    /** Insert `snippet` at the cursor, spaced from its neighbours; its first placeholder ends up selected, Tab selects the next. */
-    insert(snippet) {
-        const textarea = this.textarea;
-        if (!textarea || !snippet) return;
-        const value = textarea.value;
-        const start = textarea.selectionStart ?? value.length;
-        const end = textarea.selectionEnd ?? value.length;
-        const before = value.slice(0, start);
-        const after = value.slice(end);
-        const lead = before !== '' && !/\s$/.test(before) ? ' ' : '';
-        const trail = after !== '' && !/^\s/.test(after) ? ' ' : '';
-
-        textarea.focus();
-        textarea.setRangeText(lead + snippet + trail, start, end, 'end');
-        const placeholder = PLACEHOLDER.exec(snippet);
-        if (placeholder) {
-            const from = start + lead.length + placeholder.index;
-            textarea.setSelectionRange(from, from + placeholder[0].length);
-        } else {
-            const caret = start + lead.length + snippet.length;
-            textarea.setSelectionRange(caret, caret);
-        }
-        this.close();
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        const more = (snippet.match(/<[a-z]+>/g) ?? []).length > 1;
-        this.announce(`${snippet} inserted${more ? ', Tab selects the next placeholder' : ''}`);
-    }
-
-    /** The word the caret ends, when the caret is not inside a longer word and nothing is selected. */
-    wordAtCaret() {
-        const textarea = this.textarea;
-        if (!textarea || textarea.selectionStart !== textarea.selectionEnd) return null;
-        const value = textarea.value;
-        const end = textarea.selectionStart;
-        if (end < value.length && WORD_CHAR.test(value[end])) return null;
-        let start = end;
-        while (start > 0 && WORD_CHAR.test(value[start - 1])) start--;
-        return start === end ? null : { start, end, text: value.slice(start, end) };
-    }
-
-    onInput(event) {
-        if (event.target !== this.textarea || this.accepting) return;
-        const word = this.wordAtCaret();
-        const lower = word?.text.toLowerCase() ?? '';
-        const matches = word ? this.keywords.filter((k) => k.startsWith(lower) && k !== lower).slice(0, MAX_SUGGESTIONS) : [];
-        if (!matches.length) {
-            this.close();
-            return;
-        }
-        const same = matches.join(' ') === this.matches.join(' ') && !this.list.hidden;
-        this.word = word;
-        this.matches = matches;
-        if (!same) this.active = 0;
-        this.render();
-        if (!same) this.announceHighlight();
-    }
-
-    onKeydown(event) {
-        if (event.target !== this.textarea || event.altKey || event.ctrlKey || event.metaKey) return;
-        if (this.list.hidden || !this.matches.length) {
-            if (event.key === 'Tab' && !event.shiftKey && this.selectNextPlaceholder()) event.preventDefault();
-            return;
-        }
-        const count = this.matches.length;
-        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault();
-            this.active = (this.active + (event.key === 'ArrowDown' ? 1 : count - 1)) % count;
-            this.render();
-            this.announceHighlight();
-        } else if (event.key === 'Enter' || (event.key === 'Tab' && !event.shiftKey)) {
-            event.preventDefault();
-            this.accept(this.active);
-        } else if (event.key === 'Escape') {
-            // Closes the list, not the drawer around it.
-            event.preventDefault();
-            event.stopPropagation();
-            this.close();
-        }
-    }
-
-    /** Selects the first `<placeholder>` after the selection. Only forward, so Tab still leaves once none is left. */
-    selectNextPlaceholder() {
-        const textarea = this.textarea;
-        const from = textarea.selectionEnd;
-        const placeholder = PLACEHOLDER.exec(textarea.value.slice(from));
-        if (!placeholder) return false;
-        const start = from + placeholder.index;
-        textarea.setSelectionRange(start, start + placeholder[0].length);
-        this.announce(`${placeholder[0]} selected`);
-        return true;
-    }
-
-    onFocusout(event) {
-        if (event.target === this.textarea) this.close();
-    }
-
-    onPointerdown(event) {
-        const option = event.target.closest?.('[role="option"]');
-        if (!option || !this.list.contains(option)) return;
-        // Keeps the caret in the textarea.
-        event.preventDefault();
-        this.accept(Number(option.dataset.index));
-    }
-
-    accept(index) {
-        const keyword = this.matches[index];
-        const textarea = this.textarea;
-        if (!keyword || !textarea || !this.word) return;
-        const { start, end } = this.word;
-        const after = textarea.value.slice(end);
-        const insert = /^\s/.test(after) ? keyword : `${keyword} `;
-        textarea.setRangeText(insert, start, end, 'end');
-        this.close();
-        this.accepting = true;
-        try {
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        } finally {
-            this.accepting = false;
-        }
-        this.announce(`${keyword} inserted`);
-    }
-
-    render() {
-        const list = this.list;
-        const base = list.id;
-        list.replaceChildren(
-            ...this.matches.map((keyword, i) => {
-                const li = document.createElement('li');
-                li.id = `${base}-${i}`;
-                li.setAttribute('role', 'option');
-                li.setAttribute('aria-selected', String(i === this.active));
-                li.dataset.index = String(i);
-                li.textContent = keyword;
-                return li;
-            })
-        );
-        list.hidden = false;
-        list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
-    }
-
-    close() {
-        const list = this.querySelector('.suggestions');
-        if (list && !list.hidden) {
-            list.hidden = true;
-            list.replaceChildren();
-        }
-        this.matches = [];
-        this.active = -1;
-        this.word = null;
-    }
-
-    announceHighlight() {
-        const count = this.matches.length;
-        this.announce(`${count} suggestion${count === 1 ? '' : 's'}, ${this.matches[this.active]} selected`);
-    }
-
-    announce(text) {
-        const region = this.dataset.status ? document.getElementById(this.dataset.status) : null;
-        if (region && region.textContent !== text) region.textContent = text;
-    }
+    return state.keywords;
 }
 
-customElements.define('nfsen-filter-editor', NfsenFilterEditor);
-
-// ── Drawer helpers ──────────────────────────────────────────────────────────
-
-let pendingFocus = null;
-
-/** Whether focus is still where showModal() left it, so moving it takes nothing from the user. */
-function focusUnclaimed(dialog) {
-    const active = document.activeElement;
-    return !active || active === document.body || active === dialog || !dialog.contains(active) || active.matches('[data-variant="close"]');
+/** The word the caret ends, when the caret is not inside a longer word and nothing is selected. */
+function wordAtCaret(textarea) {
+    if (textarea.selectionStart !== textarea.selectionEnd) return null;
+    const value = textarea.value;
+    const end = textarea.selectionStart;
+    if (end < value.length && WORD_CHAR.test(value[end])) return null;
+    let start = end;
+    while (start > 0 && WORD_CHAR.test(value[start - 1])) start--;
+    return start === end ? null : { start, end, text: value.slice(start, end) };
 }
 
-window.nfsenFilterEditor = {
-    /** Focus #id in the open drawer now, or once a sync has rendered it, unless the user moved on. */
-    focusDrawer(id) {
-        const dialog = document.getElementById('filter-drawer');
-        if (!dialog) return;
-        pendingFocus?.();
-        const attempt = () => {
-            const target = document.getElementById(id);
-            if (!dialog.open || !target?.getClientRects().length) return !dialog.open;
-            target.focus();
-            return true;
+function announce(host, text) {
+    const region = byId(host.status);
+    if (region && region.textContent !== text) region.textContent = text;
+}
+
+function announceHighlight(host, state) {
+    const count = state.matches.length;
+    announce(host, `${count} suggestion${count === 1 ? '' : 's'}, ${state.matches[state.active]} selected`);
+}
+
+function showList(list, state) {
+    list.replaceChildren(
+        ...state.matches.map((keyword, i) => {
+            const li = document.createElement('li');
+            li.id = `${list.id}-${i}`;
+            li.setAttribute('role', 'option');
+            li.setAttribute('aria-selected', String(i === state.active));
+            li.dataset.index = String(i);
+            li.textContent = keyword;
+            return li;
+        })
+    );
+    list.hidden = false;
+    list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+}
+
+function closeList(list, state) {
+    if (list && !list.hidden) {
+        list.hidden = true;
+        list.replaceChildren();
+    }
+    state.matches = [];
+    state.active = -1;
+    state.word = null;
+}
+
+/** Selects the first `<placeholder>` after the selection. Only forward, so Tab still leaves once none is left. */
+function selectNextPlaceholder(host, textarea) {
+    const from = textarea.selectionEnd;
+    const placeholder = PLACEHOLDER.exec(textarea.value.slice(from));
+    if (!placeholder) return false;
+    const start = from + placeholder.index;
+    textarea.setSelectionRange(start, start + placeholder[0].length);
+    announce(host, `${placeholder[0]} selected`);
+    return true;
+}
+
+/** Insert `snippet` at the caret, spaced from its neighbours; its first placeholder ends up selected, Tab selects the next. */
+function insert(host, snippet) {
+    const state = peekState(host);
+    const textarea = byId(host.for);
+    if (!host.isConnected || !state || !(textarea instanceof HTMLTextAreaElement) || !snippet) return;
+    const value = textarea.value;
+    const start = textarea.selectionStart ?? value.length;
+    const end = textarea.selectionEnd ?? value.length;
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+    const lead = before !== '' && !/\s$/.test(before) ? ' ' : '';
+    const trail = after !== '' && !/^\s/.test(after) ? ' ' : '';
+
+    // Its focusin binds the editor to this textarea, should a sync have replaced it.
+    textarea.focus();
+    textarea.setRangeText(lead + snippet + trail, start, end, 'end');
+    const placeholder = PLACEHOLDER.exec(snippet);
+    const from = start + lead.length + (placeholder ? placeholder.index : snippet.length);
+    textarea.setSelectionRange(from, from + (placeholder ? placeholder[0].length : 0));
+    closeList(byId(host.list), state);
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    const more = (snippet.match(PLACEHOLDERS) ?? []).length > 1;
+    announce(host, `${snippet} inserted${more ? ', Tab selects the next placeholder' : ''}`);
+}
+
+rocket('nfsen-filter-editor', {
+    mode: 'light',
+    props: ({ json, string }) => ({
+        for: string.docs({ description: 'Id of the textarea whose words are completed.' }),
+        list: string.docs({ description: 'Id of the listbox that shows the suggestions; keep it data-ignore-morph.' }),
+        status: string.docs({ description: 'Id of the live region that announces suggestions and insertions.' }),
+        grammar: json
+            .default(() => ({ keywords: [] }))
+            .docs({ description: 'The filter grammar as JSON; its keywords are the suggestions.' }),
+    }),
+    manifest: { events: [] },
+    setup: ({ cleanup, defineHostProp, host, observeProps }) => {
+        const state = hostState(host, () => ({ matches: [], active: -1, word: null, accepting: false, grammar: undefined, keywords: [] }));
+        const bound = { textarea: null, list: null };
+        let live = true;
+
+        const close = () => closeList(bound.list, state);
+
+        const accept = (index) => {
+            const keyword = state.matches[index];
+            const textarea = bound.textarea;
+            if (!keyword || !textarea || !state.word) return;
+            const { start, end } = state.word;
+            const after = textarea.value.slice(end);
+            textarea.setRangeText(/^\s/.test(after) ? keyword : `${keyword} `, start, end, 'end');
+            close();
+            state.accepting = true;
+            try {
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            } finally {
+                state.accepting = false;
+            }
+            announce(host, `${keyword} inserted`);
         };
-        requestAnimationFrame(() => {
-            if (attempt()) return;
-            // Showing the frame focused its close button; the editor arrives with the drawer-open sync.
-            const observer = new MutationObserver(() => {
-                if (!focusUnclaimed(dialog) || attempt()) stop();
-            });
-            const timer = setTimeout(() => stop(), 10000);
-            const stop = () => {
-                observer.disconnect();
-                clearTimeout(timer);
-                if (pendingFocus === stop) pendingFocus = null;
-            };
-            pendingFocus = stop;
-            observer.observe(dialog, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'style'] });
+
+        const textareaListeners = {
+            input: (event) => {
+                if (state.accepting) return;
+                const word = wordAtCaret(event.currentTarget);
+                const lower = word?.text.toLowerCase() ?? '';
+                const matches = word
+                    ? keywordsOf(host, state)
+                          .filter((k) => k.startsWith(lower) && k !== lower)
+                          .slice(0, MAX_SUGGESTIONS)
+                    : [];
+                if (!matches.length || !bound.list) {
+                    close();
+                    return;
+                }
+                const same = matches.join(' ') === state.matches.join(' ') && !bound.list.hidden;
+                state.word = word;
+                state.matches = matches;
+                if (!same) state.active = 0;
+                showList(bound.list, state);
+                if (!same) announceHighlight(host, state);
+            },
+            keydown: (event) => {
+                if (event.altKey || event.ctrlKey || event.metaKey) return;
+                if (!bound.list || bound.list.hidden || !state.matches.length) {
+                    if (event.key === 'Tab' && !event.shiftKey && selectNextPlaceholder(host, event.currentTarget)) event.preventDefault();
+                    return;
+                }
+                const count = state.matches.length;
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    state.active = (state.active + (event.key === 'ArrowDown' ? 1 : count - 1)) % count;
+                    showList(bound.list, state);
+                    announceHighlight(host, state);
+                } else if (event.key === 'Enter' || (event.key === 'Tab' && !event.shiftKey)) {
+                    event.preventDefault();
+                    accept(state.active);
+                } else if (event.key === 'Escape') {
+                    // Closes the list, not the drawer around it.
+                    event.preventDefault();
+                    event.stopPropagation();
+                    close();
+                }
+            },
+            focusout: close,
+        };
+        const listListeners = {
+            pointerdown: (event) => {
+                const option = event.target instanceof Element ? event.target.closest('[role="option"]') : null;
+                if (!option) return;
+                // Keeps the caret in the textarea.
+                event.preventDefault();
+                accept(Number(option.dataset.index));
+            },
+        };
+
+        /** Moves the listeners to `next`; true when it replaces a node bound before. */
+        const swap = (key, next, listeners) => {
+            const previous = bound[key];
+            if (next === previous) return false;
+            for (const [type, listener] of Object.entries(listeners)) {
+                previous?.removeEventListener(type, listener);
+                next?.addEventListener(type, listener);
+            }
+            bound[key] = next;
+            return previous !== null;
+        };
+        const bind = () => {
+            const textarea = byId(host.for);
+            const oldList = bound.list;
+            const replaced = swap('textarea', textarea instanceof HTMLTextAreaElement ? textarea : null, textareaListeners);
+            if (swap('list', byId(host.list), listListeners) || replaced) closeList(oldList, state);
+        };
+        // A sync can replace either target; the next focus anywhere picks up the new node.
+        const onFocusin = () => bind();
+        let queued = false;
+        observeProps(
+            () => {
+                if (queued) return;
+                queued = true;
+                queueMicrotask(() => {
+                    queued = false;
+                    if (live) bind();
+                });
+            },
+            'for',
+            'list'
+        );
+        document.addEventListener('focusin', onFocusin, true);
+        bind();
+
+        defineHostProp('insert', { value: (snippet) => insert(host, snippet) });
+
+        cleanup(() => {
+            live = false;
+            document.removeEventListener('focusin', onFocusin, true);
+            swap('textarea', null, textareaListeners);
+            swap('list', null, listListeners);
+            whenGone(host);
         });
     },
-
-    /** Whether a saved-list row matches the search, by name or expression, case-insensitively. */
-    matches(row, search) {
-        const query = String(search ?? '')
-            .trim()
-            .toLowerCase();
-        if (query === '') return true;
-        return (row.dataset.name ?? '').toLowerCase().includes(query) || (row.dataset.expression ?? '').toLowerCase().includes(query);
-    },
-
-    /** True when a search is typed and no row of `list` matches it. */
-    noneMatch(list, search) {
-        if (!list || String(search ?? '').trim() === '') return false;
-        return ![...list.querySelectorAll('li[data-filter-id]')].some((row) => this.matches(row, search));
-    },
-
-    /**
-     * The old browser list as posted to filter-migrate-local, or null when there is nothing to
-     * import; a browser with nothing to import is marked done straight away.
-     */
-    legacyFilters() {
-        try {
-            if (localStorage.getItem(MIGRATED_KEY) === '1') return null;
-            const raw = localStorage.getItem(LEGACY_KEY);
-            let list = null;
-            try {
-                list = JSON.parse(raw ?? 'null');
-            } catch {
-                list = null;
-            }
-            if (!Array.isArray(list) || !list.some((item) => typeof item === 'string' && item.trim() !== '')) {
-                localStorage.setItem(MIGRATED_KEY, '1');
-                return null;
-            }
-            return raw;
-        } catch {
-            // Storage disabled: nothing was saved there either.
-            return null;
-        }
-    },
-
-    /** The old list stays in place, so a user can roll back; only the flag is set. */
-    markMigrated() {
-        try {
-            localStorage.setItem(MIGRATED_KEY, '1');
-        } catch {
-            // Storage disabled.
-        }
-    },
-};
-
-export { NfsenFilterEditor };
+});

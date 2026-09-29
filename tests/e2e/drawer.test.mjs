@@ -15,6 +15,7 @@ const KEYS = {
     Escape: ['Escape', 'Escape', 27],
     Tab: ['Tab', 'Tab', 9],
     ArrowDown: ['ArrowDown', 'ArrowDown', 40],
+    ArrowUp: ['ArrowUp', 'ArrowUp', 38],
     ArrowLeft: ['ArrowLeft', 'ArrowLeft', 37],
     ArrowRight: ['ArrowRight', 'ArrowRight', 39],
 };
@@ -42,6 +43,50 @@ async function press(page, name) {
 
 async function type(page, text) {
     await page.send('Input.insertText', { text });
+}
+
+/** A real pointer press and release at the centre of the suggestion at `index`. */
+async function pressOption(page, index) {
+    const { x, y } = await page.evaluate(`(function(){
+        var r = document.querySelector('#drawerSuggestions [data-index="${index}"]').getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    })()`);
+    for (const type of ['mousePressed', 'mouseReleased']) {
+        await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+    }
+}
+
+/** Posts refresh-graphs as the Flows page and resolves once the sync it causes has morphed the page. */
+const SYNC = `(async function(){
+    var html = document.documentElement.outerHTML;
+    var ctx = (html.match(/via_ctx&quot;:&quot;([^&]+)&quot;/) || html.match(/via_ctx":"([^"]+)"/) || [])[1];
+    var pageSignal = (html.match(/\\bpage____[a-z0-9]+/) || [])[0];
+    var url = (html.match(/[^'"\\s]*_action\\/refresh-graphs[A-Za-z0-9-]*/) || [])[0];
+    if (!ctx || !pageSignal || !url) return 'missing';
+    var probe = document.getElementById('page-content');
+    probe.setAttribute('data-probe', '');
+    var body = { via_ctx: ctx };
+    body[pageSignal] = 'flows';
+    await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Datastar-Request': 'true' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15000),
+    });
+    for (var i = 0; i < 100 && probe.isConnected && probe.hasAttribute('data-probe'); i++) await new Promise(function(r){ setTimeout(r, 100); });
+    return probe.hasAttribute('data-probe') ? 'no sync' : 'synced';
+})()`;
+
+/** The drawer's filter checks posted from now on. */
+async function drawerChecks(page) {
+    const posts = [];
+    await page.send('Network.enable');
+    page.ws.addEventListener('message', (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.method !== 'Network.requestWillBeSent' || msg.params.request.method !== 'POST') return;
+        if (/\/_action\/validate-filter[^/?]*\?target=drawer$/.test(msg.params.request.url)) posts.push(Date.now());
+    });
+    return posts;
 }
 
 const q = (selector) => `document.querySelector(${JSON.stringify(selector)})`;
@@ -165,6 +210,72 @@ export default async function drawerTest() {
             await page.waitFor(visible(q('#drawerSuggestions [role="option"]')), { label: 'suggestions for "an"' });
             await press(page, 'Escape');
             assert.ok(await page.evaluate(`${q(DRAWER)}.open && ${q('#drawerSuggestions')}.hidden`), 'Escape closes the list only');
+
+            // ── The editor is a Rocket element beside the textarea; the arrows move the highlight and wrap ──
+            assert.ok(await page.evaluate(`!!document.getElementById('drawerEditor')?.rocketInstanceId`), 'the editor is a Rocket host');
+            const highlighted = () => page.evaluate(`${q('#drawerSuggestions [aria-selected="true"]')}?.textContent`);
+            const suggestStatus = () => page.evaluate(`${q('#drawerSuggestStatus')}.textContent`);
+            await setEditor(page, '');
+            await type(page, 'an');
+            await page.waitFor(visible(q('#drawerSuggestions [data-index="1"]')), { label: 'two suggestions for "an"' });
+            assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('#drawerSuggestions [role="option"]')].map((o) => o.textContent)`), ['and', 'any']);
+            await press(page, 'ArrowDown');
+            assert.equal(await highlighted(), 'any');
+            assert.equal(await suggestStatus(), '2 suggestions, any selected');
+            await press(page, 'ArrowDown');
+            assert.equal(await highlighted(), 'and', 'ArrowDown wraps to the first');
+            await press(page, 'ArrowUp');
+            assert.equal(await highlighted(), 'any', 'ArrowUp wraps to the last');
+            await page.withForcedColors(() => page.screenshot('/tmp/drawer-suggestions-forced-colors.png'));
+
+            // ── A pointer press on a suggestion inserts that one, and focus stays in the textarea ──
+            await pressOption(page, 0);
+            await page.waitFor(`${q(EDITOR)}.value === 'and '`, { label: 'the pressed suggestion inserted' });
+            assert.equal(await page.evaluate(`document.activeElement?.id`), 'drawerFilterTextarea', 'the press leaves focus in the textarea');
+            assert.ok(await page.evaluate(`${q('#drawerSuggestions')}.hidden`), 'the list closes on the press');
+            assert.equal(await suggestStatus(), 'and inserted');
+
+            // ── A sync between keystrokes keeps the textarea and the editor, and suggestions keep working ──
+            await type(page, 'ho');
+            await page.waitFor(visible(q('#drawerSuggestions [role="option"]')), { label: 'suggestions for "ho"' });
+            await press(page, 'Escape');
+            await page.evaluate(`(function(){ ${q(EDITOR)}.__keep = 1; document.getElementById('drawerEditor').__keep = 1; })()`);
+            assert.equal(await page.evaluate(SYNC), 'synced', 'a sync arrives while the drawer is open');
+            assert.deepEqual(
+                await page.evaluate(`[${q(EDITOR)}?.__keep, document.getElementById('drawerEditor')?.__keep, document.activeElement?.id]`),
+                [1, 1, 'drawerFilterTextarea'],
+                'the sync keeps the textarea, the editor and the focus'
+            );
+            await type(page, ' an');
+            await page.waitFor(visible(q('#drawerSuggestions [data-index="1"]')), { label: 'suggestions after the sync' });
+            await pressOption(page, 1);
+            await page.waitFor(`${q(EDITOR)}.value === 'and ho any '`, { label: 'the pressed suggestion inserted after the sync' });
+            assert.equal(await page.evaluate(`document.activeElement?.id`), 'drawerFilterTextarea', 'the press after the sync leaves focus in the textarea');
+
+            // ── A textarea replaced under the editor is taken over on its next focus ──
+            await page.evaluate(`(function(){
+                var t = ${q(EDITOR)}, c = t.cloneNode(true);
+                t.replaceWith(c);
+                c.focus();
+                c.setSelectionRange(c.value.length, c.value.length);
+            })()`);
+            await type(page, 'ho');
+            await page.waitFor(visible(q('#drawerSuggestions [role="option"]')), { label: 'suggestions in the new textarea' });
+            await press(page, 'Enter');
+            assert.equal(await value(page, EDITOR), 'and ho any host ');
+
+            // ── Typing and taking a suggestion within one debounce posts one filter check ──
+            const checks = await drawerChecks(page);
+            await setEditor(page, '');
+            await sleep(800);
+            checks.length = 0;
+            for (const letter of 'pro') await type(page, letter);
+            await page.waitFor(visible(q('#drawerSuggestions [role="option"]')), { label: 'suggestions for "pro"' });
+            await press(page, 'Enter');
+            assert.equal(await value(page, EDITOR), 'proto ');
+            await sleep(1000);
+            assert.equal(checks.length, 1, `one filter check per debounce, not ${checks.length}`);
+
             await setEditor(page, 'host 192.0.2.10');
 
             // ── Raw filter shows the same text ──
@@ -388,6 +499,28 @@ export default async function drawerTest() {
         } finally {
             await removeSaved(page, (li) => li.name === name || li.name === renamed);
         }
+    });
+
+    // ── Datastar keeps every removed Rocket host (D3); a removed editor must not keep its drawer section with it ──
+    await withPage(async (page) => {
+        await page.navigate(`${BASE}/#/flows`);
+        await page.waitForBoot();
+        await page.gotoPage('flows');
+        const CYCLES = 3;
+        for (let i = 0; i < CYCLES; i++) {
+            await openDrawer(page, 'flows');
+            await page.evaluate(`(window.__drawerSections ??= []).push(new WeakRef(document.querySelector('.drawer-editor')))`);
+            await press(page, 'Escape');
+            await closedDrawer(page);
+            // A sync renders the closed drawer without its editor.
+            await page.gotoPage('talkers');
+            await page.waitFor(`!document.getElementById('drawerEditor')`, { label: 'the editor removed by a sync' });
+            await page.gotoPage('flows');
+        }
+        for (let i = 0; i < 3; i++) await page.send('HeapProfiler.collectGarbage');
+        const alive = await page.evaluate(`window.__drawerSections.map((r, i) => (r.deref() ? i : -1)).filter((i) => i >= 0)`);
+        // The last one may still be held by the morph that removed it.
+        assert.deepEqual(alive.filter((i) => i < CYCLES - 1), [], `removed editor sections still reachable: ${alive.join(', ')}`);
     });
 
     // ── The browser's old saved list is imported once, as origin browser, and marked done only once imported ──

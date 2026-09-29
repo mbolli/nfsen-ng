@@ -94,8 +94,8 @@
                 <div role="tabpanel" id="drawerPanelBuilder" class="stack" aria-labelledby="drawerTabBuilder"
                      data-attr:hidden="$_drawer_tab === 'raw'" data-preserve-attr="hidden">
                     <label for="drawerFilterTextarea">nfdump filter</label>
-                    <nfsen-filter-editor id="drawerEditor" data-status="drawerSuggestStatus"
-                                         data-grammar="{{ {keywords: drawer.grammar.keywords}|json_encode }}">
+                    {# The editor element only listens: the bound textarea stays outside Rocket's scope. #}
+                    <div class="filter-editor">
                         <textarea id="drawerFilterTextarea" rows="5" {{ bind(drawer_filter) }} autofocus
                                   autocomplete="off" autocapitalize="off" spellcheck="false"
                                   aria-describedby="drawerFilterStatus drawerSuggestStatus"
@@ -103,7 +103,9 @@
                                   data-on:input__debounce.300ms="{{ validate }}"
                                   data-on:blur="const t = {{ text }}; t.trim() !== '' && {{ flt }}.checked !== t && {{ validate }}"></textarea>
                         <ul class="suggestions" id="drawerSuggestions" role="listbox" aria-label="Suggestions" hidden data-ignore-morph></ul>
-                    </nfsen-filter-editor>
+                        <nfsen-filter-editor id="drawerEditor" for="drawerFilterTextarea" list="drawerSuggestions" status="drawerSuggestStatus"
+                                             grammar="{{ {keywords: drawer.grammar.keywords}|json_encode }}"></nfsen-filter-editor>
+                    </div>
                     <p id="drawerSuggestStatus" class="visually-hidden" role="status" data-ignore-morph></p>
                 </div>
 

@@ -131,7 +131,7 @@ describe('Database::open()', function (): void {
 
         expect($db->journalMode())->toBe('delete')
             ->and($db->value('PRAGMA journal_mode'))->toBe('delete')
-            ->and($db->schemaVersion())->toBe(1)
+            ->and($db->schemaVersion())->toBe(Migrator::latestVersion())
             ->and(ord(substr((string) file_get_contents($path, length: 100), 18, 1)))->toBe(1)
             ->and(file_exists($path . '-wal'))->toBeFalse()
         ;
@@ -148,11 +148,11 @@ describe('Database::open()', function (): void {
         ;
     });
 
-    test('a fresh database is migrated to version 1 with every table', function (): void {
+    test('a fresh database is migrated to the latest version with every table', function (): void {
         $db = Database::open(databaseTestDir() . '/store.sqlite');
         $tables = array_column($db->all("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"), 'name');
 
-        expect($db->schemaVersion())->toBe(1)
+        expect($db->schemaVersion())->toBe(Migrator::latestVersion())
             ->and($tables)->toBe(['alert_events', 'meta', 'query_runs', 'saved_filters', 'topn_1d', 'topn_1h', 'topn_5m', 'topn_interval'])
         ;
     });
@@ -445,7 +445,7 @@ describe('Database::shared()', function (): void {
         expect(fn () => Database::shared())->toThrow(StoreUnavailableException::class, 'is not a directory');
 
         Database::resetShared();
-        expect(Database::shared()->schemaVersion())->toBe(1);
+        expect(Database::shared()->schemaVersion())->toBe(Migrator::latestVersion());
     });
 
     test('a remembered failure is retried once FAILURE_TTL_SECONDS have passed', function (): void {
@@ -462,7 +462,7 @@ describe('Database::shared()', function (): void {
         expect(fn () => Database::shared())->toThrow(StoreUnavailableException::class, 'is not a directory');
 
         $failedAt->setValue(null, time() - Database::FAILURE_TTL_SECONDS);
-        expect(Database::shared()->schemaVersion())->toBe(1);
+        expect(Database::shared()->schemaVersion())->toBe(Migrator::latestVersion());
     });
 
     test('a different state directory is tried despite a remembered failure', function (): void {
@@ -472,7 +472,7 @@ describe('Database::shared()', function (): void {
         expect(fn () => Database::shared())->toThrow(StoreUnavailableException::class);
 
         Config::$stateDir = databaseTestDir();
-        expect(Database::shared()->schemaVersion())->toBe(1);
+        expect(Database::shared()->schemaVersion())->toBe(Migrator::latestVersion());
     });
 
     test('useShared installs an instance', function (): void {
@@ -515,7 +515,7 @@ describe('Database::inspect()', function (): void {
         expect($facts['exists'])->toBeTrue()
             ->and($facts['writable'])->toBeTrue()
             ->and($facts['journalMode'])->toBe('wal')
-            ->and($facts['schemaVersion'])->toBe(1)
+            ->and($facts['schemaVersion'])->toBe(Migrator::latestVersion())
             ->and($facts['sizeBytes'])->toBe(filesize($path))
             ->and($facts['error'])->toBe('')
             ->and(glob($path . '-*'))->toBe([])
@@ -531,7 +531,7 @@ describe('Database::inspect()', function (): void {
 
         expect(is_file($path . '-wal'))->toBeTrue()
             ->and($facts['journalMode'])->toBe('wal')
-            ->and($facts['schemaVersion'])->toBe(1)
+            ->and($facts['schemaVersion'])->toBe(Migrator::latestVersion())
             ->and($facts['sizeBytes'])->toBeGreaterThan(filesize($path))
             ->and($facts['error'])->toBe('')
         ;
@@ -567,7 +567,7 @@ describe('Database::inspect()', function (): void {
 
         expect($facts['exists'])->toBeTrue()
             ->and($facts['writable'])->toBeFalse()
-            ->and($facts['schemaVersion'])->toBe(1)
+            ->and($facts['schemaVersion'])->toBe(Migrator::latestVersion())
             ->and($facts['error'])->toBe('')
             ->and(glob($path . '-*'))->toBe([])
         ;

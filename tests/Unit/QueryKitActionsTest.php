@@ -234,6 +234,22 @@ describe('clamping per target', function (): void {
         ;
     });
 
+    test('the Talkers estimate splits only a query StatsQuery would split', function (): void {
+        $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE, broadcast: false);
+        $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 3600, broadcast: false);
+        $this->c->getSignal('stats_for')?->setValue('srcip', broadcast: false);
+        $this->c->getSignal('stats_orderBy')?->setValue('bytes', broadcast: false);
+        expect(QueryKitActions::plan($this->c, 'talkers')['splittable'] ?? null)->toBeTrue();
+
+        $this->c->getSignal('stats_orderBy')?->setValue('bps', broadcast: false);
+        expect(QueryKitActions::plan($this->c, 'talkers')['splittable'] ?? null)->toBeFalse()
+            ->and(QueryKitActions::plan($this->c, 'conversations'))->toHaveKey('splittable', null)
+        ;
+
+        $this->c->getSignal('stats_for')?->setValue('no such statistic', broadcast: false);
+        expect(QueryKitActions::plan($this->c, 'talkers'))->toHaveKey('splittable', null);
+    });
+
     test('the filtered graph plans one run per bin and source, sources only from the configured list', function (): void {
         $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE, broadcast: false);
         $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 3600, broadcast: false);

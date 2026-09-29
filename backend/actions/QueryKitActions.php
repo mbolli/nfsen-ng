@@ -145,7 +145,7 @@ final class QueryKitActions {
      * The kind, window, sources and profile an estimate for $target reads, plus resolution and
      * groups for the filtered graph. Null for a target without an estimate.
      *
-     * @return null|array{target: string, kind: string, window: TimeWindow, sources: list<string>, profile: string, points: int, groups: int}
+     * @return null|array{target: string, kind: string, window: TimeWindow, sources: list<string>, profile: string, points: int, groups: int, splittable: ?bool}
      */
     public static function plan(Context $c, string $target): ?array {
         $resolved = self::estimateTarget($c, $target);
@@ -174,18 +174,19 @@ final class QueryKitActions {
             'points' => $points > 0 ? $points : self::DEFAULT_POINTS,
             // The filtered graph builds one series per source in the Sources display, else one.
             'groups' => $display === 'sources' ? max(1, \count($sources)) : 1,
+            'splittable' => $resolved === 'talkers' ? self::talkersSplittable($c) : null,
         ];
     }
 
     /**
      * Walks the capture tree on a QueryEstimator cache miss: coroutine only.
      *
-     * @param array{target: string, kind: string, window: TimeWindow, sources: list<string>, profile: string, points: int, groups: int} $plan
+     * @param array{target: string, kind: string, window: TimeWindow, sources: list<string>, profile: string, points: int, groups: int, splittable?: ?bool} $plan
      */
     public static function compute(array $plan): Estimate {
         return $plan['kind'] === 'graph'
             ? QueryEstimator::filteredSeries($plan['kind'], $plan['window'], $plan['sources'], $plan['profile'], $plan['points'], $plan['groups'])
-            : QueryEstimator::singlePass($plan['kind'], $plan['window'], $plan['sources'], $plan['profile']);
+            : QueryEstimator::singlePass($plan['kind'], $plan['window'], $plan['sources'], $plan['profile'], $plan['splittable'] ?? null);
     }
 
     /**
@@ -212,6 +213,15 @@ final class QueryKitActions {
         $kind = QueryKit::TARGETS[$target]['kind'] ?? '';
 
         return \array_key_exists($kind, QueryEstimator::DEFAULT_THROUGHPUT) ? $target : null;
+    }
+
+    /** Whether Top Talkers' current query can split (StatsQuery::splittable()); null for one outside the catalog. */
+    private static function talkersSplittable(Context $c): ?bool {
+        try {
+            return StatsActions::query(StatsActions::params($c))->splittable();
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
     }
 
     /** `?target=` of the action request, '' when missing. */

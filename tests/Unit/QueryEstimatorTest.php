@@ -168,7 +168,7 @@ describe('QueryEstimator::singlePass()', function (): void {
 });
 
 describe('QueryEstimator::filteredSeries()', function (): void {
-    test('reads the files once and adds the start-up cost of every run', function (): void {
+    test('reads the files once, adds the start-up cost of every run and runs the bins side by side in the slots there are', function (): void {
         estimatorCaptureFiles($this->root, 'gw', [ESTIMATOR_BASE, ESTIMATOR_BASE + 300], 1000);
         $window = TimeWindow::raw(ESTIMATOR_BASE, ESTIMATOR_BASE + 86400);
         $runs = CostEstimate::runsForFilteredSeries($window, 200, 2);
@@ -179,7 +179,7 @@ describe('QueryEstimator::filteredSeries()', function (): void {
             ->and($runs)->toBeGreaterThan(20)
             ->and($estimate->files)->toBe(2)
             ->and($estimate->bytes)->toBe(2000)
-            ->and($estimate->seconds)->toBe((int) ceil(2000 / 350_000_000 + $runs * QueryEstimator::SECONDS_PER_RUN))
+            ->and($estimate->seconds)->toBe((int) ceil((2000 / 350_000_000 + $runs * QueryEstimator::SECONDS_PER_RUN) / QueryEstimator::binSpeedup(4)))
         ;
     });
 

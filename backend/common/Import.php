@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\common;
 
 use mbolli\nfsen_ng\datasources\Rrd;
 use mbolli\nfsen_ng\processor\Nfdump;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
 use mbolli\nfsen_ng\vendor\ProgressBar;
 use OpenSwoole\Coroutine;
 
@@ -543,6 +544,16 @@ class Import {
         }
     }
 
+    /**
+     * Every import run is background work: it gives way to user queries and leaves them a slot. Each
+     * run has its own Nfdump, since a shared one can be reset by another coroutine while it waits.
+     *
+     * @return array{command: string, rawOutput: string, decoded: array<array<string, mixed>>, stderr?: string, notes: list<string>, exitCode: int}
+     */
+    private static function run(Nfdump $nfdump): array {
+        return NfdumpSlots::runAs(NfdumpSlots::BACKGROUND, static fn (): array => $nfdump->execute());
+    }
+
     private function formatEta(int $seconds): string {
         return QueryProgress::formatEta($seconds);
     }
@@ -552,8 +563,7 @@ class Import {
      */
     private function writeSourceData(string $source, string $statsPath): bool {
         // set options and get netflow summary statistics (-I)
-        $nfdump = Nfdump::getInstance();
-        $nfdump->reset();
+        $nfdump = new Nfdump();
         $nfdump->setProfile($this->profile ?? Config::$settings->nfdumpProfile);
         $nfdump->setOption('-I', null);
         $nfdump->setOption('-M', $source);
@@ -564,7 +574,7 @@ class Import {
         }
 
         try {
-            $input = $nfdump->execute();
+            $input = self::run($nfdump);
         } catch (\Exception $e) {
             $this->d->log('Exception: ' . $e->getMessage(), LOG_WARNING);
 
@@ -645,8 +655,7 @@ class Import {
         $sources = Config::$settings->sources;
 
         // set options and get netflow statistics
-        $nfdump = Nfdump::getInstance();
-        $nfdump->reset();
+        $nfdump = new Nfdump();
         $nfdump->setProfile($this->profile ?? Config::$settings->nfdumpProfile);
 
         if (empty($source)) {
@@ -694,7 +703,7 @@ class Import {
         $nfdump->setOption('-r', $statsPath);
 
         try {
-            $input = $nfdump->execute();
+            $input = self::run($nfdump);
         } catch (\Exception $e) {
             $this->d->log('Exception: ' . $e->getMessage(), LOG_WARNING);
 

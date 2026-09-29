@@ -102,6 +102,7 @@ final class QueryRunner {
             $sizeInBytes = 0;
             $workStartedAt = microtime(true);
             $workSeconds = 0.0;
+            $slotWait = 0.0;
             $error = null;
             $lastRead = new class {
                 /** @var null|array{bytes: int, at: float} nfdump's last sampled read position */
@@ -153,10 +154,12 @@ final class QueryRunner {
 
                 $workStartedAt = microtime(true);
 
+                // A user waits for it, so every nfdump it starts takes an interactive slot. A wait
+                // for one is not read time, which the estimates learn from.
                 try {
-                    $work();
+                    NfdumpSlots::runAs(NfdumpSlots::INTERACTIVE, static fn (): mixed => $work(), waited: $slotWait);
                 } finally {
-                    $workSeconds = microtime(true) - $workStartedAt;
+                    $workSeconds = max(0.0, microtime(true) - $workStartedAt - $slotWait);
                 }
             } catch (\Throwable $e) {
                 $error = $e;

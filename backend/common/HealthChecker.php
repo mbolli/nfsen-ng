@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\common;
 
 use mbolli\nfsen_ng\processor\Nfdump;
-use mbolli\nfsen_ng\processor\NfdumpSlots;
 use mbolli\nfsen_ng\query\Estimate;
 use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\Migrator;
@@ -22,6 +21,8 @@ use mbolli\nfsen_ng\store\Migrator;
  * @phpstan-type DaemonInfo array{ready: bool, watchCount: int, lastAutoImport: int}
  *
  * @phpstan-import-type DiskUsage from HealthMetrics
+ * @phpstan-import-type ProcessBudget from HealthMetrics
+ * @phpstan-import-type ActiveQueries from HealthMetrics
  * @phpstan-import-type StoreFacts from Database
  */
 class HealthChecker {
@@ -36,6 +37,12 @@ class HealthChecker {
 
     /** Oldest SQLite that runs the top-N rollups (`UPDATE ... FROM`). */
     public const string SQLITE_MIN = '3.33.0';
+
+    /** -o json field names (ts, td, pr, sa, ...) differ in 1.6.x; 1.7.2 was the first production-ready 1.7. */
+    public const string NFDUMP_MIN = '1.7.2';
+
+    /** 1.7.9 fixed a series of security issues in the collectors and in reading capture files. */
+    public const string NFDUMP_RECOMMENDED = '1.7.9';
 
     /** Human-readable elapsed time; non-positive values (clock skew) read as "just now". */
     public static function ageStr(int $seconds): string {
@@ -278,40 +285,16 @@ class HealthChecker {
                 'nfdump'
             );
 
-            // Minimum version check.
-            // -o json field names (ts, td, pr, sa, …) changed completely in 1.7.0
-            // vs the 1.6.x scheme (t_first, t_last, …). 1.7.2 was the first
-            // production-recommended 1.7.x release.
-            $minNfdump = '1.7.2';
             $numericVer = Nfdump::parseVersion($nfdumpVer);
             if ($numericVer !== '') {
-                $meetsMin = version_compare($numericVer, $minNfdump, '>=');
-                $add(
-                    'nfdump_version',
-                    'Minimum version',
-                    $meetsMin ? 'ok' : 'error',
-                    $meetsMin
-                        ? "{$minNfdump} or later"
-                        : "v{$numericVer}. nfsen-ng requires nfdump {$minNfdump} or later.",
-                    'nfdump',
-                    false,
-                    $meetsMin ? '' : 'JSON output field names differ in 1.6.x. Upgrade to nfdump 1.7.2 or later.'
-                );
+                $version = self::nfdumpVersionCheck($numericVer);
+                $add('nfdump_version', 'Minimum version', $version['status'], $version['detail'], 'nfdump', false, $version['hint']);
             }
         }
 
-        // Concurrency is enforced by NfdumpSlots, which counts the processes this app started
-        // rather than every nfdump on the machine, so the old ps/pgrep availability check has
-        // no bearing on it any more and was dropped.
-        $maxProc = $settings->nfdumpMaxProcesses;
-        $inUse = NfdumpSlots::inUse();
-        $add(
-            'nfdump_max_processes',
-            'Max processes',
-            $maxProc >= 1 ? 'ok' : 'error',
-            $maxProc >= 1 ? $inUse . ' of ' . $maxProc . ' in use' : 'max-processes must be at least 1',
-            'nfdump'
-        );
+        foreach (self::processBudgetChecks(HealthMetrics::processBudget(), HealthMetrics::activeQueries()) as $check) {
+            $checks[] = $check;
+        }
 
         // ── 4. Sources ───────────────────────────────────────────────────────
         $sources = $settings->sources;
@@ -585,6 +568,97 @@ class HealthChecker {
         );
 
         return $checks;
+    }
+
+    /**
+     * The "Minimum version" row: an error below NFDUMP_MIN, a warning below NFDUMP_RECOMMENDED.
+     *
+     * @return array{status: 'error'|'ok'|'warning', detail: string, hint: string}
+     */
+    public static function nfdumpVersionCheck(string $version): array {
+        if (version_compare($version, self::NFDUMP_MIN, '<')) {
+            return [
+                'status' => 'error',
+                'detail' => 'v' . $version . '. nfsen-ng requires nfdump ' . self::NFDUMP_MIN . ' or later.',
+                'hint' => 'JSON output field names differ in 1.6.x. Upgrade to nfdump 1.7.10.',
+            ];
+        }
+        if (version_compare($version, self::NFDUMP_RECOMMENDED, '<')) {
+            return [
+                'status' => 'warning',
+                'detail' => 'v' . $version . '. nfdump ' . self::NFDUMP_RECOMMENDED . ' or later is recommended.',
+                'hint' => 'nfdump 1.7.9 fixes security issues in the NetFlow v9, IPFIX and sFlow collectors and in reading'
+                    . ' malformed capture files (out-of-bounds reads, a use-after-free, integer overflows). Upgrade to nfdump 1.7.10.',
+            ];
+        }
+
+        return ['status' => 'ok', 'detail' => self::NFDUMP_RECOMMENDED . ' or later', 'hint' => ''];
+    }
+
+    /**
+     * The process budget rows of the nfdump group: detected cores and where they came from, the
+     * process limit, -W, and the slots in use by class. Slots are counted by NfdumpSlots, which
+     * counts the processes this app started rather than every nfdump on the machine.
+     *
+     * @param ProcessBudget $budget
+     * @param ActiveQueries $active
+     *
+     * @return list<HealthCheck>
+     */
+    public static function processBudgetChecks(array $budget, array $active): array {
+        $row = static fn (string $id, string $label, string $detail, string $hint = ''): array => [
+            'id' => $id, 'label' => $label, 'status' => 'ok', 'detail' => $detail, 'group' => 'nfdump', 'code' => false, 'hint' => $hint, 'epoch' => 0,
+        ];
+
+        $cores = $budget['cores'] . ' ' . ($budget['cores'] === 1 ? 'core' : 'cores') . ', from ' . $budget['coresFrom'] . ' (' . $budget['coresDetail'] . ')';
+        $processes = $budget['auto']
+            ? $budget['processes'] . ', auto: a third of ' . $budget['cores'] . ' cores, between ' . CpuBudget::AUTO_MIN . ' and ' . CpuBudget::AUTO_MAX
+            : $budget['processes'] . ', set by NFSEN_NFDUMP_MAX_PROCESSES or settings.php';
+
+        return [
+            $row('nfdump_cpu_cores', 'CPU cores', $cores),
+            $row('nfdump_max_processes', 'Parallel processes', $processes, 'Each nfdump process uses about 2 to 3 CPU cores.'),
+            $row('nfdump_workers', 'Filter threads', HealthMetrics::workersText($budget)),
+            self::slotsCheck($active),
+        ];
+    }
+
+    /**
+     * The "Slots in use" row. The checks are cached for up to IDLE_TTL, so a page shows it
+     * through withLiveSlots() rather than as cached.
+     *
+     * @param ActiveQueries $active
+     *
+     * @return HealthCheck
+     */
+    public static function slotsCheck(array $active): array {
+        return [
+            'id' => 'nfdump_slots',
+            'label' => 'Slots in use',
+            'status' => 'ok',
+            'detail' => $active['inUse'] . ' of ' . $active['max'] . ': ' . HealthMetrics::slotSplit($active),
+            'group' => 'nfdump',
+            'code' => false,
+            'hint' => $active['max'] >= 2
+                ? 'Background work (import, top-N, alerts) holds at most ' . $active['backgroundMax'] . ' and leaves a slot free for user queries.'
+                : 'With one slot, background work (import, top-N, alerts) starts only while no user query runs or waits.',
+            'epoch' => 0,
+        ];
+    }
+
+    /**
+     * The checks with the "Slots in use" row recounted from $active.
+     *
+     * @param list<HealthCheck> $checks
+     * @param ActiveQueries     $active
+     *
+     * @return list<HealthCheck>
+     */
+    public static function withLiveSlots(array $checks, array $active): array {
+        return array_map(
+            static fn (array $check): array => $check['id'] === 'nfdump_slots' ? self::slotsCheck($active) : $check,
+            $checks,
+        );
     }
 
     /**

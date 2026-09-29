@@ -35,6 +35,9 @@ final class AlertManager {
     /** Length of one nfcapd data interval. */
     public const int SLOT_SECONDS = 300;
 
+    /** How long one live evaluation waits for nfdump slots in total. The import daemon waits for it. */
+    public const float LIVE_SLOT_BUDGET_SECONDS = 60.0;
+
     /** A last evaluated slot this far in the future, followed by one that is not, means the clock or NFCAPD_TZ moved back. */
     private const int REWIND_SECONDS = 3600;
 
@@ -124,16 +127,20 @@ final class AlertManager {
         }
         $this->lastSeenTs[$profile] = max($fileTs, $this->lastSeenTs[$profile] ?? $fileTs);
 
-        $fired = [];
-        foreach (array_keys($this->pending[$profile] ?? []) as $slot) {
-            if (!$this->complete($profile, $slot, $sources)) {
-                break;
+        $fired = self::inBackground(function () use ($rules, $profile, $sources, $generations): array {
+            $fired = [];
+            foreach (array_keys($this->pending[$profile] ?? []) as $slot) {
+                if (!$this->complete($profile, $slot, $sources)) {
+                    break;
+                }
+                $reports = $this->pending[$profile][$slot];
+                unset($this->pending[$profile][$slot]);
+                $this->evaluatedSlot[$profile] = max($slot, $this->evaluatedSlot[$profile] ?? $slot);
+                $fired = [...$fired, ...$this->evaluateRules($rules, $profile, $slot, $reports, $generations)];
             }
-            $reports = $this->pending[$profile][$slot];
-            unset($this->pending[$profile][$slot]);
-            $this->evaluatedSlot[$profile] = max($slot, $this->evaluatedSlot[$profile] ?? $slot);
-            $fired = [...$fired, ...$this->evaluateRules($rules, $profile, $slot, $reports, $generations)];
-        }
+
+            return $fired;
+        });
 
         return array_values(array_unique($fired));
     }
@@ -147,13 +154,14 @@ final class AlertManager {
      * @return list<string> names of the rules that fired
      */
     public function runPeriodic(array $rules, string $profile, int $slot): array {
-        return $this->evaluateRules($rules, $profile, $slot, null, $this->generation);
+        return self::inBackground(fn (): array => $this->evaluateRules($rules, $profile, $slot, null, $this->generation));
     }
 
     /**
      * Evaluates the rule for the newest complete slot with the sources the live evaluation would
      * use, records a 'test' event and notifies only when the condition holds. Never touches the
-     * rule's state. The four templates are rendered whether or not the rule would fire.
+     * rule's state. The four templates are rendered whether or not the rule would fire. A user
+     * waits for it, so a filtered rule's nfdump takes an interactive slot.
      *
      * @return TestResult
      */
@@ -490,6 +498,18 @@ final class AlertManager {
     }
 
     /**
+     * The live evaluation: filtered rules' nfdump runs are background work. Together they wait
+     * LIVE_SLOT_BUDGET_SECONDS at most behind user queries; a rule left without a slot is skipped.
+     *
+     * @param \Closure(): list<string> $work
+     *
+     * @return list<string> names of the rules that fired
+     */
+    private static function inBackground(\Closure $work): array {
+        return NfdumpSlots::runAs(NfdumpSlots::BACKGROUND, $work, budget: self::LIVE_SLOT_BUDGET_SECONDS);
+    }
+
+    /**
      * @param list<AlertRule>                            $rules
      * @param null|array<string, null|SlotValues|string> $reports     the sources that reported the slot (see $pending); null: runPeriodic()
      * @param array<string, int>                         $generations $generation when the caller got $rules
@@ -799,12 +819,6 @@ final class AlertManager {
      * @return SlotValues|string
      */
     private function fetchFilteredSlot(AlertRule $rule, string $profile, int $slot): array|string {
-        // Skip rather than queue: acquire() would block for thirty seconds, and a rule that then
-        // evaluates on zeros is a threshold that silently does not fire.
-        if (NfdumpSlots::inUse() >= max(1, Config::$settings->nfdumpMaxProcesses)) {
-            return 'no free nfdump process';
-        }
-
         $sources = array_values(array_filter(
             $this->sourcesOf($rule),
             static fn (string $source): bool => NfcapdFiles::names($slot, $slot, $source, $profile) !== [],
@@ -816,8 +830,9 @@ final class AlertManager {
         }
 
         try {
-            $nfdump = Nfdump::getInstance();
-            $nfdump->reset();
+            // Not the shared instance: a reset() by another coroutine during the slot wait would
+            // change how this run's output is decoded.
+            $nfdump = new Nfdump();
             $nfdump->setProfile($profile);
             // -M must be set before -R: -R resolves file paths with the sources -M recorded.
             $nfdump->setOption('-M', implode(':', $sources));
@@ -828,7 +843,7 @@ final class AlertManager {
 
             return self::sumDecodedFlowRecords($result['decoded']);
         } catch (\Throwable $e) {
-            return 'nfdump failed: ' . $e->getMessage();
+            return NfdumpSlots::timedOut($e) ? 'no free nfdump process' : 'nfdump failed: ' . $e->getMessage();
         }
     }
 

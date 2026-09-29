@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use mbolli\nfsen_ng\common\CpuBudget;
 use mbolli\nfsen_ng\common\EnvRegistry;
 use mbolli\nfsen_ng\common\Settings;
 
@@ -70,6 +71,7 @@ describe('Settings::fromArray()', function (): void {
             ->and($s->nfdumpProfilesData)->toBe('/data/profiles')
             ->and($s->nfdumpProfile)->toBe('prod')
             ->and($s->nfdumpMaxProcesses)->toBe(2)
+            ->and($s->nfdumpMaxProcessesAuto)->toBeFalse()
             ->and($s->logPriority)->toBe(LOG_DEBUG)
         ;
     });
@@ -91,9 +93,12 @@ describe('Settings::fromArray()', function (): void {
             ->and($s->nfdumpBinary)->toBe('/usr/local/nfdump/bin/nfdump')
             ->and($s->nfdumpProfilesData)->toBe('/var/nfdump/profiles-data')
             ->and($s->nfdumpProfile)->toBe('live')
-            // Two, not one: the import daemon takes a slot per nfdump run, so a cap of one
-            // makes browsing queue behind an import in progress.
-            ->and($s->nfdumpMaxProcesses)->toBe(2)
+            // Auto: a third of the cores, never below two, since the import daemon takes a slot
+            // per nfdump run and a cap of one makes browsing queue behind an import.
+            ->and($s->nfdumpMaxProcesses)->toBe(CpuBudget::autoProcesses(CpuBudget::cores()))
+            ->and($s->nfdumpMaxProcesses)->toBeGreaterThanOrEqual(2)
+            ->and($s->nfdumpMaxProcessesAuto)->toBeTrue()
+            ->and($s->nfdumpWorkers)->toBe(2)
             ->and($s->logPriority)->toBe(LOG_INFO)
             ->and($s->defaultEmailSubjectTemplate)->toBe('')
             ->and($s->defaultEmailBodyTemplate)->toBe('')
@@ -108,9 +113,59 @@ describe('Settings::fromArray()', function (): void {
         ;
     });
 
-    test('clamps nfdumpMaxProcesses to minimum 1', function (): void {
-        $s = Settings::fromArray(['nfdump' => ['max-processes' => 0]]);
-        expect($s->nfdumpMaxProcesses)->toBe(1);
+    test('a max-processes of 0 or auto derives the limit from the CPU cores', function (mixed $configured): void {
+        $s = Settings::fromArray(['nfdump' => ['max-processes' => $configured]]);
+
+        expect($s->nfdumpMaxProcesses)->toBe(CpuBudget::autoProcesses(CpuBudget::cores()))
+            ->and($s->nfdumpMaxProcessesAuto)->toBeTrue()
+        ;
+    })->with([0, 'auto', 'AUTO', -3, 'many']);
+
+    test('an explicit max-processes is kept, also as a string', function (): void {
+        expect(Settings::fromArray(['nfdump' => ['max-processes' => 1]])->nfdumpMaxProcesses)->toBe(1)
+            ->and(Settings::fromArray(['nfdump' => ['max-processes' => '12']])->nfdumpMaxProcesses)->toBe(12)
+            ->and(Settings::fromArray(['nfdump' => ['max-processes' => '12']])->nfdumpMaxProcessesAuto)->toBeFalse()
+        ;
+    });
+
+    test('settings.php workers wins over NFSEN_NFDUMP_WORKERS and is clamped to 0 to 16', function (): void {
+        putenv('NFSEN_NFDUMP_WORKERS=4');
+
+        expect(Settings::fromArray([])->nfdumpWorkers)->toBe(4)
+            ->and(Settings::fromArray(['nfdump' => ['workers' => 1]])->nfdumpWorkers)->toBe(1)
+            ->and(Settings::fromArray(['nfdump' => ['workers' => 64]])->nfdumpWorkers)->toBe(16)
+            ->and(Settings::fromArray(['nfdump' => ['workers' => -1]])->nfdumpWorkers)->toBe(0)
+        ;
+    });
+});
+
+describe('nfdump process budget from the environment', function (): void {
+    test('NFSEN_NFDUMP_MAX_PROCESSES=auto derives the limit', function (): void {
+        putenv('NFSEN_NFDUMP_MAX_PROCESSES=auto');
+        $s = Settings::fromEnv();
+
+        expect($s->nfdumpMaxProcesses)->toBe(CpuBudget::autoProcesses(CpuBudget::cores()))
+            ->and($s->nfdumpMaxProcessesAuto)->toBeTrue()
+        ;
+    });
+
+    // Existing explicit values keep working.
+    test('an explicit NFSEN_NFDUMP_MAX_PROCESSES is used as it is', function (): void {
+        putenv('NFSEN_NFDUMP_MAX_PROCESSES=3');
+        $s = Settings::fromEnv();
+
+        expect($s->nfdumpMaxProcesses)->toBe(3)
+            ->and($s->nfdumpMaxProcessesAuto)->toBeFalse()
+            ->and(Settings::fromArray([])->nfdumpMaxProcesses)->toBe(3)
+        ;
+    });
+
+    test('NFSEN_NFDUMP_WORKERS reaches the settings', function (): void {
+        putenv('NFSEN_NFDUMP_WORKERS=0');
+        expect(Settings::fromEnv()->nfdumpWorkers)->toBe(0);
+
+        putenv('NFSEN_NFDUMP_WORKERS=99');
+        expect(Settings::fromEnv()->nfdumpWorkers)->toBe(16);
     });
 });
 
@@ -288,9 +343,22 @@ describe('Settings with…() fluent mutators', function (): void {
         ;
     });
 
-    test('withNfdumpMaxProcesses clamps to minimum 1', function (): void {
-        $s = Settings::fromArray([])->withNfdumpMaxProcesses(0);
-        expect($s->nfdumpMaxProcesses)->toBe(1);
+    test('withNfdumpMaxProcesses(0) is auto, a positive value is kept', function (): void {
+        $auto = Settings::fromArray(['nfdump' => ['max-processes' => 3]])->withNfdumpMaxProcesses(0);
+        $fixed = Settings::fromArray([])->withNfdumpMaxProcesses(5);
+
+        expect($auto->nfdumpMaxProcesses)->toBe(CpuBudget::autoProcesses(CpuBudget::cores()))
+            ->and($auto->nfdumpMaxProcessesAuto)->toBeTrue()
+            ->and($fixed->nfdumpMaxProcesses)->toBe(5)
+            ->and($fixed->nfdumpMaxProcessesAuto)->toBeFalse()
+        ;
+    });
+
+    test('withNfdumpWorkers clamps to 0 to 16', function (): void {
+        expect(Settings::fromArray([])->withNfdumpWorkers(3)->nfdumpWorkers)->toBe(3)
+            ->and(Settings::fromArray([])->withNfdumpWorkers(17)->nfdumpWorkers)->toBe(16)
+            ->and(Settings::fromArray([])->withNfdumpWorkers(-2)->nfdumpWorkers)->toBe(0)
+        ;
     });
 
     test('withDatasourceConfig stores and returns config sub-array', function (): void {

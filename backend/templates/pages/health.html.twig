@@ -350,8 +350,14 @@
                 <dl class="health-facts">
                     <dt>nfdump</dt>
                     <dd>{{ sys.nfdump ?: 'not found' }}</dd>
+                    {% if sys.budget %}
+                        <dt>CPU cores</dt>
+                        <dd>{{ sys.budget.cores }} <small>from {{ sys.budget.coresFrom }}</small></dd>
+                        <dt>Parallel nfdump processes</dt>
+                        <dd>{{ sys.budget.processes }} <small>({{ sys.budget.auto ? 'auto, ' : '' }}{{ sys.budget.workersPassed > 0 ? 'with -W ' ~ sys.budget.workersPassed : 'without -W' }}; each uses about 2 to 3 CPU cores)</small></dd>
+                    {% endif %}
                     <dt>Active queries</dt>
-                    <dd>{{ sys.queries.inUse }} of {{ sys.queries.max }} <small>({{ sys.queries.byOwner.import }} import)</small></dd>
+                    <dd>{{ sys.queries.inUse }} of {{ sys.queries.max }}{% if sys.queries.split %} <small>({{ sys.queries.split }})</small>{% endif %}</dd>
                     <dt>Uptime</dt>
                     <dd>{{ sys.uptime }} <small>since {{ health.when(sys.startedAt, tz) }}</small></dd>
                     <dt>Datasource</dt>

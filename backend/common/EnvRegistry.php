@@ -21,6 +21,12 @@ namespace mbolli\nfsen_ng\common;
  * @phpstan-type EnvIssue array{name: string, level: 'warning', message: string}
  */
 final class EnvRegistry {
+    /** Variables that also accept `auto`, which they read as 0. */
+    private const array AUTO = ['NFSEN_NFDUMP_MAX_PROCESSES'];
+
+    /** The process budget, whose clamped values are reported: upper bound by variable, null for none. */
+    private const array BOUNDED = ['NFSEN_NFDUMP_MAX_PROCESSES' => null, 'NFSEN_NFDUMP_WORKERS' => CpuBudget::MAX_WORKERS];
+
     /** @var null|array<string, EnvVar> memoized name → record table */
     private static ?array $table = null;
 
@@ -56,7 +62,8 @@ final class EnvRegistry {
             new EnvVar('NFSEN_NFDUMP_BINARY', 'nfdump', 'string', '/usr/local/nfdump/bin/nfdump', 'Path to the nfdump binary.', format: 'path'),
             new EnvVar('NFSEN_NFDUMP_PROFILES', 'nfdump', 'string', '/var/nfdump/profiles-data', 'nfdump profiles-data directory.', format: 'path'),
             new EnvVar('NFSEN_NFDUMP_PROFILE', 'nfdump', 'string', 'live', 'nfdump profile name.'),
-            new EnvVar('NFSEN_NFDUMP_MAX_PROCESSES', 'nfdump', 'int', 2, 'Max concurrent nfdump processes.', min: 1),
+            new EnvVar('NFSEN_NFDUMP_MAX_PROCESSES', 'nfdump', 'int', 0, 'Parallel nfdump processes (each uses about 2 to 3 CPU cores). 0 or auto = a third of the CPU cores, between 2 and 8.', min: 0),
+            new EnvVar('NFSEN_NFDUMP_WORKERS', 'nfdump', 'int', 2, 'Filter threads per nfdump process, passed as -W (0 = nfdump\'s own default, up to 16).', min: 0),
             new EnvVar('NFSEN_PORT_DIRECTION', 'nfdump', 'enum', 'dst', 'Which side of a flow a per-port graph counts: dst (default), src, or any (either direction).', enum: ['any', 'dst', 'src']),
 
             // ── Integrations ──────────────────────────────────────────────────
@@ -119,6 +126,11 @@ final class EnvRegistry {
         return self::raw($var)[0] !== null;
     }
 
+    /** Whether the variable reads `auto` as 0, which it then derives at start. */
+    public static function acceptsAuto(string $name): bool {
+        return \in_array($name, self::AUTO, true);
+    }
+
     /** @return list<string> canonical variable names */
     public static function names(): array {
         return array_keys(self::table());
@@ -158,6 +170,10 @@ final class EnvRegistry {
             }
 
             $error = $var->validationError($raw);
+            if ($error !== null && self::acceptsAuto($var->name)) {
+                $error = 'invalid value ' . $var->display((string) $raw) . ' (expected auto or a whole number), falling back to auto';
+            }
+            $error ??= self::outOfRange($var, $raw);
             if ($error !== null) {
                 $issues[] = ['name' => $var->name, 'level' => 'warning', 'message' => "{$var->name}: {$error}"];
             }
@@ -187,16 +203,36 @@ final class EnvRegistry {
     private static function raw(EnvVar $var): array {
         $value = getenv($var->name);
         if ($value !== false && $value !== '') {
-            return [$value, 'name'];
+            return [self::autoAsZero($var, $value), 'name'];
         }
         if ($var->alias !== null) {
             $aliasValue = getenv($var->alias);
             if ($aliasValue !== false && $aliasValue !== '') {
-                return [$aliasValue, 'alias'];
+                return [self::autoAsZero($var, $aliasValue), 'alias'];
             }
         }
 
         return [null, null];
+    }
+
+    /** Why a bounded variable's number is not used as set, null when it is. */
+    private static function outOfRange(EnvVar $var, ?string $raw): ?string {
+        if (!\array_key_exists($var->name, self::BOUNDED) || $raw === null || !is_numeric($raw)) {
+            return null;
+        }
+        $n = (int) $raw;
+        $max = self::BOUNDED[$var->name];
+        $min = $var->min;
+
+        return match (true) {
+            $max !== null && $n > $max => "{$n} is above {$max}, using {$max}",
+            $min !== null && $n < $min => "{$n} is below {$min}, using " . ($min === 0 && self::acceptsAuto($var->name) ? 'auto' : $min),
+            default => null,
+        };
+    }
+
+    private static function autoAsZero(EnvVar $var, string $value): string {
+        return self::acceptsAuto($var->name) && strtolower(trim($value)) === 'auto' ? '0' : $value;
     }
 
     /** @return array<string, string> the full process environment (seam for testing/typo scan) */

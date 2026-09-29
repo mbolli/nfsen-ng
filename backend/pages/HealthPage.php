@@ -29,6 +29,7 @@ use OpenSwoole\Coroutine;
  * @phpstan-import-type DaemonInfo from HealthChecker
  * @phpstan-import-type SourceHealth from HealthMetrics
  * @phpstan-import-type DiskUsage from HealthMetrics
+ * @phpstan-import-type ActiveQueries from HealthMetrics
  * @phpstan-import-type StoreFacts from Database
  *
  * @phpstan-type Metrics array{ts: int, sources: list<SourceHealth>, disks: list<DiskUsage>, versions: array{php: string, openswoole: string, sqlite: string, nfdump: string}, journalMode: string}
@@ -103,7 +104,9 @@ final class HealthPage implements Page {
         $fatal = Shell::fatal($app);
         $cache = $fatal ? null : self::cached($app, true, $now, $c);
         $metrics = $cache['metrics'] ?? null;
-        $checks = $cache['checks'] ?? [];
+        // Live, unlike the rest: an in-memory count that the cache would only make stale.
+        $queries = $fatal ? null : HealthMetrics::activeQueries();
+        $checks = $queries === null ? $cache['checks'] ?? [] : HealthChecker::withLiveSlots($cache['checks'] ?? [], $queries);
         $sources = $metrics['sources'] ?? [];
 
         return [
@@ -121,7 +124,7 @@ final class HealthPage implements Page {
             'topn' => self::topnCard($app, $fatal),
             'sources' => $sources,
             'disks' => array_map(self::disk(...), $metrics['disks'] ?? []),
-            'system' => self::systemCard($metrics, $fatal, $now),
+            'system' => self::systemCard($metrics, $queries, $fatal, $now),
             'log' => array_map(
                 static fn (array $entry): array => [...$entry, 'band' => self::band($entry['level'], $entry['levelName'])],
                 Debug::recent(self::LOG_LINES),
@@ -309,17 +312,22 @@ final class HealthPage implements Page {
     }
 
     /**
-     * @param null|Metrics $metrics
+     * @param null|Metrics       $metrics
+     * @param null|ActiveQueries $queries
      *
      * @return array<string, mixed>
      */
-    private static function systemCard(?array $metrics, bool $fatal, int $now): array {
+    private static function systemCard(?array $metrics, ?array $queries, bool $fatal, int $now): array {
         $versions = $metrics['versions'] ?? ['php' => PHP_VERSION, 'openswoole' => '', 'sqlite' => '', 'nfdump' => ''];
 
         return [
             ...$versions,
-            // Live, unlike the rest: an in-memory count that the 30 s cache would only make stale.
-            'queries' => $fatal ? ['inUse' => 0, 'max' => 0, 'byOwner' => ['user' => 0, 'import' => 0]] : HealthMetrics::activeQueries(),
+            'queries' => $queries === null ? ['inUse' => 0, 'max' => 0, 'split' => ''] : [
+                'inUse' => $queries['inUse'],
+                'max' => $queries['max'],
+                'split' => HealthMetrics::slotSplit($queries),
+            ],
+            'budget' => $fatal ? null : HealthMetrics::processBudget(),
             'uptime' => self::duration(ProcessInfo::uptime($now)),
             'startedAt' => ProcessInfo::startedAt(),
             'datasource' => Config::$settings->datasourceName,

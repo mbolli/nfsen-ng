@@ -161,9 +161,18 @@ async function walkHealth(page) {
     }
 
     const system = await page.evaluate(`document.querySelector('#healthSystem').textContent`);
-    for (const fact of ['nfdump', 'Active queries', 'Uptime', 'Datasource', 'PHP', 'OpenSwoole', 'SQLite journal']) {
+    for (const fact of ['nfdump', 'CPU cores', 'Parallel nfdump processes', 'Active queries', 'Uptime', 'Datasource', 'PHP', 'OpenSwoole', 'SQLite journal']) {
         assert.ok(system.includes(fact), `the system card shows ${fact}`);
     }
+    // The process budget: the limit with what one process costs, and the slots split by class.
+    const facts = await page.evaluate(`Object.fromEntries([...document.querySelectorAll('#healthSystem dt')].map((dt) => [dt.textContent.trim(), dt.nextElementSibling?.textContent.replace(/\\s+/g, ' ').trim() ?? '']))`);
+    assert.match(facts['CPU cores'] ?? '', /^\d+ from the /, `the core count names its source: ${facts['CPU cores']}`);
+    assert.match(
+        facts['Parallel nfdump processes'] ?? '',
+        /^\d+ \((auto, )?with(out)? -W( \d+)?; each uses about 2 to 3 CPU cores\)$/,
+        `the process limit, -W and the cost: ${facts['Parallel nfdump processes']}`
+    );
+    assert.match(facts['Active queries'] ?? '', /^\d+ of \d+ \(\d+ interactive, \d+ background(, \d+ waiting)?\)$/, `the slots by class: ${facts['Active queries']}`);
 
     // Each group of checks is a tbody headed by a rowgroup header, the SQLite group among them.
     const groups = await page.evaluate(
@@ -177,6 +186,25 @@ async function walkHealth(page) {
             for (const r of rows.slice(start + 1)) { if (r.classList.contains('row-group')) break; out.push(r.querySelector('th')?.textContent.trim()); }
             return out;
         })()`);
+    // The nfdump group: the version, then the process budget rows.
+    const nfdumpRows = await page.evaluate(`(() => {
+            const rows = [...document.querySelectorAll('#healthChecks tbody tr')];
+            const start = rows.findIndex((r) => r.textContent.trim() === 'nfdump');
+            const out = {};
+            for (const r of rows.slice(start + 1)) {
+                if (r.classList.contains('row-group')) break;
+                const label = r.querySelector('th')?.textContent.replace(/^\\s*(OK|Warning|Error):\\s*/, '').trim();
+                out[label] = r.querySelector('td')?.textContent.replace(/\\s+/g, ' ').trim();
+            }
+            return out;
+        })()`);
+    for (const label of ['Minimum version', 'CPU cores', 'Parallel processes', 'Filter threads', 'Slots in use']) {
+        assert.ok(label in nfdumpRows, `the nfdump group has a ${label} row, got ${JSON.stringify(nfdumpRows)}`);
+    }
+    assert.match(nfdumpRows['CPU cores'], /^\d+ cores?, from /, 'the cores name their source');
+    assert.match(nfdumpRows['Slots in use'], /^\d+ of \d+: \d+ interactive, \d+ background/, 'the slots are split by class');
+    assert.match(nfdumpRows['Filter threads'], /^(-W \d+ on every nfdump run|Not passed: )/, 'the row says whether -W is passed');
+
     for (const label of ['Database file', 'Journal mode', 'SQLite library']) {
         assert.ok(
             sqliteRows.some((l) => l?.endsWith(label)),

@@ -8,7 +8,8 @@ use mbolli\nfsen_ng\common\Config;
 
 /**
  * Checks a filter with `nfdump -Z` (parse only, 1 to 4 ms). It bypasses Nfdump::execute(),
- * so a check takes no nfdump slot and never waits behind a running query.
+ * so a check takes no nfdump slot and never waits behind a running query. It passes no -W
+ * either: nfdump exits after -Z before it starts a single worker thread.
  */
 final class FilterValidator {
     public const float TIMEOUT_SECONDS = 2.0;

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\CpuBudget;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\HealthMetrics;
@@ -317,8 +318,8 @@ describe('HealthMetrics::disks', function (): void {
 
 describe('HealthMetrics::activeQueries', function (): void {
     $reset = static function (): void {
-        while (NfdumpSlots::inUse() > 0) {
-            NfdumpSlots::release();
+        foreach (NfdumpSlots::CLASSES as $class) {
+            NfdumpSlots::release($class, NfdumpSlots::inUse($class));
         }
         foreach (NfdumpSlots::running() as $handle => $pids) {
             foreach ($pids as $pid) {
@@ -327,28 +328,161 @@ describe('HealthMetrics::activeQueries', function (): void {
         }
     };
 
-    test('splits running nfdump processes into import and user queries', function () use ($reset): void {
+    test('counts the slots in use by class', function () use ($reset): void {
         $reset();
         healthSettings($this->root, ['gateway'], 'RRD', [], 4);
-        for ($i = 0; $i < 3; ++$i) {
-            NfdumpSlots::acquire(0.0);
-        }
-        NfdumpSlots::register('default', 101);
-        NfdumpSlots::register('topn', 102);
-        NfdumpSlots::register('flows-3fa1', 103);
-        NfdumpSlots::register('stats-77b0', 104);
+        NfdumpSlots::acquireMany(2, NfdumpSlots::INTERACTIVE, 0.0);
+        NfdumpSlots::acquire(0.0, NfdumpSlots::BACKGROUND);
 
         $active = HealthMetrics::activeQueries();
         $reset();
 
-        expect($active)->toBe(['inUse' => 3, 'max' => 4, 'byOwner' => ['user' => 2, 'import' => 2]]);
+        expect($active)->toBe([
+            'inUse' => 3,
+            'max' => 4,
+            'backgroundMax' => 2,
+            'byClass' => ['interactive' => 2, 'background' => 1],
+            'waiting' => ['interactive' => 0, 'background' => 0],
+        ])
+            ->and(HealthMetrics::slotSplit($active))->toBe('2 interactive, 1 background')
+        ;
     });
 
     test('is all zero when idle', function () use ($reset): void {
         $reset();
         healthSettings($this->root, ['gateway'], 'RRD', [], 2);
 
-        expect(HealthMetrics::activeQueries())->toBe(['inUse' => 0, 'max' => 2, 'byOwner' => ['user' => 0, 'import' => 0]]);
+        expect(HealthMetrics::activeQueries())->toBe([
+            'inUse' => 0,
+            'max' => 2,
+            'backgroundMax' => 1,
+            'byClass' => ['interactive' => 0, 'background' => 0],
+            'waiting' => ['interactive' => 0, 'background' => 0],
+        ]);
+    });
+
+    test('names the callers waiting for a slot', function (): void {
+        $active = ['inUse' => 2, 'max' => 2, 'backgroundMax' => 1, 'byClass' => ['interactive' => 1, 'background' => 1], 'waiting' => ['interactive' => 1, 'background' => 2]];
+
+        expect(HealthMetrics::slotSplit($active))->toBe('1 interactive, 1 background, 3 waiting');
+    });
+});
+
+describe('HealthMetrics::processBudget', function (): void {
+    test('an auto limit comes from the detected cores, with -W unknown for a missing binary', function (): void {
+        healthSettings($this->root, ['gateway'], 'RRD', [], 0);
+        $cpu = CpuBudget::detect();
+
+        expect(HealthMetrics::processBudget())->toBe([
+            'cores' => $cpu['cores'],
+            'coresSource' => $cpu['source'],
+            'coresOrigin' => $cpu['origin'],
+            'coresFrom' => CpuBudget::sourceLabel($cpu['source']),
+            'coresDetail' => $cpu['detail'],
+            'processes' => CpuBudget::autoProcesses($cpu['cores']),
+            'auto' => true,
+            'workers' => 2,
+            'workersPassed' => 0,
+            'version' => '',
+        ]);
+    });
+
+    test('an explicit limit is not auto', function (): void {
+        healthSettings($this->root, ['gateway'], 'RRD', [], 3);
+
+        expect(HealthMetrics::processBudget())->toMatchArray(['processes' => 3, 'auto' => false]);
+    });
+});
+
+describe('HealthChecker nfdump group', function (): void {
+    test('an nfdump below 1.7.2 is an error', function (): void {
+        expect(HealthChecker::nfdumpVersionCheck('1.6.23'))->toMatchArray(['status' => 'error', 'detail' => 'v1.6.23. nfsen-ng requires nfdump 1.7.2 or later.']);
+    });
+
+    // 1.7.9 and 1.7.10 bring the security fixes; nothing in nfsen-ng breaks below them.
+    test('an nfdump below 1.7.9 is a warning that names the security fixes', function (string $version): void {
+        $check = HealthChecker::nfdumpVersionCheck($version);
+
+        expect($check['status'])->toBe('warning')
+            ->and($check['detail'])->toBe("v{$version}. nfdump 1.7.9 or later is recommended.")
+            ->and($check['hint'])->toContain('security')
+            ->and($check['hint'])->toContain('1.7.10')
+        ;
+    })->with(['1.7.2', '1.7.6', '1.7.8']);
+
+    test('1.7.9 and later pass', function (string $version): void {
+        expect(HealthChecker::nfdumpVersionCheck($version))->toBe(['status' => 'ok', 'detail' => '1.7.9 or later', 'hint' => '']);
+    })->with(['1.7.9', '1.7.10', '1.8.0']);
+
+    $budget = static fn (array $over = []): array => [
+        'cores' => 20, 'coresSource' => 'affinity', 'coresOrigin' => 'nproc', 'coresFrom' => 'the CPU affinity', 'coresDetail' => 'Cpus_allowed_list 0-19',
+        'processes' => 6, 'auto' => true, 'workers' => 2, 'workersPassed' => 2, 'version' => '1.7.10',
+        ...$over,
+    ];
+    $idle = ['inUse' => 1, 'max' => 6, 'backgroundMax' => 3, 'byClass' => ['interactive' => 0, 'background' => 1], 'waiting' => ['interactive' => 0, 'background' => 0]];
+
+    test('shows the cores and their source, the process limit, -W and the slots by class', function () use ($budget, $idle): void {
+        $rows = array_column(HealthChecker::processBudgetChecks($budget(), $idle), null, 'id');
+
+        expect(array_keys($rows))->toBe(['nfdump_cpu_cores', 'nfdump_max_processes', 'nfdump_workers', 'nfdump_slots'])
+            ->and(array_unique(array_column($rows, 'group')))->toBe(['nfdump'])
+            ->and(array_unique(array_column($rows, 'status')))->toBe(['ok'])
+            ->and($rows['nfdump_cpu_cores']['detail'])->toBe('20 cores, from the CPU affinity (Cpus_allowed_list 0-19)')
+            ->and($rows['nfdump_max_processes']['detail'])->toBe('6, auto: a third of 20 cores, between 2 and 8')
+            ->and($rows['nfdump_max_processes']['hint'])->toBe('Each nfdump process uses about 2 to 3 CPU cores.')
+            ->and($rows['nfdump_workers']['detail'])->toBe('-W 2 on every nfdump run')
+            ->and($rows['nfdump_slots']['detail'])->toBe('1 of 6: 0 interactive, 1 background')
+            ->and($rows['nfdump_slots']['hint'])->toContain('at most 3')
+        ;
+    });
+
+    test('says why -W is not passed', function () use ($budget, $idle): void {
+        $workers = static fn (array $over): string => array_column(HealthChecker::processBudgetChecks($budget($over), $idle), 'detail', 'id')['nfdump_workers'];
+
+        expect($workers(['workersPassed' => 0, 'workers' => 0]))->toBe("Not passed: nfdump's own default (NFSEN_NFDUMP_WORKERS=0)")
+            ->and($workers(['workersPassed' => 0, 'version' => '1.7.2']))->toBe('Not passed: nfdump 1.7.2 has no -W (added in 1.7.3)')
+            ->and($workers(['workersPassed' => 0, 'version' => '']))->toBe('Not passed: the nfdump version is unknown')
+        ;
+    });
+
+    test('an explicit limit and a cgroup limit read as such', function () use ($budget, $idle): void {
+        $rows = array_column(HealthChecker::processBudgetChecks($budget([
+            'auto' => false, 'processes' => 4, 'cores' => 4, 'coresSource' => 'cgroup', 'coresOrigin' => 'cpu.max',
+            'coresFrom' => CpuBudget::sourceLabel('cgroup'), 'coresDetail' => 'cgroup cpu.max 400000 100000',
+        ]), $idle), 'detail', 'id');
+
+        expect($rows['nfdump_cpu_cores'])->toBe("4 cores, from the container's CPU limit (cgroup cpu.max 400000 100000)")
+            ->and($rows['nfdump_max_processes'])->toBe('4, set by NFSEN_NFDUMP_MAX_PROCESSES or settings.php')
+        ;
+    });
+
+    // The checks are cached for up to five minutes; the slot count is not.
+    test('withLiveSlots() recounts only the slots row', function () use ($budget, $idle): void {
+        $cached = [
+            ['id' => 'nfdump_version', 'label' => 'Minimum version', 'status' => 'ok', 'detail' => '1.7.9 or later', 'group' => 'nfdump', 'code' => false, 'hint' => '', 'epoch' => 0],
+            ...HealthChecker::processBudgetChecks($budget(), $idle),
+        ];
+        $busy = [...$idle, 'inUse' => 4, 'byClass' => ['interactive' => 2, 'background' => 2]];
+        $live = HealthChecker::withLiveSlots($cached, $busy);
+
+        expect(array_column($live, 'id'))->toBe(array_column($cached, 'id'))
+            ->and(array_column($live, 'detail', 'id')['nfdump_slots'])->toBe('4 of 6: 2 interactive, 2 background')
+            ->and(array_filter($live, static fn (array $c): bool => $c['id'] !== 'nfdump_slots'))
+            ->toBe(array_filter($cached, static fn (array $c): bool => $c['id'] !== 'nfdump_slots'))
+        ;
+    });
+
+    test('run() puts the budget rows in the nfdump group', function (): void {
+        healthSettings($this->root, ['gateway']);
+        ($this->importedUntil)([]);
+
+        $ids = array_column(array_filter(HealthChecker::run(true), static fn (array $c): bool => $c['group'] === 'nfdump'), 'id');
+
+        expect($ids)->toContain('nfdump_cpu_cores')
+            ->and($ids)->toContain('nfdump_max_processes')
+            ->and($ids)->toContain('nfdump_workers')
+            ->and($ids)->toContain('nfdump_slots')
+        ;
     });
 });
 

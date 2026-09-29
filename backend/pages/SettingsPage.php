@@ -8,6 +8,7 @@ use mbolli\nfsen_ng\actions\SettingsActions;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\EnvRegistry;
 use mbolli\nfsen_ng\common\GeoIpDatabase;
+use mbolli\nfsen_ng\common\HealthMetrics;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\UserPreferences;
 use mbolli\nfsen_ng\query\Estimate;
@@ -153,6 +154,7 @@ final class SettingsPage implements Page {
         return [
             'general' => self::choices(Config::$settings),
             'captureTz' => Config::nfcapdTimezone()->getName(),
+            'slots' => self::slots(),
             ...self::facts($app, $fresh, time()),
         ];
     }
@@ -282,9 +284,10 @@ final class SettingsPage implements Page {
     public static function system(): array {
         $groups = [];
         foreach (EnvRegistry::table() as $var) {
+            $value = EnvRegistry::value($var->name);
             $groups[$var->group][] = [
                 'name' => $var->name,
-                'value' => $var->display(self::envString(EnvRegistry::value($var->name), $var->type)),
+                'value' => $var->display(EnvRegistry::acceptsAuto($var->name) && $value === 0 ? 'auto' : self::envString($value, $var->type)),
                 'set' => EnvRegistry::isSet($var->name),
                 'doc' => $var->doc,
             ];
@@ -300,17 +303,32 @@ final class SettingsPage implements Page {
 
     /**
      * System's "In effect" list: the deployment values no other tab shows, as nfsen-ng uses
-     * them, so a settings.php value is visible next to the variable it replaces.
+     * them, so a settings.php value is visible next to the variable it replaces. The CPU cores
+     * are detected, so their origin names the file or call they came from.
      *
-     * @return list<array{label: string, value: string, code: bool, origin: string}>
+     * @return list<array{label: string, value: string, code: bool, origin: string, hint?: string}>
      */
     public static function deployment(): array {
         $settings = Config::$settings;
         $presets = \count(Config::$deploymentFilters);
+        $budget = HealthMetrics::processBudget();
 
         return [
             ['label' => 'nfdump binary', 'value' => $settings->nfdumpBinary, 'code' => true, 'origin' => self::origin('NFSEN_NFDUMP_BINARY', ['nfdump', 'binary'])],
-            ['label' => 'nfdump processes', 'value' => (string) $settings->nfdumpMaxProcesses, 'code' => false, 'origin' => self::origin('NFSEN_NFDUMP_MAX_PROCESSES', ['nfdump', 'max-processes'])],
+            [
+                'label' => 'Parallel nfdump processes',
+                'value' => $budget['auto'] ? $budget['processes'] . ', auto' : (string) $budget['processes'],
+                'code' => false,
+                'origin' => self::origin('NFSEN_NFDUMP_MAX_PROCESSES', ['nfdump', 'max-processes']),
+                'hint' => 'each uses about 2 to 3 CPU cores',
+            ],
+            ['label' => 'CPU cores', 'value' => (string) $budget['cores'], 'code' => false, 'origin' => $budget['coresOrigin']],
+            [
+                'label' => 'nfdump filter threads',
+                'value' => HealthMetrics::workersText($budget),
+                'code' => false,
+                'origin' => self::origin('NFSEN_NFDUMP_WORKERS', ['nfdump', 'workers']),
+            ],
             ['label' => 'Processor', 'value' => $settings->processorName, 'code' => true, 'origin' => self::origin('NFSEN_PROCESSOR', ['general', 'processor'])],
             ['label' => 'Default theme', 'value' => self::DEPLOYMENT_THEMES[$settings->deploymentTheme] ?? $settings->deploymentTheme, 'code' => false, 'origin' => self::origin('NFSEN_DEFAULT_THEME', ['frontend', 'defaults', 'theme'])],
             ['label' => 'Statistics window limit', 'value' => $settings->maxStatsWindow > 0 ? "{$settings->maxStatsWindow} seconds" : 'Unlimited', 'code' => false, 'origin' => self::origin('NFSEN_MAX_STATS_WINDOW', ['general', 'max_stats_window'])],
@@ -318,6 +336,17 @@ final class SettingsPage implements Page {
             ['label' => 'MCP hosts', 'value' => $settings->mcpHttpHosts === [] ? 'localhost only' : implode(', ', $settings->mcpHttpHosts), 'code' => false, 'origin' => self::origin('NFSEN_MCP_HOSTS', ['general', 'mcp_http_hosts'])],
             ['label' => 'Filter presets', 'value' => $presets === 0 ? 'None' : ($presets === 1 ? '1 expression' : "{$presets} expressions") . ', added to the saved filters at start-up', 'code' => false, 'origin' => self::origin('NFSEN_FILTERS', ['general', 'filters'])],
         ];
+    }
+
+    /**
+     * nfdump slots in use by class: live, so outside the cache of the read-only tabs.
+     *
+     * @return array{inUse: int, max: int, split: string}
+     */
+    public static function slots(): array {
+        $active = HealthMetrics::activeQueries();
+
+        return ['inUse' => $active['inUse'], 'max' => $active['max'], 'split' => HealthMetrics::slotSplit($active)];
     }
 
     /**

@@ -741,6 +741,138 @@ describe('Nfdump::commandLine()', function (): void {
     });
 });
 
+/**
+ * A stand-in nfdump that answers -V with $version and writes any other call's arguments, one per
+ * line, to the returned args file.
+ *
+ * @return array{bin: string, args: string, dir: string}
+ */
+function versionedNfdump(string $version): array {
+    $dir = sys_get_temp_dir() . '/nfsen-nfdump-' . bin2hex(random_bytes(4));
+    mkdir($dir);
+    $bin = $dir . '/nfdump';
+    $args = $dir . '/args';
+    file_put_contents($bin, "#!/bin/sh\nif [ \"\$1\" = \"-V\" ]; then echo 'nfdump: Version: {$version}-release options: lz4 ZSTD'; exit 0; fi\nprintf '%s\\n' \"\$@\" > '{$args}'\n");
+    chmod($bin, 0o755);
+
+    return ['bin' => $bin, 'args' => $args, 'dir' => $dir];
+}
+
+describe('Nfdump filter threads (-W)', function (): void {
+    afterEach(function (): void {
+        foreach ($this->stubs ?? [] as $stub) {
+            array_map('unlink', glob($stub['dir'] . '/*') ?: []);
+            rmdir($stub['dir']);
+        }
+        nfdumpTestSettings();
+    });
+
+    test('workerThreads() passes the configured count to an nfdump that knows -W', function (): void {
+        expect(Nfdump::workerThreads('1.7.8', 2))->toBe(2)
+            ->and(Nfdump::workerThreads('1.7.3', 2))->toBe(2)
+            ->and(Nfdump::workerThreads('1.7.10', 40))->toBe(16)
+            ->and(Nfdump::workerThreads('1.8.0', 1))->toBe(1)
+        ;
+    });
+
+    // 1.7.2 has no -W and answers it with its usage text, which would fail every query.
+    test('workerThreads() passes nothing to an old or unknown nfdump, or when set to 0', function (): void {
+        expect(Nfdump::workerThreads('1.7.2', 2))->toBe(0)
+            ->and(Nfdump::workerThreads('', 2))->toBe(0)
+            ->and(Nfdump::workerThreads('1.7.8', 0))->toBe(0)
+        ;
+    });
+
+    test('every run passes -W 2 by default, after the query\'s own options', function (): void {
+        $this->stubs[] = $stub = versionedNfdump('1.7.8');
+        nfdumpTestSettings($stub['bin']);
+
+        $nfdump = new Nfdump();
+        $nfdump->setOption('-o', 'csv');
+        $nfdump->setOption('-s', 'srcip/bytes');
+        $nfdump->setFilter('proto tcp');
+        $command = $nfdump->commandLine();
+        $nfdump->execute();
+
+        expect($command)->toBe($stub['bin'] . " -o 'csv' -s 'srcip/bytes' -W 2 -- 'proto tcp'")
+            ->and(file($stub['args'], FILE_IGNORE_NEW_LINES))->toBe(['-o', 'csv', '-s', 'srcip/bytes', '-W', '2', '--', 'proto tcp'])
+        ;
+    });
+
+    // The worker announcement is the only stderr of a normal -W run: it must not become a warning.
+    test('a run with -W reports no stderr', function (): void {
+        $this->stubs[] = $stub = versionedNfdump('1.7.10');
+        file_put_contents($stub['bin'], "#!/bin/sh\nif [ \"\$1\" = \"-V\" ]; then echo 'nfdump: Version: 1.7.10-release'; exit 0; fi\necho 'Using 2 worker threads (cores=20, requested=2, confMax=0)' >&2\nprintf 'ts,te,td,pr,val,fl,flP,pkt,pktP,byt,bytP,pps,bps,bpp\\n'\n");
+        nfdumpTestSettings($stub['bin']);
+
+        $nfdump = new Nfdump();
+        $nfdump->setOption('-o', 'csv');
+        $nfdump->setOption('-s', 'srcip/bytes');
+        $result = $nfdump->execute();
+
+        expect($result['stderr'] ?? '')->toBe('')
+            ->and($result['command'])->toContain(' -W 2')
+        ;
+    });
+
+    // nfdump caps -W at the online cores and says so on every run, e.g. -W 2 on one CPU.
+    test('the cap notice for more workers than cores is not stderr either', function (): void {
+        $this->stubs[] = $stub = versionedNfdump('1.7.10');
+        file_put_contents($stub['bin'], "#!/bin/sh\nif [ \"\$1\" = \"-V\" ]; then echo 'nfdump: Version: 1.7.10-release'; exit 0; fi\necho 'Limit requested workers: 2 to number of cores online 1.' >&2\necho 'Using 1 worker threads (cores=1, requested=2, confMax=0)' >&2\nprintf 'ts,te,td,pr,val,fl,flP,pkt,pktP,byt,bytP,pps,bps,bpp\\n'\n");
+        nfdumpTestSettings($stub['bin']);
+
+        $nfdump = new Nfdump();
+        $nfdump->setOption('-o', 'csv');
+        $nfdump->setOption('-s', 'srcip/bytes');
+        $result = $nfdump->execute();
+
+        expect($result['stderr'] ?? '')->toBe('');
+    });
+
+    test('the import\'s -I run is capped too', function (): void {
+        $this->stubs[] = $stub = versionedNfdump('1.7.10');
+        nfdumpTestSettings($stub['bin']);
+
+        $nfdump = new Nfdump();
+        $nfdump->setOption('-I', null);
+
+        expect($nfdump->commandLine())->toBe($stub['bin'] . " -I -o 'csv' -W 2");
+    });
+
+    test('NFSEN_NFDUMP_WORKERS=0 leaves nfdump its own default', function (): void {
+        $this->stubs[] = $stub = versionedNfdump('1.7.8');
+        nfdumpTestSettings($stub['bin']);
+        Config::$settings = Config::$settings->withNfdumpWorkers(0);
+
+        $nfdump = new Nfdump();
+        $nfdump->setOption('-I', null);
+
+        expect($nfdump->commandLine())->toBe($stub['bin'] . " -I -o 'csv'");
+    });
+
+    test('nfdump 1.7.2 gets no -W', function (): void {
+        $this->stubs[] = $stub = versionedNfdump('1.7.2');
+        nfdumpTestSettings($stub['bin']);
+
+        $nfdump = new Nfdump();
+        $nfdump->setOption('-I', null);
+
+        expect($nfdump->commandLine())->not->toContain('-W');
+    });
+
+    test('a caller\'s own -W is not doubled', function (): void {
+        $this->stubs[] = $stub = versionedNfdump('1.7.8');
+        nfdumpTestSettings($stub['bin']);
+
+        $nfdump = new Nfdump();
+        $nfdump->setOption('-W', 1);
+
+        expect(substr_count($nfdump->commandLine(), '-W'))->toBe(1)
+            ->and($nfdump->commandLine())->toContain("-W '1'")
+        ;
+    });
+});
+
 describe('Nfdump::exitCodeFrom()', function (): void {
     // With OpenSwoole's process hook proc_close() returns the wait status: exit 254 is 65024.
     test('unpacks the wait status of a normal exit', function (): void {
@@ -933,6 +1065,34 @@ describe('Nfdump::execute()', function (): void {
 
     test('a non-zero exit with no explanation says so', function (): void {
         expect(fn () => runCannedNfdump('', '', 3))->toThrow(NfdumpException::class, 'nfdump exited with code 3');
+    });
+
+    // 1.7.8 and 1.7.10 announce the -W every run passes on stderr, before anything else and on failed runs too.
+    test('a failure is never explained by the worker count -W makes nfdump announce', function (int $exit, string $message): void {
+        try {
+            runCannedNfdump('', "Using 2 worker threads (cores=20, requested=2, confMax=0)\n", $exit);
+            $this->fail('expected an NfdumpException');
+        } catch (NfdumpException $e) {
+            expect($e->getMessage())->toBe($message)
+                ->and($e->stderr)->toBe('')
+            ;
+        }
+    })->with([
+        'a crash' => [139, 'nfdump exited with code 139'],
+        'a plain failure' => [1, 'nfdump exited with code 1'],
+        'init' => [255, 'nfdump initialisation failed'],
+        'internal' => [250, 'nfdump internal error'],
+    ]);
+
+    test('the worker count is dropped beside a real message', function (): void {
+        try {
+            runCannedNfdump('', "Using 1 worker threads (cores=4, requested=1, confMax=0)\nError open file: No such file or directory\n", 255);
+            $this->fail('expected an NfdumpException');
+        } catch (NfdumpException $e) {
+            expect($e->getMessage())->toBe('nfdump initialisation failed: Error open file: No such file or directory')
+                ->and($e->stderr)->toBe('Error open file: No such file or directory')
+            ;
+        }
     });
 
     // 1.7.8 prints a filter error on stdout and exits 254.

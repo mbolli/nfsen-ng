@@ -112,7 +112,11 @@ final class Settings {
         public private(set) string $nfdumpBinary,
         public private(set) string $nfdumpProfilesData,
         public private(set) string $nfdumpProfile,
+        /** Parallel nfdump processes in effect, at least 1; derived from the CPU cores when $nfdumpMaxProcessesAuto. */
         public private(set) int $nfdumpMaxProcesses,
+        public private(set) bool $nfdumpMaxProcessesAuto,
+        /** Filter threads per nfdump process, passed as -W; 0 leaves nfdump's own default. */
+        public private(set) int $nfdumpWorkers,
         /** Which side of a flow the per-port series counts: 'any', 'dst' or 'src'. */
         public private(set) string $portDirection,
         public private(set) int $importYears,
@@ -169,6 +173,7 @@ final class Settings {
             : (int) ($raw['log']['priority'] ?? LOG_INFO);
 
         $datatype = $raw['frontend']['defaults']['graphs']['datatype'] ?? 'traffic';
+        [$maxProcesses, $maxProcessesAuto] = self::resolveMaxProcesses($raw['nfdump']['max-processes'] ?? EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'));
 
         return new self(
             sources: self::stringList($raw['general']['sources'] ?? EnvRegistry::value('NFSEN_SOURCES')),
@@ -186,7 +191,9 @@ final class Settings {
             nfdumpBinary: (string) ($raw['nfdump']['binary'] ?? EnvRegistry::value('NFSEN_NFDUMP_BINARY')),
             nfdumpProfilesData: (string) ($raw['nfdump']['profiles-data'] ?? EnvRegistry::value('NFSEN_NFDUMP_PROFILES')),
             nfdumpProfile: (string) ($raw['nfdump']['profile'] ?? EnvRegistry::value('NFSEN_NFDUMP_PROFILE')),
-            nfdumpMaxProcesses: max(1, (int) ($raw['nfdump']['max-processes'] ?? EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'))),
+            nfdumpMaxProcesses: $maxProcesses,
+            nfdumpMaxProcessesAuto: $maxProcessesAuto,
+            nfdumpWorkers: self::clampWorkers($raw['nfdump']['workers'] ?? EnvRegistry::value('NFSEN_NFDUMP_WORKERS')),
             portDirection: self::normalizePortDirection($raw['nfdump']['port-direction'] ?? EnvRegistry::value('NFSEN_PORT_DIRECTION')),
             importYears: $importYears,
             logPriority: $logPriority,
@@ -233,6 +240,7 @@ final class Settings {
                 'port' => (int) EnvRegistry::value('NFSEN_VM_PORT'),
             ],
         ];
+        [$maxProcesses, $maxProcessesAuto] = self::resolveMaxProcesses(EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'));
 
         return new self(
             sources: self::stringList(EnvRegistry::value('NFSEN_SOURCES')),
@@ -250,7 +258,9 @@ final class Settings {
             nfdumpBinary: (string) EnvRegistry::value('NFSEN_NFDUMP_BINARY'),
             nfdumpProfilesData: (string) EnvRegistry::value('NFSEN_NFDUMP_PROFILES'),
             nfdumpProfile: (string) EnvRegistry::value('NFSEN_NFDUMP_PROFILE'),
-            nfdumpMaxProcesses: (int) EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'),
+            nfdumpMaxProcesses: $maxProcesses,
+            nfdumpMaxProcessesAuto: $maxProcessesAuto,
+            nfdumpWorkers: self::clampWorkers(EnvRegistry::value('NFSEN_NFDUMP_WORKERS')),
             portDirection: self::normalizePortDirection(EnvRegistry::value('NFSEN_PORT_DIRECTION')),
             importYears: (int) EnvRegistry::value('NFSEN_IMPORT_YEARS'),
             logPriority: self::logLevelFromString((string) EnvRegistry::value('NFSEN_LOG_LEVEL')),
@@ -457,9 +467,17 @@ final class Settings {
         return $clone;
     }
 
+    /** 0 (or less) derives the limit from the CPU cores, like NFSEN_NFDUMP_MAX_PROCESSES=auto. */
     public function withNfdumpMaxProcesses(int $max): self {
         $clone = clone $this;
-        $clone->nfdumpMaxProcesses = max(1, $max);
+        [$clone->nfdumpMaxProcesses, $clone->nfdumpMaxProcessesAuto] = self::resolveMaxProcesses($max);
+
+        return $clone;
+    }
+
+    public function withNfdumpWorkers(int $workers): self {
+        $clone = clone $this;
+        $clone->nfdumpWorkers = self::clampWorkers($workers);
 
         return $clone;
     }
@@ -572,6 +590,29 @@ final class Settings {
     }
 
     // ── Static helpers ────────────────────────────────────────────────────────
+
+    /**
+     * The process limit a configured value stands for, and whether it was derived: a positive
+     * number is used as it is; 0, `auto` or anything else that is not a positive number means
+     * a third of the CPU cores, between 2 and 8 ({@see CpuBudget::autoProcesses()}).
+     *
+     * @return array{0: int<1, max>, 1: bool}
+     */
+    public static function resolveMaxProcesses(mixed $configured): array {
+        $n = is_numeric($configured) ? (int) $configured : 0;
+        if ($n >= 1) {
+            return [$n, false];
+        }
+
+        return [max(1, CpuBudget::autoProcesses(CpuBudget::cores())), true];
+    }
+
+    /** -W takes 0 (nfdump's default) up to CpuBudget::MAX_WORKERS; anything else is the registry default. */
+    public static function clampWorkers(mixed $workers): int {
+        $workers = is_numeric($workers) ? (int) $workers : EnvRegistry::table()['NFSEN_NFDUMP_WORKERS']->default;
+
+        return max(0, min(CpuBudget::MAX_WORKERS, (int) $workers));
+    }
 
     /** Normalize a UI theme string to one of 'auto'|'dark'|'light'. Unknown/empty values fall back to 'auto'. */
     public static function normalizeTheme(string $theme): string {

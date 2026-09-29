@@ -385,8 +385,10 @@
                 <dl class="settings-facts" id="settingsInEffect">
                     {% for row in s.deployment %}
                         <dt>{{ row.label }}</dt>
-                        <dd>{% if row.code %}<code>{{ row.value }}</code>{% else %}{{ row.value }}{% endif %} {{ ui.origin(row.origin) }}</dd>
+                        <dd>{% if row.code %}<code>{{ row.value }}</code>{% else %}{{ row.value }}{% endif %}{% if row.hint is defined %} <small>({{ row.hint }})</small>{% endif %} {{ ui.origin(row.origin) }}</dd>
                     {% endfor %}
+                    <dt>nfdump slots in use</dt>
+                    <dd>{{ s.slots.inUse }} of {{ s.slots.max }} <small>({{ s.slots.split }})</small></dd>
                 </dl>
 
                 <h3 id="settingsEnvTitle">Environment variables</h3>

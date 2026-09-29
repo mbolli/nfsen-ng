@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\common;
 
 use mbolli\nfsen_ng\datasources\Rrd;
+use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
 
 /**
- * Live figures for the Health page: capture sources, disks and nfdump slots.
+ * Live figures for the Health page: capture sources, disks, the nfdump process budget and slots.
  *
  * @phpstan-type SourceHealth array{profile: string, source: string, newestFile: ?string, dataUntil: ?int, written: ?int, imported: int, pending: int, state: 'healthy'|'stale'|'missing'|'nodata'}
  * @phpstan-type DiskUsage array{label: string, path: string, free: ?int, total: ?int, usedPct: ?float}
+ * @phpstan-type SlotCounts array{interactive: int, background: int}
+ * @phpstan-type ActiveQueries array{inUse: int, max: int, backgroundMax: int, byClass: SlotCounts, waiting: SlotCounts}
+ * @phpstan-type ProcessBudget array{cores: int, coresSource: string, coresOrigin: string, coresFrom: string, coresDetail: string, processes: int, auto: bool, workers: int, workersPassed: int, version: string}
  */
 final class HealthMetrics {
     /** Seconds a capture file covers; also nfcapd's default rotation interval. */
@@ -98,22 +102,75 @@ final class HealthMetrics {
     }
 
     /**
-     * nfdump slots in use against the configured maximum. Processes under the shared `default`
-     * handle (import daemon, MCP) and the top-N collector's `topn` count as import.
+     * nfdump slots in use and callers waiting for one, by class, against the process limit.
      *
-     * @return array{inUse: int, max: int, byOwner: array{user: int, import: int}}
+     * @return ActiveQueries
      */
     public static function activeQueries(): array {
-        $byOwner = ['user' => 0, 'import' => 0];
-        foreach (NfdumpSlots::running() as $handle => $pids) {
-            $byOwner[\in_array($handle, ['default', 'topn'], true) ? 'import' : 'user'] += \count($pids);
-        }
-
         return [
             'inUse' => NfdumpSlots::inUse(),
-            'max' => max(1, Config::$settings->nfdumpMaxProcesses),
-            'byOwner' => $byOwner,
+            'max' => NfdumpSlots::max(),
+            'backgroundMax' => NfdumpSlots::backgroundMax(),
+            'byClass' => [
+                'interactive' => NfdumpSlots::inUse(NfdumpSlots::INTERACTIVE),
+                'background' => NfdumpSlots::inUse(NfdumpSlots::BACKGROUND),
+            ],
+            'waiting' => [
+                'interactive' => NfdumpSlots::waiting(NfdumpSlots::INTERACTIVE),
+                'background' => NfdumpSlots::waiting(NfdumpSlots::BACKGROUND),
+            ],
         ];
+    }
+
+    /**
+     * What nfdump may use: the cores and where that number came from, the process limit, the
+     * configured -W and the -W actually passed (0 when this nfdump predates it).
+     *
+     * @return ProcessBudget
+     */
+    public static function processBudget(): array {
+        $cpu = CpuBudget::detect();
+        $settings = Config::$settings;
+        $version = Nfdump::version($settings->nfdumpBinary);
+
+        return [
+            'cores' => $cpu['cores'],
+            'coresSource' => $cpu['source'],
+            'coresOrigin' => $cpu['origin'],
+            'coresFrom' => CpuBudget::sourceLabel($cpu['source']),
+            'coresDetail' => $cpu['detail'],
+            'processes' => NfdumpSlots::max(),
+            'auto' => $settings->nfdumpMaxProcessesAuto,
+            'workers' => $settings->nfdumpWorkers,
+            'workersPassed' => Nfdump::workerThreads($version, $settings->nfdumpWorkers),
+            'version' => $version,
+        ];
+    }
+
+    /**
+     * What happens to -W: passed with its count, or why it is not.
+     *
+     * @param ProcessBudget $budget
+     */
+    public static function workersText(array $budget): string {
+        return match (true) {
+            $budget['workersPassed'] > 0 => '-W ' . $budget['workersPassed'] . ' on every nfdump run',
+            $budget['workers'] === 0 => "Not passed: nfdump's own default (NFSEN_NFDUMP_WORKERS=0)",
+            $budget['version'] === '' => 'Not passed: the nfdump version is unknown',
+            default => 'Not passed: nfdump ' . $budget['version'] . ' has no -W (added in ' . Nfdump::WORKERS_SINCE . ')',
+        };
+    }
+
+    /**
+     * "2 interactive, 1 background, 1 waiting": the slot split as one phrase.
+     *
+     * @param ActiveQueries $active
+     */
+    public static function slotSplit(array $active): string {
+        $text = $active['byClass']['interactive'] . ' interactive, ' . $active['byClass']['background'] . ' background';
+        $waiting = $active['waiting']['interactive'] + $active['waiting']['background'];
+
+        return $waiting > 0 ? $text . ', ' . $waiting . ' waiting' : $text;
     }
 
     /**

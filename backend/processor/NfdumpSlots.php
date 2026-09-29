@@ -9,29 +9,61 @@ use mbolli\nfsen_ng\common\Debug;
 use OpenSwoole\Coroutine;
 
 /**
- * How many nfdump processes may run at once, and which query owns each of them.
+ * How many nfdump processes may run at once, who may take them, and which query owns each.
  *
- * Two jobs that have to be one thing. The limit was previously enforced by counting nfdump
- * processes on the machine and throwing if there were too many, which counted other people's
- * nfdump runs, raced between the count and the spawn, and turned "busy" into an error rather
- * than a wait. Ownership was a single static process id, so a second concurrent run made the
- * Kill button ambiguous: it killed whichever run started last.
+ * The limit was previously enforced by counting nfdump processes on the machine and throwing
+ * if there were too many, which counted other people's nfdump runs, raced between the count
+ * and the spawn, and turned "busy" into an error rather than a wait. Ownership was a single
+ * static process id, so a second concurrent run made the Kill button ambiguous.
  *
- * A slot is taken per nfdump invocation rather than per query on purpose. A filtered-graph
- * build runs hundreds of nfdump processes in sequence, and holding one slot for the whole
- * build would starve every other caller for minutes.
+ * Slots come in two classes. `interactive` (a user waits: UI queries, filtered graphs, exact
+ * runs, an alert Test) may take every free slot. `background` (import, top-N collector,
+ * backfill, live alert evaluation) may hold at most half the slots, only while one more
+ * stays free, and never while a user query is waiting. So a user query never queues behind
+ * background work; it waits only for a running nfdump to end.
+ * Waiters are served in arrival order within those rules.
+ *
+ * A slot is taken per nfdump invocation rather than per query: a filtered-graph build runs
+ * hundreds of processes, and holding a slot for the whole build would starve other callers.
+ * acquireMany() and runInHeldSlot() exist for callers that run several at once.
  *
  * Single-worker only, like the rest of php-via's process-local state. Raising the worker count
- * would need the ceiling in shared memory to mean anything across processes.
+ * would need the counters in shared memory to mean anything across processes.
+ *
+ * @phpstan-type Scope array{class: string, held: bool, wait: ?float, waited: float, until: ?float}
  */
 final class NfdumpSlots {
-    /** How long a caller waits for a slot before giving up. */
-    public const DEFAULT_WAIT_SECONDS = 30.0;
+    public const string INTERACTIVE = 'interactive';
+
+    public const string BACKGROUND = 'background';
+
+    public const array CLASSES = [self::INTERACTIVE, self::BACKGROUND];
+
+    /** How long an interactive caller waits for a slot before giving up. */
+    public const float DEFAULT_WAIT_SECONDS = 30.0;
+
+    /**
+     * Background work yields to every user query, and a slot timeout skips an import's file for
+     * good, so it waits out a long user query instead.
+     */
+    public const float BACKGROUND_WAIT_SECONDS = 600.0;
+
+    /** Exception code of an acquire that timed out. */
+    public const int TIMED_OUT = 1;
 
     /** How often a waiter re-checks for a free slot. */
-    private const POLL_INTERVAL_SECONDS = 0.05;
+    private const float POLL_INTERVAL_SECONDS = 0.05;
 
-    private static int $inUse = 0;
+    /** @var array<string, int> class => slots held */
+    private static array $inUse = [self::INTERACTIVE => 0, self::BACKGROUND => 0];
+
+    /** @var array<int, string> ticket => class of each waiting caller, oldest first */
+    private static array $queue = [];
+
+    private static int $nextTicket = 0;
+
+    /** @var array<int, Scope> coroutine id (-1 outside one) => what its nfdump runs take */
+    private static array $scopes = [];
 
     /**
      * @var array<string, list<int>> query handle => the pids it currently owns
@@ -42,44 +74,197 @@ final class NfdumpSlots {
      */
     private static array $pids = [];
 
+    /** Slots in total: the configured or derived process limit. */
+    public static function max(): int {
+        return max(1, Config::$settings->nfdumpMaxProcesses);
+    }
+
+    /** Slots the background class may hold at once: half of them, at least one. */
+    public static function backgroundMax(): int {
+        return max(1, intdiv(self::max(), 2));
+    }
+
     /**
-     * Waits for a free slot, up to $waitSeconds.
-     *
-     * @throws \RuntimeException when no slot frees up in time
+     * The background rule: a run may start only if a slot stays free for a user query after it
+     * took one; with a single slot, only when nothing else runs.
      */
-    public static function acquire(float $waitSeconds = self::DEFAULT_WAIT_SECONDS): void {
-        $max = max(1, Config::$settings->nfdumpMaxProcesses);
-        $deadline = microtime(true) + $waitSeconds;
+    public static function keepsOneFree(int $inUse, int $max): bool {
+        return $max >= 2 ? $inUse <= $max - 2 : $inUse === 0;
+    }
 
-        while (self::$inUse >= $max) {
-            if (microtime(true) >= $deadline) {
-                throw new \RuntimeException(\sprintf(
-                    'Timed out waiting for a free nfdump slot: %d of %d in use. Raise NFSEN_NFDUMP_MAX_PROCESSES or retry.',
-                    self::$inUse,
-                    $max,
-                ));
+    /** Waits for a free slot of $class, up to $waitSeconds. @throws \RuntimeException when none frees up in time */
+    public static function acquire(float $waitSeconds = self::DEFAULT_WAIT_SECONDS, string $class = self::INTERACTIVE): void {
+        self::acquireMany(1, $class, $waitSeconds);
+    }
+
+    /**
+     * Takes up to $n slots of $class at once. Waits only until at least one is free, then takes
+     * as many as the class may hold right now, so a caller sizes its pool by the answer and
+     * gives each slot back with release(). Runs in a held slot go through runInHeldSlot().
+     *
+     * @param null|float $waitSeconds null: the class default, see defaultWait()
+     *
+     * @return int<1, max> the slots taken, 1 to $n
+     *
+     * @throws \RuntimeException with code TIMED_OUT when no slot frees up in time
+     */
+    public static function acquireMany(int $n, string $class = self::INTERACTIVE, ?float $waitSeconds = null): int {
+        $class = self::known($class);
+        $n = max(1, $n);
+        $started = microtime(true);
+        $deadline = $started + ($waitSeconds ?? self::defaultWait($class));
+        $ticket = null;
+
+        try {
+            while (true) {
+                $free = self::grantable($class);
+                if ($free > 0 && !self::queuedAhead($class, $ticket)) {
+                    $granted = max(1, min($n, $free));
+                    self::$inUse[$class] += $granted;
+
+                    return $granted;
+                }
+
+                if (microtime(true) >= $deadline) {
+                    throw new \RuntimeException(\sprintf(
+                        'Timed out waiting for a free nfdump slot: %d of %d in use (%d interactive, %d background). Raise NFSEN_NFDUMP_MAX_PROCESSES or retry.',
+                        self::inUse(),
+                        self::max(),
+                        self::$inUse[self::INTERACTIVE],
+                        self::$inUse[self::BACKGROUND],
+                    ), self::TIMED_OUT);
+                }
+
+                $ticket ??= self::enqueue($class);
+
+                // Yielding rather than sleeping, so the worker keeps serving other requests while
+                // this one waits. Outside a coroutine (CLI import, tests) there is nothing to yield
+                // to, and Coroutine::usleep() there takes the process down with it.
+                $micros = (int) (self::POLL_INTERVAL_SECONDS * 1_000_000);
+                if (Coroutine::getCid() > 0) {
+                    Coroutine::usleep($micros);
+                } else {
+                    usleep($micros);
+                }
             }
-
-            // Yielding rather than sleeping, so the worker keeps serving other requests while
-            // this one waits. Outside a coroutine (CLI import, tests) there is nothing to yield
-            // to, and Coroutine::usleep() there takes the process down with it.
-            $micros = (int) (self::POLL_INTERVAL_SECONDS * 1_000_000);
-            if (Coroutine::getCid() > 0) {
-                Coroutine::usleep($micros);
-            } else {
-                usleep($micros);
+        } finally {
+            if ($ticket !== null) {
+                unset(self::$queue[$ticket]);
+            }
+            $cid = Coroutine::getCid();
+            if (isset(self::$scopes[$cid])) {
+                self::$scopes[$cid]['waited'] += microtime(true) - $started;
             }
         }
-
-        ++self::$inUse;
     }
 
-    public static function release(): void {
-        self::$inUse = max(0, self::$inUse - 1);
+    /** Whether $e is an acquire that timed out, rather than nfdump failing. */
+    public static function timedOut(\Throwable $e): bool {
+        return $e::class === \RuntimeException::class && $e->getCode() === self::TIMED_OUT;
     }
 
-    public static function inUse(): int {
-        return self::$inUse;
+    /** Gives back $n slots of $class. */
+    public static function release(string $class = self::INTERACTIVE, int $n = 1): void {
+        $class = self::known($class);
+        self::$inUse[$class] = max(0, self::$inUse[$class] - max(0, $n));
+    }
+
+    /** Slots held, by one class or by both. */
+    public static function inUse(?string $class = null): int {
+        return $class === null ? array_sum(self::$inUse) : self::$inUse[self::known($class)];
+    }
+
+    /** Callers waiting for a slot, of one class or of both. */
+    public static function waiting(?string $class = null): int {
+        if ($class === null) {
+            return \count(self::$queue);
+        }
+        $class = self::known($class);
+
+        return \count(array_filter(self::$queue, static fn (string $waiter): bool => $waiter === $class));
+    }
+
+    /** Slots a caller of $class could take now, ignoring who waits: the capacity rules only. */
+    public static function grantable(string $class): int {
+        $max = self::max();
+        $total = self::inUse();
+        if (self::known($class) === self::INTERACTIVE) {
+            return max(0, $max - $total);
+        }
+
+        $room = self::backgroundMax() - self::$inUse[self::BACKGROUND];
+        $granted = 0;
+        while ($granted < $room && self::keepsOneFree($total + $granted, $max)) {
+            ++$granted;
+        }
+
+        return $granted;
+    }
+
+    /**
+     * Slots a newcomer of $class would get now: grantable() unless a caller that goes first is
+     * already waiting. A best-effort worker polls this rather than queueing in front of others.
+     */
+    public static function available(string $class): int {
+        return self::queuedAhead(self::known($class), null) ? 0 : self::grantable($class);
+    }
+
+    /** How long a caller of $class waits for a slot unless it says otherwise. */
+    public static function defaultWait(string $class): float {
+        return self::known($class) === self::BACKGROUND ? self::BACKGROUND_WAIT_SECONDS : self::DEFAULT_WAIT_SECONDS;
+    }
+
+    /**
+     * How long a run in $scope waits for its slot: the scope's wait or the class default, cut to
+     * what is left of the scope's budget.
+     *
+     * @param Scope $scope
+     */
+    public static function waitFor(array $scope): float {
+        $wait = $scope['wait'] ?? self::defaultWait($scope['class']);
+
+        return $scope['until'] === null ? $wait : max(0.0, min($wait, $scope['until'] - microtime(true)));
+    }
+
+    /**
+     * Runs $work with every nfdump it starts in this coroutine taking a $class slot, waiting up to
+     * $waitSeconds for each (null: the class default) and, with a $budget, no more than $budget
+     * seconds for all of them together. $waited receives the time spent waiting.
+     *
+     * @template T
+     *
+     * @param \Closure(): T $work
+     *
+     * @return T
+     */
+    public static function runAs(string $class, \Closure $work, ?float $waitSeconds = null, ?float &$waited = null, ?float $budget = null): mixed {
+        $until = $budget === null ? null : microtime(true) + max(0.0, $budget);
+
+        return self::scoped(['class' => self::known($class), 'held' => false, 'wait' => $waitSeconds, 'waited' => 0.0, 'until' => $until], $work, $waited);
+    }
+
+    /**
+     * Runs $work in a slot of $class the caller already took with acquireMany(): the nfdump runs
+     * it starts in this coroutine take no slot of their own. The caller still releases the slot.
+     *
+     * @template T
+     *
+     * @param \Closure(): T $work
+     *
+     * @return T
+     */
+    public static function runInHeldSlot(string $class, \Closure $work): mixed {
+        return self::scoped(['class' => self::known($class), 'held' => true, 'wait' => null, 'waited' => 0.0, 'until' => null], $work);
+    }
+
+    /**
+     * What an nfdump started in this coroutine takes: interactive, with its own slot, unless
+     * runAs() or runInHeldSlot() says otherwise.
+     *
+     * @return Scope
+     */
+    public static function scope(): array {
+        return self::$scopes[Coroutine::getCid()] ?? ['class' => self::INTERACTIVE, 'held' => false, 'wait' => null, 'waited' => 0.0, 'until' => null];
     }
 
     /**
@@ -141,5 +326,73 @@ final class NfdumpSlots {
         }
 
         return $last;
+    }
+
+    /**
+     * @template T
+     *
+     * @param Scope         $scope
+     * @param \Closure(): T $work
+     *
+     * @return T
+     */
+    private static function scoped(array $scope, \Closure $work, ?float &$waited = null): mixed {
+        $cid = Coroutine::getCid();
+        $outer = self::$scopes[$cid] ?? null;
+        if (isset($outer['until'])) {
+            // Runs in an inner scope spend the outer budget too.
+            $scope['until'] = min($scope['until'] ?? $outer['until'], $outer['until']);
+        }
+        self::$scopes[$cid] = $scope;
+
+        try {
+            return $work();
+        } finally {
+            $waited = self::$scopes[$cid]['waited'];
+            if ($outer === null) {
+                unset(self::$scopes[$cid]);
+            } else {
+                // An inner wait is also the outer scope's.
+                self::$scopes[$cid] = ['waited' => $outer['waited'] + $waited] + $outer;
+            }
+        }
+    }
+
+    /**
+     * Whether a caller of $class must let a waiter go first: a user query waits only behind
+     * earlier user queries; background work waits behind every user query and earlier
+     * background work. $ticket null is a newcomer, behind everyone.
+     */
+    private static function queuedAhead(string $class, ?int $ticket): bool {
+        foreach (self::$queue as $other => $otherClass) {
+            if ($other === $ticket) {
+                continue;
+            }
+            $earlier = $ticket === null || $other < $ticket;
+            if ($otherClass === self::INTERACTIVE && ($earlier || $class === self::BACKGROUND)) {
+                return true;
+            }
+            if ($otherClass === self::BACKGROUND && $class === self::BACKGROUND && $earlier) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function enqueue(string $class): int {
+        $ticket = self::$nextTicket++;
+        self::$queue[$ticket] = $class;
+
+        return $ticket;
+    }
+
+    /** @throws \InvalidArgumentException for a class that is neither interactive nor background */
+    private static function known(string $class): string {
+        if (!\in_array($class, self::CLASSES, true)) {
+            throw new \InvalidArgumentException("Unknown nfdump slot class '{$class}'.");
+        }
+
+        return $class;
     }
 }

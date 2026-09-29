@@ -40,12 +40,6 @@ final class TopNCollector {
     public const int PRUNE_FIRST = 300;
     public const int PRUNE_EVERY = 3600;
 
-    /**
-     * With a single slot, a user query polls for it every 50 ms; the worker waits longer than
-     * that after each run so the query gets the slot first. With more slots maySpawn() suffices.
-     */
-    private const int SINGLE_SLOT_YIELD_US = 60_000;
-
     /** Between maintenance statements and between gap filler days. */
     private const int MAINTENANCE_PAUSE_US = 10_000;
 
@@ -400,7 +394,7 @@ final class TopNCollector {
      * it took one; with a single slot, only when nothing else runs.
      */
     public static function maySpawn(int $inUse, int $maxProcesses): bool {
-        return $maxProcesses >= 2 ? $inUse <= $maxProcesses - 2 : $inUse === 0;
+        return NfdumpSlots::keepsOneFree($inUse, $maxProcesses);
     }
 
     /** Moves when stored top-N data of the profile changed, which invalidates cached range results. */
@@ -595,26 +589,28 @@ final class TopNCollector {
         return $processor;
     }
 
-    /** @return ProcessorResult */
+    /**
+     * A background run. A user query waiting for a slot always goes first, so the worker needs
+     * no pause between runs to let one in.
+     *
+     * @return ProcessorResult
+     */
     private static function execute(Processor $processor): array {
         self::awaitSlot();
 
-        try {
-            return $processor->execute();
-        } finally {
-            if (Config::$settings->nfdumpMaxProcesses <= 1) {
-                self::pause(self::SINGLE_SLOT_YIELD_US);
-            }
-        }
+        return NfdumpSlots::runAs(NfdumpSlots::BACKGROUND, static fn (): array => $processor->execute());
     }
 
-    /** Waits in 1 s steps until maySpawn() allows a run and no bulk import holds a daemon lock. */
+    /**
+     * Waits in 1 s steps, outside the slot queue, until a background slot is free with nobody
+     * waiting before it and no bulk import holds a daemon lock: imports and alerts go first.
+     */
     private static function awaitSlot(): void {
         if (Coroutine::getCid() <= 0) {
             return;
         }
         while (self::$booted
-            && (!self::maySpawn(NfdumpSlots::inUse(), max(1, Config::$settings->nfdumpMaxProcesses))
+            && (NfdumpSlots::available(NfdumpSlots::BACKGROUND) === 0
                 || (self::$importBusy !== null && (self::$importBusy)()))) {
             Coroutine::sleep(1);
         }

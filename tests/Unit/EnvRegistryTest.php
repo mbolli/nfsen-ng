@@ -45,12 +45,12 @@ describe('EnvRegistry::value()', function (): void {
     test('falls back to default on invalid input, and clamps to min', function (): void {
         putenv('NFSEN_IMPORT_YEARS=not-a-number');
         putenv('NFSEN_DEFAULT_THEME=neon');
-        putenv('NFSEN_NFDUMP_MAX_PROCESSES=0');
+        putenv('NFSEN_NFDUMP_MAX_PROCESSES=-2');
         putenv('NFSEN_FILTERS=not-json');
 
         expect(EnvRegistry::value('NFSEN_IMPORT_YEARS'))->toBe(3)
             ->and(EnvRegistry::value('NFSEN_DEFAULT_THEME'))->toBe('auto')
-            ->and(EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'))->toBe(1)
+            ->and(EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'))->toBe(0)
             ->and(EnvRegistry::value('NFSEN_FILTERS'))->toBe([])
         ;
     });
@@ -134,6 +134,89 @@ describe('EnvRegistry::issues()', function (): void {
             ->and(array_column(EnvRegistry::issues(), 'name'))->toContain('NFSEN_TOPN_RETENTION_DAYS')
         ;
     });
+});
+
+describe('nfdump process budget', function (): void {
+    test('NFSEN_NFDUMP_MAX_PROCESSES defaults to 0, which is auto', function (): void {
+        $var = EnvRegistry::table()['NFSEN_NFDUMP_MAX_PROCESSES'];
+
+        expect($var->group)->toBe('nfdump')
+            ->and($var->default)->toBe(0)
+            ->and($var->min)->toBe(0)
+            ->and($var->doc)->toContain('2 to 3 CPU cores')
+            ->and(EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'))->toBe(0)
+            ->and(EnvRegistry::isSet('NFSEN_NFDUMP_MAX_PROCESSES'))->toBeFalse()
+            ->and(EnvRegistry::acceptsAuto('NFSEN_NFDUMP_MAX_PROCESSES'))->toBeTrue()
+            ->and(EnvRegistry::acceptsAuto('NFSEN_IMPORT_YEARS'))->toBeFalse()
+        ;
+    });
+
+    test('accepts auto in any case, as 0 and without an issue', function (string $raw): void {
+        putenv('NFSEN_NFDUMP_MAX_PROCESSES=' . $raw);
+
+        expect(EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'))->toBe(0)
+            ->and(EnvRegistry::isSet('NFSEN_NFDUMP_MAX_PROCESSES'))->toBeTrue()
+            ->and(array_column(EnvRegistry::issues(), 'name'))->not->toContain('NFSEN_NFDUMP_MAX_PROCESSES')
+        ;
+    })->with(['auto', 'AUTO', ' Auto ']);
+
+    test('an explicit process count is kept', function (): void {
+        putenv('NFSEN_NFDUMP_MAX_PROCESSES=5');
+
+        expect(EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'))->toBe(5);
+    });
+
+    // A negative count becomes auto; it must not do so silently.
+    test('a process count below 0 is reported as auto', function (string $raw, ?string $message): void {
+        putenv('NFSEN_NFDUMP_MAX_PROCESSES=' . $raw);
+        $messages = array_column(array_filter(EnvRegistry::issues(), fn (array $i) => $i['name'] === 'NFSEN_NFDUMP_MAX_PROCESSES'), 'message');
+
+        expect($messages)->toBe($message === null ? [] : [$message]);
+    })->with([
+        'below' => ['-2', 'NFSEN_NFDUMP_MAX_PROCESSES: -2 is below 0, using auto'],
+        'zero' => ['0', null],
+        'auto' => ['auto', null],
+        'no upper bound' => ['64', null],
+    ]);
+
+    test('anything else falls back to auto and says so', function (): void {
+        putenv('NFSEN_NFDUMP_MAX_PROCESSES=lots');
+        $issues = array_values(array_filter(EnvRegistry::issues(), fn (array $i) => $i['name'] === 'NFSEN_NFDUMP_MAX_PROCESSES'));
+
+        expect(EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'))->toBe(0)
+            ->and($issues)->toHaveCount(1)
+            ->and($issues[0]['message'])->toBe("NFSEN_NFDUMP_MAX_PROCESSES: invalid value 'lots' (expected auto or a whole number), falling back to auto")
+        ;
+    });
+
+    test('NFSEN_NFDUMP_WORKERS is an nfdump int, min 0, default 2', function (): void {
+        $var = EnvRegistry::table()['NFSEN_NFDUMP_WORKERS'];
+
+        expect($var->group)->toBe('nfdump')
+            ->and($var->type)->toBe('int')
+            ->and($var->min)->toBe(0)
+            ->and($var->default)->toBe(2)
+            ->and($var->doc)->toContain('-W')
+            ->and(EnvRegistry::value('NFSEN_NFDUMP_WORKERS'))->toBe(2)
+            ->and(EnvRegistry::acceptsAuto('NFSEN_NFDUMP_WORKERS'))->toBeFalse()
+        ;
+
+        putenv('NFSEN_NFDUMP_WORKERS=0');
+        expect(EnvRegistry::value('NFSEN_NFDUMP_WORKERS'))->toBe(0);
+    });
+
+    // Settings clamps -W to 0..16, so a value outside that must not pass silently.
+    test('NFSEN_NFDUMP_WORKERS outside 0 to 16 is reported with the value in effect', function (string $raw, ?string $message): void {
+        putenv('NFSEN_NFDUMP_WORKERS=' . $raw);
+        $messages = array_column(array_filter(EnvRegistry::issues(), fn (array $i) => $i['name'] === 'NFSEN_NFDUMP_WORKERS'), 'message');
+
+        expect($messages)->toBe($message === null ? [] : [$message]);
+    })->with([
+        'above' => ['32', 'NFSEN_NFDUMP_WORKERS: 32 is above 16, using 16'],
+        'below' => ['-1', 'NFSEN_NFDUMP_WORKERS: -1 is below 0, using 0'],
+        'the top' => ['16', null],
+        'zero' => ['0', null],
+    ]);
 });
 
 describe('redesign variables', function (): void {

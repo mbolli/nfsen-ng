@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\processor;
 
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\CpuBudget;
 use mbolli\nfsen_ng\common\Debug;
 
 /**
@@ -20,6 +21,9 @@ use mbolli\nfsen_ng\common\Debug;
 class Nfdump implements Processor {
     /** How long execute() waits for nfdump to exit once it has closed its output. */
     public const float EXIT_WAIT_SECONDS = 5.0;
+
+    /** The first nfdump with -W; 1.7.2 answers it with its usage text. */
+    public const string WORKERS_SINCE = '1.7.3';
     public static ?self $_instance = null;
 
     /**
@@ -98,6 +102,18 @@ class Nfdump implements Processor {
         return $version !== ''
             && version_compare($version, '1.7.5', '>=')
             && version_compare($version, '1.7.6', '<');
+    }
+
+    /**
+     * The -W value for a binary of $version: the configured filter threads, or 0 (not passed)
+     * when they are 0, the version is unknown or it predates -W.
+     */
+    public static function workerThreads(string $version, int $configured): int {
+        if ($configured <= 0 || $version === '' || version_compare($version, self::WORKERS_SINCE, '<')) {
+            return 0;
+        }
+
+        return min($configured, CpuBudget::MAX_WORKERS);
     }
 
     /**
@@ -210,10 +226,12 @@ class Nfdump implements Processor {
         $command = $this->commandLine();
         $this->d->log('Trying to execute ' . $command, LOG_DEBUG);
 
-        // Wait for a slot rather than counting nfdump processes on the machine. That count
-        // included runs this app never started, raced between counting and spawning, and made
-        // "busy" an error instead of a short wait.
-        NfdumpSlots::acquire();
+        // The caller's scope says which slot class this run takes, or that it runs in a slot the
+        // caller already holds. Read once, so the release below matches the acquire.
+        $scope = NfdumpSlots::scope();
+        if (!$scope['held']) {
+            NfdumpSlots::acquire(NfdumpSlots::waitFor($scope), $scope['class']);
+        }
 
         $descriptorspec = [
             0 => ['pipe', 'r'],
@@ -270,7 +288,9 @@ class Nfdump implements Processor {
             if ($pid !== null) {
                 NfdumpSlots::unregister($this->queryHandle, $pid);
             }
-            NfdumpSlots::release();
+            if (!$scope['held']) {
+                NfdumpSlots::release($scope['class']);
+            }
         }
 
         return $this->interpret($command, $stdout, $stderr, $exitCode, $timer);
@@ -278,13 +298,20 @@ class Nfdump implements Processor {
 
     /**
      * The command line execute() runs, as shown to the user. `--` keeps a filter that starts
-     * with a dash from being read as an nfdump option such as `-w <file>`.
+     * with a dash from being read as an nfdump option such as `-w <file>`. `-W`, after the
+     * query's own options, caps nfdump's filter threads (otherwise half the host's cores).
      */
     public function commandLine(): string {
         $parts = [$this->cfg['env']['bin']];
         $options = $this->flatten($this->cfg['option']);
         if ($options !== '') {
             $parts[] = $options;
+        }
+        if (!isset($this->cfg['option']['-W'])) {
+            $workers = self::workerThreads(self::version($this->cfg['env']['bin']), Config::$settings->nfdumpWorkers);
+            if ($workers > 0) {
+                $parts[] = '-W ' . $workers;
+            }
         }
         if ($this->cfg['filter'] !== '') {
             $parts[] = '--';
@@ -692,10 +719,10 @@ class Nfdump implements Processor {
     /**
      * nfdump messages that say nothing about this query's result.
      *
-     * Two of them are unavoidable rather than exceptional: a partially written capture file
-     * being read while nfcapd still has it open, and the note that `-s` takes precedence over
-     * the `-a` flag, which nfdump prints for every aggregated statistic even though it honours
-     * the `-A` spec (#174).
+     * They are unavoidable rather than exceptional: a partially written capture file being read
+     * while nfcapd still has it open, and the note that `-s` takes precedence over the `-a` flag,
+     * which nfdump prints for every aggregated statistic even though it honours the `-A` spec
+     * (#174).
      */
     private static function withoutBenignStderr(string $stderr): string {
         $kept = array_filter(
@@ -714,6 +741,19 @@ class Nfdump implements Processor {
         );
 
         return trim(implode("\n", $kept));
+    }
+
+    /**
+     * Without the worker notices that `-W` makes nfdump print on every run, a failed one
+     * included: the thread count, and the cap when -W exceeds the host's online cores.
+     * They never explain a result, so not even a failure may fall back to them.
+     */
+    private static function withoutWorkerNotice(string $stderr): string {
+        return (string) preg_replace(
+            '/^[ \t]*(?:Using \d+ worker threads?\b|Limit requested workers:).*(?:\R|$)/mi',
+            '',
+            $stderr
+        );
     }
 
     /**
@@ -745,7 +785,7 @@ class Nfdump implements Processor {
     private function interpret(string $command, string $stdout, string $stderrRaw, int $exitCode, float $timer): array {
         // What survives the benign filter is what every later `$result['stderr']` reports, and
         // the panels show that to the user, so a message nfdump always prints must not reach it.
-        $stderrRaw = trim($stderrRaw);
+        $stderrRaw = trim(self::withoutWorkerNotice($stderrRaw));
         $stderr = '';
         if ($stderrRaw !== '') {
             $stderr = self::withoutBenignStderr($stderrRaw);

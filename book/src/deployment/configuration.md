@@ -60,9 +60,75 @@ whether it was set or defaulted.
 | `NFSEN_NFDUMP_PROFILES` | `/var/nfdump/profiles-data` | Root path to the `nfcapd` data tree. In Docker this must match the container-side bind-mount (the shipped compose maps it to `/data/nfsen-ng`). |
 | `NFSEN_NFDUMP_PROFILE` | `live` | Default profile subfolder. See [Profiles](profiles.md). |
 | `NFSEN_PORT_DIRECTION` | `dst` | Which side of a flow a per-port graph counts: `dst`, `src`, or `any` for either direction. Set `any` if your exporter reports one direction of each flow and your port graphs are empty. |
-| `NFSEN_NFDUMP_MAX_PROCESSES` | `2` | Max concurrent nfdump processes (floored at 1). One slot is taken per nfdump run, including the import daemon's and the top-N collector's, so `1` makes browsing wait while an import is in progress. |
+| `NFSEN_NFDUMP_MAX_PROCESSES` | `auto` | Parallel nfdump processes; each uses about 2 to 3 CPU cores. `auto` or `0` is a third of the CPU cores, between 2 and 8; any positive number is used as it is. See [nfdump processes and CPU cores](#nfdump-processes-and-cpu-cores). |
+| `NFSEN_NFDUMP_WORKERS` | `2` | Filter threads per nfdump process, passed to every run as `-W` (`0` to `16`). `0` leaves nfdump's own default of half the host's cores. |
 | `NFCAPD_TZ` | _(PHP default TZ)_ | Timezone `nfcapd` used when writing filenames. Set this when `nfcapd` ran on a non-UTC host and nfsen-ng runs at `TZ=UTC`; otherwise epoch timestamps are off by the UTC offset. E.g. `Europe/Berlin`. |
 | `TZ` | _(system)_ | The container/process timezone. nfsen-ng also compares it against php.ini in a health check. |
+
+### nfdump processes and CPU cores
+
+nfdump reads and decompresses each capture file on one thread and aggregates
+`-s` and `-A` statistics on its main thread, so one nfdump process keeps about 2
+to 3 cores busy whatever its thread settings say. nfsen-ng therefore limits
+processes, not threads: `NFSEN_NFDUMP_MAX_PROCESSES` is the number of nfdump runs
+that may execute at once. Each run also holds its own aggregation table, about
+150 to 200 MB for `-s srcip` over 24 million flows and more for wide windows and
+`-A`, so the limit bounds memory as well.
+
+`auto` (the default, also `0`) sets the limit to a third of the CPU cores, at
+least 2 and at most 8:
+
+| CPU cores | Parallel processes |
+|-----------|--------------------|
+| 4 | 2 |
+| 8 | 2 |
+| 12 | 4 |
+| 20 | 6 |
+| 24 or more | 8 |
+
+The core count follows container limits. It is the smaller of the CPUs the
+process may run on (what `nproc` prints) and the cgroup CPU quota, rounded up
+(`cpu.max`, or `cpu.cfs_quota_us` on cgroup v1). A container started with
+`--cpus=4` on a 20-core host counts 4. Where neither can be read, nfsen-ng
+counts the online CPUs. An explicit number is used as it is, so existing
+settings keep working.
+
+A `settings.php` copied from an older template, whose `max-processes` line reads
+`(int) (getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 1)`, pins one process when the
+variable is unset or `0`, because PHP reads `'0'` as false there. Set the
+variable to `auto` instead, delete the line, or write
+`getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 'auto'`. The **Parallel processes**
+row on the Health page says whether `auto` is in effect.
+
+`NFSEN_NFDUMP_WORKERS` is passed to every nfdump run as `-W`. Without it, each
+process starts filter threads for half the host's cores, up to 8, so six
+parallel runs could start 48 of them. A second filter thread speeds up a
+filtered query by up to about 20%; more make no measurable difference. nfdump
+1.7.2 has no `-W`, so nfsen-ng passes it to 1.7.3 and later only. The filter
+check while typing (`nfdump -Z`) takes neither a slot nor `-W`.
+
+Every nfdump run takes one slot, and slots come in two classes:
+
+- **User queries** (Top Talkers, Flows, Conversations, a filtered graph, the
+  exact Overview run, an alert's **Test** button) may take every free slot and
+  wait up to 30 seconds for one.
+- **Background work** (the import, the top-N collector and its gap filler, live
+  alert evaluation) holds at most half the slots, starts only while one more
+  slot stays free, and waits while any user query waits. It waits up to 10
+  minutes for a slot, so a long query delays an import instead of dropping a
+  file. Live alert evaluation is the exception: the import daemon waits for it,
+  so one evaluation waits at most a minute in total for the slots of all its
+  filtered rules. A rule still without a slot then is not evaluated for that
+  interval, and the log says `no free nfdump process`.
+
+Background work therefore never holds more than half the slots, and a user
+query never queues behind background work: it waits only for a running nfdump
+to end. With a limit of `1`, a user query waits for at most one background run
+that had already started.
+
+The **nfdump** group on the **Health** page shows the detected cores and where
+the number came from, the process limit, the `-W` in use and the slots in use by
+class. **Settings > System** lists the same under *In effect*.
 
 ### Import
 
@@ -328,7 +394,8 @@ $nfsen_config = [
         'binary'        => '/usr/local/nfdump/bin/nfdump',
         'profiles-data' => '/var/nfdump/profiles-data',
         'profile'       => 'live',
-        'max-processes' => 1,
+        'max-processes' => 'auto',         // or a number of parallel nfdump processes
+        'workers'       => 2,              // -W per nfdump run; 0 = nfdump's default
     ],
     'db' => [
         'RRD'            => ['data_path' => null, 'import_years' => 3],
@@ -354,7 +421,8 @@ defaults):
 | `nfdump.binary` | nfdump path | `NFSEN_NFDUMP_BINARY`, else `/usr/bin/nfdump` |
 | `nfdump.profiles-data` | Capture data root | `/var/nfdump/profiles-data` |
 | `nfdump.profile` | Default profile | `live` |
-| `nfdump.max-processes` | Max concurrent nfdump procs | `NFSEN_NFDUMP_MAX_PROCESSES`, else `1` |
+| `nfdump.max-processes` | Parallel nfdump processes: `'auto'`, `0` or a number | `NFSEN_NFDUMP_MAX_PROCESSES`, else `'auto'` |
+| `nfdump.workers` | `-W` per nfdump run (`0` to `16`) | `NFSEN_NFDUMP_WORKERS`, else `2` |
 | `db.RRD.data_path` | RRD storage dir (`null` = default) | `null` |
 | `db.<datasource>.import_years` | Years to import/retain | `3` |
 | `log.priority` | Syslog level constant | `\LOG_INFO` |

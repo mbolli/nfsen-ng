@@ -1,0 +1,61 @@
+From 231d97141f4f323df4f1463cf2c2693479b0989a Mon Sep 17 00:00:00 2001
+From: Michael Bolli <michael@zweiundeins.gmbh>
+Date: Wed, 30 Sep 2026 06:04:22 +0000
+Subject: [PATCH] Rocket: a queued definition applies the shadow host's
+ children that Datastar's first pass skipped
+
+---
+ library/src/rocket/runtime.ts | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/library/src/rocket/runtime.ts b/library/src/rocket/runtime.ts
+index bb5ad00..9933c7d 100644
+--- a/library/src/rocket/runtime.ts
++++ b/library/src/rocket/runtime.ts
+@@ -407,10 +407,14 @@ const markPendingRocketHosts = (root: ParentNode) => {
+       }
+       target.setAttribute(rocketIgnoreAttr, '')
+       target.setAttribute(rocketDeferredIgnoreAttr, tagName)
++      if (!isDocumentObserverActive()) hiddenFromFirstApply.add(target)
+     }
+   }
+ }
+ 
++// Marked before Datastar's first pass, which therefore skipped them: the upgrade applies them.
++const hiddenFromFirstApply = new WeakSet<Element>()
++
+ // Keep the pre-upgrade guard in sync with live DOM insertion.
+ //
+ // Watch live DOM insertions and scoped attribute additions so newly unresolved Rocket content is deferred before Datastar can evaluate it.
+@@ -1250,12 +1254,15 @@ export function rocket<
+       )
+ 
+       // Remove this host's child markers before scoping them while leaving independently pending nested Rocket hosts protected.
++      const neverApplied: HTMLOrSVG[] = []
+       for (const node of this.querySelectorAll(
+         `[${rocketDeferredIgnoreAttr}]`,
+       )) {
+         if (node.getAttribute(rocketDeferredIgnoreAttr) !== tag) continue
+         node.removeAttribute(rocketDeferredIgnoreAttr)
+         node.removeAttribute(rocketIgnoreAttr)
++        if (hiddenFromFirstApply.delete(node))
++          neverApplied.push(node as HTMLOrSVG)
+       }
+ 
+       // Apply host markers here because custom-element constructors cannot mutate attributes on freshly created elements.
+@@ -1587,6 +1594,12 @@ export function rocket<
+       // In `light` mode that surface is the host itself.
+       // In shadow modes, re-applying the host would incorrectly rewrite outer-page bindings into Rocket's private signal path.
+       apply(this.#mountRoot!, true)
++      // Light children of a shadow host: the mount root's apply does not reach them, and removing
++      // their marker applies nothing.
++      if (this.#mountRoot !== this) {
++        for (const node of neverApplied)
++          if (node.parentNode === this) apply(node, false)
++      }
+       this.#datastarApplied = true
+       this.#conditionalCleanups.push(
+         ...initRocketStructures(this.#mountRoot!, {
+-- 
+2.55.0
+

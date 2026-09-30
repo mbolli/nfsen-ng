@@ -17,6 +17,11 @@ and each patch's sha256; `tests/Unit/FrontendAssetsTest.php` checks them.
 | 0005 clean up the shadow tree's attributes on disconnect | [#1221](https://github.com/starfederation/datastar/issues/1221) |
 | 0006 instances share one constructed stylesheet per CSS text | [#1222](https://github.com/starfederation/datastar/issues/1222) |
 | 0007 observers hear an attribute write whose value decodes the same | [#1223](https://github.com/starfederation/datastar/issues/1223) |
+| 0008 a morph that starts inside another keeps the outer one's pantry and id maps | [#1209](https://github.com/starfederation/datastar/issues/1209) |
+| 0009 a light component renders inside a data-ignore-morph ancestor | not filed yet: [draft](https://github.com/zweiundeins/starbase/blob/main/docs/upstream/09-render-inside-ignore-morph.md) |
+| 0010 a removed element's mount root leaves the observed roots | not filed yet: [draft](https://github.com/zweiundeins/starbase/blob/main/docs/upstream/10-removed-elements-stay-observed.md) |
+| 0011 a queued definition applies the shadow host's children that Datastar's first pass skipped | not filed yet: [draft](https://github.com/zweiundeins/starbase/blob/main/docs/upstream/11-queued-definition-children.md) |
+| 0012 the pending-host observer scans a parent once per batch, not once per moved child | not filed yet: [draft](https://github.com/zweiundeins/starbase/blob/main/docs/upstream/12-pending-host-observer-rescan.md) |
 
 ```sh
 sh scripts/vendor-rocket.sh --check                   # the committed bundle is the build (offline)

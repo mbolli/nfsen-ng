@@ -1,0 +1,41 @@
+From e10d4fbf3dd210785bf12ffe941d44959938aeb4 Mon Sep 17 00:00:00 2001
+From: Michael Bolli <michael@zweiundeins.gmbh>
+Date: Wed, 30 Sep 2026 06:06:10 +0000
+Subject: [PATCH] Rocket: the pending-host observer scans a parent once per
+ batch, not once per moved child
+
+---
+ library/src/rocket/runtime.ts | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/library/src/rocket/runtime.ts b/library/src/rocket/runtime.ts
+index fd251f0..7afa76a 100644
+--- a/library/src/rocket/runtime.ts
++++ b/library/src/rocket/runtime.ts
+@@ -421,6 +421,9 @@ const hiddenFromFirstApply = new WeakSet<Element>()
+ const observePendingRocketHosts = () => {
+   markPendingRocketHosts(document)
+   new MutationObserver((records) => {
++    // replaceChildren() over nodes already in the parent queues a record per node: scan each
++    // parent once per batch, and not for a removal, which cannot bring a pending host.
++    const parents = new Set<Element>()
+     for (const record of records) {
+       if (record.type === 'attributes' && record.target instanceof Element) {
+         const name = record.attributeName
+@@ -435,10 +438,11 @@ const observePendingRocketHosts = () => {
+       for (const node of record.addedNodes) {
+         if (node instanceof Element) markPendingRocketHosts(node)
+       }
+-      if (record.target instanceof Element) {
+-        markPendingRocketHosts(record.target)
++      if (record.addedNodes.length && record.target instanceof Element) {
++        parents.add(record.target)
+       }
+     }
++    for (const parent of parents) markPendingRocketHosts(parent)
+   }).observe(document.documentElement, {
+     subtree: true,
+     childList: true,
+-- 
+2.55.0
+

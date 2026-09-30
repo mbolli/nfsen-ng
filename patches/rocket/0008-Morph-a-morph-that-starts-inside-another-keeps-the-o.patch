@@ -1,0 +1,171 @@
+From e8b76d72fb0ea3684da2bee70ff1a872bba43f1a Mon Sep 17 00:00:00 2001
+From: Michael Bolli <michael@zweiundeins.gmbh>
+Date: Tue, 29 Sep 2026 19:09:00 +0000
+Subject: [PATCH] Morph: a morph that starts inside another keeps the outer
+ one's pantry and id maps
+
+---
+ library/src/plugins/watchers/patchElements.ts | 111 +++++++++++-------
+ 1 file changed, 67 insertions(+), 44 deletions(-)
+
+diff --git a/library/src/plugins/watchers/patchElements.ts b/library/src/plugins/watchers/patchElements.ts
+index 0208f43..4d17fad 100644
+--- a/library/src/plugins/watchers/patchElements.ts
++++ b/library/src/plugins/watchers/patchElements.ts
+@@ -46,7 +46,9 @@ watcher({
+       typeof args.namespace === 'string' ? args.namespace : 'html'
+     const useViewTransition = isStringTrue(args.useViewTransition)
+     const viewTransitionSelector =
+-      typeof args.viewTransitionSelector === 'string' ? args.viewTransitionSelector : ''
++      typeof args.viewTransitionSelector === 'string'
++        ? args.viewTransitionSelector
++        : ''
+     const elements = args.elements
+ 
+     if (!PATCH_MODES.includes(mode as PatchElementsMode)) {
+@@ -77,7 +79,9 @@ watcher({
+         }
+       }
+       if (supportsViewTransitions(target)) {
+-        target.startViewTransition(() => onPatchElements(ctx, patchElementsArgs))
++        target.startViewTransition(() =>
++          onPatchElements(ctx, patchElementsArgs),
++        )
+       } else {
+         onPatchElements(ctx, patchElementsArgs)
+       }
+@@ -253,7 +257,9 @@ const applyToTargets = (
+           if (consume && used) {
+             break
+           }
+-          const nextNode = consume ? element : (element.cloneNode(true) as Element)
++          const nextNode = consume
++            ? element
++            : (element.cloneNode(true) as Element)
+           morph(target, nextNode, mode)
+           execute(target)
+           const scopeHost = target.closest('[data-scope-children]')
+@@ -285,6 +291,10 @@ const oldIdTagNameMap = new Map<string, string>()
+ const duplicateIds = new Set<string>()
+ const ctxPantry = DOCUMENT.createElement('div')
+ ctxPantry.hidden = true
++// A morph can start inside another one: a Rocket element renders its shadow
++// root when the outer morph connects it. Only the outermost call moves the
++// pantry, and a nested call gives the outer one its id maps back.
++let morphDepth = 0
+ 
+ const aliasedIgnoreMorph = aliasify('ignore-morph')
+ const aliasedIgnoreMorphAttr = `[${aliasedIgnoreMorph}]`
+@@ -305,55 +315,68 @@ export const morph = (
+ 
+   const normalizedElt = DOCUMENT.createElement('div')
+   normalizedElt.append(newContent)
+-  DOCUMENT.body.insertAdjacentElement('afterend', ctxPantry)
+-
+-  // Computes the set of IDs that persist between the two contents excluding duplicates
+-  const oldIdElements = oldElt.querySelectorAll('[id]')
+-  for (const { id, tagName } of oldIdElements) {
+-    if (oldIdTagNameMap.has(id)) {
+-      duplicateIds.add(id)
+-    } else {
+-      oldIdTagNameMap.set(id, tagName)
++  const saved = morphDepth++
++    ? ([new Map(ctxIdMap), new Set(ctxPersistentIds)] as const)
++    : null
++  if (!saved) DOCUMENT.body.insertAdjacentElement('afterend', ctxPantry)
++  try {
++    // Computes the set of IDs that persist between the two contents excluding duplicates
++    const oldIdElements = oldElt.querySelectorAll('[id]')
++    for (const { id, tagName } of oldIdElements) {
++      if (oldIdTagNameMap.has(id)) {
++        duplicateIds.add(id)
++      } else {
++        oldIdTagNameMap.set(id, tagName)
++      }
+     }
+-  }
+-  if (oldElt instanceof Element && oldElt.id) {
+-    if (oldIdTagNameMap.has(oldElt.id)) {
+-      duplicateIds.add(oldElt.id)
+-    } else {
+-      oldIdTagNameMap.set(oldElt.id, oldElt.tagName)
++    if (oldElt instanceof Element && oldElt.id) {
++      if (oldIdTagNameMap.has(oldElt.id)) {
++        duplicateIds.add(oldElt.id)
++      } else {
++        oldIdTagNameMap.set(oldElt.id, oldElt.tagName)
++      }
+     }
+-  }
+ 
+-  ctxPersistentIds.clear()
+-  const newIdElements = normalizedElt.querySelectorAll('[id]')
+-  for (const { id, tagName } of newIdElements) {
+-    if (ctxPersistentIds.has(id)) {
+-      duplicateIds.add(id)
+-    } else if (oldIdTagNameMap.get(id) === tagName) {
+-      ctxPersistentIds.add(id)
++    ctxPersistentIds.clear()
++    const newIdElements = normalizedElt.querySelectorAll('[id]')
++    for (const { id, tagName } of newIdElements) {
++      if (ctxPersistentIds.has(id)) {
++        duplicateIds.add(id)
++      } else if (oldIdTagNameMap.get(id) === tagName) {
++        ctxPersistentIds.add(id)
++      }
+     }
+-  }
+ 
+-  for (const id of duplicateIds) {
+-    ctxPersistentIds.delete(id)
+-  }
+-
+-  oldIdTagNameMap.clear()
+-  duplicateIds.clear()
+-  ctxIdMap.clear()
++    for (const id of duplicateIds) {
++      ctxPersistentIds.delete(id)
++    }
+ 
+-  const parent = mode === 'outer' ? oldElt.parentElement! : oldElt
+-  populateIdMapWithTree(parent, oldIdElements)
+-  populateIdMapWithTree(normalizedElt, newIdElements)
++    oldIdTagNameMap.clear()
++    duplicateIds.clear()
++    ctxIdMap.clear()
+ 
+-  morphChildren(
+-    parent,
+-    normalizedElt,
+-    mode === 'outer' ? oldElt : null,
+-    oldElt.nextSibling,
+-  )
++    const parent = mode === 'outer' ? oldElt.parentElement! : oldElt
++    populateIdMapWithTree(parent, oldIdElements)
++    populateIdMapWithTree(normalizedElt, newIdElements)
+ 
+-  ctxPantry.remove()
++    morphChildren(
++      parent,
++      normalizedElt,
++      mode === 'outer' ? oldElt : null,
++      oldElt.nextSibling,
++    )
++  } finally {
++    morphDepth--
++    if (!saved) {
++      ctxPantry.remove()
++    } else {
++      const [idMap, persistentIds] = saved
++      ctxIdMap.clear()
++      for (const [node, ids] of idMap) ctxIdMap.set(node, ids)
++      ctxPersistentIds.clear()
++      for (const id of persistentIds) ctxPersistentIds.add(id)
++    }
++  }
+ }
+ 
+ // This is the core algorithm for matching up children.
+-- 
+2.55.0
+

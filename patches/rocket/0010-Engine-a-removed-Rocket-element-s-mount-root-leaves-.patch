@@ -1,0 +1,51 @@
+From d3eaa76728fbf2223812e161bcfc73af5d1dc86f Mon Sep 17 00:00:00 2001
+From: Michael Bolli <michael@zweiundeins.gmbh>
+Date: Wed, 30 Sep 2026 06:02:04 +0000
+Subject: [PATCH] Engine: a removed Rocket element's mount root leaves the
+ observed roots
+
+---
+ library/src/engine/engine.ts  | 5 +++++
+ library/src/rocket/runtime.ts | 3 +++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/library/src/engine/engine.ts b/library/src/engine/engine.ts
+index bc723e6..a47247f 100644
+--- a/library/src/engine/engine.ts
++++ b/library/src/engine/engine.ts
+@@ -262,6 +262,11 @@ export const apply = (
+   }
+ }
+ 
++// Drops a root that apply() observed, once its owner is gone: the set would hold it for good.
++export const forgetRoot = (root: HTMLOrSVG | ShadowRoot): void => {
++  if (root !== DOCUMENT.documentElement) observedRoots.delete(root)
++}
++
+ export const applyElement = (el: HTMLOrSVG, onlyNew = false): void => {
+   applyEls([el], onlyNew)
+ }
+diff --git a/library/src/rocket/runtime.ts b/library/src/rocket/runtime.ts
+index 63cf310..bb5ad00 100644
+--- a/library/src/rocket/runtime.ts
++++ b/library/src/rocket/runtime.ts
+@@ -3,6 +3,7 @@ import {
+   apply,
+   applyElement,
+   cleanupTree,
++  forgetRoot,
+   isDocumentObserverActive,
+   action as registerAction,
+ } from '@engine'
+@@ -1679,6 +1680,8 @@ export function rocket<
+         for (const handlers of Object.values(this.#form)) handlers.length = 0
+         // Listeners on window or document (data-on:*__window) would outlive us.
+         if (this.#mountRoot instanceof ShadowRoot) cleanupTree(this.#mountRoot)
++        // connectedCallback observes the mount root again; kept, it would keep this element alive.
++        if (this.#mountRoot) forgetRoot(this.#mountRoot)
+         this.#mounted = false
+       }
+     }
+-- 
+2.55.0
+

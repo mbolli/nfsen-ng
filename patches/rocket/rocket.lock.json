@@ -1,10 +1,10 @@
 {
     "banner": "Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)",
-    "sha256": "eedda3e39a5cb89189f30ac83768f27bcc3c8ef09402f0ff2876150444a48576",
+    "sha256": "f602fbe19d74e4c16c2f28b3a92c4934072400337372787561089c26a8b3e1db",
     "starbase": {
         "repository": "https://github.com/zweiundeins/starbase.git",
-        "commit": "d23c936b152397e8b2a12c0934b6014dda7f9fbd",
-        "describe": "v0.4.0-4-gd23c936",
+        "commit": "dab10a762bfdf69f954b79ea41546583fea8dc59",
+        "describe": "v0.5.0-5-gdab10a7",
         "path": "static/vendor/datastar-rocket.js"
     },
     "patches": [
@@ -35,6 +35,26 @@
         {
             "file": "0007-Rocket-observers-hear-an-attribute-write-whose-value.patch",
             "sha256": "735df0dd92955d8ce7841398f255c8d512d06857d4b64106aaf24e50c524a61d"
+        },
+        {
+            "file": "0008-Morph-a-morph-that-starts-inside-another-keeps-the-o.patch",
+            "sha256": "b20bdc73ede3b781ffa3039ff18ed04445ae6553d456fb40a6d337a30dc7f6a7"
+        },
+        {
+            "file": "0009-Rocket-a-light-component-renders-inside-a-data-ignor.patch",
+            "sha256": "3a6beffbe422b6fd5167446a0edb6cb67d0b83a0aa26c727016d78c14db29ff9"
+        },
+        {
+            "file": "0010-Engine-a-removed-Rocket-element-s-mount-root-leaves-.patch",
+            "sha256": "9baf26a04078d05b08195e6a0545e6cbdfd421bb3528e57defe54506a10a3834"
+        },
+        {
+            "file": "0011-Rocket-a-queued-definition-applies-the-shadow-host-s.patch",
+            "sha256": "0c02c9c4f6f83e8263075908cb04161f2baab232897ba81fc6d6073ac3ea396c"
+        },
+        {
+            "file": "0012-Rocket-the-pending-host-observer-scans-a-parent-once.patch",
+            "sha256": "01dce1aa7f82f6a39230f3f251cd6ec978c373d99769937f584dffeb123bf6c7"
         }
     ]
 }

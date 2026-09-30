@@ -1,10 +1,13 @@
-// Tab and menu behaviour for ui.css (spec 2.5). Opt-ins: data-activation="manual" on a tablist
-// whose clicks post, data-menu-keep on a menu button that must not close its menu.
+// Tab, menu and sb-popover behaviour for ui.css (spec 2.5). Opt-ins: data-activation="manual" on a
+// tablist whose clicks post, data-menu-keep on a menu or popover button that must not close it.
 
 const TABLIST = '[role="tablist"]';
 const TAB = '[role="tab"]';
 const MENU = '.menu';
 const ITEM = '[role="menuitem"]';
+const POPOVER = 'sb-popover';
+const LIST = '.popover-list';
+const LIST_ITEM = 'button, a[href], input[type="checkbox"]';
 
 // ── Tabs ────────────────────────────────────────────────────────────────────
 
@@ -221,6 +224,9 @@ function focusItem(parts, which) {
 }
 
 function open(parts, { focus } = {}) {
+    for (const host of openPopovers()) {
+        if (!host.contains(parts.menu)) host.hide();
+    }
     for (const other of openMenus()) {
         if (other.menu !== parts.menu && !other.menu.contains(parts.menu)) close(other);
     }
@@ -334,9 +340,105 @@ function onMenuKeydown(event) {
     return false;
 }
 
+// ── Popovers ───────────────────────────────────────────────────────────────
+
+// sb-popover handles opening, placement, Escape and outside presses; this adds the rest of
+// the menu contract: close on choose and when focus leaves, list keys, one open layer.
+
+function openPopovers() {
+    return [...document.querySelectorAll(POPOVER)].filter((host) => host.open === true);
+}
+
+/** The host's own .popover-list, not one of a popover nested in its panel. */
+function listOf(host) {
+    return [...host.querySelectorAll(LIST)].find((list) => list.closest(POPOVER) === host) ?? null;
+}
+
+function listItems(list) {
+    return [...list.querySelectorAll(LIST_ITEM)].filter((el) => el.closest(LIST) === list && isUsable(el) && el.checkVisibility());
+}
+
+function onPopoverClick(event) {
+    const item = event.target.closest?.('button, a[href]');
+    const host = item?.closest(POPOVER);
+    if (!host?.open || event.defaultPrevented) return;
+    if (item.closest('[slot="trigger"]') || item.hasAttribute('data-menu-keep') || item.getAttribute('aria-disabled') === 'true') return;
+    // Runs after the item's own handler: document is the last stop of the bubble.
+    host.hide();
+}
+
+function onPopoverFocusout(event) {
+    const next = event.relatedTarget;
+    if (!(next instanceof Node)) return;
+    for (let host = event.target.closest?.(POPOVER); host; host = host.parentElement?.closest(POPOVER)) {
+        if (host.open && !host.contains(next)) host.hide();
+    }
+}
+
+function onPopoverKeydown(event) {
+    const target = event.target;
+    if (!(target instanceof Element) || event.shiftKey) return false;
+    const { key } = event;
+
+    const parent = target.getAttribute('slot') === 'trigger' ? target.parentElement : null;
+    // Until Starbase defines sb-popover the host has no show(), and its trigger is a plain button.
+    const host = parent?.matches(POPOVER) && typeof parent.show === 'function' ? parent : null;
+    const hostList = host && listOf(host);
+    if (hostList && (key === 'ArrowDown' || key === 'ArrowUp')) {
+        event.preventDefault();
+        const which = key === 'ArrowDown' ? 0 : -1;
+        const edge = () => listItems(hostList).at(which)?.focus();
+        if (host.open) {
+            edge();
+        } else {
+            host.show();
+            // After the popover's own focus move, which it queues as a microtask.
+            queueMicrotask(edge);
+        }
+        return true;
+    }
+
+    const list = target.closest(LIST);
+    if (!list || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(key)) return false;
+    const all = listItems(list);
+    const index = all.indexOf(target);
+    if (index === -1) return false;
+    event.preventDefault();
+    const next = {
+        ArrowDown: (index + 1) % all.length,
+        ArrowUp: (index - 1 + all.length) % all.length,
+        Home: 0,
+        End: all.length - 1,
+    }[key];
+    all[next].focus();
+    return true;
+}
+
+// One layer family at a time: a popover that opens closes the menus and the unrelated popovers.
+function onPopoverOpen(event) {
+    const host = event.target;
+    if (!(host instanceof Element) || !host.matches(POPOVER)) return;
+    for (const parts of openMenus()) {
+        if (!parts.menu.contains(host)) close(parts);
+    }
+    for (const other of openPopovers()) {
+        if (other !== host && !other.contains(host) && !host.contains(other)) other.hide();
+    }
+}
+
+// A popover's Escape listener would still take the first Escape once a modal covers it.
+function onDialogToggleCapture(event) {
+    const dialog = event.target;
+    if (!(dialog instanceof HTMLDialogElement) || event.newState !== 'open' || !dialog.matches(':modal')) return;
+    for (const host of openPopovers()) {
+        if (!dialog.contains(host)) host.hide();
+    }
+}
+
 function onKeydown(event) {
     if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     if (onMenuKeydown(event)) return;
+    if (onPopoverKeydown(event)) return;
     const tab = event.target.closest?.(TAB);
     if (tab) onTabKeydown(event, tab);
 }
@@ -352,13 +454,17 @@ if (!window.__nfsenControls) {
     document.addEventListener('keydown', endPress, true);
     document.addEventListener('click', () => setTimeout(endPress), true);
     document.addEventListener('toggle', onPopoverToggleCapture, true);
+    document.addEventListener('toggle', onDialogToggleCapture, true);
     document.addEventListener('scroll', onViewportChange, { capture: true, passive: true });
     window.addEventListener('resize', onViewportChange, { passive: true });
     document.addEventListener('focusin', onTabFocusin);
     document.addEventListener('focusout', onMenuFocusout);
+    document.addEventListener('focusout', onPopoverFocusout);
     document.addEventListener('click', onTabClick);
     document.addEventListener('click', onMenuClick);
+    document.addEventListener('click', onPopoverClick);
     document.addEventListener('keydown', onKeydown);
+    document.addEventListener('sb-open', onPopoverOpen);
     new MutationObserver(onSelectionMutation).observe(document.documentElement, {
         subtree: true,
         attributes: true,

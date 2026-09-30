@@ -1071,7 +1071,15 @@ tbody tr[data-level='error']:hover {
     margin: 0;
 }
 
-.menu-list li > :is(a, button, label),
+/* Popover: sb-popover > [slot=trigger].menu-toggle + .popover-list. The component draws the
+   panel (starbase.css); the list only holds the items. */
+.popover-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+:is(.menu-list, .popover-list) li > :is(a, button, label),
 .menu-item,
 [role='menuitem'] {
     display: flex;
@@ -1090,7 +1098,7 @@ tbody tr[data-level='error']:hover {
     text-decoration: none;
 }
 
-.menu-list li > :is(a, button, label):hover,
+:is(.menu-list, .popover-list) li > :is(a, button, label):hover,
 :is(.menu-item, [role='menuitem']):hover:not(:disabled),
 :is(.menu-item, [role='menuitem']):focus-visible {
     background: var(--surface-3);
@@ -1103,7 +1111,7 @@ tbody tr[data-level='error']:hover {
 
 /* The current choice gets a check mark, never a fill: menus stay neutral. Every item of such
    a list keeps the mark's column; the mark is a mask, as no font is sure to have U+2713. */
-.menu-list:has(.menu-item:is([aria-pressed], [aria-current])) .menu-item::before {
+:is(.menu-list, .popover-list):has(.menu-item:is([aria-pressed], [aria-current])) .menu-item::before {
     content: '';
     flex: 0 0 1em;
     block-size: 0.75rem;
@@ -1116,7 +1124,7 @@ tbody tr[data-level='error']:hover {
     font-weight: var(--font-weight-semibold);
 }
 
-.menu-list .menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page'])::before {
+:is(.menu-list, .popover-list) .menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page'])::before {
     background: currentcolor;
     mask: var(--glyph-success) center / contain no-repeat;
 }

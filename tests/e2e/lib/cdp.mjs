@@ -370,6 +370,33 @@ class Page {
         })()`);
     }
 
+    /** Post refresh-graphs as page `pageId` and resolve once the sync it causes has morphed the page. */
+    async syncNow(pageId, { timeout = 10000 } = {}) {
+        const result = await this.evaluate(`(async function(){
+            var html = document.documentElement.outerHTML;
+            var ctx = (html.match(/via_ctx&quot;:&quot;([^&]+)&quot;/) || html.match(/via_ctx":"([^"]+)"/) || [])[1];
+            var pageSignal = (html.match(/\\bpage____[a-z0-9]+/) || [])[0];
+            var url = (html.match(/[^'"\\s]*_action\\/refresh-graphs[A-Za-z0-9-]*/) || [])[0];
+            if (!ctx || !pageSignal || !url) return 'no context, page signal or refresh-graphs action in the page';
+            var probe = document.getElementById('page-content');
+            probe.setAttribute('data-e2e-sync', '');
+            var body = { via_ctx: ctx };
+            body[pageSignal] = ${JSON.stringify(pageId)};
+            var res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Datastar-Request': 'true' }, body: JSON.stringify(body) });
+            if (!res.ok) return 'refresh-graphs answered ' + res.status + ' ' + (await res.text()).slice(0, 200);
+            var until = Date.now() + ${Number(timeout)};
+            while (Date.now() < until && probe.isConnected && probe.hasAttribute('data-e2e-sync')) await new Promise(function(r){ setTimeout(r, 50); });
+            return probe.hasAttribute('data-e2e-sync') && probe.isConnected ? 'no sync within ${Number(timeout)} ms' : 'synced';
+        })()`);
+        if (result === 'synced') return;
+        // A restarted app answers the old context with 400 and reloads the tab a moment later.
+        if (/ 400 Invalid context/.test(result)) {
+            for (const until = Date.now() + 5000; !this.reloads.length && Date.now() < until; ) await sleep(100);
+        }
+        this.assertNoReload();
+        throw new Error(`syncNow(${pageId}): ${result}`);
+    }
+
     /** Pick a range preset from #rangeMenu and wait for its width. */
     async setRangePreset(id, { timeout = 8000 } = {}) {
         const seconds = { '1h': 3600, '24h': 86400, '7d': 604800, '30d': 2592000, '1y': 31536000 }[id];

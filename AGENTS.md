@@ -378,6 +378,9 @@ node scripts/starbase-vendor.mjs verify-remote --base https://starbase.zweiundei
 the lock. A vendored module may import only `'datastar'` or a file inside its own folder. `StarbaseAssets::modules()`
 reads the lock, and the layout loads every `"load": true` entry after the elements; no template names a component.
 A pin bump is a commit that touches only `frontend/js/starbase/**` and names the Starbase commit and every version.
+Until the owner merges Starbase's feature branches into main, nfsen-ng pins from the local integration branch
+`nfsen-pin` (worktree `/develop/starbase-wt-nfsen`: Starbase dab10a7 with the relative-time time-zone commits and
+the popover shadow token on top), so a `pull` takes `--from /develop/starbase-wt-nfsen --ref <nfsen-pin commit>`.
 
 `frontend/css/starbase.css` maps every `--sb-*` token onto nfsen-ng's tokens (`--sb-notch: 0` for smooth corners), so
 one `:root` block serves light and dark. A package that adopts a component:
@@ -404,8 +407,9 @@ one `:root` block serves light and dark. A package that adopts a component:
 
 ### Popovers
 
-A floating panel under a button is an `sb-popover`, built to one contract (`PopoverMarkupTest` and
-`rocket.test.mjs` check K1 in its markup, `ui-controls.test.mjs` its behaviour):
+A new floating panel under a button is an `sb-popover` (the shell's menus and the saved-filter kebab are still
+`.menu` lists that `nfsen-controls` drives), built to one contract (`PopoverMarkupTest` and `rocket.test.mjs` check
+K1 in its markup, `ui-controls.test.mjs` its behaviour):
 
 - Host: `<sb-popover id="..." class="<component>" label="<name of the panel>" placement="...">` with a stable `id`,
   so the morph matches it (a replaced menu's host takes that menu's id). Never `open`, `mode`, `arrow` or `name`; no
@@ -429,6 +433,11 @@ A floating panel under a button is an `sb-popover`, built to one contract (`Popo
   ArrowDown or ArrowUp on the trigger opens on the first or last `.popover-list` item, and the arrows, Home and End move
   among the items and wrap; a `.menu` and a popover never stay open together; a modal dialog opening closes every
   popover outside it.
+
+`ui-controls.test.mjs` tests that layer on fixture popovers in `#client-root` (`popoverKeys`, `popoverStyles`,
+`popoverChoose`, `popoverLayers`, `popoverUnderModal`, `popoverMove`, `popoverSyncAround`, `popoverForcedColors`,
+`popoverPhone`, `popoverBeforeUpgrade`). The page files test the page's own popovers (`flows`, `talkers`,
+`conversations`, `columns`), each with a sync while one is open (`page.syncNow(id)`).
 
 ## Bumping Datastar and Rocket
 

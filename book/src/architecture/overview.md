@@ -29,7 +29,7 @@ Shell + pages + actions + SSE (php-via / Datastar) → browser
 | Time series | RRD (default) or VictoriaMetrics, pluggable per the `Datasource` interface |
 | Everything else | SQLite through `pdo_sqlite`, one file in the state directory |
 | Charts | Apache ECharts (traffic graph, Sankey, Matrix) |
-| Components | `sb-relative-time` from [Starbase](https://github.com/zweiundeins/starbase), vendored |
+| Components | `sb-relative-time` and `sb-popover` from [Starbase](https://github.com/zweiundeins/starbase), vendored |
 
 ## One long-running process
 

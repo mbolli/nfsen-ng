@@ -31,7 +31,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Event loop lag on Health.** The System card shows how late the server's event loop answers: the p95, p50 and maximum delay of a 100 ms timer over the last minute, with the warning glyph from a p95 of 100 ms and the error glyph from 1 s. Whatever holds the loop (a render, a file scan, an SQLite write) delays every tab's actions and live updates by as long.
 
-- **Components from [Starbase](https://github.com/zweiundeins/starbase) (MIT) are bundled** under `frontend/js/starbase/` with their licence, pinned by Starbase's content hash in a lock file; nothing loads from outside the instance. The Alerts page uses its `sb-relative-time`. The Datastar and ECharts licence notices ship as well (`frontend/js/datastar.LICENSE.md`, `echarts.LICENSE`, `echarts.NOTICE`).
+- **Components from [Starbase](https://github.com/zweiundeins/starbase) (MIT) are bundled** under `frontend/js/starbase/` with their licence, pinned by Starbase's content hash in a lock file; nothing loads from outside the instance. The Alerts page uses its `sb-relative-time`, the Export menus and the Columns picker its `sb-popover`. The Datastar and ECharts licence notices ship as well (`frontend/js/datastar.LICENSE.md`, `echarts.LICENSE`, `echarts.NOTICE`).
 
 ### Changed
 
@@ -58,6 +58,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Alerts: Last triggered keeps counting** while the page is open (*12 minutes ago*, *yesterday*, *last week*), and its tooltip shows the date and time in the display timezone.
 
 - **Copy buttons share one implementation** that also works on plain HTTP, where the browser offers no Clipboard API, and say *Nothing to copy* when there is nothing yet.
+
+- **Export menus and the Columns picker are Starbase popovers.** The CSV, JSON and Print buttons of the Flows and Top Talkers tables are now the items of one **Export** menu, as on Conversations. A click, Enter or Space opens a popover with focus on its first item; ArrowDown or ArrowUp on the button opens it on the first or last item, the arrows, Home and End move between the items and Tab walks them, and the popover closes once focus leaves it. Choosing an item or pressing Escape closes it and puts focus back on the button, a click outside closes it, and ticking a column keeps it open. The Columns picker used to have no arrow, Home or End keys and left the focus on its button when it opened. Screen readers announce both buttons as opening a dialog.
 
 - **nfdump 1.7.10 in the Docker images** (was 1.7.8). 1.7.9 fixed remotely triggerable crashes in nfcapd's IPFIX and NetFlow v9 option template handling and in sfcapd's sFlow decoder, and out-of-bounds reads in the file parsers. 1.7.10 fixes bidirectional pairing in gcc builds: the 1.7.8 in earlier images listed both directions of a flow as separate rows, so the **Bi-directional** aggregation on Top Talkers and Flows showed an empty Out side; it now merges them. Capture files written by 1.7.8 read unchanged. Bare-metal installs: build 1.7.10 as the installation page shows, point `nfcapd.service` at `/usr/local/nfdump/bin/nfcapd` and restart it. The Health page warns below 1.7.10 and says which of the two fixes the installed version lacks.
 
@@ -133,7 +135,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Internal
 
-- `scripts/vendor-rocket.sh` builds `frontend/js/datastar-rocket.js` from the Datastar release and `patches/rocket/`, offline, and `--check` proves that the committed bundle is that build. `scripts/starbase-vendor.mjs` vendors Starbase components from a local clone and checks them offline. `FrontendAssetsTest`, `StarbaseVendorTest` and `StarbaseBridgeTest` cover both, and `DeployFilesTest` keeps the memory limit of both images and the systemd unit in step. See `AGENTS.md` for bumping Datastar and the Starbase pin.
+- `scripts/vendor-rocket.sh` builds `frontend/js/datastar-rocket.js` from the Datastar release and `patches/rocket/`, offline, and `--check` proves that the committed bundle is that build. `scripts/starbase-vendor.mjs` vendors Starbase components from a local clone and checks them offline. `FrontendAssetsTest`, `StarbaseVendorTest` and `StarbaseBridgeTest` cover both, and `DeployFilesTest` keeps the memory limit of both images and the systemd unit in step. `PopoverMarkupTest` checks the Datastar attributes in every `<sb-popover>` of the templates against the popover exception of rule K1. See `AGENTS.md` for bumping Datastar and the Starbase pin, and for the popover contract.
 
 - The browser tests: `run.mjs` takes file names and fails a file after `E2E_FILE_TIMEOUT` seconds (900); an app restart in the middle of a test fails its next call with `AppReloadedError` instead of a timeout; no Chromium and no profile directory outlives the run. `rocket` and `starbase-bridge` are new files. Pest loads `tests/Helpers.php` before every file.
 

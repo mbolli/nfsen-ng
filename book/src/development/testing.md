@@ -69,7 +69,7 @@ for example) and `tests/Arch/` (namespace and dependency rules).
 
 ## Front-end and deployment checks
 
-Four Pest files check things that are not PHP code:
+Five Pest files check things that are not PHP code:
 
 - `FrontendAssetsTest`: `frontend/js/datastar-rocket.js` starts with the banner
   of Datastar 1.0.4, Rocket beta.2 and `patches/rocket`, the patch files match
@@ -88,6 +88,12 @@ Four Pest files check things that are not PHP code:
   `frontend/css/starbase.css` or listed as a size knob, every token there maps to
   a token of `tokens.css`, and no module carries a pixel trait the tokens cannot
   neutralise (`steps(`, `pixelated`, uppercase labels, fixed notch clip paths).
+- `PopoverMarkupTest`: every literal `<sb-popover>` block in `backend/templates`
+  keeps to the popover exception of rule K1 in `AGENTS.md`. Its light DOM
+  carries no Datastar attribute besides `data-on:*`, `data-attr:*`,
+  `data-class:*`, `data-style:*`, `data-effect`, `data-text`, `data-show` and a
+  value-form `data-bind`, no `$$`, and no `@name(` in a plain `data-*` value.
+  String fixtures show that it reports each forbidden form with its line.
 - `DeployFilesTest`: both Dockerfiles and the systemd unit give PHP the same
   `memory_limit`.
 
@@ -120,16 +126,16 @@ Playwright-managed Chromium under `~/.cache/ms-playwright`
 | `router` | Hash routing: the default page, old bookmarks, reload and history |
 | `controls` | The controls bar: presets, custom duration, step buttons, sources, protocol, unit, profile |
 | `graphs`, `graphs-ports`, `overview` | The traffic graph, the Ports display, and the Overview KPI and top-N |
-| `talkers`, `statistics`, `statistics-aggregation` | Top Talkers: the picker, a real run, Flow Records aggregation |
-| `flows`, `columns` | Flows: run, paging, tabs, exports, result hosts, the Columns menu |
-| `conversations` | One run as Sankey, Matrix and IP pairs |
+| `talkers`, `statistics`, `statistics-aggregation` | Top Talkers: the picker, a real run, the Export popover, Flow Records aggregation |
+| `flows`, `columns` | Flows: run, paging, tabs, exports, result hosts; the Export popover and the Columns popover of both result tables: keys, a sync while open, a second run, an export right after the result arrives, a phone screen |
+| `conversations` | One run as Sankey, Matrix and IP pairs, and the Export popover, with the PNG item disabled in IP pairs and the nfdump command copied unchanged |
 | `filter-validation`, `drawer` | Live validation and estimates; the filter builder and saved filters |
 | `alerts`, `health`, `settings` | The monitor and settings pages |
 | `mobile` | The phone and tablet shell |
-| `ui-controls` | The shared controls: tabs, menus, focus, forced colours |
+| `ui-controls` | The shared controls: tabs, menus, focus, forced colours; and the popover layer on fixture popovers: keys, the `.popover-list` item look, choosing, one open layer, a modal over a popover, a moved host, a sync around an open one, forced colours, a phone screen, a trigger before `sb-popover` is defined |
 | `no-auto-query` | Nothing reads a capture file without a Run (checks the requests and the `query_runs` table) |
-| `rocket` | The Rocket rules on every page: one engine, no plugin attribute or `data-init` on a host, toasts in all four stacks, elements that keep their identity through a run and every page, labels, copying, and the DOM nodes removed hosts leave behind |
-| `starbase-bridge` | Every colour token of `starbase.css` resolves to its nfsen-ng token in light and dark, and every vendored Starbase component mounts without a console error |
+| `rocket` | The Rocket rules on every page, with a result on Flows, Top Talkers and Conversations: one engine, no `data-init` on a host and no plugin attribute in its light DOM except those a popover may carry (fixture popovers check that the scan reports the rest), toasts in all four stacks, elements that keep their identity through a run and every page, labels, copying, and the DOM nodes removed hosts leave behind, popovers included |
+| `starbase-bridge` | Every colour token of `starbase.css` resolves to its nfsen-ng token in light and dark, every vendored Starbase component mounts without a console error, and the open `sb-popover` has nfsen-ng's shadow and the menu list's radius, padding and minimum width |
 
 `run.mjs` runs every `*.test.mjs` file, or the files named as arguments
 (`node tests/e2e/run.mjs flows rocket`), one after another, and exits non-zero on
@@ -150,12 +156,13 @@ Switches:
 - `E2E_FAST=1` skips the wait for a real live tick in `filter-validation`.
 - `E2E_SHOTS=<dir>` is where `flows` writes its forced-colours screenshots
   (default `/tmp`).
-- `STARBASE_DIR=<Starbase clone>` makes `starbase-bridge` also mount the
-  catalog components that are not vendored (input, select, tabs and the like)
-  and fail on a colour that is neither neutral nor an nfsen-ng status or series
-  colour, on text below 4.5:1, and on a selected state that differs only in font
-  weight. It reads the clone from disk. `OUT=<dir>` is where its screenshots go
-  (default `/tmp/starbase-bridge`).
+- `STARBASE_DIR=<Starbase clone>` makes `starbase-bridge` also mount 23
+  catalog components from the clone (drawer, popover, checkbox, checkbox-group,
+  date-picker, virtual-scroll, data-table, input, select, tabs and the like; a
+  vendored one comes from the clone too) and fail on a colour that is neither
+  neutral nor an nfsen-ng status or series colour, on text below 4.5:1, and on
+  a selected state that differs only in font weight. It reads the clone from
+  disk. `OUT=<dir>` is where its screenshots go (default `/tmp/starbase-bridge`).
 
 ### Helpers and patterns
 
@@ -165,7 +172,9 @@ tab bar or its More menu, and waits for `#page-<id>[data-ready]`),
 `setRangePreset(id)`, `runQuery(target)` (presses the
 `button[data-run=<target>]` of a query and waits for it to finish),
 `signalValue(name)` and `signalValues(names)` (read signals by name through the
-hashed ids), `chooseTheme(choice)`, `withForcedColors(fn)`, `requestLog()` and
+hashed ids), `syncNow(id)` (posts `refresh-graphs` as page `id` and waits for
+the morph it causes, to check what an open popover keeps across a sync),
+`chooseTheme(choice)`, `withForcedColors(fn)`, `requestLog()` and
 `realErrors()` (console errors, none of them tolerated). `runQuery` waits up to
 30 seconds for the Run button, since it stays disabled while any query of the
 tab runs, and also accepts an action that answers without a run (a cached

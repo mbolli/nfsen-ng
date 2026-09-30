@@ -1010,6 +1010,20 @@ describe('Nfdump::execute()', function (): void {
         ;
     });
 
+    // AlertManager sums a filtered rule's totals from this rawOutput, so it must be what nfdump printed.
+    test('a per-protocol statistic comes back as printed, the Summary block of nfdump before 1.7.8 included', function () use ($stub): void {
+        $stdout = "ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ibps,ibpp\n"
+            . "2026-09-21 14:15:02,2026-09-21 14:19:56,294.539,TCP,6,281,70.2,6253,82.9,7723482,88.7,21,209778,1235\n"
+            . "2026-09-21 14:15:07,2026-09-21 14:19:16,249.725,ICMP,1,12,3.0,26,0.3,3004,0.0,0,96,115\n"
+            . "Summary\nflows,bytes,packets,avg_bps,avg_pps,avg_bpp\n293,7726486,6279,209874,21,1230\n";
+        $result = runCannedNfdump($stdout, options: ['-s' => 'proto', '-n' => 0, '-o' => 'csv'], filter: 'dst port 443');
+
+        expect($result['command'])->toBe($stub . " -s 'proto' -o 'csv' -n '0' -- 'dst port 443'")
+            ->and($result['rawOutput'])->toBe($stdout)
+            ->and(array_column(array_slice($result['decoded'], 0, 2), 'ibyt'))->toBe(['7723482', '3004'])
+        ;
+    });
+
     test('a CSV header alone is an empty result, not an error', function (): void {
         expect(runCannedNfdump("ts,te,td,pr,val,fl,flP,pkt,pktP,byt,bytP,pps,bps,bpp\n")['decoded'])->toBe([])
             ->and(runCannedNfdump("firstSeen,duration,proto,srcAddr,srcPort,dstAddr,dstPort,packets,bytes,flows\n")['decoded'])->toBe([])

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\common;
 
 use mbolli\nfsen_ng\datasources\Datasource;
+use mbolli\nfsen_ng\processor\MultiStatCsvParser;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
 use mbolli\nfsen_ng\store\AlertEventRepository;
@@ -45,6 +46,9 @@ final class AlertManager {
     private const int CATCH_UP_SECONDS = 7200;
 
     private const array ZERO = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+
+    /** A filtered rule's totals: at most one row per protocol, however many flows match. */
+    private const string TOTALS_STATISTIC = 'proto';
 
     /** @var array<string, AlertState> Keyed by rule ID */
     private array $states = [];
@@ -489,29 +493,25 @@ final class AlertManager {
     }
 
     /**
-     * Sum flows/packets/bytes from nfdump's unaggregated `-o json` decoded records.
-     * Each record already represents exactly one flow (no per-record flow-count field),
-     * and uses `in_packets`/`in_bytes`: the whitespace-aggregation format's `ipkt`/`ibyt`
-     * short names don't exist in this schema.
-     *
-     * @param array<array<string, mixed>> $decoded
+     * Flows, in-packets and in-bytes summed over the rows of nfdump's `-s proto` CSV, whose default
+     * order prints the in-direction counters; other lines add nothing.
      *
      * @return SlotValues
      */
-    public static function sumDecodedFlowRecords(array $decoded): array {
-        $flows = 0.0;
-        $packets = 0.0;
-        $bytes = 0.0;
-        foreach ($decoded as $record) {
-            if (!\is_array($record)) {
-                continue;
-            }
-            ++$flows;
-            $packets += (float) ($record['in_packets'] ?? 0);
-            $bytes += (float) ($record['in_bytes'] ?? 0);
+    public static function sumProtocolRows(string $csv): array {
+        $sum = self::ZERO;
+        foreach (MultiStatCsvParser::parse($csv, [self::TOTALS_STATISTIC])[0] ?? [] as $row) {
+            $sum['flows'] += $row['flows'];
+            $sum['packets'] += $row['packets'];
+            $sum['bytes'] += $row['bytes'];
         }
 
-        return ['flows' => $flows, 'packets' => $packets, 'bytes' => $bytes];
+        return $sum;
+    }
+
+    /** A parsed window as the Alerts page names it: '10 min', '1 h'. */
+    private static function windowLabel(int $seconds): string {
+        return $seconds < 3600 ? intdiv($seconds, 60) . ' min' : intdiv($seconds, 3600) . ' h';
     }
 
     /**
@@ -789,7 +789,7 @@ final class AlertManager {
         try {
             $computed = $this->computeThreshold($rule, $values ?? self::ZERO);
             if ($computed === PHP_FLOAT_MAX) {
-                $reason = $reason !== '' ? $reason : "no baseline yet for the {$rule->avgWindow} average";
+                $reason = $reason !== '' ? $reason : 'no baseline yet for the ' . self::windowLabel($this->parseWindow($rule->avgWindow)) . ' average';
             } else {
                 $threshold = $computed;
             }
@@ -833,8 +833,8 @@ final class AlertManager {
     }
 
     /**
-     * Runs nfdump with the rule's filter over the capture file of $slot and sums
-     * flows/packets/bytes. A string says why it could not run.
+     * Runs nfdump with the rule's filter over the capture file of $slot and sums its per-protocol
+     * totals. A string says why it could not be evaluated.
      *
      * @return SlotValues|string
      */
@@ -858,10 +858,16 @@ final class AlertManager {
             $nfdump->setOption('-M', implode(':', $sources));
             $nfdump->setOption('-R', [$slot, $slot]);
             $nfdump->setFilter($rule->nfdumpFilter ?? '');
-            $nfdump->setOption('-o', 'json');
-            $result = $nfdump->execute();
+            $nfdump->setOption('-s', self::TOTALS_STATISTIC);
+            $nfdump->setOption('-n', 0);
+            $nfdump->setOption('-o', 'csv');
 
-            return self::sumDecodedFlowRecords($result['decoded']);
+            $csv = $nfdump->execute()['rawOutput'];
+            if ($csv !== '' && MultiStatCsvParser::blockCount($csv) === 0) {
+                return 'nfdump printed no per-protocol statistic';
+            }
+
+            return self::sumProtocolRows($csv);
         } catch (\Throwable $e) {
             return NfdumpSlots::timedOut($e) ? 'no free nfdump process' : 'nfdump failed: ' . $e->getMessage();
         }

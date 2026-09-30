@@ -10,11 +10,13 @@ use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Datasource;
+use mbolli\nfsen_ng\pages\AlertsPage;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
 use mbolli\nfsen_ng\store\AlertEventRepository;
 use mbolli\nfsen_ng\store\Database;
 use OpenSwoole\Coroutine;
+use Tests\Support\captures\FixtureCaptures;
 
 /**
  * Build a minimal AlertRule for testing.
@@ -168,6 +170,45 @@ function alertCaptureFile(string $source, int $ts): void {
         mkdir($dir, 0o777, true);
     }
     touch($dir . '/nfcapd.' . $day->format('YmdHi'));
+}
+
+/**
+ * What `nfdump -s proto -n 0 -o csv` prints for rows of [protocol, number, flows, packets, bytes].
+ *
+ * @param list<array{string, int, int, int, int}> $rows
+ */
+function alertProtoCsv(array $rows): string {
+    $csv = "ts,te,td,pr,val,fl,flP,ipkt,ipktP,ibyt,ibytP,ipps,ibps,ibpp\n";
+    foreach ($rows as [$name, $number, $flows, $packets, $bytes]) {
+        $csv .= "2026-09-21 14:15:02,2026-09-21 14:19:56,294.539,{$name},{$number},{$flows},50.0,{$packets},50.0,{$bytes},50.0,0,0,0\n";
+    }
+
+    return $csv;
+}
+
+/**
+ * The evaluation before the per-protocol totals: every matching flow listed as JSON, one flow per
+ * record, in_packets and in_bytes. Kept to prove the totals equal it.
+ *
+ * @param list<string> $sources
+ *
+ * @return array{flows: float, packets: float, bytes: float}
+ */
+function alertListedTotals(array $sources, int $slot, string $filter): array {
+    $nfdump = new Nfdump();
+    $nfdump->setProfile('live');
+    $nfdump->setOption('-M', implode(':', $sources));
+    $nfdump->setOption('-R', [$slot, $slot]);
+    $nfdump->setFilter($filter);
+    $nfdump->setOption('-o', 'json');
+    $sum = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+    foreach ($nfdump->execute()['decoded'] as $record) {
+        ++$sum['flows'];
+        $sum['packets'] += (float) ($record['in_packets'] ?? 0);
+        $sum['bytes'] += (float) ($record['in_bytes'] ?? 0);
+    }
+
+    return $sum;
 }
 
 /** Settings for filtered rules: nfdump-canned answers, with $maxProcesses slots. */
@@ -597,6 +638,7 @@ describe('AlertManager live evaluation and nfdump slots', function (): void {
             NfdumpSlots::release($class, NfdumpSlots::inUse($class));
         }
         putenv('NFDUMP_STUB_STDOUT');
+        putenv('NFDUMP_STUB_ARGS');
     });
 
     test('one evaluation takes background slots with LIVE_SLOT_BUDGET_SECONDS for all its rules together', function (): void {
@@ -628,7 +670,7 @@ describe('AlertManager live evaluation and nfdump slots', function (): void {
     // skipped at once, and neither is evaluated on zeros. The test above pins that rules share one budget.
     test('filtered rules left without a slot are skipped, and a spent budget ends every later wait', function (): void {
         Config::$settings = alertCannedSettings($this, 1, LOG_INFO);
-        putenv('NFDUMP_STUB_STDOUT=[{"in_packets":2,"in_bytes":100}]');
+        putenv('NFDUMP_STUB_STDOUT=' . alertProtoCsv([['TCP', 6, 1, 2, 100]]));
         $slot = intdiv(time(), 300) * 300 - 300;
         alertCaptureFile('gw1', $slot);
         $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
@@ -666,7 +708,9 @@ describe('AlertManager live evaluation and nfdump slots', function (): void {
 
     test('a filtered rule still fires when the shared Nfdump instance is reset while the rule waits for its slot', function (): void {
         Config::$settings = alertCannedSettings($this, 1);
-        putenv('NFDUMP_STUB_STDOUT=[{"in_packets":2,"in_bytes":100},{"in_packets":3,"in_bytes":200}]');
+        $args = $this->dir . '/nfdump-args';
+        putenv('NFDUMP_STUB_STDOUT=' . alertProtoCsv([['TCP', 6, 1, 2, 100], ['UDP', 17, 1, 3, 200]]));
+        putenv('NFDUMP_STUB_ARGS=' . $args);
         $slot = intdiv(time(), 300) * 300 - 300;
         alertCaptureFile('gw1', $slot);
         $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
@@ -681,16 +725,103 @@ describe('AlertManager live evaluation and nfdump slots', function (): void {
                 $waiting = NfdumpSlots::waiting(NfdumpSlots::BACKGROUND);
                 // What another caller of the shared instance does between its own runs.
                 Nfdump::getInstance()->reset();
-                Nfdump::getInstance()->setOption('-o', 'csv');
+                Nfdump::getInstance()->setOption('-o', 'json');
                 NfdumpSlots::release();
             });
             $fired = $mgr->runPeriodic([$rule], 'live', $slot);
         });
+        $argv = explode("\n", trim((string) file_get_contents($args)));
+        putenv('NFDUMP_STUB_ARGS');
 
         expect($waiting)->toBe(1)
             ->and($fired)->toBe(['Test rule'])
             ->and(alertSlotValues($this->db))->toBe([[$slot, 300.0]])
             ->and(NfdumpSlots::inUse())->toBe(0)
+            ->and(array_slice($argv, -2))->toBe(['--', 'proto tcp'])
+            ->and($argv)->toContain('proto')
+            ->and($argv)->not->toContain('json')
+        ;
+    });
+
+    test('a filtered rule asks nfdump for its per-protocol totals, never for the matching flows', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        $args = $this->dir . '/nfdump-args';
+        putenv('NFDUMP_STUB_STDOUT=' . alertProtoCsv([['TCP', 6, 281, 6253, 7723482], ['UDP', 17, 107, 426, 267137], ['ICMP', 1, 12, 26, 3004]]));
+        putenv('NFDUMP_STUB_ARGS=' . $args);
+        $slot = intdiv(time(), 300) * 300 - 300;
+        alertCaptureFile('gw1', $slot);
+        alertCaptureFile('gw2', $slot);
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
+        $rules = array_map(
+            static fn (string $metric, float $total): AlertRule => makeRule(['id' => $metric, 'name' => $metric, 'sources' => [], 'metric' => $metric, 'nfdumpFilter' => 'dst port 443', 'operator' => '>=', 'thresholdValue' => $total]),
+            ['flows', 'packets', 'bytes'],
+            [400.0, 6705.0, 7993623.0],
+        );
+
+        try {
+            $fired = $mgr->runPeriodic($rules, 'live', $slot);
+            $argv = explode("\n", trim((string) file_get_contents($args)));
+        } finally {
+            putenv('NFDUMP_STUB_ARGS');
+        }
+        $option = static function (string $flag) use ($argv): ?string {
+            $at = array_search($flag, $argv, true);
+
+            return $at === false ? null : $argv[$at + 1] ?? null;
+        };
+
+        expect($fired)->toBe(['flows', 'packets', 'bytes'])
+            ->and(alertSlotValues($this->db))->toBe([[$slot, 400.0], [$slot, 6705.0], [$slot, 7993623.0]])
+            ->and([$option('-s'), $option('-n'), $option('-o')])->toBe(['proto', '0', 'csv'])
+            ->and($option('-M'))->toEndWith('/live/gw1:gw2')
+            ->and($argv)->not->toContain('json')
+            ->and(array_slice($argv, -2))->toBe(['--', 'dst port 443'])
+        ;
+    });
+
+    test('Test and the live evaluation run the same nfdump command and read the same totals', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        $args = $this->dir . '/nfdump-args';
+        putenv('NFDUMP_STUB_STDOUT=' . alertProtoCsv([['TCP', 6, 3, 30, 3000], ['UDP', 17, 2, 20, 2000]]));
+        putenv('NFDUMP_STUB_ARGS=' . $args);
+        $slot = intdiv(time(), 300) * 300 - 300;
+        alertCaptureFile('gw1', $slot);
+        alertCaptureFile('gw2', $slot);
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
+        $rule = makeRule(['sources' => ['gw1', 'gw2'], 'nfdumpFilter' => 'proto tcp or proto udp', 'thresholdValue' => 4000.0]);
+
+        try {
+            $tested = $mgr->testRule($rule, 'live');
+            $testArgv = (string) file_get_contents($args);
+            $current = $mgr->fetchCurrentSlot($rule, 'live');
+            $fired = $mgr->runPeriodic([$rule], 'live', $slot);
+            $liveArgv = (string) file_get_contents($args);
+        } finally {
+            putenv('NFDUMP_STUB_ARGS');
+        }
+
+        expect($tested)->toMatchArray(['evaluated' => true, 'fired' => true, 'value' => 5000.0, 'slot' => $slot])
+            ->and($current)->toBe(['flows' => 5.0, 'packets' => 50.0, 'bytes' => 5000.0])
+            ->and($fired)->toBe(['Test rule'])
+            ->and(array_map(static fn (array $event): array => [$event['kind'], $event['value']], alertEvents($this->db)))->toBe([['test', 5000.0], ['fired', 5000.0]])
+            ->and($liveArgv)->toBe($testArgv)
+        ;
+    });
+
+    test('output without the per-protocol statistic leaves a filtered rule unevaluated, not at zero', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        putenv('NFDUMP_STUB_STDOUT=' . "firstSeen,lastSeen,proto,srcAddr,dstAddr\n2026-09-21 14:15:02,2026-09-21 14:15:03,TCP,10.0.0.1,10.0.0.2\n");
+        $slot = intdiv(time(), 300) * 300 - 300;
+        alertCaptureFile('gw1', $slot);
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
+        $rule = makeRule(['nfdumpFilter' => 'proto tcp', 'operator' => '<', 'thresholdValue' => 1.0]);
+
+        $tested = $mgr->testRule($rule, 'live');
+
+        expect($tested)->toMatchArray(['evaluated' => false, 'fired' => false, 'reason' => 'nfdump printed no per-protocol statistic'])
+            ->and($mgr->runPeriodic([$rule], 'live', $slot))->toBe([])
+            ->and($mgr->states())->toBe([])
+            ->and(alertEvents($this->db))->toBe([])
         ;
     });
 });
@@ -1071,7 +1202,7 @@ describe('AlertManager::testRule()', function (): void {
             'value' => 2000.0,
             'threshold' => null,
             'condition' => 'bytes > ∞',
-            'reason' => 'no baseline yet for the 1h average',
+            'reason' => 'no baseline yet for the 1 h average',
             'notified' => false,
             'title' => 'nfsen-ng alert: Test rule',
         ])
@@ -1080,9 +1211,17 @@ describe('AlertManager::testRule()', function (): void {
         ;
     });
 
+    test('the no-baseline reason names the window as the Alerts page does', function (string $window): void {
+        $mgr = alertManager($this, makeDatasource(alertBytes(2000.0), alertBytes(0.0)));
+
+        $result = $mgr->testRule(makeRule(['thresholdType' => 'percent_of_avg', 'avgWindow' => $window]), 'live');
+
+        expect($result['reason'])->toBe('no baseline yet for the ' . AlertsPage::windowLabel($window) . ' average');
+    })->with(array_keys(AlertsPage::WINDOWS));
+
     test('a filtered rule is tested on the newest slot every source has a capture file for', function (): void {
         $args = $this->dir . '/nfdump-args';
-        putenv('NFDUMP_STUB_STDOUT=[{"in_packets":2,"in_bytes":100},{"in_packets":3,"in_bytes":200}]');
+        putenv('NFDUMP_STUB_STDOUT=' . alertProtoCsv([['TCP', 6, 1, 2, 100], ['UDP', 17, 1, 3, 200]]));
         putenv('NFDUMP_STUB_ARGS=' . $args);
         Config::$settings = Settings::fromArray([
             'general' => ['sources' => ['gw1', 'gw2'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump'],
@@ -1113,7 +1252,7 @@ describe('AlertManager::testRule()', function (): void {
 
     test('a source that has been down for an hour does not hold the tested slot back', function (): void {
         $args = $this->dir . '/nfdump-args';
-        putenv('NFDUMP_STUB_STDOUT=[{"in_packets":2,"in_bytes":100}]');
+        putenv('NFDUMP_STUB_STDOUT=' . alertProtoCsv([['TCP', 6, 1, 2, 100]]));
         putenv('NFDUMP_STUB_ARGS=' . $args);
         Config::$settings = Settings::fromArray([
             'general' => ['sources' => ['gw1', 'gw2'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump'],
@@ -1426,46 +1565,97 @@ describe('AlertRule roundtrip', function (): void {
     });
 });
 
-// ── AlertManager::sumDecodedFlowRecords() ──────────────────────────────────
-// Regression coverage for #153 follow-up: nfdump's unaggregated `-o json` schema
-// uses `in_packets`/`in_bytes` and has no per-record flow-count field. A prior
-// version read `ipkt`/`ibyt`/`fl` (the whitespace-aggregation format's field names),
-// so packets/bytes always summed to zero while flows "worked" only by accident
-// (its `?? 1` fallback happened to equal one-record-per-flow).
+// ── AlertManager::sumProtocolRows() ────────────────────────────────────────
+// A filtered rule reads nfdump's per-protocol totals, a few rows whatever the filter matches,
+// never the matching flows (a 300k-flow capture printed 46 MB of JSON and crashed the worker).
 
-describe('AlertManager::sumDecodedFlowRecords()', function (): void {
-    test('sums packets/bytes from real nfdump JSON field names, one flow per record', function (): void {
-        $decoded = [
-            ['in_packets' => 1, 'in_bytes' => 76],
-            ['in_packets' => 2, 'in_bytes' => 152],
-        ];
+describe('AlertManager::sumProtocolRows()', function (): void {
+    test('adds up the flows, in-packets and in-bytes of every protocol row', function (): void {
+        $csv = alertProtoCsv([['TCP', 6, 281, 6253, 7723482], ['UDP', 17, 107, 426, 267137], ['ICMP', 1, 12, 26, 3004]]);
 
-        expect(AlertManager::sumDecodedFlowRecords($decoded))->toBe([
-            'flows' => 2.0,
-            'packets' => 3.0,
-            'bytes' => 228.0,
+        expect(AlertManager::sumProtocolRows($csv))->toBe(['flows' => 400.0, 'packets' => 6705.0, 'bytes' => 7993623.0]);
+    });
+
+    test('no matching flows, a header alone or nothing at all is zero', function (): void {
+        $zero = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+
+        expect(AlertManager::sumProtocolRows("No matching flows\n" . alertProtoCsv([])))->toBe($zero)
+            ->and(AlertManager::sumProtocolRows(alertProtoCsv([])))->toBe($zero)
+            ->and(AlertManager::sumProtocolRows(''))->toBe($zero)
+        ;
+    });
+
+    test('the Summary block nfdump before 1.7.8 appends adds nothing', function (): void {
+        $csv = alertProtoCsv([['TCP', 6, 3, 30, 3000]]) . "Summary\nflows,bytes,packets,avg_bps,avg_pps,avg_bpp\n400,8708026,7547,236491,20,1153\n";
+
+        expect(AlertManager::sumProtocolRows($csv))->toBe(['flows' => 3.0, 'packets' => 30.0, 'bytes' => 3000.0]);
+    });
+});
+
+// ── Filtered totals against a real nfdump ─────────────────────────────────
+
+describe('AlertManager filtered totals from nfcapd captures', function (): void {
+    beforeEach(function (): void {
+        if (!FixtureCaptures::available() || Config::nfcapdTimezone()->getName() !== 'UTC') {
+            $this->markTestSkipped('needs nfcapd and nfdump under ' . FixtureCaptures::BIN . ' and NFCAPD_TZ=UTC (the app image)');
+        }
+        $this->slot = intdiv(time(), 300) * 300 - 600;
+        // 40 % v9 records with out counters, which the old sum left out, as the totals do.
+        FixtureCaptures::build($this->dir . '/profiles', 'live', ['gw1', 'gw2'], $this->slot - 300, 2, 1500, 5, outPercent: 40);
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw1', 'gw2'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump'],
+            'nfdump' => ['binary' => FixtureCaptures::BIN . '/nfdump', 'profiles-data' => $this->dir . '/profiles', 'profile' => 'live', 'max-processes' => 2],
+            'log' => ['priority' => LOG_ERR],
         ]);
     });
 
-    test('returns zeros for an empty result set', function (): void {
-        expect(AlertManager::sumDecodedFlowRecords([]))->toBe([
-            'flows' => 0.0,
-            'packets' => 0.0,
-            'bytes' => 0.0,
-        ]);
+    test('Test and the live evaluation read the values of the old per-flow sum, for every filter and source set', function (): void {
+        $filters = ['any', 'proto tcp', 'dst port 443', 'proto icmp', 'src net 10.0.0.0/8 and proto udp', 'proto 47'];
+        $sourceSets = [['gw1'], ['gw2'], ['gw1', 'gw2'], []];
+        $checked = 0;
+        foreach ($filters as $filter) {
+            foreach ($sourceSets as $sources) {
+                $case = $filter . ' on ' . ($sources === [] ? 'every source' : implode(',', $sources));
+                $old = alertListedTotals($sources === [] ? ['gw1', 'gw2'] : $sources, $this->slot, $filter);
+                $db = Database::open(':memory:');
+                $mgr = new AlertManager(makeDatasource(alertBytes(0.0)), $this->dir . '/state-' . $checked . '.json', $this->dir . '/log.json', '', new AlertEventRepository($db));
+                $rules = array_map(
+                    static fn (string $metric): AlertRule => makeRule(['id' => $metric, 'name' => $metric, 'sources' => $sources, 'metric' => $metric, 'nfdumpFilter' => $filter, 'operator' => '>=', 'thresholdValue' => 0.0]),
+                    ['flows', 'packets', 'bytes'],
+                );
+
+                $tested = $mgr->testRule($rules[2], 'live');
+                $current = $mgr->fetchCurrentSlot($rules[2], 'live');
+                $fired = $mgr->runPeriodic($rules, 'live', $this->slot);
+                $live = array_column($db->all("SELECT value FROM alert_events WHERE kind = 'fired' ORDER BY id"), 'value');
+
+                expect($tested)->toMatchArray(['evaluated' => true, 'slot' => $this->slot, 'value' => $old['bytes']], $case)
+                    ->and($current)->toBe($old, $case)
+                    ->and($fired)->toBe(['flows', 'packets', 'bytes'], $case)
+                    ->and($live)->toBe(array_values($old), $case)
+                ;
+                ++$checked;
+            }
+        }
+
+        expect($checked)->toBe(24)
+            ->and(alertListedTotals(['gw1', 'gw2'], $this->slot, 'any')['flows'])->toBeGreaterThan(2500.0)
+            ->and(alertListedTotals(['gw1', 'gw2'], $this->slot, 'proto 47'))->toBe(['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0])
+        ;
     });
 
-    test('ignores non-array entries and missing fields default to zero', function (): void {
-        $decoded = [
-            ['in_packets' => 5], // in_bytes missing
-            'not-an-array',
-        ];
+    test('a source without the capture file of the slot is left out, as before', function (): void {
+        $name = gmdate('YmdHi', $this->slot);
+        unlink($this->dir . '/profiles/live/gw2/' . gmdate('Y/m/d', $this->slot) . '/nfcapd.' . $name);
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
+        $rule = makeRule(['sources' => ['gw1', 'gw2'], 'nfdumpFilter' => 'dst port 443', 'operator' => '>=', 'thresholdValue' => 0.0]);
 
-        expect(AlertManager::sumDecodedFlowRecords($decoded))->toBe([
-            'flows' => 1.0,
-            'packets' => 5.0,
-            'bytes' => 0.0,
-        ]);
+        $fired = $mgr->runPeriodic([$rule], 'live', $this->slot);
+
+        expect($fired)->toBe(['Test rule'])
+            ->and(alertSlotValues($this->db))->toBe([[$this->slot, alertListedTotals(['gw1'], $this->slot, 'dst port 443')['bytes']]])
+            ->and(alertListedTotals(['gw1'], $this->slot, 'dst port 443')['bytes'])->toBeGreaterThan(0.0)
+        ;
     });
 });
 

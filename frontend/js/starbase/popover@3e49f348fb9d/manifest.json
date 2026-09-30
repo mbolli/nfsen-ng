@@ -1,0 +1,109 @@
+{
+  "tag": "sb-popover",
+  "props": [
+    {
+      "name": "label",
+      "attribute": "label",
+      "type": "string",
+      "default": "Details",
+      "required": false,
+      "docs": {
+        "description": "Text of the default trigger, and the accessible name of the panel (an aria-label on the element wins)."
+      }
+    },
+    {
+      "name": "mode",
+      "attribute": "mode",
+      "type": "oneOf",
+      "default": "click",
+      "required": false,
+      "values": [
+        "click",
+        "hover"
+      ],
+      "docs": {
+        "description": "click: a dialog that opens on click and closes on an outside click or Escape. hover: a hover card that opens after a short delay on hover or keyboard focus and describes the trigger."
+      }
+    },
+    {
+      "name": "placement",
+      "attribute": "placement",
+      "type": "oneOf",
+      "default": "bottom",
+      "required": false,
+      "values": [
+        "bottom",
+        "bottom-start",
+        "bottom-end",
+        "top",
+        "top-start",
+        "top-end",
+        "start",
+        "start-start",
+        "start-end",
+        "end",
+        "end-start",
+        "end-end"
+      ],
+      "docs": {
+        "description": "Side of the trigger, and the alignment along it. start and end are logical, so they mirror in right-to-left text. The panel flips and shifts to stay on screen."
+      }
+    },
+    {
+      "name": "arrow",
+      "attribute": "arrow",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Draw a pixel arrow that points at the middle of the trigger."
+      }
+    },
+    {
+      "name": "open",
+      "attribute": "open",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Open. View state the server may own: a changed attribute wins (open=\"false\" closes), a removed one is ignored. Never reflected: use the open property, show() and hide() from the client."
+      }
+    },
+    {
+      "name": "name",
+      "attribute": "name",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Name reported in sb-open and sb-close (e.g. the field of a command)."
+      }
+    }
+  ],
+  "slots": [
+    {
+      "name": "trigger",
+      "description": "Your own trigger: a native button (or a link, in hover mode). It gets aria-expanded and aria-haspopup (click mode) or an aria-describedby to the content (hover mode), put back after every morph. Without it, a button shows label."
+    },
+    {
+      "name": "default",
+      "description": "The panel content."
+    }
+  ],
+  "events": [
+    {
+      "kind": "custom-event",
+      "name": "sb-open",
+      "bubbles": true,
+      "composed": true,
+      "description": "The panel opened. detail: { name, reason }, reason being trigger, server or api."
+    },
+    {
+      "kind": "custom-event",
+      "name": "sb-close",
+      "bubbles": true,
+      "composed": true,
+      "description": "The panel closed. detail: { name, reason }: trigger, outside, escape, leave (hover mode), server or api."
+    }
+  ]
+}

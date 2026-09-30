@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/zweiundeins/starbase.git",
-  "commit": "1cf59a7adf4b5aa9ddcd97434c34bb1d0de8a08c",
-  "describe": "v0.5.0-7-g1cf59a7",
-  "catalog": "6bf4ad5a53b6",
+  "commit": "b80d0ea3a5b6b3d3b632f6bf36bc958c0fa3f79a",
+  "describe": "v0.5.0-8-gb80d0ea",
+  "catalog": "8a863eee72dd",
   "minFormat": "min2",
   "datastar": "Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)",
   "datastarSha256": "f602fbe19d74e4c16c2f28b3a92c4934072400337372787561089c26a8b3e1db",
@@ -22,6 +22,17 @@
   },
   "license": "sha384-NOQoztcPboJQkR9KJWoodw+NuS/EUnH50jN20qG6Al+prs+NVtshJGGK4JL5pwCL",
   "components": {
+    "popover": {
+      "tag": "sb-popover",
+      "version": "3e49f348fb9d",
+      "entry": "popover.js",
+      "load": true,
+      "files": {
+        "README.md": "sha384-MvqMId91vLR/DjcgNjFdc9ie/uswdc7KUsgUucx0Cz5rt4dMf5RD9taQW/pCd2Dv",
+        "manifest.json": "sha384-MDCjh79+o7syZ3l3+S4ac8xdjG6Yn4f/qSVaxYWIBDtDZ+FCciTNOz78tn1uqLiF",
+        "popover.js": "sha384-dCUuz89wqUDIwSnisA+RkLt7LNzVnAimVyrx9P7d9OCl//uyI8VWnJmacVCm8j5n"
+      }
+    },
     "relative-time": {
       "tag": "sb-relative-time",
       "version": "bddc4ee86bf4",

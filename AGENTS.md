@@ -292,16 +292,16 @@ engine. nfsen-ng's own elements are Rocket elements of three shapes, none with `
 | B, owned content | light mode; `setup` builds the DOM with the DOM API, inside a `data-ignore-morph` container | `nfsen-toast` |
 | C, controller | light mode, no children; props on plain attributes, targets found by id (`for="drawerFilterTextarea"`) | `nfsen-filter-editor` |
 
-No element uses `render`. In light mode it draws nothing inside a `data-ignore-morph` container, and a first render
-during a server morph starts a second morph inside it, which clears the outer morph's id maps: elements with ids
-that the outer morph moves later are recreated and lose their client state (Datastar issue #1209). Server markup
-therefore stays in the light DOM, and `ui.css`, the page CSS and the tests' selectors reach it.
+None of them uses `render`: their content is server markup, which stays in the light DOM, so `ui.css`, the page
+CSS and the tests' selectors reach it. Components with `render`, such as the vendored Starbase components, are safe
+with the patched bundle: 0008 keeps a first render during a server morph from clearing the outer morph's id maps
+(Datastar issue #1209: elements with ids that the outer morph moved later were recreated and lost their client
+state), and 0009 lets a light component render inside a `data-ignore-morph` container.
 
 Rules, checked in part by `tests/e2e/rocket.test.mjs`:
 
 - K1. No Datastar plugin attribute (`data-on`, `data-text`, `data-bind:*`, `data-ref`, `data-signals`, ...) in the
-  light DOM of a Rocket host, except inside a `data-ignore` subtree: Rocket rescopes them, and on first load
-  nothing there binds.
+  light DOM of a Rocket host, except inside a `data-ignore` subtree: Rocket rescopes them to the component.
 - K2. No `data-init` on a Rocket host: it can run twice.
 - K3. A light host (shapes B and C) carries no `data-*` attribute from the server or the page; its props use plain
   names (`level`, `message`, `for`).
@@ -320,12 +320,12 @@ Rules, checked in part by `tests/e2e/rocket.test.mjs`:
   `nfsen/chunks`, `nfsen/theme-colors` and `nfsen/tz-utils`; no element keeps its own copy.
 - K11. Events keep their names and `bubbles: true` (Rocket's `emit()` adds `composed: true`).
 - K12. Each element declares `manifest.events` and documents its props with `.docs({ description })`.
-- K13. No element defines `render`: a shadow host appends its `<slot>` in `setup`, a light host builds its DOM
-  there. A vendored component with `render` is not loaded.
+- K13. `render` is safe (patches 0008 and 0009), but nfsen-ng's own elements keep their shapes: a shadow host
+  appends its `<slot>` in `setup`, a light host builds its DOM there.
 - K14. State that must survive a move lives in `nfsen/host-state`: `hostState(host, create)` and `peekState(host)`.
   `cleanup` calls `whenGone(host, release)`, which after a microtask releases the state of a host no move
-  reconnected, empties it and its shadow root, removes its attributes and detaches it: Datastar keeps every
-  removed Rocket host reachable, and an emptied one keeps 1.7 DOM nodes on average instead of its subtree.
+  reconnected (disposing what the state holds, such as an ECharts instance), empties it and its shadow root,
+  removes its attributes and detaches it. Patch 0010 lets removed hosts be collected; `rocket.test.mjs` checks it.
 - K15. `observeProps` handlers never touch the DOM: they run in the middle of a morph, so they queue one
   `queueMicrotask(update)` per burst, which runs after it.
 
@@ -407,16 +407,15 @@ In this order:
    in Datastar's pantry `<div hidden>` and takes only part of it back, then a full-document morph follows. With
    1.0.2 to 1.0.4 the detached pantry still holds the section and the second morph reuses the stale `#z`. While it
    does, keep the observer in `nfsen-router.js` that empties the pantry after each morph.
-6. Rerun the Rocket repro pages against the new bundle. Starbase main has `docs/repro/rocket-morph-reentrancy`
-   (#1209, K13). The others are only on Starbase's local branch `docs/rocket-upstream-drafts` until it merges:
-   `rocket-morph-ids` (#1209 without an exception, K13), `rocket-render-ignore-morph` (light `render`, K13),
-   `rocket-removed-elements` (K14), `rocket-queued-definition-children` (K1) and `rocket-observer-rescan` (the
-   reorder cost that `nfsen-table` avoids by emptying its body first). A move that sets a host up again has no
-   page: patch 0002 fixes it. Without that branch, `/tmp/rkt-review/exp.js` on the development host holds one
+6. Rerun the Rocket repro pages against the new bundle, in Starbase's `docs/repro/`: `rocket-morph-reentrancy` and
+   `rocket-morph-ids` (#1209, patch 0008), `rocket-render-ignore-morph` (light `render`, 0009),
+   `rocket-removed-elements` (K14, 0010), `rocket-queued-definition-children` (K1, 0011) and
+   `rocket-observer-rescan` (0012, the reorder cost that `nfsen-table` avoids by emptying its body first). A move
+   that sets a host up again has no page: patch 0002 fixes it. Without that branch, `/tmp/rkt-review/exp.js` on the development host holds one
    case per page, e1 to e12, run by `run.mjs` next to it, as long as that folder exists. Relax K13, K14 or K15
    only in a change of its own.
-7. Update the plugin list of K1 in `tests/e2e/rocket.test.mjs` if `library/src/plugins/attributes` changed. Once
-   removed hosts are collected, make its heap case assert that every `WeakRef` clears.
+7. Update the plugin list of K1 in `tests/e2e/rocket.test.mjs` if `library/src/plugins/attributes` changed. Its
+   heap case asserts that every removed host is collected, so a bundle without patch 0010's fix fails it.
 8. Move the Starbase pin to a commit whose `static/vendor/datastar-rocket.js` has the same banner (`pull` refuses
    otherwise).
 9. Run `node scripts/starbase-vendor.mjs check`, `sh scripts/vendor-rocket.sh --check`,

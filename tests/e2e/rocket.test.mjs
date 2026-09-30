@@ -356,7 +356,7 @@ export default async function rocketTest() {
     // ── What removed Rocket hosts leave behind: DOM nodes per host after garbage collection ──
     const heapCases = [
         ['heap', `${BASE}/#/conversations`, measureHeap, HEAP_TOASTS + 2 * HEAP_RUNS, HEAP_BOUND],
-        // An emptied light host keeps 3 nodes (EXP e8); a toast that kept its notice would keep 6.
+        // Before patch 0010 an emptied light host kept 3 nodes (EXP e8); now every removed host is collected.
         ['heap of hosts removed with an ancestor', `${BASE}/#/overview`, measureAncestorHeap, HEAP_TOASTS, 3],
     ];
     for (const [name, url, measure, least, bound] of heapCases) {
@@ -365,8 +365,9 @@ export default async function rocketTest() {
             const perHost = (after - baseline) / removed;
             console.log(
                 `  rocket ${name}: ${removed} Rocket hosts removed, DOM nodes ${baseline} -> ${after}, ${perHost.toFixed(2)} per host; ` +
-                    `${alive} of ${removed} still reachable through a WeakRef (D3)`
+                    `${alive} of ${removed} still reachable through a WeakRef`
             );
+            assert.equal(alive, 0, `${name}: every removed Rocket host is collected (patch 0010), ${alive} of ${removed} are not`);
             assert.ok(removed >= least, `${name}: at least ${least} Rocket hosts removed, got ${removed}`);
             assert.ok(perHost <= bound, `${name}: a removed Rocket host keeps at most ${bound} DOM nodes, got ${perHost.toFixed(2)}`);
             assert.deepEqual(page.realErrors(), [], 'no console errors');
@@ -668,7 +669,7 @@ async function pageCases(page, requests, consoleText) {
     }
 }
 
-/** Every Rocket host seen, held weakly; a removed one is one that is no longer connected. */
+/** Every Rocket host seen, held weakly; a removed one is disconnected or already collected. */
 const HEAP_HELPERS = `(function(){
     var seen = new WeakSet();
     window.__hosts = [];
@@ -680,6 +681,9 @@ const HEAP_HELPERS = `(function(){
         }
     };
     window.__removed = function(){
+        return window.__hosts.filter(function(r){ var h = r.deref(); return !h || !h.isConnected; }).length;
+    };
+    window.__alive = function(){
         return window.__hosts.filter(function(r){ var h = r.deref(); return !!h && !h.isConnected; }).length;
     };
     window.__toasts = async function(n){
@@ -713,12 +717,13 @@ async function heapAround(page, run, runs, extra = async () => {}) {
     await sleep(300);
     const removedBefore = await page.evaluate('window.__removed()');
     const baseline = await gc(page);
+    const aliveBefore = await page.evaluate('window.__alive()');
     await extra();
     for (let i = 0; i < runs; i++) await run();
     await sleep(300);
     const removed = (await page.evaluate('window.__removed()')) - removedBefore;
     const after = await gc(page);
-    const alive = (await page.evaluate('window.__removed()')) - removedBefore;
+    const alive = (await page.evaluate('window.__alive()')) - aliveBefore;
     return { removed, baseline, after, alive };
 }
 

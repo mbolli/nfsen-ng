@@ -229,16 +229,15 @@
                     {%- if f.aggregated %}, aggregated from {{ f.limitReached ? 'the first ' }}{{ f.flowsRead|number_format }} flows{{ f.limitReached ? ' (the limit)' }}
                     {%- elseif f.limitReached %}, the limit of {{ f.limit|number_format }}{% endif -%}
                 </span>
-                <div class="menu flows-export" data-role="menu">
-                    <button type="button" class="menu-toggle" data-size="sm" aria-haspopup="menu" aria-controls="flowsExportMenu"
-                            aria-expanded="false" data-preserve-attr="aria-expanded"
-                            {{ f.count == 0 or f.result.lost ? 'disabled' }}>Export</button>
-                    <ul role="menu" id="flowsExportMenu" aria-label="Export the flows" data-preserve-attr="data-open">
-                        <li role="none"><button type="button" role="menuitem" data-on:click="document.getElementById('flowTable')?.exportCsv()">CSV</button></li>
-                        <li role="none"><button type="button" role="menuitem" data-on:click="document.getElementById('flowTable')?.exportJson()">JSON</button></li>
-                        <li role="none"><button type="button" role="menuitem" data-on:click="document.getElementById('flowTable')?.print()">Print</button></li>
+                <sb-popover class="flows-export" id="flowsExport" label="Export the flows" placement="bottom-end">
+                    <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
+                            data-preserve-attr="aria-expanded aria-haspopup" {{ f.count == 0 or f.result.lost ? 'disabled' }}>Export</button>
+                    <ul class="popover-list" id="flowsExportMenu">
+                        <li><button type="button" class="menu-item" data-export="csv" data-on:click="document.getElementById('flowTable')?.exportCsv()">CSV</button></li>
+                        <li><button type="button" class="menu-item" data-export="json" data-on:click="document.getElementById('flowTable')?.exportJson()">JSON</button></li>
+                        <li><button type="button" class="menu-item" data-export="print" data-on:click="document.getElementById('flowTable')?.print()">Print</button></li>
                     </ul>
-                </div>
+                </sb-popover>
             {% endif %}
         </header>
         <div class="card-body stack">

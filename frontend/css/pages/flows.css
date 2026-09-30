@@ -157,7 +157,7 @@
     padding-block-end: var(--size-2);
 }
 
-.flows-results > header > .menu {
+.flows-results > header > sb-popover {
     padding-block-end: var(--size-2);
 }
 

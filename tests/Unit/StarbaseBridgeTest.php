@@ -44,7 +44,7 @@ final class StarbaseBridgeTest {
 
     /**
      * Pixel traits reviewed and accepted, per module ("<slug>/<file>"): trait => reason. Empty: sb-relative-time
-     * has none, and a component with one is not adopted until Starbase fixes it (ROCKET-SPEC 3.8).
+     * and sb-popover have none, and a component with one is not adopted until Starbase fixes it (ROCKET-SPEC 3.8).
      *
      * @var array<string, array<string, string>>
      */

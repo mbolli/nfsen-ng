@@ -18,13 +18,27 @@ const NOT_COLOUR = [
     '--sb-radius-sm',
     '--sb-radius-lg',
     '--sb-focus-ring',
+    '--sb-shadow-overlay',
     '--sb-z-toast',
     '--sb-z-tooltip',
 ];
 
+// Markup that replaces a README preview in the vendored audit: sb-popover's preview leaves the panel closed.
+const VENDORED_MARKUP = {
+    'sb-popover':
+        '<sb-popover open label="Export" placement="bottom-start"><button type="button" slot="trigger" class="menu-toggle" data-size="sm">Export</button><ul class="popover-list"><li><button type="button" class="menu-item">CSV</button></li><li><button type="button" class="menu-item">JSON</button></li></ul></sb-popover>',
+};
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const CATALOG = {
+    drawer: `<sb-drawer inline heading="Filters" style="--sb-drawer-size: 14rem"><span>proto tcp and port 443</span><sb-button slot="footer" size="sm" variant="outline">Cancel</sb-button><sb-button slot="footer" size="sm">Apply</sb-button></sb-drawer>`,
+    popover: `<sb-popover open label="Export"><span>CSV, JSON or Print</span></sb-popover>`,
+    checkbox: `<sb-checkbox checked label="Enhanced data"></sb-checkbox><sb-checkbox indeterminate label="All sources"></sb-checkbox><sb-checkbox label="Bi-directional"></sb-checkbox>`,
+    'checkbox-group': `<sb-checkbox-group label="Sources" value='["gw1"]' select-all="All sources"><sb-check value="gw1">gw1</sb-check><sb-check value="gw2">gw2</sb-check><sb-check value="gw3" disabled>gw3</sb-check></sb-checkbox-group>`,
+    'date-picker': `<sb-date-picker inline mode="range" label="Range" lang="en-GB" month="2026-09" value='{"start":"2026-09-22","end":"2026-09-29"}'></sb-date-picker>`,
+    'virtual-scroll': `<sb-virtual-scroll label="Flows" item-size="24" total="3" style="block-size: 6rem"><div role="listitem">10.0.0.1 to 10.1.0.2</div><div role="listitem">10.0.0.3 to 10.1.0.4</div><div role="listitem">10.0.0.5 to 10.1.0.6</div></sb-virtual-scroll>`,
+    'data-table': `<sb-data-table label="Top talkers" selection="single" selected='["a"]' style="block-size: 10rem" columns='[{"key":"ip","label":"Address","sortable":true},{"key":"bytes","label":"Bytes","align":"end","sortable":true}]' rows='[{"id":"a","ip":"10.0.0.1","bytes":281000},{"id":"b","ip":"10.0.1.1","bytes":180000},{"id":"c","ip":"10.0.2.1","bytes":90000}]'></sb-data-table>`,
     input: `<sb-input label="Host" value="10.0.0.1" hint="IPv4 or IPv6"></sb-input><sb-input label="Port" value="99999" pattern="[0-9]{1,4}" error="Out of range"></sb-input>`,
     select: `<sb-select label="Source" value="gw2" options='["gw1","gw2","gw3"]'></sb-select>`,
     tabs: `<sb-tabs labels='["Flows","Talkers","Alerts"]' selected="1"></sb-tabs>`,
@@ -156,7 +170,7 @@ function vendored() {
         return {
             tag: c.tag,
             path: `starbase/${folder}/${c.entry}`,
-            markup: preview(join(VENDOR, folder, 'README.md')) || `<${c.tag}></${c.tag}>`,
+            markup: VENDORED_MARKUP[c.tag] ?? (preview(join(VENDOR, folder, 'README.md')) || `<${c.tag}></${c.tag}>`),
         };
     });
 }
@@ -472,6 +486,24 @@ function auditHosts({ tags, checks }) {
     return { hosts: hosts.length, elements: [...trees.values()].reduce((n, els) => n + els.length, 0), texts, states, findings };
 }
 
+/** Page side: the vendored sb-popover's shadow and panel, the same nfsen-ng tokens on a probe, and the shadow's corners. */
+function popoverLook() {
+    const root = document.querySelector('#sb-vendored sb-popover').shadowRoot;
+    const [layer, panel] = [root.querySelector('[popover]'), root.querySelector('[part~="panel"]')];
+    const probe = document.createElement('div');
+    probe.style.cssText = 'box-shadow: var(--shadow-2); border-radius: var(--radius-2); padding: var(--size-1); min-inline-size: 12rem';
+    document.getElementById('client-root').append(probe);
+    const look = (shadow, cs) => ({ shadow, radius: cs.borderRadius, padding: cs.padding, minInlineSize: cs.minInlineSize });
+    const out = {
+        open: layer.matches(':popover-open'),
+        layerRadius: getComputedStyle(layer).borderRadius,
+        got: look(getComputedStyle(layer).boxShadow, getComputedStyle(panel)),
+        want: look(getComputedStyle(probe).boxShadow, getComputedStyle(probe)),
+    };
+    probe.remove();
+    return out;
+}
+
 /** Page side: every host of `tags` is defined and has rendered, into its shadow root or over its authored children. */
 function rendered(tags) {
     const hosts = [...document.querySelectorAll('#client-root *')].filter((el) => tags.includes(el.localName));
@@ -601,6 +633,14 @@ export default async function starbaseBridgeTest() {
         }
         const tags = await mount(page, 'sb-vendored', components);
         found.push(...(await auditAll(page, tags, 'vendored', { catalog: false })));
+        for (const mode of tags.includes('sb-popover') ? THEMES : []) {
+            await setTheme(page, mode);
+            const r = await page.evaluate(`(${popoverLook.toString()})()`);
+            assert.ok(r.open, `${mode}: the vendored sb-popover is closed`);
+            assert.deepEqual(r.got, r.want, `${mode}: sb-popover's shadow or panel does not follow starbase.css`);
+            // Known until upstream: the shadow's .pop has no part and keeps --sb-radius, and 5.3.2 rules out a host override.
+            console.log(`  known, ${mode}: sb-popover's shadow has ${r.layerRadius} corners, its panel ${r.got.radius}`);
+        }
         assert.deepEqual(page.realErrors(), [], 'console errors while mounting the vendored components');
 
         await page.evaluate(`(${defineControl.toString()})(${JSON.stringify(CONTROL)})`);
@@ -616,9 +656,29 @@ export default async function starbaseBridgeTest() {
 
     if (STARBASE_DIR) {
         const listed = catalog();
+        const tags = listed.map((c) => c.tag);
+        // A tag defined twice keeps its first class, so the layout's vendored module for a catalog tag is served empty.
+        const overlap = components.filter((c) => tags.includes(c.tag));
         await withPage(
             async (page) => {
+                const headers = [{ name: 'Content-Type', value: 'text/javascript' }];
+                page.ws.addEventListener('message', (event) => {
+                    const msg = JSON.parse(event.data);
+                    if (msg.method !== 'Fetch.requestPaused') return;
+                    const reply = { requestId: msg.params.requestId, responseCode: 200, responseHeaders: headers };
+                    page.send('Fetch.fulfillRequest', reply).catch(() => {});
+                });
+                if (overlap.length > 0) {
+                    const patterns = overlap.map((c) => ({ urlPattern: `*/${dirname(c.path)}/*`, requestStage: 'Request' }));
+                    await page.send('Fetch.enable', { patterns });
+                }
                 await boot(page);
+                assert.deepEqual(
+                    await page.evaluate(`${JSON.stringify(tags)}.filter((t) => customElements.get(t))`),
+                    [],
+                    'catalog tags the page defined before the STARBASE_DIR sources ran'
+                );
+                for (const c of overlap) console.log(`  catalog: ${c.tag} from STARBASE_DIR, the layout's ${c.path} served empty`);
                 await page.evaluate(`(() => {
                 for (const [tag, source] of ${JSON.stringify(listed.map((c) => [c.tag, c.source]))}) {
                     const script = document.createElement('script');
@@ -628,7 +688,6 @@ export default async function starbaseBridgeTest() {
                 }
                 return true;
             })()`);
-                const tags = listed.map((c) => c.tag);
                 await page.waitFor(`${JSON.stringify(tags)}.every((t) => customElements.get(t))`, {
                     timeout: 10000,
                     label: 'catalog components to define',

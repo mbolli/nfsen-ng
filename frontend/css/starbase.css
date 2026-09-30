@@ -47,6 +47,7 @@
     --sb-radius-sm: var(--radius-2);
     --sb-radius-lg: var(--radius-3);
     --sb-focus-ring: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--focus-color);
+    --sb-shadow-overlay: var(--shadow-2);
     --sb-selection: color-mix(in oklab, var(--text-1) 18%, transparent);
 
     --sb-z-toast: var(--layer-toast);
@@ -66,4 +67,11 @@
     --sb-chart-6: var(--series-6);
     --sb-chart-7: var(--series-7);
     --sb-chart-8: var(--series-8);
+}
+
+/* sb-popover */
+sb-popover::part(panel) {
+    min-inline-size: 12rem;
+    padding: var(--size-1);
+    border-radius: var(--radius-2);
 }

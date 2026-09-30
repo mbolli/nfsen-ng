@@ -266,21 +266,19 @@
             <h2 id="statsResultsTitle" aria-live="polite"
                 {% if r %}data-text="{{ current }} ? {{ r.title|json_encode }} : 'Results'"{% endif %}>{{ r ? r.title : 'Results' }}</h2>
             {% if r and r.rows > 0 %}
-                <div class="menu talkers-export" data-role="menu"
-                     data-attr:hidden="!({{ current }})" data-preserve-attr="hidden">
-                    <button type="button" class="menu-toggle" data-size="sm" aria-haspopup="menu" aria-expanded="false"
-                            aria-controls="statsExportMenu" data-preserve-attr="aria-expanded">Export</button>
-                    <ul role="menu" id="statsExportMenu" aria-label="Export {{ r.caption }}" data-preserve-attr="data-open">
+                <sb-popover class="talkers-export" id="statsExport" label="Export {{ r.caption }}" placement="bottom-end"
+                            data-attr:hidden="!({{ current }})" data-preserve-attr="hidden">
+                    <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
+                            data-preserve-attr="aria-expanded aria-haspopup">Export</button>
+                    <ul class="popover-list" id="statsExportMenu">
                         {% for item in [{id: 'csv', label: 'CSV', method: 'exportCsv'},
                                         {id: 'json', label: 'JSON', method: 'exportJson'},
                                         {id: 'print', label: 'Print', method: 'print'}] %}
-                            <li role="none">
-                                <button type="button" role="menuitem" tabindex="-1" data-export="{{ item.id }}"
-                                        data-on:click="document.getElementById('statsTable')?.{{ item.method }}()">{{ item.label }}</button>
-                            </li>
+                            <li><button type="button" class="menu-item" data-export="{{ item.id }}"
+                                        data-on:click="document.getElementById('statsTable')?.{{ item.method }}()">{{ item.label }}</button></li>
                         {% endfor %}
                     </ul>
-                </div>
+                </sb-popover>
             {% endif %}
         </header>
         <div class="card-body stack">

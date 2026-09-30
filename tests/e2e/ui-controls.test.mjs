@@ -152,6 +152,8 @@ async function inject(page) {
             if (e.target.closest('a[href="#"]')) e.preventDefault();
         });
         document.getElementById('client-root').insertAdjacentHTML('beforeend', ${JSON.stringify(FLOATING)});
+        // A fired alert's toast (Shell::alertToast) would sit over the bottom-anchored fixture.
+        document.getElementById('alerts-toast-container').style.display = 'none';
         return true;
     })()`);
 }

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Dom\HTMLDocument;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\CpuBudget;
 use mbolli\nfsen_ng\common\Debug;
@@ -13,6 +14,9 @@ use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\datasources\Rrd;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
+use Mbolli\PhpVia\Config as ViaConfig;
+use Mbolli\PhpVia\Context;
+use Mbolli\PhpVia\Via;
 
 /**
  * @param list<string>          $sources
@@ -38,21 +42,6 @@ function healthCapture(string $root, string $profile, string $source, int $ts, ?
     touch($path, $mtime ?? $ts + 300);
 
     return $path;
-}
-
-function healthRemoveTree(string $dir): void {
-    if (!is_dir($dir)) {
-        return;
-    }
-    $it = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST
-    );
-    foreach ($it as $entry) {
-        /** @var SplFileInfo $entry */
-        $entry->isDir() && !$entry->isLink() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
-    }
-    rmdir($dir);
 }
 
 /** Row for one profile and source out of HealthMetrics::sources(). */
@@ -84,7 +73,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    healthRemoveTree($this->root);
+    removeTree($this->root);
     if ($this->settingsBefore instanceof Settings) {
         Config::$settings = $this->settingsBefore;
     }
@@ -452,6 +441,31 @@ describe('HealthMetrics::loopLag', function (): void {
         'just below an error' => [999.4, '999 ms', 'warning'],
         'rounds up to the error' => [999.6, '1.0 s', 'error'],
         'at the error' => [1000.0, '1.0 s', 'error'],
+    ]);
+
+    // The row on Health (health.html.twig's lag macro): the glyph and its screen-reader word follow the level.
+    test('the Event loop lag row shows a warning glyph from 100 ms and an error glyph from 1.0 s', function (float $p95, string $glyph, string $word) use ($now): void {
+        foreach (range(1, 20) as $i) {
+            LoopLag::record($p95, $now);
+        }
+        $app = new Via((new ViaConfig())->withTemplateDir(dirname(__DIR__, 2) . '/backend/templates'));
+        $html = (new Context('ctx-lag', '/', $app))
+            ->renderString("{% import 'pages/health.html.twig' as health %}{{ health.lag(lag) }}", ['lag' => HealthMetrics::loopLag($now)])
+        ;
+        $row = HTMLDocument::createFromString('<dl>' . $html . '</dl>', LIBXML_NOERROR)
+            ->querySelector('dd.health-lag')
+        ;
+        $dot = $row?->querySelector('dd.health-lag > .status-dot');
+
+        expect($row)->not->toBeNull()
+            ->and($dot?->getAttribute('data-level'))->toBe($glyph === '' ? null : $glyph)
+            ->and($dot?->querySelector('.visually-hidden')?->textContent)->toBe($word === '' ? null : $word)
+            ->and(preg_replace('/\s+/', ' ', trim((string) $row?->textContent)))->toContain('p95 ' . HealthMetrics::lagText($p95))
+        ;
+    })->with([
+        'no glyph below the warning' => [99.4, '', ''],
+        'a warning' => [150.0, 'warning', 'Slow:'],
+        'an error' => [1500.0, 'error', 'Stalled:'],
     ]);
 
     test('writes a lag in ms below a second and in s above', function (?float $ms, string $text): void {

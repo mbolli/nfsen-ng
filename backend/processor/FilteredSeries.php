@@ -282,6 +282,13 @@ final class FilteredSeries {
         return $ordered === [] ? ['any'] : $ordered;
     }
 
+    /** How many bins build() lays out: from the start floored to MIN_BIN up to and including the end. */
+    public static function binCount(int $start, int $end, int $targetPoints, int $groupCount = 1): int {
+        $binStart = $start - ($start % self::MIN_BIN);
+
+        return intdiv(max(0, $end - $binStart), self::binWidth($binStart, $end, $targetPoints, $groupCount)) + 1;
+    }
+
     /**
      * Bin width in seconds: at least MIN_BIN, always a whole multiple of it so bins line
      * up with nfcapd rotation, and never so fine that the run would exceed MAX_RUNS.

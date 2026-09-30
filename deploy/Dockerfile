@@ -76,6 +76,9 @@ RUN curl -sS https://getcomposer.org/download/latest-stable/composer.phar -o /us
     && chmod +x /usr/local/bin/composer \
     && composer install --no-dev --optimize-autoloader
 
+# composer exits 0 when a locked git source is out of reach (a local checkout) and leaves the package empty.
+RUN php -r 'require "vendor/autoload.php"; if (!class_exists(Mbolli\PhpVia\Via::class)) { fwrite(STDERR, "php-via is missing from vendor/: composer.lock must name a published php-via release\n"); exit(1); }'
+
 # Setup volumes for persistent data and configuration.
 # /data/nfsen-ng     nfcapd capture tree (written by the collector, read by nfdump)
 # /var/lib/nfsen-ng  nfsen-ng's own data: rrd/ (RRD database) and state/ (preferences,

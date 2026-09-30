@@ -222,3 +222,20 @@ describe('AlertEventRepository legacy import', function (): void {
         ;
     });
 });
+
+describe('AlertEventRepository::deleteForRule() and deleteForOtherRules()', function (): void {
+    test('delete Test events by rule, and never those without a rule', function (): void {
+        foreach ([['test', 'r1'], ['fired', 'r1'], ['test', 'r2'], ['resolved', 'r2'], ['test', null]] as [$kind, $rule]) {
+            $this->events->record($kind, 300, $rule, 'R', 'live', [], 'bytes', '>', 1.0, 1.0);
+        }
+        $kinds = fn (): array => array_map(static fn (array $e): string => ($e['rule_id'] ?? '-') . ' ' . $e['kind'], $this->db->all('SELECT rule_id, kind FROM alert_events ORDER BY id'));
+
+        expect($this->events->deleteForRule('r1', []))->toBe(0)
+            ->and($this->events->deleteForRule('r1', ['test', 'bogus']))->toBe(1)
+            ->and($kinds())->toBe(['r1 fired', 'r2 test', 'r2 resolved', '- test'])
+            ->and($this->events->deleteForOtherRules(['r2'], ['test']))->toBe(0)
+            ->and($this->events->deleteForOtherRules([], ['test']))->toBe(1)
+            ->and($kinds())->toBe(['r1 fired', 'r2 resolved', '- test'])
+        ;
+    });
+});

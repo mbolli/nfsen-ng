@@ -26,16 +26,6 @@ function cpuFixture(array $files): string {
     return $root;
 }
 
-function cpuFixtureRemove(string $dir): void {
-    if (!is_dir($dir)) {
-        return;
-    }
-    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
-        $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
-    }
-    rmdir($dir);
-}
-
 function cpuStatus(string $list): string {
     return "Name:\tphp\nCpus_allowed:\tfffff\nCpus_allowed_list:\t{$list}\nMems_allowed_list:\t0\n";
 }
@@ -48,7 +38,7 @@ describe('CpuBudget::detectFrom()', function (): void {
 
     afterEach(function (): void {
         foreach ($this->roots as $root) {
-            cpuFixtureRemove($root);
+            removeTree($root);
         }
     });
 

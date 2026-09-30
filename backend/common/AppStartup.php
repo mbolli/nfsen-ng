@@ -108,7 +108,7 @@ class AppStartup {
         $app->setGlobalState('import_current_file', '');
         $app->setGlobalState('import_status_text', '');
         $app->setGlobalState('import_eta', '');
-        $app->setGlobalState('import_log', []);
+        ImportDaemon::clearLog($app);
         $app->setGlobalState('import_cancel', false);
 
         try {
@@ -183,11 +183,7 @@ class AppStartup {
         $debug = Debug::getInstance();
         // New Debug WARNING+ entries go to the Import card's log.
         $flushLog = static function () use ($app): void {
-            $new = Debug::drainBuffer();
-            if ($new !== []) {
-                $log = $app->globalState('import_log', []);
-                $app->setGlobalState('import_log', array_merge($log, $new));
-            }
+            ImportDaemon::appendLog($app, Debug::drainBuffer());
         };
 
         foreach ($daemons as $profile => $daemon) {
@@ -240,12 +236,7 @@ class AppStartup {
             // Surface any RRD write warnings from this inotify-triggered import
             $new = Debug::drainBuffer();
             if ($new !== []) {
-                $log = $app->globalState('import_log', []);
-                $merged = array_merge($log, $new);
-                if (\count($merged) > 100) {
-                    $merged = \array_slice($merged, -100);
-                }
-                $app->setGlobalState('import_log', $merged);
+                ImportDaemon::appendLog($app, $new);
                 ImportDaemon::broadcast($app, 'admin:import');
             }
 

@@ -8,6 +8,8 @@ use mbolli\nfsen_ng\processor\FilteredSeries;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
 use mbolli\nfsen_ng\processor\Processor;
+use mbolli\nfsen_ng\query\CostEstimate;
+use mbolli\nfsen_ng\query\TimeWindow;
 use OpenSwoole\Coroutine;
 use Tests\Support\FakeProcessor;
 
@@ -449,6 +451,23 @@ describe('FilteredSeries::build', function (): void {
         );
 
         expect($seen)->toBe([[1, 3], [2, 3], [3, 3]]);
+
+        removeTree($root);
+    });
+
+    // The Flows panel said '144 nfdump runs' while the build counted 145 intervals over 7 days.
+    test('lays out as many bins as the cost estimate counts', function () use ($base): void {
+        $root = withFakeNfdump(['gateway'], [$base]);
+        FakeProcessor::$defaultResponse = [statRow('TCP', 1, 1, 1)];
+
+        foreach ([[$base + 120, $base + 120 + 7 * 86400, 150], [$base, $base + 899, 3], [$base + 7, $base + 86400, 288]] as [$start, $end, $points]) {
+            $total = 0;
+            FilteredSeries::build($start, $end, ['gateway'], '', targetPoints: $points, onProgress: function (int $done, int $all) use (&$total): void {
+                $total = $all;
+            });
+
+            expect($total)->toBe(CostEstimate::runsForFilteredSeries(TimeWindow::raw($start, $end), $points));
+        }
 
         removeTree($root);
     });

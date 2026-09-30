@@ -7,20 +7,6 @@ use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\SavedFilterRepository;
 use mbolli\nfsen_ng\store\SavedFilterSeeder;
 
-function seederTestRemoveTree(string $dir): void {
-    if (!is_dir($dir)) {
-        return;
-    }
-    $entries = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST,
-    );
-    foreach ($entries as $entry) {
-        $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
-    }
-    rmdir($dir);
-}
-
 /** @param list<string> $filters */
 function seederTestWritePreferences(string $path, array $filters): void {
     file_put_contents($path, json_encode(['defaultView' => 'graphs', 'filters' => $filters], JSON_THROW_ON_ERROR));
@@ -47,7 +33,7 @@ afterEach(function (): void {
     ob_end_clean();
     Config::$deploymentFilters = $this->deploymentFiltersBefore;
     Config::$prefsFile = $this->prefsFileBefore ?? '';
-    seederTestRemoveTree($this->dir);
+    removeTree($this->dir);
 });
 
 describe('preference presets', function (): void {

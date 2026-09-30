@@ -137,6 +137,8 @@ rocket('nfsen-toast', {
     },
 });
 
+const queued = window.showMessage?.queue ?? [];
+
 /**
  * Shows a toast in containerSelector (keep it data-ignore-morph), else in the open modal's own stack
  * (a modal makes the page inert), else in the shell's stack.
@@ -156,3 +158,6 @@ window.showMessage = (type, message, autoDismiss = false, containerSelector = nu
     container.appendChild(toast);
     return toast;
 };
+
+// Calls made before this module ran, queued by the layout's stand-in (a fired alert on the first sync).
+for (const args of queued.splice(0)) window.showMessage(...args);

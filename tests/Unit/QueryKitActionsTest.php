@@ -69,20 +69,6 @@ function queryKitCaptures(string $root, string $source, int $from, int $to, int 
     }
 }
 
-function queryKitRemoveTree(string $dir): void {
-    if (!is_dir($dir)) {
-        return;
-    }
-    $entries = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST,
-    );
-    foreach ($entries as $entry) {
-        $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
-    }
-    rmdir($dir);
-}
-
 /**
  * Signal patches queued for the client, merged in order.
  *
@@ -155,7 +141,7 @@ afterEach(function (): void {
     if ($this->settingsBefore !== null) {
         Config::$settings = $this->settingsBefore;
     }
-    queryKitRemoveTree($this->root);
+    removeTree($this->root);
 });
 
 describe('target table (3.5.3)', function (): void {
@@ -569,7 +555,8 @@ describe('estimate-query', function (): void {
         $this->c->getSignal('graph_resolution')?->setValue(12, broadcast: false);
         queryKitRun(fn () => QueryKitActions::estimate($this->c, 'overview'));
 
-        expect($this->c->getSignal('_est_overview')?->getValue())->toMatchArray(['files' => 24, 'runs' => 24, 'clamped' => true]);
+        // As the build lays them out: the clamped hour from its start floored to 5 minutes is 3,899 s, so 7 bins of 600 s per source.
+        expect($this->c->getSignal('_est_overview')?->getValue())->toMatchArray(['files' => 24, 'runs' => 14, 'clamped' => true]);
     });
 
     test('nothing to read says so with a window and no seconds', function (): void {

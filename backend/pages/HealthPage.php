@@ -244,10 +244,9 @@ final class HealthPage implements Page {
             default => 'idle',
         };
 
-        $log = $app->globalState('import_log', []);
-        $log = \is_array($log) ? array_values(array_filter($log, \is_array(...))) : [];
+        $log = ImportDaemon::log($app);
+        $counts = ImportDaemon::logCounts($app);
         $outcome = (string) $app->globalState(self::IMPORT_OUTCOME, '');
-        $errors = array_filter($log, static fn (array $e): bool => (int) ($e['level'] ?? LOG_WARNING) <= LOG_ERR);
         $pending = array_sum(array_column($sources, 'pending'));
 
         return [
@@ -272,14 +271,14 @@ final class HealthPage implements Page {
                 ],
                 array_reverse(\array_slice($log, -self::IMPORT_LOG_LINES)),
             ),
-            'logTotal' => \count($log),
-            'logErrors' => \count($errors),
+            'logTotal' => $counts['total'],
+            'logErrors' => $counts['errors'],
             // Neutral unless a pass completed or failed; a catch-up that succeeded sets no outcome.
             'outcomeLevel' => match (true) {
                 $outcome === 'failed' => 'error',
                 $outcome !== 'complete' => '',
-                $errors !== [] => 'error',
-                $log !== [] => 'warning',
+                $counts['errors'] > 0 => 'error',
+                $counts['total'] > 0 => 'warning',
                 default => 'success',
             },
         ];

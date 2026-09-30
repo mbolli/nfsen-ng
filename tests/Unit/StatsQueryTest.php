@@ -206,13 +206,6 @@ function statsQueryTestTree(array $sources, int $intervals): string {
     return $root;
 }
 
-function statsQueryTestRemoveTree(string $root): void {
-    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
-        $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
-    }
-    rmdir($root);
-}
-
 /**
  * A processor that keeps the options and filter of every run and answers with the stat lines
  * $answer returns for them.
@@ -284,7 +277,7 @@ describe('StatsQuery in time slices', function (): void {
 
     afterEach(function (): void {
         PartitionPlanner::useFetchLimit(null);
-        statsQueryTestRemoveTree($this->root);
+        removeTree($this->root);
     });
 
     test('a part reads its slice in json, listing its share of the line budget, with the protocol list when it needs shares', function (): void {

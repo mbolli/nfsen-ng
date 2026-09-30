@@ -1,8 +1,5 @@
-// Top Talkers (4.2): the statistic picker never runs a query, the direction resolves the element,
-// results are kept per statistic, the side panels run on their own with the protocol colours of
-// the picker graph, and a brush on that graph only changes the range. Includes the keyboard walk
-// and a forced-colors screenshot (V-A11Y). NFDUMP_HAS_NEL=1 is for an nfdump that computes the
-// NEL statistics; the dev image's 1.7.10 does not, nor did 1.7.8.
+// Top Talkers (4.2): picker, direction, per-statistic results, side panels, brush, keyboard walk and forced colors.
+// NFDUMP_HAS_NEL=1 is for an nfdump that computes the NEL statistics; the dev image's 1.7.10 does not.
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
 
@@ -72,16 +69,6 @@ const WATCH_COPIES = `(function(){
         records.forEach(function(r){ r.addedNodes.forEach(function(n){ if (n.textContent) window.__said.push(n.textContent); }); });
     }).observe(document.getElementById('nfsen-announcer'), { childList: true, subtree: true, characterData: true });
 })()`;
-
-/** Runs a side panel; once more when the dev app restarted under the first click (status reset to ''). */
-async function runPanel(page, panel) {
-    for (let attempt = 1; ; attempt++) {
-        await page.runQuery(`talkers-${panel}`, { timeout: 30000 });
-        const ran = await page.evaluate(`!!document.querySelector('#talkersPanel-${panel} :is(.bar-list, .notice[data-level])')`);
-        if (ran || attempt === 2 || (await page.signalValue('query_status')) !== '') return;
-        await sleep(2000);
-    }
-}
 
 /** Where a panel's Run sits against its cost line and its status line, after a run. */
 const panelRow = (panel) => `(function(){
@@ -165,6 +152,13 @@ export default async function talkersTest() {
         assert.match(title, /^Src IP address, ordered by \w+/, `results title: ${title}`);
         const announced = await page.evaluate(`document.querySelector('#statsRun [role="status"]').textContent`);
         assert.match(announced, /^[\d,]+ rows? returned\. Done in /, `the Run control announces the row count, got: ${announced}`);
+        // A large read runs as time slices in parallel nfdump processes (PERF-SPEC P4), and says how many.
+        const done = await page.evaluate(`document.querySelector('#statsRun .query-progress-line > span').textContent.trim()`);
+        assert.match(
+            done,
+            /^Done in [\d.]+s(?: with \d+ nfdump processes)?\.$/,
+            `the outcome names the processes of a split, got: ${done}`
+        );
         const ran = log.count('stats-actions');
         assert.equal(ran, 1, 'Run posted stats-actions once');
 
@@ -175,7 +169,10 @@ export default async function talkersTest() {
         const command = await page.evaluate(`document.getElementById('statsCommand').textContent`);
         const plain = !(await page.evaluate('window.isSecureContext'));
         for (const round of [1, 2]) {
-            await page.waitFor(`${COPY}.textContent.trim() === 'Copy'`, { timeout: 5000, label: `copy ${round}: the label reads Copy first` });
+            await page.waitFor(`${COPY}.textContent.trim() === 'Copy'`, {
+                timeout: 5000,
+                label: `copy ${round}: the label reads Copy first`,
+            });
             await clickAt(page, COPY);
             await page.waitFor(`window.__copies.length === ${round} && window.__said.length === ${round}`, {
                 label: `copy ${round} and its announcement`,
@@ -207,7 +204,7 @@ export default async function talkersTest() {
         await page.waitFor(`!${visible('#statsResults .notice[data-kind="stale"]')}`, { label: 'the stale notice to go' });
 
         // The side panels run on their own: TCP in slot 1, rows outside TCP/UDP/ICMP neutral (2.3).
-        await runPanel(page, 'proto');
+        await page.runQuery('talkers-proto', { timeout: 30000 });
         const proto = await page.evaluate(bars('proto'));
         assert.ok(proto.length > 0, 'the protocol share has bars');
         const tcp = proto.find(([label]) => label === 'TCP');
@@ -217,7 +214,7 @@ export default async function talkersTest() {
             if (!['TCP', 'UDP', 'ICMP', 'ICMP6'].includes(label)) assert.equal(slot, null, `${label} stays neutral`);
         }
         assert.equal(log.count('stats-actions'), ran, 'a panel run is not a statistics run');
-        await runPanel(page, 'as');
+        await page.runQuery('talkers-as', { timeout: 30000 });
         const asn = await page.evaluate(bars('as'));
         const asText = asn.length ? '' : await page.evaluate(`document.querySelector('#talkersPanel-as .card-body').innerText`);
         assert.ok(asn.length > 0, `the ASN panel has bars, it says: ${asText} (status ${await page.signalValue('query_status')})`);
@@ -229,9 +226,8 @@ export default async function talkersTest() {
         assert.deepEqual(await page.evaluate(panelRow('as')), { costBeside: true, statusBelow: true }, 'Top ASNs after its run');
         assert.deepEqual(await page.evaluate(panelRow('proto')), { costBeside: true, statusBelow: null }, 'Protocol share');
 
-        // Keyboard: arrows move through the statistic radios, Tab leaves the group for More
-        // statistics and then the direction, and walks the query card to the three Run controls
-        // and the Export toggle, whose menu items are not tab stops.
+        // Keyboard: arrows move through the statistic radios; Tab walks More statistics, the direction, the three
+        // Run controls and the Export toggle, whose menu items are not tab stops.
         await page.evaluate(`document.getElementById('talkersTab-talkers').focus()`);
         await key(page, 'ArrowRight', 'ArrowRight', 39);
         assert.equal(await page.evaluate(`document.activeElement.id`), 'talkersTab-ports', 'ArrowRight moves to Ports');

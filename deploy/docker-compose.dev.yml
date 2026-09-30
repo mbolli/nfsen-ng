@@ -16,8 +16,8 @@ services:
     environment:
       - TZ=UTC
       # Uncomment and set to the timezone nfcapd ran in if it differs from TZ above.
-      # Only needed for bare-metal setups where nfcapd used a non-UTC timezone.
-      - NFCAPD_TZ=Europe/Berlin
+      # Only needed for bare-metal setups where nfcapd used a non-UTC timezone; the nfcapd services below run in UTC.
+      # - NFCAPD_TZ=Europe/Berlin
 
       # ── Sources & ports (comma-separated lists) ────────────────────────────
       - NFSEN_SOURCES=all                  # NetFlow source names captured by nfcapd

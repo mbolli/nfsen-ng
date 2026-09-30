@@ -573,7 +573,7 @@ describe('NfdumpSlots ownership', function (): void {
 
     test('a query that owns nothing reports nothing', function (): void {
         expect(NfdumpSlots::pidFor('never-ran'))->toBeNull()
-            ->and(NfdumpSlots::kill('never-ran'))->toBeNull()
+            ->and(NfdumpSlots::kill('never-ran'))->toBe([])
         ;
     });
 

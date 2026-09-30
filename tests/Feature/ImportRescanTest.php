@@ -79,18 +79,6 @@ describe('Import rescan mode (#171)', function (): void {
     });
 });
 
-/** Removes a directory tree the tests below created. */
-function importRescanRemoveTree(string $dir): void {
-    if (!is_dir($dir)) {
-        return;
-    }
-    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
-    foreach ($it as $entry) {
-        $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
-    }
-    rmdir($dir);
-}
-
 /** @return list<string> the -r argument of every nfdump call the stub logged */
 function importRescanReads(string $log): array {
     $reads = [];
@@ -151,7 +139,7 @@ describe('Backfill through Import::start()', function (): void {
         TopNCollector::reset();
         ImportStats::reset();
         Nfdump::$_instance = null;
-        importRescanRemoveTree($this->root);
+        removeTree($this->root);
     });
 
     test('a normal import does not read files older than the last update', function (): void {

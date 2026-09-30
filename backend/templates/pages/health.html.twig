@@ -23,6 +23,19 @@
     {%- if not hideWord %} {{ word }}{% endif -%}
 {% endmacro %}
 
+{# The Event loop lag figures of HealthMetrics::loopLag(), with a glyph from the warning level on. #}
+{% macro lag(lag) %}
+    {%- import _self as health -%}
+    <dd class="health-lag">
+        {%- if lag.samples > 0 -%}
+            {% if lag.level %}{{ health.status(lag.level, lag.level == 'error' ? 'Stalled:' : 'Slow:', true) }} {% endif %}p95 {{ lag.p95 }}
+            <small>p50 {{ lag.p50 }}, max {{ lag.max }}, over the last {{ lag.window }} s</small>
+        {%- else -%}
+            not measured yet
+        {%- endif -%}
+    </dd>
+{% endmacro %}
+
 {% set h = pages.health %}
 {% set tz = 'tzOptions($' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() ~ ')' %}
 {% set imp = h.import %}
@@ -360,14 +373,7 @@
                     <dd>{{ sys.queries.inUse }} of {{ sys.queries.max }}{% if sys.queries.split %} <small>({{ sys.queries.split }})</small>{% endif %}</dd>
                     {# How late a 100 ms timer fires: the wait a render, action or live update meets too. #}
                     <dt>Event loop lag</dt>
-                    <dd class="health-lag">
-                        {%- if sys.lag.samples > 0 -%}
-                            {% if sys.lag.level %}{{ health.status(sys.lag.level, sys.lag.level == 'error' ? 'Stalled:' : 'Slow:', true) }} {% endif %}p95 {{ sys.lag.p95 }}
-                            <small>p50 {{ sys.lag.p50 }}, max {{ sys.lag.max }}, over the last {{ sys.lag.window }} s</small>
-                        {%- else -%}
-                            not measured yet
-                        {%- endif -%}
-                    </dd>
+                    {{ health.lag(sys.lag) }}
                     <dt>Uptime</dt>
                     <dd>{{ sys.uptime }} <small>since {{ health.when(sys.startedAt, tz) }}</small></dd>
                     <dt>Datasource</dt>

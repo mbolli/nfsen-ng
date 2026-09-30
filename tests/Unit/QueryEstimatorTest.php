@@ -26,20 +26,6 @@ function estimatorCaptureFiles(string $root, string $source, array $timestamps, 
     }
 }
 
-function estimatorRemoveTree(string $dir): void {
-    if (!is_dir($dir)) {
-        return;
-    }
-    $entries = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST,
-    );
-    foreach ($entries as $entry) {
-        $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
-    }
-    rmdir($dir);
-}
-
 beforeEach(function (): void {
     $this->settingsBefore = isset(Config::$settings) ? Config::$settings : null;
     $this->stateDirBefore = isset(Config::$stateDir) ? Config::$stateDir : null;
@@ -65,7 +51,7 @@ afterEach(function (): void {
     if ($this->settingsBefore !== null) {
         Config::$settings = $this->settingsBefore;
     }
-    estimatorRemoveTree($this->root);
+    removeTree($this->root);
 });
 
 describe('QueryEstimator defaults', function (): void {

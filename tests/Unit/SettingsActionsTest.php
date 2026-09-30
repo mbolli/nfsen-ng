@@ -92,17 +92,6 @@ function settingsActionsSave(Context $c, string $scope): string {
     return $scripts;
 }
 
-function settingsActionsRemoveTree(string $dir): void {
-    if (!is_dir($dir)) {
-        return;
-    }
-    $items = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
-    foreach ($items as $item) {
-        $item->isDir() ? rmdir($item->getPathname()) : unlink($item->getPathname());
-    }
-    rmdir($dir);
-}
-
 describe('SettingsActions::buildPreferences()', function (): void {
     test('writes every General field and reverse DNS', function (): void {
         $prefs = SettingsActions::buildPreferences(settingsActionsSaved(), settingsActionsForm());
@@ -335,7 +324,7 @@ describe('the save-settings action', function (): void {
         if ($this->prefsBefore !== null) {
             Config::$prefsFile = $this->prefsBefore;
         }
-        settingsActionsRemoveTree($this->dir);
+        removeTree($this->dir);
     });
 
     test('the reverse DNS Save writes the switch only, and the General edits stay unsaved in the form', function (): void {
@@ -524,7 +513,7 @@ describe('SettingsPage', function (): void {
         putenv('NFSEN_IPINFO_TOKEN');
         putenv('NFSEN_RRD_PATH');
         putenv('NFSEN_NFDUMP_MAX_PROCESSES');
-        settingsActionsRemoveTree($this->stateDir);
+        removeTree($this->stateDir);
     });
 
     test('the form signals hold page ids, one protocol and the saved theme', function (): void {

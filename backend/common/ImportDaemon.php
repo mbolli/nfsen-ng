@@ -27,6 +27,13 @@ class ImportDaemon {
     /** Import progress and rrd:live re-render every tab, so each scope goes out at most this often. */
     public const int BROADCAST_EVERY_MS = 250;
 
+    /** App-global Import log: its newest LOG_KEEP entries, and how many of each kind came in. */
+    public const string LOG_STATE = 'import_log';
+
+    public const string LOG_COUNTS_STATE = 'import_log_counts';
+
+    public const int LOG_KEEP = 100;
+
     /** @var array<string, int> scope → hrtime (ns) at which its last broadcast finished rendering */
     private static array $broadcastDone = [];
 
@@ -127,6 +134,56 @@ class ImportDaemon {
     }
 
     // ─── Public API ──────────────────────────────────────────────────────────
+
+    /**
+     * Adds Debug entries to the Import log. A pass can warn about every file, so only the newest
+     * LOG_KEEP stay and the rest are counted.
+     *
+     * @param array<int, array{ts: int, level: int, msg: string}> $entries
+     */
+    public static function appendLog(Via $app, array $entries): void {
+        if ($entries === []) {
+            return;
+        }
+        $counts = self::logCounts($app);
+        $app->setGlobalState(self::LOG_STATE, \array_slice([...self::log($app), ...array_values($entries)], -self::LOG_KEEP));
+        $app->setGlobalState(self::LOG_COUNTS_STATE, [
+            'total' => $counts['total'] + \count($entries),
+            'errors' => $counts['errors'] + \count(array_filter($entries, static fn (array $e): bool => $e['level'] <= LOG_ERR)),
+        ]);
+    }
+
+    /** Empties the Import log for a new pass. */
+    public static function clearLog(Via $app): void {
+        $app->setGlobalState(self::LOG_STATE, []);
+        $app->setGlobalState(self::LOG_COUNTS_STATE, ['total' => 0, 'errors' => 0]);
+    }
+
+    /**
+     * The entries the Import log keeps, oldest first.
+     *
+     * @return list<array<mixed>>
+     */
+    public static function log(Via $app): array {
+        $log = $app->globalState(self::LOG_STATE, []);
+
+        return \is_array($log) ? array_values(array_filter($log, \is_array(...))) : [];
+    }
+
+    /**
+     * Every entry of the pass, kept or not, and its errors.
+     *
+     * @return array{total: int, errors: int}
+     */
+    public static function logCounts(Via $app): array {
+        $counts = $app->globalState(self::LOG_COUNTS_STATE, null);
+        if (\is_array($counts) && \is_int($counts['total'] ?? null) && \is_int($counts['errors'] ?? null)) {
+            return ['total' => $counts['total'], 'errors' => $counts['errors']];
+        }
+        $log = self::log($app);
+
+        return ['total' => \count($log), 'errors' => \count(array_filter($log, static fn (array $e): bool => (int) ($e['level'] ?? LOG_WARNING) <= LOG_ERR))];
+    }
 
     /**
      * At most one broadcast of $scope per BROADCAST_EVERY_MS after the last one rendered; a call

@@ -116,7 +116,7 @@ final class ImportActions {
         $app->setGlobalState('import_current_file', '');
         $app->setGlobalState('import_status_text', self::PASSES[$pass]['starting']);
         $app->setGlobalState('import_eta', '');
-        $app->setGlobalState('import_log', []);
+        ImportDaemon::clearLog($app);
         $app->setGlobalState(HealthPage::IMPORT_OUTCOME, '');
         Debug::drainBuffer();
         $c->sync();
@@ -129,8 +129,7 @@ final class ImportActions {
             $flushLog = static function () use ($app): void {
                 $new = Debug::drainBuffer();
                 if ($new !== []) {
-                    $log = $app->globalState('import_log', []);
-                    $app->setGlobalState('import_log', array_merge($log, $new));
+                    ImportDaemon::appendLog($app, $new);
                     ImportDaemon::broadcast($app, 'admin:import');
                 }
             };

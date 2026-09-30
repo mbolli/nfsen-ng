@@ -6,6 +6,7 @@ use mbolli\nfsen_ng\actions\UtilityActions;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\IpLookup;
 use mbolli\nfsen_ng\common\Settings;
+use mbolli\nfsen_ng\processor\NfdumpSlots;
 
 describe('UtilityActions::hostnameFor()', function (): void {
     test('does not call the resolver when reverse DNS is off', function (): void {
@@ -77,5 +78,45 @@ describe('UtilityActions::ipInfoView()', function (): void {
             'geoData' => [],
             'geoSource' => '',
         ]);
+    });
+});
+
+describe('UtilityActions::killNotice()', function (): void {
+    test('names the one process of a plain query', function (): void {
+        expect(UtilityActions::killNotice([4242]))->toBe('nfdump process (PID 4242) was killed.');
+    });
+
+    test('names every process of a split query or a filtered build', function (): void {
+        expect(UtilityActions::killNotice([11, 12, 13]))->toBe('3 nfdump processes (PIDs 11, 12, 13) were killed.');
+    });
+});
+
+describe('NfdumpSlots::kill()', function (): void {
+    test('signals and reports every process of the query', function (): void {
+        $children = [];
+        foreach ([1, 2] as $_) {
+            $proc = proc_open(['sleep', '30'], [], $pipes);
+            $children[] = $proc;
+            NfdumpSlots::register('kill-all', proc_get_status($proc)['pid']);
+        }
+        $pids = array_map(static fn ($p): int => proc_get_status($p)['pid'], $children);
+
+        try {
+            expect(NfdumpSlots::kill('kill-all'))->toBe($pids);
+            foreach ($children as $proc) {
+                for ($i = 0; $i < 50 && proc_get_status($proc)['running']; ++$i) {
+                    usleep(20_000);
+                }
+                expect(proc_get_status($proc)['running'])->toBeFalse();
+            }
+        } finally {
+            foreach ($pids as $pid) {
+                NfdumpSlots::unregister('kill-all', $pid);
+            }
+            foreach ($children as $proc) {
+                proc_terminate($proc, SIGKILL);
+                proc_close($proc);
+            }
+        }
     });
 });

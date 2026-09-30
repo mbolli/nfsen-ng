@@ -42,9 +42,7 @@ final class UtilityActions {
             }
         }, 'ip-info');
 
-        // Kill the running nfdump process: sends SIGTERM to the PID in Nfdump::$runningPid.
-        // Safe because SWOOLE_HOOK_ALL makes stream_get_contents coroutine-yielding, so this
-        // action runs concurrently with a blocked flow/stats action.
+        // Kill this tab's query: NfdumpSlots::kill() SIGTERMs every nfdump registered under its handle.
         $c->action(static function (Context $c) use ($states): void {
             // Raise the cancel flag first. A chunked run (the filtered graph) forks one
             // nfdump per time bin, so SIGTERM alone only ends the bin in flight and the
@@ -54,16 +52,27 @@ final class UtilityActions {
             // This tab's own run and nothing else. The fallback to the 'default' handle that
             // used to be here belongs to the import daemon and every MCP call, so pressing
             // Kill with no query of your own in flight SIGTERMed theirs.
-            $pid = NfdumpSlots::kill($c->getId());
-            if ($pid !== null && $pid > 0) {
+            $pids = NfdumpSlots::kill($c->getId());
+            if ($pids !== []) {
                 foreach (self::killNoticePages($c) as $page) {
                     $state = $states->for($page);
                     $state?->clearNotifications();
-                    $state?->notify('warning', 'nfdump process (PID ' . $pid . ') was killed.');
+                    $state?->notify('warning', self::killNotice($pids));
                 }
             }
             $c->sync();
         }, 'kill-nfdump');
+    }
+
+    /**
+     * What Kill stopped: a split query or a filtered build runs several nfdump processes at once.
+     *
+     * @param non-empty-list<int> $pids
+     */
+    public static function killNotice(array $pids): string {
+        return \count($pids) === 1
+            ? 'nfdump process (PID ' . $pids[0] . ') was killed.'
+            : \count($pids) . ' nfdump processes (PIDs ' . implode(', ', $pids) . ') were killed.';
     }
 
     /** The page whose query was killed, from query_kind; the active page when the kind is unknown. */

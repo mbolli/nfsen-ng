@@ -334,22 +334,16 @@ final class NfdumpSlots {
      * Sends SIGTERM to every process owned by $handle: a filtered-graph build has one in flight
      * per slot it holds, and a handle shared by concurrent callers can own several too.
      *
-     * @return ?int the last pid signalled, or null when that query owns nothing right now
+     * @return list<int> the pids signalled, none when that query owns nothing right now
      */
-    public static function kill(string $handle): ?int {
-        $pids = array_filter(self::$pids[$handle] ?? [], static fn (int $pid): bool => $pid > 0);
-        if ($pids === []) {
-            return null;
-        }
-
-        $last = null;
+    public static function kill(string $handle): array {
+        $pids = array_values(array_filter(self::$pids[$handle] ?? [], static fn (int $pid): bool => $pid > 0));
         foreach ($pids as $pid) {
             posix_kill($pid, SIGTERM);
             Debug::getInstance()->log('Sent SIGTERM to nfdump pid ' . $pid . ' for query ' . $handle, LOG_DEBUG);
-            $last = $pid;
         }
 
-        return $last;
+        return $pids;
     }
 
     /**

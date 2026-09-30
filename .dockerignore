@@ -31,6 +31,10 @@ eslint.config.js
 pnpm-lock.yaml
 .php-cs-fixer.cache
 
+# scripts/starbase-vendor.mjs pull stages here; a pull killed midway leaves one behind
+frontend/js/.starbase-stage-*
+
 # Misc
 *.md
+**/*.pdf
 LICENSE

@@ -86,17 +86,6 @@ function topncRelPath(int $ts): string {
     return $at->format('Y/m/d') . '/nfcapd.' . $at->format('YmdHi');
 }
 
-function topncRemoveTree(string $dir): void {
-    if (!is_dir($dir)) {
-        return;
-    }
-    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
-    foreach ($it as $entry) {
-        $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
-    }
-    rmdir($dir);
-}
-
 /**
  * A processor that answers the collector's three runs by their options and sleeps inside each,
  * so the collecting coroutines of a booted worker overlap. It records every run with the
@@ -234,7 +223,7 @@ afterEach(function (): void {
     topncLane()::reset();
     topncReleaseSlots();
     Debug::drainBuffer();
-    topncRemoveTree($this->root);
+    removeTree($this->root);
     if ($this->settingsBefore !== null) {
         Config::$settings = $this->settingsBefore;
     }

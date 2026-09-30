@@ -1,6 +1,6 @@
 // Query kit on Flows (3.5.3, 5.5); requests are counted over CDP. E2E_FAST=1 skips the wait for a live tick.
 import assert from 'node:assert/strict';
-import { withPage, BASE } from './lib/cdp.mjs';
+import { AppReloadedError, withPage, BASE } from './lib/cdp.mjs';
 
 const FIELD = '#filterNfdumpTextarea';
 const STATUS = '[data-filter-status="flows"]';
@@ -93,31 +93,27 @@ async function listenToRunStatus(page) {
 async function windowMovedFrom(page, previous, timeout) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
-        // A reload in progress has no Datastar to ask; the caller sees its navigate post.
-        const now = await buckets(page).catch(() => previous);
+        const now = await buckets(page).catch((e) => {
+            if (e instanceof AppReloadedError) throw e;
+            return previous;
+        });
         if (now.from !== previous.from || now.to !== previous.to) return Date.now() - start;
         await sleep(500);
     }
     return null;
 }
 
-/** One live advance of the window and the posts it caused; observed again after an app reload. */
+/** One live advance of the window and the posts it caused. */
 async function observeLiveAdvance(page, log) {
-    for (let attempt = 1; ; attempt++) {
-        await page.waitForBoot();
-        await estimateSettled(page, 'the estimate before the live advance');
-        await sleep(1000);
-        log.clear();
-        const before = await buckets(page);
-        const tookMs = await windowMovedFrom(page, before, 75000);
-        await sleep(2000);
-        if (log.names().includes('navigate') && attempt < 3) {
-            console.warn('  (the app reloaded during the live check, observing again)');
-            continue;
-        }
-        assert.ok(tookMs !== null, `a live window advances within 75 s, ${before.from}-${before.to} did not;${recentPosts()}`);
-        return { before, after: await buckets(page), tookMs };
-    }
+    await page.waitForBoot();
+    await estimateSettled(page, 'the estimate before the live advance');
+    await sleep(1000);
+    log.clear();
+    const before = await buckets(page);
+    const tookMs = await windowMovedFrom(page, before, 75000);
+    await sleep(2000);
+    assert.ok(tookMs !== null, `a live window advances within 75 s, ${before.from}-${before.to} did not;${recentPosts()}`);
+    return { before, after: await buckets(page), tookMs };
 }
 
 async function estimateSettled(page, label) {

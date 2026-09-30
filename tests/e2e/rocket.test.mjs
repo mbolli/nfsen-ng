@@ -284,15 +284,6 @@ async function openTestDialog(page, cleanups) {
     await page.waitFor(`document.getElementById('alertTestResult')?.open`, { timeout: 20000, label: 'the Test dialog to open' });
 }
 
-/** page.runQuery with 30 s, not 8 s, for the Run button: query_running disables it while any query of the tab runs. */
-async function runWhenReady(page, target) {
-    await page.waitFor(`!!document.querySelector('button[data-run="${target}"]:not(:disabled)')`, {
-        timeout: 30000,
-        label: `run button for ${target}`,
-    });
-    await page.runQuery(target, { timeout: 60000 });
-}
-
 async function gc(page) {
     for (let i = 0; i < 3; i++) await page.send('HeapProfiler.collectGarbage');
     return (await page.send('Memory.getDOMCounters')).nodes;
@@ -357,18 +348,55 @@ export default async function rocketTest() {
         await onOneDocument(page, 'toasts and walk', `${BASE}/#/overview`, () => pageCases(page, requests, consoleText), reset);
     });
 
-    // ── What removed Rocket hosts leave behind: DOM nodes per host after garbage collection ──
+    // ── A toast asked for before nfsen-toast.js ran: a fired alert's script on the first sync ──
     await withPage(async (page) => {
-        const { removed, baseline, after, alive } = await onOneDocument(page, 'heap', `${BASE}/#/conversations`, () => measureHeap(page));
-        const perHost = (after - baseline) / removed;
-        console.log(
-            `  rocket heap: ${removed} Rocket hosts removed, DOM nodes ${baseline} -> ${after}, ${perHost.toFixed(2)} per host; ` +
-                `${alive} of ${removed} still reachable through a WeakRef (D3)`
-        );
-        assert.ok(removed >= HEAP_TOASTS, `the toasts count as removed Rocket hosts (${removed})`);
-        assert.ok(perHost <= HEAP_BOUND, `a removed Rocket host keeps at most ${HEAP_BOUND} DOM nodes, got ${perHost.toFixed(2)}`);
-        assert.deepEqual(page.realErrors(), [], 'no console errors');
+        await earlyToast(page);
     });
+
+    // ── What removed Rocket hosts leave behind: DOM nodes per host after garbage collection ──
+    const heapCases = [
+        ['heap', `${BASE}/#/conversations`, measureHeap, HEAP_TOASTS + 2 * HEAP_RUNS, HEAP_BOUND],
+        // An emptied light host keeps 3 nodes (EXP e8); a toast that kept its notice would keep 6.
+        ['heap of hosts removed with an ancestor', `${BASE}/#/overview`, measureAncestorHeap, HEAP_TOASTS, 3],
+    ];
+    for (const [name, url, measure, least, bound] of heapCases) {
+        await withPage(async (page) => {
+            const { removed, baseline, after, alive } = await onOneDocument(page, name, url, () => measure(page));
+            const perHost = (after - baseline) / removed;
+            console.log(
+                `  rocket ${name}: ${removed} Rocket hosts removed, DOM nodes ${baseline} -> ${after}, ${perHost.toFixed(2)} per host; ` +
+                    `${alive} of ${removed} still reachable through a WeakRef (D3)`
+            );
+            assert.ok(removed >= least, `${name}: at least ${least} Rocket hosts removed, got ${removed}`);
+            assert.ok(perHost <= bound, `${name}: a removed Rocket host keeps at most ${bound} DOM nodes, got ${perHost.toFixed(2)}`);
+            assert.deepEqual(page.realErrors(), [], 'no console errors');
+        });
+    }
+}
+
+/** Holds nfsen-toast.js back, calls showMessage the way a server script does, then lets the module in. */
+async function earlyToast(page) {
+    const paused = [];
+    page.ws.addEventListener('message', (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.method === 'Fetch.requestPaused') paused.push(msg.params.requestId);
+    });
+    await page.send('Fetch.enable', { patterns: [{ urlPattern: '*/js/components/nfsen-toast.js*', requestStage: 'Request' }] });
+    // The held module delays the load event, so the navigation is not awaited through navigate().
+    page.expectNavigation();
+    await page.send('Page.navigate', { url: `${BASE}/#/overview` });
+    await page.waitForBoot({ timeout: 20000 });
+    assert.ok(paused.length > 0, 'nfsen-toast.js is held back');
+    assert.equal(await page.evaluate(`Array.isArray(window.showMessage.queue)`), true, 'the layout stand-in answers showMessage');
+    await page.evaluate(`window.showMessage('warning', 'Alert fired: early', true)`);
+    for (const requestId of paused.splice(0)) await page.send('Fetch.continueRequest', { requestId });
+    await page.send('Fetch.disable');
+    await page.waitFor(
+        `[...document.querySelectorAll('#alerts-toast-container nfsen-toast')].some(function(t){ return t.querySelector('.toast-message')?.textContent === 'Alert fired: early'; })`,
+        { timeout: 10000, label: 'the queued toast once nfsen-toast.js has run' }
+    );
+    assert.equal(await page.evaluate(`window.showMessage.queue`), undefined, 'nfsen-toast.js replaced the stand-in');
+    assert.deepEqual(page.realErrors(), [], 'no console errors (no "showMessage is not a function")');
 }
 
 /** Engine, toasts in all four stacks, copying, identity, names and the page walk. */
@@ -523,7 +551,7 @@ async function pageCases(page, requests, consoleText) {
         // A toast that stays through the walk, so a Rocket host is there on every page.
         await page.evaluate(`window.showMessage('info', ${JSON.stringify(`walk: ${TRICKY}`)}, false).__e2e = 'walk'`);
         const walkStart = requests.length;
-        await runWhenReady(page, 'flows');
+        await page.runQuery('flows', { timeout: 60000 });
         let roles = 0;
         for (let pass = 1; pass <= 2; pass++) {
             for (const id of [...PAGES.filter((p) => p !== 'flows'), 'flows']) {
@@ -640,63 +668,98 @@ async function pageCases(page, requests, consoleText) {
     }
 }
 
-/** Shows and dismisses the toasts and runs Conversations; DOM nodes before and after, removed hosts. */
-async function measureHeap(page) {
-    await page.gotoPage('conversations');
-    await page.setRangePreset('1y');
-    // Every Rocket host seen, held weakly; a removed one is one that is no longer connected.
-    await page.evaluate(`(function(){
-        var seen = new WeakSet();
-        window.__hosts = [];
-        window.__snap = function(){
-            for (var el of document.querySelectorAll('*')) {
-                if (el.rocketInstanceId === undefined || seen.has(el)) continue;
-                seen.add(el);
-                window.__hosts.push(new WeakRef(el));
-            }
-        };
-        window.__removed = function(){
-            return window.__hosts.filter(function(r){ var h = r.deref(); return !!h && !h.isConnected; }).length;
-        };
-        window.__toasts = async function(n){
-            var shown = [];
-            for (var i = 0; i < n; i++) {
-                var t = window.showMessage('info', 'heap ' + i, false);
-                t.__e2e = 'heap';
-                shown.push(t);
-            }
-            window.__snap();
-            await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
-            shown.forEach(function(t){ t.dismiss(); });
-            shown = null;
-        };
-    })()`);
-    const hostId = `document.querySelector('#convPanel-sankey .result-host')?.id ?? ''`;
-    const heapToast = `[...document.querySelectorAll('nfsen-toast')].some(function(t){ return t.__e2e === 'heap'; })`;
-    const run = async () => {
+/** Every Rocket host seen, held weakly; a removed one is one that is no longer connected. */
+const HEAP_HELPERS = `(function(){
+    var seen = new WeakSet();
+    window.__hosts = [];
+    window.__snap = function(){
+        for (var el of document.querySelectorAll('*')) {
+            if (el.rocketInstanceId === undefined || seen.has(el)) continue;
+            seen.add(el);
+            window.__hosts.push(new WeakRef(el));
+        }
+    };
+    window.__removed = function(){
+        return window.__hosts.filter(function(r){ var h = r.deref(); return !!h && !h.isConnected; }).length;
+    };
+    window.__toasts = async function(n){
+        var shown = [];
+        for (var i = 0; i < n; i++) {
+            var t = window.showMessage('info', 'heap ' + i, false);
+            t.__e2e = 'heap';
+            shown.push(t);
+        }
+        window.__snap();
+        await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
+        shown.forEach(function(t){ t.dismiss(); });
+        shown = null;
+    };
+})()`;
+
+/** Runs `target` until the result host that `hostId` names is a new one, then records the hosts it brought. */
+function resultRun(page, target, hostId) {
+    return async () => {
         const before = await page.evaluate(hostId);
-        await runWhenReady(page, 'conversations');
-        // runQuery stops waiting for the start after 5 s, so a slow start is waited for here.
-        await page.waitFor(`(${hostId}) !== ${JSON.stringify(before)}`, { timeout: 60000, label: 'a new Conversations result' });
+        await page.runQuery(target, { timeout: 60000 });
+        await page.waitFor(`(${hostId}) !== ${JSON.stringify(before)}`, { timeout: 60000, label: `a new ${target} result` });
         await page.evaluate('window.__snap()');
     };
+}
 
-    // Warm up, so what the first run or toast creates for good is in the baseline.
+/** DOM nodes before and after `runs` more results, and the Rocket hosts removed in between. */
+async function heapAround(page, run, runs, extra = async () => {}) {
+    // Warm up, so what the first run creates for good is in the baseline.
     await run();
-    await page.evaluate('window.__toasts(5)');
-    await page.waitFor(`!${heapToast}`, { label: 'the warm-up toasts to go' });
     await sleep(300);
     const removedBefore = await page.evaluate('window.__removed()');
     const baseline = await gc(page);
-
-    await page.evaluate(`window.__toasts(${HEAP_TOASTS})`);
-    await page.waitFor(`!${heapToast}`, { timeout: 15000, label: 'the toasts to go' });
-    for (let i = 0; i < HEAP_RUNS; i++) await run();
+    await extra();
+    for (let i = 0; i < runs; i++) await run();
     await sleep(300);
     const removed = (await page.evaluate('window.__removed()')) - removedBefore;
     const after = await gc(page);
     const alive = (await page.evaluate('window.__removed()')) - removedBefore;
     return { removed, baseline, after, alive };
+}
+
+/**
+ * Shows and dismisses the toasts and runs Conversations: each run replaces the result hosts, and the
+ * Sankey and Matrix hosts inside go with their ancestor.
+ */
+async function measureHeap(page) {
+    await page.gotoPage('conversations');
+    await page.setRangePreset('1y');
+    await page.evaluate(HEAP_HELPERS);
+    const heapToast = `[...document.querySelectorAll('nfsen-toast')].some(function(t){ return t.__e2e === 'heap'; })`;
+    const run = resultRun(page, 'conversations', `document.querySelector('#convPanel-sankey .result-host')?.id ?? ''`);
+    await page.evaluate('window.__toasts(5)');
+    await page.waitFor(`!${heapToast}`, { label: 'the warm-up toasts to go' });
+    return heapAround(page, run, HEAP_RUNS, async () => {
+        await page.evaluate(`window.__toasts(${HEAP_TOASTS})`);
+        await page.waitFor(`!${heapToast}`, { timeout: 15000, label: 'the toasts to go' });
+    });
+}
+
+/** Toasts in a box that goes as a whole: no host is removed itself, each goes with its ancestor. */
+async function measureAncestorHeap(page) {
+    await page.waitForPage('overview');
+    await page.evaluate(HEAP_HELPERS);
+    const run = async () => {
+        await page.evaluate(`(async function(){
+            var box = document.createElement('div');
+            for (var i = 0; i < ${HEAP_TOASTS / 2}; i++) {
+                var t = document.createElement('nfsen-toast');
+                t.level = 'info';
+                t.message = 'boxed ' + i;
+                box.append(t);
+            }
+            document.getElementById('client-root').append(box);
+            await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
+            window.__snap();
+            box.remove();
+        })()`);
+    };
+    return heapAround(page, run, 2);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

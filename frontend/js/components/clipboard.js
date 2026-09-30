@@ -107,10 +107,3 @@ document.addEventListener('click', async (event) => {
     announce(message);
     button.dispatchEvent(new CustomEvent('nfsen-copy', { bubbles: true, detail: { ok, text: text ?? '', label } }));
 });
-
-// No template calls this since the copy buttons use data-copy-source; WP-R11 removes it.
-window.nfsenCopyText ??= async (text, button = null) => {
-    const ok = await copyText(text);
-    if (button) flash(button, ok ? 'Copied' : 'Copy failed');
-    return ok;
-};

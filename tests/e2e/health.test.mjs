@@ -3,7 +3,7 @@
 // client-side level filter. The controls are walked with the keyboard only. Trigger imports
 // the test profile's new files, which the daemon would do anyway; E2E_SKIP_MUTATING skips it.
 import assert from 'node:assert/strict';
-import { withPage, BASE } from './lib/cdp.mjs';
+import { AppReloadedError, withPage, BASE } from './lib/cdp.mjs';
 
 const skipMutating = ['1', 'true', 'yes'].includes(String(process.env.E2E_SKIP_MUTATING ?? '').toLowerCase());
 
@@ -144,8 +144,6 @@ async function walkHealth(page) {
     await page.navigate(BASE + '/');
     await page.waitForBoot();
     await page.gotoPage('health');
-    // Gone after a reload, which tells a dev-app restart apart from a real failure.
-    await page.evaluate(`window.__healthRun = true`);
     // The first open after a start renders before the checks and metrics land.
     await page.waitFor(`!document.querySelector('#page-health .health[aria-busy]')`, { timeout: 15000, label: 'the first health refresh' });
 
@@ -200,18 +198,35 @@ async function walkHealth(page) {
     }
 
     const system = await page.evaluate(`document.querySelector('#healthSystem').textContent`);
-    for (const fact of ['nfdump', 'CPU cores', 'Parallel nfdump processes', 'Active queries', 'Event loop lag', 'Uptime', 'Datasource', 'PHP', 'OpenSwoole', 'SQLite journal']) {
+    for (const fact of [
+        'nfdump',
+        'CPU cores',
+        'Parallel nfdump processes',
+        'Active queries',
+        'Event loop lag',
+        'Uptime',
+        'Datasource',
+        'PHP',
+        'OpenSwoole',
+        'SQLite journal',
+    ]) {
         assert.ok(system.includes(fact), `the system card shows ${fact}`);
     }
     // The process budget: the limit with what one process costs, and the slots split by class.
-    const facts = await page.evaluate(`Object.fromEntries([...document.querySelectorAll('#healthSystem dt')].map((dt) => [dt.textContent.trim(), dt.nextElementSibling?.textContent.replace(/\\s+/g, ' ').trim() ?? '']))`);
+    const facts = await page.evaluate(
+        `Object.fromEntries([...document.querySelectorAll('#healthSystem dt')].map((dt) => [dt.textContent.trim(), dt.nextElementSibling?.textContent.replace(/\\s+/g, ' ').trim() ?? '']))`
+    );
     assert.match(facts['CPU cores'] ?? '', /^\d+ from the /, `the core count names its source: ${facts['CPU cores']}`);
     assert.match(
         facts['Parallel nfdump processes'] ?? '',
         /^\d+ \((auto, )?with(out)? -W( \d+)?; each uses about 2 to 3 CPU cores\)$/,
         `the process limit, -W and the cost: ${facts['Parallel nfdump processes']}`
     );
-    assert.match(facts['Active queries'] ?? '', /^\d+ of \d+ \(\d+ interactive, \d+ background(, \d+ waiting)?\)$/, `the slots by class: ${facts['Active queries']}`);
+    assert.match(
+        facts['Active queries'] ?? '',
+        /^\d+ of \d+ \(\d+ interactive, \d+ background(, \d+ waiting)?\)$/,
+        `the slots by class: ${facts['Active queries']}`
+    );
 
     // The event-loop lag probe has ticked since the server started: p95 first, then p50 and max.
     const lagText = facts['Event loop lag'] ?? '';
@@ -278,25 +293,16 @@ async function walkHealth(page) {
     );
 
     // Collect missing top-N now, reached with Tab from the Import heading and pressed with
-    // Enter: queues the gaps, or says nothing is missing. A dev-app restart drops the tab's
-    // context mid-press, so the press is retried.
+    // Enter: queues the gaps, or says nothing is missing.
     if (!(await page.evaluate(`document.getElementById('topnFill').disabled`))) {
         // The result is app-wide and outlives this tab, so a new run shows a new time.
         const stamp = `(document.querySelector('[data-topn-fill] time')?.getAttribute('datetime') ?? '')`;
         const before = await page.evaluate(stamp);
         const filled = `${stamp} !== ${JSON.stringify(before)} && /Queued \\d|Nothing missing/.test(document.querySelector('[data-topn-fill]').textContent)`;
-        for (let attempt = 1; ; attempt++) {
-            const path = await fromImportHeading(page, '#topnFill');
-            assert.equal(path.length, 1, `#topnFill is the first stop after the Import heading, went through ${path.join(' > ')}`);
-            await press(page, 'Enter');
-            try {
-                await page.waitFor(filled, { timeout: 15000, label: 'the top-N fill result' });
-                break;
-            } catch (e) {
-                if (attempt >= 3) throw e;
-                await page.waitForPage('health', { timeout: 20000 });
-            }
-        }
+        const path = await fromImportHeading(page, '#topnFill');
+        assert.equal(path.length, 1, `#topnFill is the first stop after the Import heading, went through ${path.join(' > ')}`);
+        await press(page, 'Enter');
+        await page.waitFor(filled, { timeout: 15000, label: 'the top-N fill result' });
     } else {
         const reason = await page.evaluate(`document.getElementById('topnFill').getAttribute('aria-busy') === 'true'
             ? 'a fill is running'
@@ -391,22 +397,13 @@ async function walkHealth(page) {
     // The group wraps around: left of All is Errors.
     await arrowTo(page, 'ArrowLeft', 'error');
 
-    // The 10 s refresh posts health-refresh, and its morph keeps the filter. A dev-app restart
-    // reloads the page, which resets client state, so that round is repeated.
+    // The 10 s refresh posts health-refresh, and its morph keeps the filter.
     const requests = await page.requestLog();
-    for (let attempt = 1; ; attempt++) {
-        await page.evaluate(`window.__healthMark = true`);
-        const posted = requests.count('health-refresh');
-        const deadline = Date.now() + 30000;
-        while (requests.count('health-refresh') === posted && Date.now() < deadline) await sleep(250);
-        assert.ok(requests.count('health-refresh') > posted, 'an open Health page refreshes itself');
-        await sleep(1000);
-        if (await page.evaluate(`window.__healthMark === true`)) break;
-        assert.ok(attempt < 3, 'the page kept reloading');
-        await page.waitForPage('health', { timeout: 20000 });
-        await fromImportHeading(page, logRadio);
-        await arrowTo(page, 'ArrowLeft', 'error');
-    }
+    const posted = requests.count('health-refresh');
+    const deadline = Date.now() + 30000;
+    while (requests.count('health-refresh') === posted && Date.now() < deadline) await sleep(250);
+    assert.ok(requests.count('health-refresh') > posted, 'an open Health page refreshes itself');
+    await sleep(1000);
     assert.equal(await page.evaluate(`document.getElementById('healthLog').dataset.filter`), 'error', 'a refresh keeps the level filter');
     assert.ok(await page.evaluate(`document.getElementById('healthLogErrors').checked`), 'a refresh keeps the checked level');
 
@@ -504,26 +501,17 @@ async function walkHealth(page) {
                     });
                 }).observe(document.getElementById('page-health'), { subtree: true, attributes: true, attributeFilter: ['hidden'], attributeOldValue: true });
             })()`;
-        for (let attempt = 1; ; attempt++) {
-            await page.waitFor(`!document.querySelector('${triggerOf(profile)}').disabled`, {
-                timeout: 60000,
-                label: 'no import running',
-            });
-            await page.evaluate(watchStart);
-            await page.evaluate(`window.__outcomeRegion = document.getElementById('importOutcome')`);
-            await fromImportHeading(page, triggerOf(profile));
-            const posted = requests.count('trigger-import');
-            await press(page, 'Enter');
-            try {
-                await page.waitFor(`window.__importSeen === true`, { timeout: 30000, label: 'the triggered pass to start' });
-                assert.ok(requests.count('trigger-import') > posted, 'Enter on Trigger posts trigger-import');
-                break;
-            } catch (e) {
-                // Only a reload (dev-app restart) forgets the watcher; anything else is a failure.
-                if (attempt >= 3 || (await page.evaluate(`window.__importSeen === false`))) throw e;
-                await page.waitForPage('health', { timeout: 20000 });
-            }
-        }
+        await page.waitFor(`!document.querySelector('${triggerOf(profile)}').disabled`, {
+            timeout: 60000,
+            label: 'no import running',
+        });
+        await page.evaluate(watchStart);
+        await page.evaluate(`window.__outcomeRegion = document.getElementById('importOutcome')`);
+        await fromImportHeading(page, triggerOf(profile));
+        const posted = requests.count('trigger-import');
+        await press(page, 'Enter');
+        await page.waitFor(`window.__importSeen === true`, { timeout: 30000, label: 'the triggered pass to start' });
+        assert.ok(requests.count('trigger-import') > posted, 'Enter on Trigger posts trigger-import');
         const notice = `document.querySelector('#importOutcome > p.notice')`;
         await page.waitFor(
             `document.getElementById('importCancel').hidden && /Import (complete|cancelled|failed)/.test(${notice}?.textContent ?? '')`,
@@ -563,8 +551,7 @@ export default async function healthTest() {
                 await walkHealth(page);
                 return null;
             } catch (error) {
-                const reloaded = await page.evaluate(`window.__healthRun !== true`).catch(() => true);
-                return { error, reloaded };
+                return { error, reloaded: error instanceof AppReloadedError || page.reloadCount > 0 };
             }
         });
         if (failure === null) return;

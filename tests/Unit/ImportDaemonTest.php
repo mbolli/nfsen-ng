@@ -9,17 +9,6 @@ use Mbolli\PhpVia\Config as ViaConfig;
 use Mbolli\PhpVia\Via;
 use OpenSwoole\Coroutine;
 
-function importDaemonRemoveTree(string $dir): void {
-    if (!is_dir($dir)) {
-        return;
-    }
-    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
-    foreach ($it as $entry) {
-        $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
-    }
-    rmdir($dir);
-}
-
 beforeEach(function (): void {
     $this->root = sys_get_temp_dir() . '/nfsen-ng-daemon-' . bin2hex(random_bytes(6));
     $this->today = $this->root . '/live/gw/' . date('Y/m/d');
@@ -33,7 +22,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    importDaemonRemoveTree($this->root);
+    removeTree($this->root);
     if ($this->settingsBefore !== null) {
         Config::$settings = $this->settingsBefore;
     }
@@ -279,5 +268,31 @@ describe('ImportDaemon::broadcast()', function (): void {
         ImportDaemon::broadcast($app, 'rrd:live');
 
         expect(count($app->sent))->toBe(2);
+    });
+});
+
+describe('the Import log', function (): void {
+    test('keeps the newest entries and counts every one, errors apart', function (): void {
+        $app = new Via(new ViaConfig()->withLogLevel('error'));
+        ImportDaemon::clearLog($app);
+        $entry = static fn (int $i, int $level): array => ['ts' => 1_790_000_000 + $i, 'level' => $level, 'msg' => 'file ' . $i];
+
+        foreach (range(1, 3) as $batch) {
+            ImportDaemon::appendLog($app, array_map(static fn (int $i): array => $entry($batch * 1000 + $i, $i % 10 === 0 ? LOG_ERR : LOG_WARNING), range(1, 60)));
+        }
+        ImportDaemon::appendLog($app, []);
+        $log = ImportDaemon::log($app);
+
+        expect($log)->toHaveCount(ImportDaemon::LOG_KEEP)
+            ->and($log[0]['msg'])->toBe('file 2021')
+            ->and(end($log)['msg'])->toBe('file 3060')
+            ->and(ImportDaemon::logCounts($app))->toBe(['total' => 180, 'errors' => 18])
+        ;
+
+        ImportDaemon::clearLog($app);
+
+        expect(ImportDaemon::log($app))->toBe([])
+            ->and(ImportDaemon::logCounts($app))->toBe(['total' => 0, 'errors' => 0])
+        ;
     });
 });

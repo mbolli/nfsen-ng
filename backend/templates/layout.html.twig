@@ -211,6 +211,10 @@
     {# DOM that client code and tests add; data-ignore-morph keeps it across syncs. #}
     <div id="client-root" data-ignore-morph></div>
     <div id="alerts-toast-container" class="toast-stack" data-ignore-morph></div>
+    {# The first sync can run a server script (a fired alert) before nfsen-toast.js; it shows what queued here. #}
+    <script>
+        window.showMessage ??= Object.assign((...args) => { window.showMessage.queue.push(args); }, { queue: [] });
+    </script>
     {# nfsen/clipboard announces copies here; a dialog that holds a copy button adds its own [data-announcer]. #}
     <p id="nfsen-announcer" class="visually-hidden" role="status" data-ignore-morph></p>
 

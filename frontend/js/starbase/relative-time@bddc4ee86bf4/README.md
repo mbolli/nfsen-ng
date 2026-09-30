@@ -83,8 +83,6 @@ The `datetime` attribute belongs to the server. When a Datastar stream re-render
 <p>Last paint <sb-relative-time datetime="2026-09-22T08:14:03Z">08:14</sb-relative-time></p>
 ```
 
-It builds its `<time>` once instead of rendering a template, so a morph that inserts it still keeps the elements with `id`s it moves ([datastar#1209](https://github.com/starfederation/datastar/issues/1209)).
-
 ## Styling
 
 Style it from your page's CSS, without changing the component or importing anything into it. Custom properties, inherited properties and `::part()` all reach into its shadow root.

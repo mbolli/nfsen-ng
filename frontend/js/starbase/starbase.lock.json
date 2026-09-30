@@ -1,11 +1,11 @@
 {
   "repository": "https://github.com/zweiundeins/starbase.git",
-  "commit": "52512ae67a66f67dea7453ce47158c2f0d7eee8d",
-  "describe": "v0.4.0-11-g52512ae",
-  "catalog": "c2b423309052",
+  "commit": "1cf59a7adf4b5aa9ddcd97434c34bb1d0de8a08c",
+  "describe": "v0.5.0-7-g1cf59a7",
+  "catalog": "6bf4ad5a53b6",
   "minFormat": "min2",
   "datastar": "Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)",
-  "datastarSha256": "eedda3e39a5cb89189f30ac83768f27bcc3c8ef09402f0ff2876150444a48576",
+  "datastarSha256": "f602fbe19d74e4c16c2f28b3a92c4934072400337372787561089c26a8b3e1db",
   "datastarPatches": {
     "0001-Rocket-finish-the-teardown-when-deleting-the-signals.patch": "sha384-k4euqb2MTwIGKvFeRPUsH5n3FcSkM2aI4Ok12VolqW4s8XEPM8hX10fDmAV9AiGH",
     "0002-Rocket-keep-the-element-as-it-is-on-an-atomic-move.patch": "sha384-ox8FYK143ehk1+kmkTXkM9YvoOP8xVNceGrhJByJgYnwoWY7EW/r8c9VGAyHy23P",
@@ -13,19 +13,24 @@
     "0004-Rocket-bool-props-follow-HTML-boolean-attributes.patch": "sha384-9r4XhlF6C5YpPLwc76+JK8BES6qU32wYDVNMebotDElwX8S7gHFHFaTqLuwlYHBD",
     "0005-Rocket-clean-up-the-shadow-tree-s-attributes-on-disc.patch": "sha384-eJeI9envAulqfX2KMdYB1n2DDRPhGAvp8F4EioXrDM5G/5MTJ+qQzxysLFt6mwbi",
     "0006-Rocket-instances-share-one-constructed-stylesheet-pe.patch": "sha384-lr0gJmQbJrLS3rd3RDILWDKV2SV0w98uIkkVhUldCb9VgmyomfWTlNxN1STmAsD+",
-    "0007-Rocket-observers-hear-an-attribute-write-whose-value.patch": "sha384-qj4S+D6ReFgA+YVYlpINQIEj3BUBRO/Ee2+1Kop7Ljz/5W0QHAHwA1CP1OZ3heXh"
+    "0007-Rocket-observers-hear-an-attribute-write-whose-value.patch": "sha384-qj4S+D6ReFgA+YVYlpINQIEj3BUBRO/Ee2+1Kop7Ljz/5W0QHAHwA1CP1OZ3heXh",
+    "0008-Morph-a-morph-that-starts-inside-another-keeps-the-o.patch": "sha384-QxbvyWK6EuDSViZXwakepq2aofQuZ9UEsppqlYE8RTaRVaJtyK6ry0d/5j/eWKdC",
+    "0009-Rocket-a-light-component-renders-inside-a-data-ignor.patch": "sha384-Mc468TNl/LxgiqFHfSkOEqCQ3EtC92ano8pR4Qx0M4MmdSkaq96QlLjPw5B+sSJ4",
+    "0010-Engine-a-removed-Rocket-element-s-mount-root-leaves-.patch": "sha384-pQJJ2uFgWqVQhlg4KQksPUr9g/HMTcN8hPuPIHoYDmqV08eAaoUzYiFnIIBz7R8U",
+    "0011-Rocket-a-queued-definition-applies-the-shadow-host-s.patch": "sha384-KZumZa1zyw71/HQ4APnm4gzJK3xgi8hv02CxoAbERly3z6EvCApMQqoYxr1Bi5vH",
+    "0012-Rocket-the-pending-host-observer-scans-a-parent-once.patch": "sha384-yulahObRH2kVI1W5Ee1N8DdaQskxWlKlRSCMyVWyK9p/6OnamRd4/N9bs0jw2U7i"
   },
   "license": "sha384-NOQoztcPboJQkR9KJWoodw+NuS/EUnH50jN20qG6Al+prs+NVtshJGGK4JL5pwCL",
   "components": {
     "relative-time": {
       "tag": "sb-relative-time",
-      "version": "f61a977b2f83",
+      "version": "bddc4ee86bf4",
       "entry": "relative-time.js",
       "load": true,
       "files": {
-        "README.md": "sha384-R2DrtHO+/18HF21yvhbdEshz+DRtwOeF4lOUtb8Vl2dg0hlFB8QPYB2O5BE5flBB",
+        "README.md": "sha384-JoltUdu6EAw1L5ZiQh5Y83+HHGOOuZz8Uz32IcKcik5pDhtWMjPzLyXlBnwdyOA5",
         "manifest.json": "sha384-Gaz/jgDjnFrmanIAvATrEI5RBlptmLVz4cxhGHL1RmozDoGdG2Y7fnD8zzTSEUiI",
-        "relative-time.js": "sha384-CoArF+Ee21/gKPPEwtxvJSuPLyxxDFjrNhJ1r+A11XM/yqu1Mfdx/p/eYzQqxxMG"
+        "relative-time.js": "sha384-IM7iFA38izpbFABDjeKZ6TQfnjHHLB5Oej+q9wAnba1BSSP6Pd+XzGyQq+Q2nH+S"
       }
     }
   }

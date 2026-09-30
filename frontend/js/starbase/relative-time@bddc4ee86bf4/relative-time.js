@@ -119,19 +119,15 @@ rocket('sb-relative-time', {
 		titleLang: string.trim.docs({ description: 'Locale of the date on hover (default: the text\'s; "auto": the browser\'s).' }),
 		titleStyle: oneOf('full', 'numeric').default('full').docs({ description: '"full" spells out the weekday and month; "numeric" shows what toLocaleString() does, seconds included.' }),
 	}),
-	// setup builds the <time> itself: a first render inside a server morph breaks that morph (datastar#1209).
-	setup: ({ cleanup, host, observeProps, props }) => {
-		const root = host.shadowRoot
-		if (!root.firstChild) root.innerHTML = '<time part="time"></time>'
-		const time = root.firstChild
+	renderOnPropChange: false,
+	setup: ({ $$, cleanup, host, observeProps, props }) => {
 		const w = {}
 		w.update = (now = Date.now()) => {
 			const then = parse(props.datetime)
 			const date = new Date(then)
 			if (isNaN(date)) {
-				time.textContent = host.textContent.trim() // the server's fallback
-				time.removeAttribute('datetime')
-				time.removeAttribute('title')
+				$$.text = host.textContent.trim() // the server's fallback
+				$$.iso = $$.title = ''
 				w.next = Infinity
 				return
 			}
@@ -141,16 +137,16 @@ rocket('sb-relative-time', {
 			const lang = locale(l?.lang)
 			const tz = zone(props.timeZone)
 			const titleLang = props.titleLang === 'auto' ? undefined : props.titleLang ? locale(props.titleLang) : lang
-			time.dateTime = date.toISOString()
-			time.title = new Intl.DateTimeFormat(titleLang, { ...TITLES[props.titleStyle], timeZone: tz }).format(date)
+			$$.iso = date.toISOString()
+			$$.title = new Intl.DateTimeFormat(titleLang, { ...TITLES[props.titleStyle], timeZone: tz }).format(date)
 			const t = props.threshold * DAY
 			let next
 			if (t && Math.abs(then - now) > t) {
-				time.textContent = new Intl.DateTimeFormat(lang, { dateStyle: props.format === 'long' ? 'long' : 'medium', timeZone: tz }).format(date)
+				$$.text = new Intl.DateTimeFormat(lang, { dateStyle: props.format === 'long' ? 'long' : 'medium', timeZone: tz }).format(date)
 				next = then > now ? then - t : Infinity // a future date turns relative, a past one stays
 			} else {
 				const r = relative(then, now, new Intl.RelativeTimeFormat(lang, { numeric: props.numeric, style: props.format }), tz)
-				time.textContent = r.text
+				$$.text = r.text
 				next = Math.min(r.next, t ? then + t + 1 : Infinity) // a past moment turns into a date
 			}
 			w.next = props.sync ? next : Infinity
@@ -159,4 +155,5 @@ rocket('sb-relative-time', {
 		observeProps(() => w.update())
 		cleanup(watch(w))
 	},
+	render: ({ html }) => html`<time part="time" data-attr:datetime="$$iso || null" data-attr:title="$$title || null" data-text="$$text"></time>`,
 })

@@ -120,17 +120,7 @@ class AppStartup {
         // Startup import: a gap fill only when the store already has data. A fresh install
         // imports nothing until someone presses Trigger in the Health page's Import card.
         // NFSEN_SKIP_INITIAL_IMPORT=true skips the gap fill and only sets up the watches.
-        Coroutine::create(function () use ($app, $daemons, $debug): void {
-            /** @var array<string, ImportDaemon> $daemons */
-            /** Append new Debug WARNING+ entries to the global log state. */
-            $flushLog = static function () use ($app): void {
-                $new = Debug::drainBuffer();
-                if ($new !== []) {
-                    $log = $app->globalState('import_log', []);
-                    $app->setGlobalState('import_log', array_merge($log, $new));
-                }
-            };
-
+        Coroutine::create(static function () use ($app, $daemons, $debug): void {
             // NFSEN_SKIP_INITIAL_IMPORT: skip gap fill, just set up inotify watches.
             if ((bool) EnvRegistry::value('NFSEN_SKIP_INITIAL_IMPORT')) {
                 $debug->log('ImportDaemon: startup import skipped (NFSEN_SKIP_INITIAL_IMPORT)', LOG_INFO);
@@ -164,94 +154,116 @@ class AppStartup {
                 return;
             }
 
-            // Run initial (catch-up) import sequentially for each profile that has existing data.
-            foreach ($daemonsToRun as $profile => $daemon) {
-                if ($app->isShuttingDown()) {
-                    return;
-                }
-                $app->setGlobalState('import_active_profile', $profile);
-                $app->setGlobalState('import_status_text', "[{$profile}] Catching up on missed files…");
-                if (!empty($app->getClients())) {
-                    $app->broadcast('admin:import');
-                }
-
-                try {
-                    $daemon->initialImport(
-                        function (array $progress) use ($app, $flushLog, $profile): void {
-                            $app->setGlobalState('import_progress', $progress['pct']);
-                            $app->setGlobalState('import_current_file', $progress['file']);
-                            $app->setGlobalState('import_status_text', "[{$profile}] Catching up: " . $progress['processed'] . ' / ' . $progress['total'] . ' files');
-                            $app->setGlobalState('import_eta', $progress['eta']);
-                            $flushLog();
-                            if (!empty($app->getClients())) {
-                                $app->broadcast('admin:import');
-                            }
-                        },
-                        static fn (): bool => $app->isShuttingDown() || (bool) $app->globalState('import_cancel', false)
-                    );
-                    $flushLog();
-                    $app->setGlobalState('import_status_text', "[{$profile}] Up to date");
-                    $app->setGlobalState('import_progress', 100);
-                    $app->setGlobalState('import_current_file', '');
-                    $app->setGlobalState('import_eta', '');
-                } catch (\Throwable $e) {
-                    $debug->log("ImportDaemon [{$profile}]: catch-up import failed: " . $e->getMessage(), LOG_ERR);
-                    $flushLog();
-                    $app->setGlobalState('import_status_text', "[{$profile}] Catch-up failed: " . $e->getMessage());
-                    $app->setGlobalState(ImportDaemon::OUTCOME_STATE, 'failed');
-                }
-
-                if (!empty($app->getClients())) {
-                    $app->broadcast('admin:import');
-                }
-            }
+            self::catchUp($app, $daemonsToRun);
         });
 
-        // Ongoing inotify poll every 1 s: setInterval runs in the event loop, not
-        // in a child coroutine, which is safe per Import class restrictions.
-        $app->setInterval(function () use ($app, $daemons, $debug): void {
-            /** @var array<string, ImportDaemon> $daemons */
-            foreach ($daemons as $_profile => $daemon) {
+        // Ongoing inotify poll every 1 s. The interval callback runs in a coroutine of its own,
+        // so ImportDaemon::broadcast() can throttle what it sends.
+        $onImported = [];
+        foreach ($daemons as $profile => $daemon) {
+            $onImported[$profile] = self::onFileImported($app, (string) $profile);
+        }
+        $app->setInterval(static function () use ($daemons, $onImported, $debug): void {
+            foreach ($daemons as $profile => $daemon) {
                 try {
-                    $daemon->pollOnce(function (string $source, int $fileTs, bool $isLastSource) use ($app, $debug, $_profile): void {
-                        $debug->log('ImportDaemon: file imported → broadcasting rrd:live', LOG_DEBUG);
-
-                        // Surface any RRD write warnings from this inotify-triggered import
-                        $new = Debug::drainBuffer();
-                        if ($new !== []) {
-                            $log = $app->globalState('import_log', []);
-                            $merged = array_merge($log, $new);
-                            if (\count($merged) > 100) {
-                                $merged = \array_slice($merged, -100);
-                            }
-                            $app->setGlobalState('import_log', $merged);
-                            if (!empty($app->getClients())) {
-                                $app->broadcast('admin:import');
-                            }
-                        }
-
-                        if (!empty($app->getClients())) {
-                            $app->broadcast('rrd:live');
-                        }
-
-                        // Rules run once per interval, when every source's file of it is in (D17).
-                        /** @var null|AlertManager $alertMgr */
-                        $alertMgr = $app->globalState('alertManager', null);
-                        if ($alertMgr !== null && !$app->isShuttingDown()) {
-                            $fired = $alertMgr->onFileImported(Config::$settings->alerts, $_profile, $fileTs, $isLastSource, $source);
-                            if (!empty($fired)) {
-                                $app->setGlobalState('alert_fired', ['names' => $fired, 'ts' => time()]);
-                                if (!empty($app->getClients())) {
-                                    $app->broadcast('alerts:fired');
-                                }
-                            }
-                        }
-                    });
+                    $daemon->pollOnce($onImported[$profile]);
                 } catch (\Throwable $e) {
                     $debug->log('ImportDaemon: poll error: ' . $e->getMessage(), LOG_ERR);
                 }
             }
         }, 1000);
+    }
+
+    /**
+     * The startup catch-up import of each profile that already has data, one after the other.
+     *
+     * @param array<string, ImportDaemon> $daemons
+     */
+    public static function catchUp(Via $app, array $daemons): void {
+        $debug = Debug::getInstance();
+        // New Debug WARNING+ entries go to the Import card's log.
+        $flushLog = static function () use ($app): void {
+            $new = Debug::drainBuffer();
+            if ($new !== []) {
+                $log = $app->globalState('import_log', []);
+                $app->setGlobalState('import_log', array_merge($log, $new));
+            }
+        };
+
+        foreach ($daemons as $profile => $daemon) {
+            if ($app->isShuttingDown()) {
+                return;
+            }
+            $app->setGlobalState('import_active_profile', $profile);
+            $app->setGlobalState('import_status_text', "[{$profile}] Catching up on missed files…");
+            ImportDaemon::broadcast($app, 'admin:import', now: true);
+
+            try {
+                $daemon->initialImport(
+                    static function (array $progress) use ($app, $flushLog, $profile): void {
+                        $app->setGlobalState('import_progress', $progress['pct']);
+                        $app->setGlobalState('import_current_file', $progress['file']);
+                        $app->setGlobalState('import_status_text', "[{$profile}] Catching up: " . $progress['processed'] . ' / ' . $progress['total'] . ' files');
+                        $app->setGlobalState('import_eta', $progress['eta']);
+                        $flushLog();
+                        ImportDaemon::broadcast($app, 'admin:import');
+                    },
+                    static fn (): bool => $app->isShuttingDown() || (bool) $app->globalState('import_cancel', false)
+                );
+                $flushLog();
+                $app->setGlobalState('import_status_text', "[{$profile}] Up to date");
+                $app->setGlobalState('import_progress', 100);
+                $app->setGlobalState('import_current_file', '');
+                $app->setGlobalState('import_eta', '');
+            } catch (\Throwable $e) {
+                $debug->log("ImportDaemon [{$profile}]: catch-up import failed: " . $e->getMessage(), LOG_ERR);
+                $flushLog();
+                $app->setGlobalState('import_status_text', "[{$profile}] Catch-up failed: " . $e->getMessage());
+                $app->setGlobalState(ImportDaemon::OUTCOME_STATE, 'failed');
+            }
+
+            ImportDaemon::broadcast($app, 'admin:import', now: true);
+        }
+    }
+
+    /**
+     * What the inotify poll runs after each capture file of $profile it imported.
+     *
+     * @return \Closure(string, int, bool): void
+     */
+    public static function onFileImported(Via $app, string $profile): \Closure {
+        $debug = Debug::getInstance();
+
+        return static function (string $source, int $fileTs, bool $isLastSource) use ($app, $debug, $profile): void {
+            $debug->log('ImportDaemon: file imported → broadcasting rrd:live', LOG_DEBUG);
+
+            // Surface any RRD write warnings from this inotify-triggered import
+            $new = Debug::drainBuffer();
+            if ($new !== []) {
+                $log = $app->globalState('import_log', []);
+                $merged = array_merge($log, $new);
+                if (\count($merged) > 100) {
+                    $merged = \array_slice($merged, -100);
+                }
+                $app->setGlobalState('import_log', $merged);
+                ImportDaemon::broadcast($app, 'admin:import');
+            }
+
+            ImportDaemon::broadcast($app, 'rrd:live');
+
+            // Rules run once per interval, when every source's file of it is in (D17).
+            /** @var null|AlertManager $alertMgr */
+            $alertMgr = $app->globalState('alertManager', null);
+            if ($alertMgr !== null && !$app->isShuttingDown()) {
+                $fired = $alertMgr->onFileImported(Config::$settings->alerts, $profile, $fileTs, $isLastSource, $source);
+                if (!empty($fired)) {
+                    $app->setGlobalState('alert_fired', ['names' => $fired, 'ts' => time()]);
+                    if (!empty($app->getClients())) {
+                        $app->broadcast('alerts:fired');
+                    }
+                }
+            }
+        };
     }
 
     /**
@@ -261,6 +273,7 @@ class AppStartup {
     public static function shutdown(Via $app): void {
         $started = microtime(true);
         LoopLag::stop();
+        ImportDaemon::resetBroadcasts();
         TopNCollector::stop();
         $alertMgr = $app->globalState('alertManager', null);
         if ($alertMgr instanceof AlertManager) {

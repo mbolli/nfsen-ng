@@ -56,9 +56,7 @@ final class ImportActions {
             }
             $app->setGlobalState('import_cancel', true);
             $app->setGlobalState('import_status_text', 'Cancelling…');
-            if (!empty($app->getClients())) {
-                $app->broadcast('admin:import');
-            }
+            ImportDaemon::broadcast($app, 'admin:import', now: true);
             $c->sync();
         }, 'cancel-import');
 
@@ -122,9 +120,7 @@ final class ImportActions {
         $app->setGlobalState(HealthPage::IMPORT_OUTCOME, '');
         Debug::drainBuffer();
         $c->sync();
-        if (!empty($app->getClients())) {
-            $app->broadcast('admin:import');
-        }
+        ImportDaemon::broadcast($app, 'admin:import', now: true);
 
         $scanPorts = $importScanPorts->bool();
         Coroutine::create(static function () use ($app, $targetDaemon, $targetProfile, $scanPorts, $pass, $noun): void {
@@ -135,9 +131,7 @@ final class ImportActions {
                 if ($new !== []) {
                     $log = $app->globalState('import_log', []);
                     $app->setGlobalState('import_log', array_merge($log, $new));
-                    if (!empty($app->getClients())) {
-                        $app->broadcast('admin:import');
-                    }
+                    ImportDaemon::broadcast($app, 'admin:import');
                 }
             };
 
@@ -169,9 +163,7 @@ final class ImportActions {
                             . ' / ' . number_format($progress['total']) . ' files'
                         );
                         $app->setGlobalState('import_eta', $progress['eta']);
-                        if (!empty($app->getClients())) {
-                            $app->broadcast('admin:import');
-                        }
+                        ImportDaemon::broadcast($app, 'admin:import');
                     },
                     $flushLog,
                     static fn (): bool => $app->isShuttingDown() || (bool) $app->globalState('import_cancel', false)
@@ -193,10 +185,8 @@ final class ImportActions {
                 $app->setGlobalState('import_progress', 100);
                 // The checks and sources table describe the data before this pass.
                 HealthPage::invalidate($app);
-                if (!empty($app->getClients())) {
-                    $app->broadcast('admin:import');
-                    $app->broadcast('rrd:live');
-                }
+                ImportDaemon::broadcast($app, 'admin:import', now: true);
+                ImportDaemon::broadcast($app, 'rrd:live', now: true);
             }
         });
     }

@@ -62,6 +62,10 @@ RUN install-php-extensions openswoole inotify brotli
 RUN CFLAGS="-g -O2 -Wno-error=incompatible-pointer-types" pecl install rrd \
     && docker-php-ext-enable rrd
 
+# One worker holds every tab, the import and the top-N collector, and a crash ends them all.
+# PHP's default 128M leaves little room: a 10,000-row Flows listing alone takes the heap to about 75 MB.
+RUN echo 'memory_limit = 512M' > "$PHP_INI_DIR/conf.d/nfsen-ng.ini"
+
 # Copy application source
 COPY backend/ backend/
 COPY frontend/ frontend/

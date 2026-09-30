@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\common;
 
+use Mbolli\PhpVia\Via;
+use OpenSwoole\Coroutine;
+use OpenSwoole\Timer;
+
 /**
  * ImportDaemon, extracted from listen.php for embedding in app.php.
  *
@@ -14,11 +18,26 @@ namespace mbolli\nfsen_ng\common;
  *   \OpenSwoole\Coroutine::create(fn() => $daemon->initialImport());
  *
  *   // Ongoing inotify poll: call every second via $app->setInterval()
- *   $app->setInterval(fn() => $daemon->pollOnce(fn() => $app->broadcast('rrd:live')), 1000);
+ *   $app->setInterval(fn() => $daemon->pollOnce(fn() => ImportDaemon::broadcast($app, 'rrd:live')), 1000);
  */
 class ImportDaemon {
     /** App-global outcome of the last import pass: complete, cancelled or failed ('' while none). */
     public const string OUTCOME_STATE = 'import_outcome';
+
+    /** Import progress and rrd:live re-render every tab, so each scope goes out at most this often. */
+    public const int BROADCAST_EVERY_MS = 250;
+
+    /** @var array<string, int> scope → hrtime (ns) at which its last broadcast finished rendering */
+    private static array $broadcastDone = [];
+
+    /** @var array<string, int> scope → timer of the broadcast a throttled call deferred */
+    private static array $broadcastTimers = [];
+
+    /** @var array<string, true> scopes whose fan-out is rendering */
+    private static array $broadcastRendering = [];
+
+    /** @var array<string, true> scopes a throttled call asked for while their fan-out rendered */
+    private static array $broadcastAfter = [];
 
     private readonly Debug $debug;
 
@@ -110,6 +129,47 @@ class ImportDaemon {
     // ─── Public API ──────────────────────────────────────────────────────────
 
     /**
+     * At most one broadcast of $scope per BROADCAST_EVERY_MS after the last one rendered; a call
+     * inside that window defers one that renders the state at its end. $now sends at once.
+     */
+    public static function broadcast(Via $app, string $scope, bool $now = false): void {
+        // Without an event loop (CLI, tests) nothing would send a deferred broadcast.
+        if ($now || Coroutine::getCid() <= 0) {
+            self::dropDeferred($scope);
+            self::send($app, $scope);
+
+            return;
+        }
+        if (isset(self::$broadcastRendering[$scope])) {
+            self::$broadcastAfter[$scope] = true;
+
+            return;
+        }
+        $wait = (self::$broadcastDone[$scope] ?? 0) + self::BROADCAST_EVERY_MS * 1_000_000 - (int) hrtime(true);
+        if ($wait <= 0) {
+            self::dropDeferred($scope);
+            self::send($app, $scope);
+
+            return;
+        }
+        self::defer($app, $scope, $wait);
+    }
+
+    /** From the worker's shutdown, and for tests: drops every deferred broadcast and the history. */
+    public static function resetBroadcasts(): void {
+        foreach (array_keys(self::$broadcastTimers) as $scope) {
+            self::dropDeferred($scope);
+        }
+        self::$broadcastDone = [];
+        self::$broadcastAfter = [];
+    }
+
+    /** Whether a throttled call left a broadcast of $scope waiting for its window. */
+    public static function broadcastDeferred(string $scope): bool {
+        return isset(self::$broadcastTimers[$scope]) || isset(self::$broadcastAfter[$scope]);
+    }
+
+    /**
      * Run the initial bulk import (catch-up for missed nfcapd files).
      * Intended to be called once from a Coroutine::create() in onStart().
      *
@@ -197,6 +257,63 @@ class ImportDaemon {
     }
 
     // ─── Internals ───────────────────────────────────────────────────────────
+
+    private static function dropDeferred(string $scope): void {
+        unset(self::$broadcastAfter[$scope]);
+        if (isset(self::$broadcastTimers[$scope])) {
+            Timer::clear(self::$broadcastTimers[$scope]); // @phpstan-ignore arguments.count (OpenSwoole 26.2's arginfo leaves out the timer id)
+            unset(self::$broadcastTimers[$scope]);
+        }
+    }
+
+    private static function defer(Via $app, string $scope, int $waitNs): void {
+        if (isset(self::$broadcastTimers[$scope]) || $app->isShuttingDown()) {
+            return;
+        }
+        $timer = Timer::after(intdiv($waitNs + 999_999, 1_000_000), static function () use ($app, $scope): void {
+            unset(self::$broadcastTimers[$scope]);
+            if ($app->isShuttingDown()) {
+                return;
+            }
+
+            // Nothing above this timer would catch it, and an uncaught throw ends the worker.
+            try {
+                // OpenSwoole's timers can fire a millisecond or two early, so the window is checked again.
+                self::broadcast($app, $scope);
+            } catch (\Throwable $e) {
+                Debug::getInstance()->log("Broadcast of {$scope} failed: " . $e->getMessage(), LOG_WARNING);
+            }
+        });
+        if (\is_int($timer)) {
+            self::$broadcastTimers[$scope] = $timer;
+        } else {
+            self::send($app, $scope);
+        }
+    }
+
+    private static function send(Via $app, string $scope): void {
+        if ($app->getClients() === []) {
+            return;
+        }
+        // php-via renders the scope once more when the running fan-out ends.
+        if (isset(self::$broadcastRendering[$scope])) {
+            $app->broadcast($scope);
+
+            return;
+        }
+        self::$broadcastRendering[$scope] = true;
+
+        try {
+            $app->broadcast($scope);
+        } finally {
+            unset(self::$broadcastRendering[$scope]);
+            self::$broadcastDone[$scope] = (int) hrtime(true);
+            if (isset(self::$broadcastAfter[$scope])) {
+                unset(self::$broadcastAfter[$scope]);
+                self::defer($app, $scope, self::BROADCAST_EVERY_MS * 1_000_000);
+            }
+        }
+    }
 
     private function poll(callable $onImportDone): void {
         if ($this->inotify === false) {

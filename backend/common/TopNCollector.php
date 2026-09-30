@@ -20,9 +20,8 @@ use OpenSwoole\Coroutine\Channel;
  * Collects the per-interval top-N of every capture file into SQLite. Without boot() (CLI, MCP,
  * tests) enqueue() does nothing.
  *
- * The worker collects up to NfdumpSlots::backgroundMax() files at once, each in its own
- * coroutine running that file's nfdump calls one after another, and stores what they collected
- * itself, one transaction per interval, so SQLite is written from one coroutine only.
+ * The worker stores intervals and flushes rollups every ROLLUP_EVERY; the minute tick prunes and
+ * flushes when idle. No transaction spans a yield, so writes interleave only as whole transactions.
  *
  * @phpstan-import-type ProcessorResult from Processor
  *
@@ -48,8 +47,20 @@ final class TopNCollector {
     public const int PRUNE_FIRST = 300;
     public const int PRUNE_EVERY = 3600;
 
+    /** Intervals with rows stored before the worker flushes the rollups: two hours of two sources. */
+    public const int ROLLUP_EVERY = 48;
+
+    /** The minute tick flushes what is left once nothing was stored for this long. */
+    public const int ROLLUP_IDLE = 600;
+
     /** Between maintenance statements and between gap filler days. */
     private const int MAINTENANCE_PAUSE_US = 10_000;
+
+    /** After each write (a stored interval or a rollup transaction) and each checkpoint. */
+    private const int WRITE_PAUSE_US = 1_000;
+
+    /** Writes between two WAL checkpoints, about 100 pages. */
+    private const int CHECKPOINT_EVERY = 2;
 
     /** Collected files the worker has not stored yet; a full buffer holds the collecting coroutines back. */
     private const int WRITE_BUFFER = 16;
@@ -115,6 +126,14 @@ final class TopNCollector {
     private static int $nextGapFill = 0;
     private static int $nextPrune = 0;
     private static bool $maintaining = false;
+
+    /** Intervals with rows stored since the last rollup flush. */
+    private static int $unrolled = 0;
+
+    /** Writes since the last checkpoint. */
+    private static int $unchecked = 0;
+
+    private static bool $flushing = false;
 
     /** From AppStartup::boot() once the daemons exist; stays off when retention is 0 or the store is unavailable. */
     public static function boot(Via $app): void {
@@ -223,6 +242,9 @@ final class TopNCollector {
         self::$nextGapFill = 0;
         self::$nextPrune = 0;
         self::$maintaining = false;
+        self::$unrolled = 0;
+        self::$unchecked = 0;
+        self::$flushing = false;
     }
 
     /**
@@ -364,8 +386,8 @@ final class TopNCollector {
     }
 
     /**
-     * The minute tick: the pruner hourly, the gap filler every 10 minutes while the queue is
-     * empty, or at once while a backfill has files left.
+     * The minute tick: the pruner hourly, the rollups of an idle collector, the gap filler every
+     * 10 minutes while the queue is empty, or at once while a backfill has files left.
      */
     public static function maintain(int $now): void {
         if (!self::$booted || self::$maintaining) {
@@ -377,6 +399,10 @@ final class TopNCollector {
             if ($now >= self::$nextPrune) {
                 self::$nextPrune = $now + self::PRUNE_EVERY;
                 self::prune($now);
+            }
+            $idle = !self::$working && self::$queue === [] && self::$inFlight === [];
+            if ($idle && $now - self::$lastTs >= self::ROLLUP_IDLE && self::repository()->pendingRollups() > 0) {
+                self::flushRollups(true);
             }
             if (($now >= self::$nextGapFill || self::backfilling()) && self::$queue === [] && self::$inFlight === []) {
                 self::$nextGapFill = $now + self::GAP_FILL_EVERY;
@@ -414,13 +440,46 @@ final class TopNCollector {
      */
     public static function stats(): array {
         return [
-            // A file queued again while it is being collected counts once.
-            'queued' => \count(self::$queuedKeys + self::$inFlight),
+            // A file queued again while it is being collected counts once, without copying the queue.
+            'queued' => \count(self::$queuedKeys) + \count(array_diff_key(self::$inFlight, self::$queuedKeys)),
             'processed' => self::$processed,
             'failed' => self::$failed,
             'lastTs' => self::$lastTs,
             'lastMs' => self::$lastMs,
         ];
+    }
+
+    /**
+     * Adds the stored intervals to the rollups, a bucket per transaction. A stop, or when $idle a
+     * running worker, ends it between two; returns the transactions committed.
+     */
+    public static function flushRollups(bool $idle = false): int {
+        if (self::$flushing) {
+            return 0;
+        }
+        self::$flushing = true;
+        $counted = self::$unrolled;
+        $written = 0;
+        $gaveWay = false;
+
+        try {
+            self::repository()->flushRollups(static function () use ($idle, &$written, &$gaveWay): void {
+                ++$written;
+                self::afterWrite();
+                $gaveWay = self::$stopping || ($idle && self::$working);
+                if ($gaveWay) {
+                    throw new \RuntimeException(self::$stopping ? 'the collector is stopping' : 'the worker runs and adds them');
+                }
+            });
+        } catch (\Throwable $e) {
+            Debug::getInstance()->log('TopN: rollups left pending: ' . $e->getMessage(), $gaveWay || self::$stopping ? LOG_DEBUG : LOG_WARNING);
+        } finally {
+            // Intervals stored during an idle flush still count; after a failure the next try waits as long.
+            self::$unrolled = max(0, self::$unrolled - $counted);
+            self::$flushing = false;
+        }
+
+        return $written;
     }
 
     /**
@@ -456,7 +515,9 @@ final class TopNCollector {
                 /** @var null|false|Outcome $outcome null: a collecting coroutine ended */
                 $outcome = $outcomes->pop();
                 if (\is_array($outcome)) {
-                    self::finish($outcome);
+                    if (self::finish($outcome) !== 'skipped') {
+                        self::settle();
+                    }
                     self::refillSoon();
                 }
                 self::spawnLanes();
@@ -645,11 +706,41 @@ final class TopNCollector {
         if ($result === 'failed') {
             ++self::$failed;
         }
+        if (array_filter($collected['rows']) !== []) {
+            ++self::$unrolled;
+        }
         self::$lastTs = time();
         self::$lastMs = $ms;
         Debug::getInstance()->log("TopN: collected {$profile}/{$source} {$relPath} in {$ms} ms ({$result})", LOG_DEBUG);
 
         return $result;
+    }
+
+    /** After a stored interval, and every ROLLUP_EVERY intervals the rollup flush. */
+    private static function settle(): void {
+        self::afterWrite();
+        if (self::$unrolled >= self::ROLLUP_EVERY) {
+            self::flushRollups();
+        }
+    }
+
+    /**
+     * A yield, and every CHECKPOINT_EVERY writes the WAL checkpoint and another yield, so no
+     * commit or copy holds the loop for long.
+     */
+    private static function afterWrite(): void {
+        self::pause(self::WRITE_PAUSE_US);
+        if (++self::$unchecked < self::CHECKPOINT_EVERY) {
+            return;
+        }
+        self::$unchecked = 0;
+
+        try {
+            self::repository()->checkpoint();
+        } catch (\Throwable $e) {
+            Debug::getInstance()->log('TopN: checkpoint failed: ' . $e->getMessage(), LOG_DEBUG);
+        }
+        self::pause(self::WRITE_PAUSE_US);
     }
 
     /**

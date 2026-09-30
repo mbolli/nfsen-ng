@@ -91,8 +91,27 @@ function topnWithoutIntervals(array $rows): array {
     }, $rows);
 }
 
+/** A flush $yield that throws on its $n-th call, that is after the $n-th transaction. */
+function topnCutAfter(int $n): Closure {
+    return static function () use (&$n): void {
+        if (--$n <= 0) {
+            throw new RuntimeException('cut short');
+        }
+    };
+}
+
+/** flushRollups() cut short by $yield, as a crash or a stop between two transactions would. */
+function topnFlushCut(TopNRepository $repo, Closure $yield): void {
+    try {
+        $repo->flushRollups($yield);
+    } catch (RuntimeException) {
+    }
+}
+
 /**
- * 33 days of 5 minute intervals for two sources, built once for the range tests.
+ * 33 days of 5 minute intervals for two sources, built once for the range tests. The rollups
+ * are flushed up to day 1 at 02:00 and up to day 10, and one flush on day 20 stops after its
+ * first transaction, so the ranges read rolled-up buckets, pending intervals and mixed buckets.
  *
  * @return array{db: Database, repo: TopNRepository}
  */
@@ -112,6 +131,11 @@ function topnRangeFixture(): array {
                 TopNStat::InIf->value => topnRandomRows($rng, 2, 4, ''),
             ]);
         }
+        match ($ts) {
+            TOPN_DAY0 + 86400 + 7200, TOPN_DAY0 + 10 * 86400 => $repo->flushRollups(),
+            TOPN_DAY0 + 20 * 86400 => topnFlushCut($repo, topnCutAfter(1)),
+            default => null,
+        };
     }
 
     return $fixture = ['db' => $db, 'repo' => $repo];
@@ -124,40 +148,62 @@ beforeEach(function (): void {
 });
 
 describe('TopNRepository::storeInterval()', function (): void {
-    test('writes the interval, its rows and both rollups', function (): void {
+    test('writes the interval, its rows and a mark per rollup tier and statistic; the flush writes both rollups', function (): void {
         $ts = TOPN_DAY0 + 3600 + 600;
         $this->repo->storeInterval('live', 'gw', $ts, TOPN_TOTALS, TopNRepository::STATUS_OK, 1234, [
             TopNStat::SrcIp->value => topnRows(['10.0.0.1' => 500, '10.0.0.2' => 300]),
             TopNStat::Proto->value => topnRows(['6' => 800]),
+            TopNStat::DstAs->value => [],
         ], 99);
+        $stored = [
+            $this->repo->pendingRollups(),
+            $this->db->value('SELECT COUNT(*) FROM topn_1h') + $this->db->value('SELECT COUNT(*) FROM topn_1d'),
+            array_column($this->db->all('SELECT value FROM meta WHERE key > ? AND key < ?', [TopNRepository::MARK, TopNRepository::MARK . "\x20"]), 'value'),
+        ];
+
+        $written = $this->repo->flushRollups();
 
         expect($this->repo->intervalState('live', 'gw', $ts))->toBe(['status' => 0, 'attempts' => 1, 'fileMtime' => 1234])
             ->and($this->db->value('SELECT collected_at FROM topn_interval'))->toBe(99)
             ->and($this->db->value('SELECT COUNT(*) FROM topn_5m'))->toBe(3)
+            ->and($stored)->toBe([4, 0, ['gw', 'gw', 'gw', 'gw']])
+            ->and($written)->toBe(3)
+            ->and($this->repo->pendingRollups())->toBe(0)
             ->and($this->db->all('SELECT ts, key, bytes FROM topn_1h ORDER BY key'))->toBe([
                 ['ts' => TOPN_DAY0 + 3600, 'key' => '10.0.0.1', 'bytes' => 500],
                 ['ts' => TOPN_DAY0 + 3600, 'key' => '10.0.0.2', 'bytes' => 300],
                 ['ts' => TOPN_DAY0 + 3600, 'key' => '6', 'bytes' => 800],
             ])
             ->and($this->db->all('SELECT DISTINCT ts FROM topn_1d'))->toBe([['ts' => TOPN_DAY0]])
+            ->and($this->repo->flushRollups())->toBe(0)
         ;
     });
 
-    test('storing the same interval twice changes nothing', function (): void {
+    test('storing the same interval twice changes nothing, flushed in between or not', function (): void {
         $rows = [TopNStat::SrcIp->value => topnRows(['10.0.0.1' => 500, '10.0.0.2' => 300])];
         $ts = TOPN_DAY0 + 300;
-        $this->repo->storeInterval('live', 'gw', $ts, TOPN_TOTALS, TopNRepository::STATUS_OK, 1234, $rows);
+        $store = fn () => $this->repo->storeInterval('live', 'gw', $ts, TOPN_TOTALS, TopNRepository::STATUS_OK, 1234, $rows);
         $snapshot = fn (): array => [
             $this->db->all('SELECT * FROM topn_5m ORDER BY key'),
             $this->db->all('SELECT * FROM topn_1h ORDER BY key'),
             $this->db->all('SELECT * FROM topn_1d ORDER BY key'),
             $this->db->all('SELECT profile, source, ts, flows, packets, bytes, status, attempts, file_mtime FROM topn_interval'),
+            $this->repo->pendingRollups(),
         ];
+        $store();
+        $pending = $snapshot();
+        $store();
+        $pendingTwice = $snapshot();
+        $this->repo->flushRollups();
         $once = $snapshot();
 
-        $this->repo->storeInterval('live', 'gw', $ts, TOPN_TOTALS, TopNRepository::STATUS_OK, 1234, $rows);
+        $store();
+        $this->repo->flushRollups();
 
-        expect($snapshot())->toBe($once);
+        expect($pendingTwice)->toBe($pending)
+            ->and($snapshot())->toBe($once)
+            ->and($once[1])->toHaveCount(2)
+        ;
     });
 
     test('duplicate keys of one statistic are summed, not rejected', function (): void {
@@ -175,45 +221,59 @@ describe('TopNRepository::storeInterval()', function (): void {
         ;
     });
 
-    test('re-collecting an interval with other rows keeps the rollups exact and drops keys that reach zero', function (): void {
+    test('re-collecting an interval with other rows keeps the rollups exact and drops keys that reach zero', function (bool $flushedBefore): void {
         $hour = TOPN_DAY0 + 7200;
         $this->repo->storeInterval('live', 'gw', $hour, TOPN_TOTALS, 0, 1, [TopNStat::SrcIp->value => topnRows(['a' => 100, 'b' => 200])]);
         $this->repo->storeInterval('live', 'gw', $hour + 300, TOPN_TOTALS, 0, 1, [TopNStat::SrcIp->value => topnRows(['a' => 1000])]);
+        if ($flushedBefore) {
+            $this->repo->flushRollups();
+        }
 
         // The rewritten file no longer has b, and brings c.
         $this->repo->storeInterval('live', 'gw', $hour, TOPN_TOTALS, 0, 2, [TopNStat::SrcIp->value => topnRows(['a' => 400, 'c' => 50])]);
+        $read = $this->repo->rangeTop('live', TopNStat::SrcIp, ['gw'], TOPN_DAY0, TOPN_DAY0 + 86400, 'bytes');
+        $this->repo->flushRollups();
 
         [$hour, $hourSum] = topnRollupVersusSum($this->db, 'topn_1h', 3600);
         [$day, $daySum] = topnRollupVersusSum($this->db, 'topn_1d', 86400);
 
-        expect($this->db->all('SELECT key, bytes FROM topn_1h ORDER BY key'))->toBe([
-            ['key' => 'a', 'bytes' => 1400],
-            ['key' => 'c', 'bytes' => 50],
-        ])
+        expect(array_map(static fn (array $row): array => [$row['key'], $row['bytes']], $read))->toBe([['a', 1400], ['c', 50]])
+            ->and($this->db->all('SELECT key, bytes FROM topn_1h ORDER BY key'))->toBe([
+                ['key' => 'a', 'bytes' => 1400],
+                ['key' => 'c', 'bytes' => 50],
+            ])
             ->and($hour)->toBe($hourSum)
             ->and($day)->toBe($daySum)
+            ->and($this->repo->pendingRollups())->toBe(0)
         ;
-    });
+    })->with(['flushed before' => [true], 'still pending' => [false]]);
 
-    test('an empty or failed re-collection takes the old rows out of the rollups', function (): void {
+    test('an empty or failed re-collection takes the old rows out of the rollups and drops its marks', function (bool $flushedBefore): void {
         $this->repo->storeInterval('live', 'gw', TOPN_DAY0, TOPN_TOTALS, 0, 1, [TopNStat::SrcIp->value => topnRows(['a' => 100])]);
+        if ($flushedBefore) {
+            $this->repo->flushRollups();
+        }
         $this->repo->storeInterval('live', 'gw', TOPN_DAY0, ['flows' => 0, 'packets' => 0, 'bytes' => 0], TopNRepository::STATUS_EMPTY, 2, []);
 
-        expect($this->db->value('SELECT COUNT(*) FROM topn_5m'))->toBe(0)
+        expect($this->repo->pendingRollups())->toBe(0)
+            ->and($this->repo->flushRollups())->toBe(0)
+            ->and($this->db->value('SELECT COUNT(*) FROM topn_5m'))->toBe(0)
             ->and($this->db->value('SELECT COUNT(*) FROM topn_1h'))->toBe(0)
             ->and($this->db->value('SELECT COUNT(*) FROM topn_1d'))->toBe(0)
             ->and($this->repo->intervalState('live', 'gw', TOPN_DAY0)['status'])->toBe(TopNRepository::STATUS_EMPTY)
         ;
-    });
+    })->with(['flushed before' => [true], 'still pending' => [false]]);
 
-    test('after random intervals, re-collections and several sources, every rollup row equals the sum of its 5 minute rows', function (): void {
+    test('with random re-collections and flushes, some cut short, every range answer is exact, and once flushed every rollup row is the sum of its 5 minute rows', function (): void {
         $rng = new Randomizer(new Mt19937(7));
         $stats = [TopNStat::SrcIp, TopNStat::DstPort, TopNStat::OutIf];
+        $sources = ['gw', 'core', 'edge'];
         $slots = [];
+        $cuts = 0;
         for ($i = 0; $i < 400; ++$i) {
             // Three days around a day boundary, random order, some slots hit more than once.
             $ts = TOPN_DAY0 - 86400 + $rng->getInt(0, 3 * 288 - 1) * 300;
-            $source = ['gw', 'core', 'edge'][$rng->getInt(0, 2)];
+            $source = $sources[$rng->getInt(0, 2)];
             $rows = [];
             foreach ($stats as $stat) {
                 if ($rng->getInt(0, 4) > 0) {
@@ -223,16 +283,103 @@ describe('TopNRepository::storeInterval()', function (): void {
             $status = $rows === [] ? TopNRepository::STATUS_EMPTY : TopNRepository::STATUS_OK;
             $this->repo->storeInterval($rng->getInt(0, 5) === 0 ? 'other' : 'live', $source, $ts, TOPN_TOTALS, $status, $i, $rows);
             $slots["{$source}/{$ts}"] = true;
+
+            if ($rng->getInt(0, 19) === 0) {
+                $cuts += $rng->getInt(0, 1);
+                topnFlushCut($this->repo, $cuts % 2 === 1 ? topnCutAfter($rng->getInt(1, 8)) : static function (): void {});
+            }
+            if ($i % 40 === 39) {
+                foreach ($stats as $stat) {
+                    $start = TOPN_DAY0 - 86400 + 1500;
+                    $end = TOPN_DAY0 + 2 * 86400 - 900;
+                    expect(topnWithoutIntervals($this->repo->rangeTop('live', $stat, $sources, $start, $end, 'bytes')))
+                        ->toBe(topnWithoutIntervals(topnReference($this->db, 'live', $stat, $sources, $start, $end)), "after {$i} intervals, {$stat->name}")
+                    ;
+                }
+            }
         }
+        $this->repo->flushRollups();
 
         [$hour, $hourSum] = topnRollupVersusSum($this->db, 'topn_1h', 3600);
         [$day, $daySum] = topnRollupVersusSum($this->db, 'topn_1d', 86400);
 
         expect(count($slots))->toBeLessThan(400)
+            ->and($cuts)->toBeGreaterThan(2)
+            ->and($this->repo->pendingRollups())->toBe(0)
             ->and($hour)->not->toBeEmpty()
             ->and($hour)->toBe($hourSum)
             ->and($day)->toBe($daySum)
             ->and($this->db->value('SELECT COUNT(*) FROM topn_1h WHERE flows <= 0 AND packets <= 0 AND bytes <= 0'))->toBe(0)
+            ->and($this->db->value('SELECT COUNT(*) FROM topn_1d WHERE flows <= 0 AND packets <= 0 AND bytes <= 0'))->toBe(0)
+        ;
+    });
+
+    test('a flush cut short between two transactions leaves each tier and statistic whole, and the next flush completes it', function (): void {
+        foreach ([0, 300, 3600] as $offset) {
+            $this->repo->storeInterval('live', 'gw', TOPN_DAY0 + $offset, TOPN_TOTALS, 0, 1, [
+                TopNStat::SrcIp->value => topnRows(['a' => 100 + $offset, 'b' => 7]),
+                TopNStat::Proto->value => topnRows(['6' => 5]),
+            ]);
+        }
+        $before = $this->repo->pendingRollups();
+        // Day buckets sort first, source IP on its own, then protocol; the third transaction is hour 0.
+        topnFlushCut($this->repo, topnCutAfter(3));
+        $after = $this->repo->pendingRollups();
+        // A day chunk, and hour chunks only.
+        $windows = [[TOPN_DAY0 - 7 * 3600, TOPN_DAY0 + 86400 + 7 * 3600], [TOPN_DAY0 - 3600, TOPN_DAY0 + 7 * 3600]];
+        $read = function () use ($windows): array {
+            $answers = [];
+            foreach ($windows as [$start, $end]) {
+                foreach ([TopNStat::SrcIp, TopNStat::Proto] as $stat) {
+                    $answers[] = topnWithoutIntervals($this->repo->rangeTop('live', $stat, ['gw'], $start, $end, 'bytes'));
+                }
+            }
+
+            return $answers;
+        };
+        $mixed = $read();
+
+        $written = $this->repo->flushRollups();
+
+        $want = [];
+        foreach ($windows as [$start, $end]) {
+            foreach ([TopNStat::SrcIp, TopNStat::Proto] as $stat) {
+                $want[] = topnWithoutIntervals(topnReference($this->db, 'live', $stat, ['gw'], $start, $end));
+            }
+        }
+        [$hour, $hourSum] = topnRollupVersusSum($this->db, 'topn_1h', 3600);
+        [$day, $daySum] = topnRollupVersusSum($this->db, 'topn_1d', 86400);
+        expect([$before, $after])->toBe([12, 2])
+            ->and($written)->toBe(1)
+            ->and($mixed)->toBe($want)
+            ->and($read())->toBe($want)
+            ->and($hour)->toBe($hourSum)
+            ->and($day)->toBe($daySum)
+        ;
+    });
+
+    test('flushRollups() writes a transaction per source and hour, and per source and day for each wide statistic and the rest together, with a yield after each', function (): void {
+        $rows = [];
+        foreach (TopNStat::cases() as $stat) {
+            $rows[$stat->value] = topnRows(['1' => 1]);
+        }
+        foreach (['gw', 'core'] as $source) {
+            foreach ([0, 300, 3600, 86400] as $offset) {
+                $this->repo->storeInterval('live', $source, TOPN_DAY0 + $offset, TOPN_TOTALS, 0, 1, $rows);
+            }
+        }
+        $yields = 0;
+
+        $written = $this->repo->flushRollups(static function () use (&$yields): void {
+            ++$yields;
+        });
+
+        // Hours 0, 1 and 24; days 0 and 1 with source and destination IP and port apart; for each source.
+        expect($written)->toBe(2 * (3 + 2 * 5))
+            ->and($yields)->toBe($written)
+            ->and($this->db->value('SELECT COUNT(*) FROM topn_1h'))->toBe(2 * 3 * 9)
+            ->and($this->db->value('SELECT COUNT(*) FROM topn_1d'))->toBe(2 * 2 * 9)
+            ->and($this->repo->pendingRollups())->toBe(0)
         ;
     });
 
@@ -249,19 +396,23 @@ describe('TopNRepository::storeInterval()', function (): void {
                 $intervals[] = [$source, $ts, $rows === [] ? TopNRepository::STATUS_EMPTY : TopNRepository::STATUS_OK, $rows];
             }
         }
-        $tables = static function (array $order): array {
+        $tables = static function (array $order, int $flushEvery): array {
             $db = Database::open(':memory:');
             $repo = new TopNRepository($db);
-            foreach ($order as [$source, $ts, $status, $rows]) {
+            foreach ($order as $i => [$source, $ts, $status, $rows]) {
                 $repo->storeInterval('live', $source, $ts, TOPN_TOTALS, $status, $ts + 300, $rows, 1);
+                if ($i % $flushEvery === $flushEvery - 1) {
+                    $repo->flushRollups();
+                }
             }
+            $repo->flushRollups();
 
             return array_map(static fn (string $table): array => $db->all("SELECT * FROM {$table} ORDER BY 1, 2, 3, 4, 5"), ['topn_interval', 'topn_5m', 'topn_1h', 'topn_1d']);
         };
-        $inOrder = $tables($intervals);
+        $inOrder = $tables($intervals, PHP_INT_MAX);
 
-        foreach (range(1, 5) as $_) {
-            expect($tables($rng->shuffleArray($intervals)))->toBe($inOrder);
+        foreach ([1, 5, 7, 16, 100] as $flushEvery) {
+            expect($tables($rng->shuffleArray($intervals), $flushEvery))->toBe($inOrder);
         }
         expect($inOrder[2])->not->toBeEmpty()
             ->and($inOrder[3])->not->toBeEmpty()
@@ -451,6 +602,7 @@ describe('TopNRepository interval queries', function (): void {
 
     test('oldestTs() and profiles()', function (): void {
         $this->repo->storeInterval('other', 'gw', TOPN_DAY0 + 600, TOPN_TOTALS, 0, 1, [TopNStat::Proto->value => topnRows(['6' => 1])]);
+        $this->repo->flushRollups();
 
         expect($this->repo->oldestTs('live'))->toBe(TOPN_DAY0)
             ->and($this->repo->oldestTs('nothing'))->toBeNull()
@@ -469,6 +621,7 @@ describe('TopNRepository::pruneChunk()', function (): void {
                 TopNStat::Proto->value => topnRows(['6' => 1]),
             ]);
         }
+        $this->repo->flushRollups();
 
         $srcIp = $this->repo->pruneChunk('live', TOPN_DAY0, TOPN_DAY0 + 3600, TopNStat::SrcIp);
         $intervals = $this->repo->pruneChunk('live', TOPN_DAY0, TOPN_DAY0 + 3600);
@@ -504,8 +657,8 @@ function topnStatements(): array {
         foreach ($tiers as $tier) {
             foreach ($groups as $group) {
                 $statements["{$name} {$tier} {$group}"] = str_replace(
-                    ['{tier}', '{stats}', '{in}', '{group}'],
-                    [$tier, implode(',', TopNStat::values()), '?, ?, ?', $group],
+                    ['{tier}', '{stats}', '{in}', '{group}', '{rows}', '{marks}'],
+                    [$tier, implode(',', TopNStat::values()), '?, ?, ?', $group, '(?, ?, ?, ?, ?), (?, ?, ?, ?, ?)', '?, ?'],
                     $sql,
                 );
             }
@@ -542,15 +695,33 @@ describe('TopNRepository query plans', function (): void {
     });
 
     test('the write statements seek on (profile, stat, ts, source)', function (): void {
+        $checked = [];
         foreach (topnStatements() as $name => $sql) {
-            if (!preg_match('/^SQL_(ROLLUP_SUBTRACT|ROLLUP_DROP_ZERO|INTERVAL_ROWS_DELETE|ROLLUP_ADD)/', $name)) {
+            if (!preg_match('/^SQL_(ROLLUP_SUBTRACT|ROLLUP_DROP_ZERO|INTERVAL_ROWS_DELETE|FLUSH_ADD)/', $name)) {
                 continue;
             }
             foreach (topnPlan($this->db, $sql) as $line) {
-                if (preg_match('/\b(topn_5m|topn_1h|topn_1d|r)\b/', $line) === 1) {
+                if (preg_match('/\b(topn_5m|topn_1h|topn_1d|r|m)\b/', $line) === 1) {
                     expect($line)->toMatch('/USING PRIMARY KEY \(profile=\? AND stat=\? AND ts=\? AND source=\?/', $name);
+                    $checked[strtok($name, ' ')] = true;
                 }
             }
+        }
+
+        expect(array_keys($checked))->toEqualCanonicalizing(['SQL_ROLLUP_SUBTRACT', 'SQL_ROLLUP_DROP_ZERO', 'SQL_INTERVAL_ROWS_DELETE', 'SQL_FLUSH_ADD']);
+    });
+
+    test('a rollup chunk and the flush find the marks by key range and read their 5 minute rows by (profile, stat, ts, source)', function (): void {
+        $plans = [topnPlan($this->db, topnStatements()['SQL_FLUSH_ADD topn_1h ']), topnPlan($this->db, topnStatements()['SQL_FLUSH_ADD topn_1d '])];
+        foreach ([TopNRepository::TIER_1H, TopNRepository::TIER_1D] as $tier) {
+            $plans[] = topnPlan($this->db, TopNRepository::rangeChunkSql($tier, false, 2));
+            $plans[] = topnPlan($this->db, TopNRepository::rangeChunkSql($tier, true, 1));
+        }
+
+        foreach ($plans as $plan) {
+            expect(implode("\n", $plan))->toContain('SEARCH p USING PRIMARY KEY (key>? AND key<?)')
+                ->toContain('SEARCH m USING PRIMARY KEY (profile=? AND stat=? AND ts=? AND source=?)')
+            ;
         }
     });
 
@@ -558,10 +729,59 @@ describe('TopNRepository query plans', function (): void {
         foreach (topnStatements() as $name => $sql) {
             foreach (topnPlan($this->db, $sql) as $line) {
                 expect($line)->not->toMatch('/stat>\? AND stat<\?/', $name);
-                if (!str_starts_with($name, 'SQL_PROFILES') && str_contains($line, 'topn_')) {
+                if (!str_starts_with($name, 'SQL_PROFILES') && preg_match('/\b(topn_\w+|meta|p|m|r)\b/', $line) === 1) {
                     expect($line)->not->toMatch('/^SCAN/', $name);
                 }
             }
+        }
+    });
+});
+
+describe('TopNRepository marks and checkpoint', function (): void {
+    test('a mark key names its tier, statistic, profile, interval and source, whatever the names hold', function (): void {
+        $key = TopNRepository::markKey(TopNRepository::TIER_1D, TopNStat::DstPort->value, "odd\x1fprofile", TOPN_DAY0, "gw\x1f2");
+
+        expect(TopNRepository::parseMark($key, "gw\x1f2"))->toBe(['tier' => TopNRepository::TIER_1D, 'stat' => 4, 'profile' => "odd\x1fprofile", 'ts' => TOPN_DAY0, 'source' => "gw\x1f2"])
+            ->and(TopNRepository::parseMark($key, 'gw'))->toBeNull()
+            ->and(TopNRepository::parseMark(TopNRepository::markKey(TopNRepository::TIER_1H, 1, '', 300, 'gw'), 'gw'))->toMatchArray(['profile' => '', 'ts' => 300])
+            ->and(TopNRepository::parseMark(str_replace(TopNRepository::TIER_1D, TopNRepository::TIER_5M, $key), "gw\x1f2"))->toBeNull()
+            ->and(TopNRepository::parseMark('migrated.alerts_log', '1'))->toBeNull()
+        ;
+    });
+
+    test('keys sort by interval within a tier, statistic and profile', function (): void {
+        $keys = array_map(static fn (int $ts): string => TopNRepository::markKey(TopNRepository::TIER_1H, 1, 'live', $ts, 'gw'), [9_999_999_999, 300, 1_000_000_000, 99_999]);
+        $sorted = $keys;
+        sort($sorted, SORT_STRING);
+
+        expect($sorted)->toBe([$keys[1], $keys[3], $keys[2], $keys[0]]);
+    });
+
+    test('checkpoint() copies the committed pages from the WAL into the database file', function (): void {
+        $dir = sys_get_temp_dir() . '/nfsen-ng-topn-' . bin2hex(random_bytes(6));
+        mkdir($dir);
+
+        try {
+            $db = Database::open("{$dir}/store.sqlite");
+            $db->exec('PRAGMA wal_autocheckpoint = 0');
+            $repo = new TopNRepository($db);
+            $repo->checkpoint();
+            $repo->storeInterval('live', 'gw', TOPN_DAY0, TOPN_TOTALS, 0, 1, [TopNStat::SrcIp->value => topnRows(['a' => 1])]);
+            $rowsInFile = static function (string $name) use ($dir): int {
+                copy("{$dir}/store.sqlite", "{$dir}/{$name}.sqlite");
+
+                return (int) (new PDO("sqlite:{$dir}/{$name}.sqlite"))->query('SELECT COUNT(*) FROM topn_5m')->fetchColumn();
+            };
+            $before = $rowsInFile('before');
+            $repo->checkpoint();
+
+            expect($db->journalMode())->toBe('wal')
+                ->and($before)->toBe(0)
+                ->and($rowsInFile('after'))->toBe(1)
+            ;
+        } finally {
+            array_map(unlink(...), glob("{$dir}/*") ?: []);
+            rmdir($dir);
         }
     });
 });

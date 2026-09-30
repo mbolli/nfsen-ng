@@ -276,7 +276,14 @@ describe('TopNCollector::collectOne()', function (): void {
             ->and($keys(TopNStat::DstAs))->toBe([])
             ->and($keys(TopNStat::InIf))->toBe(['1'])
             ->and($keys(TopNStat::OutIf))->toBe(['2'])
-            ->and($this->db->value('SELECT COUNT(*) FROM topn_1h'))->toBe($this->db->value('SELECT COUNT(*) FROM topn_5m'))
+            ->and($this->db->value('SELECT COUNT(*) FROM topn_1h'))->toBe(0)
+            ->and($this->repo->pendingRollups())->toBe(2 * 8)
+        ;
+
+        TopNCollector::flushRollups();
+
+        expect($this->db->value('SELECT COUNT(*) FROM topn_1h'))->toBe($this->db->value('SELECT COUNT(*) FROM topn_5m'))
+            ->and($this->repo->pendingRollups())->toBe(0)
         ;
     });
 
@@ -575,6 +582,7 @@ describe('TopNCollector::prune()', function (): void {
             $this->repo->storeInterval('live', 'gw', $ts, ['flows' => 1, 'packets' => 1, 'bytes' => 1], 0, 1, $rows);
         }
         $this->repo->storeInterval('other', 'gw', $this->ts, ['flows' => 1, 'packets' => 1, 'bytes' => 1], 0, 1, $rows);
+        $this->repo->flushRollups();
 
         $removed = TopNCollector::prune($this->now);
 
@@ -712,7 +720,7 @@ describe('TopNCollector parallel collection', function (): void {
             ->and(array_unique($writers))->toHaveCount(1)
             ->and(in_array($writers[0], $laneCids, true))->toBeFalse()
             ->and(array_column($this->db->all('SELECT status FROM topn_interval'), 'status'))->toBe(array_fill(0, 8, TopNRepository::STATUS_OK))
-            ->and($this->db->value('SELECT SUM(bytes) FROM topn_1h'))->toBe($this->db->value('SELECT SUM(bytes) FROM topn_5m'))
+            ->and($this->repo->pendingRollups())->toBe(8 * 2 * 8)
             ->and(TopNCollector::stats())->toMatchArray(['queued' => 0, 'processed' => 8, 'failed' => 0])
             ->and(TopNCollector::generation('live'))->toBeGreaterThan(0)
             ->and(NfdumpSlots::inUse())->toBe(0)
@@ -877,6 +885,169 @@ describe('TopNCollector parallel collection', function (): void {
         expect($this->db->value('SELECT COUNT(*) FROM topn_interval WHERE status = ?', [TopNRepository::STATUS_FAILED]))->toBe(TopNCollector::GAP_FILL_MAX)
             ->and($this->db->value('SELECT COUNT(*) FROM topn_interval'))->toBe(TopNCollector::GAP_FILL_MAX)
             ->and(TopNCollector::queued())->toBe(0)
+        ;
+    });
+});
+
+describe('TopNCollector rollups', function (): void {
+    beforeEach(function (): void {
+        topncLane()::reset();
+        topncReleaseSlots();
+    });
+
+    test('the worker adds the stored intervals to the rollups after every ROLLUP_EVERY intervals, from its own coroutine', function (): void {
+        Config::$settings = topncSettings($this->root, 8);
+        topncLane()::$sleepUs = 1_000;
+        $writers = [];
+        $this->db->pdo()->sqliteCreateFunction('topnc_writer', static function (string $table) use (&$writers): int {
+            $writers[$table][] = Coroutine::getCid();
+
+            return 0;
+        }, 1);
+        $this->db->exec("CREATE TEMP TRIGGER topnc_interval AFTER INSERT ON topn_interval BEGIN SELECT topnc_writer('interval'); END");
+        $this->db->exec("CREATE TEMP TRIGGER topnc_rollup AFTER INSERT ON topn_1d BEGIN SELECT topnc_writer('rollup'); END");
+        $files = TopNCollector::ROLLUP_EVERY + 2;
+
+        topncBooted($this->db, function () use ($files): void {
+            for ($i = 0; $i < $files; ++$i) {
+                $ts = $this->ts - $i * 300;
+                TopNCollector::enqueue('live', 'gw', topncCapture($this->root, 'gw', $ts), $ts);
+            }
+            topncWaitFor(static fn (): bool => TopNCollector::stats()['processed'] === $files);
+            Coroutine::usleep(20_000);
+        });
+        $pending = $this->repo->pendingRollups();
+        $rolledUp = $this->db->value('SELECT SUM(bytes) FROM topn_1d');
+        $workerWrites = $writers;
+        TopNCollector::flushRollups();
+
+        expect($pending)->toBe(2 * 2 * 8)
+            ->and($rolledUp)->toBe(TopNCollector::ROLLUP_EVERY * $this->db->value('SELECT SUM(bytes) FROM topn_5m') / $files)
+            ->and($this->db->value('SELECT SUM(bytes) FROM topn_1h'))->toBe($this->db->value('SELECT SUM(bytes) FROM topn_5m'))
+            ->and($this->db->value('SELECT SUM(bytes) FROM topn_1d'))->toBe($this->db->value('SELECT SUM(bytes) FROM topn_5m'))
+            ->and($workerWrites['interval'])->toHaveCount($files)
+            ->and($workerWrites['rollup'])->not->toBeEmpty()
+            ->and(array_unique([...$workerWrites['interval'], ...$workerWrites['rollup']]))->toHaveCount(1)
+        ;
+    });
+
+    test('the minute tick adds what is left once nothing was stored for ROLLUP_IDLE, also what a restart left', function (): void {
+        TopNCollector::start($this->repo, 31, $this->now, ['live']);
+        $rows = [TopNStat::SrcIp->value => [['key' => 'a', 'flows' => 1, 'packets' => 1, 'bytes' => 1]]];
+        $this->repo->storeInterval('live', 'gw', $this->ts, ['flows' => 1, 'packets' => 1, 'bytes' => 1], TopNRepository::STATUS_OK, 1, $rows);
+        $leftByRestart = $this->repo->pendingRollups();
+        TopNCollector::maintain($this->now + 1);
+        $afterTick = $this->repo->pendingRollups();
+
+        FakeProcessor::queueRaw(topncEightStats());
+        FakeProcessor::queueRaw(topncBlock([['any', '2', 51300]]));
+        TopNCollector::collectOne('live', 'gw', topncRelPath($this->ts - 300), $this->ts - 300, ['flows' => 1, 'packets' => 1, 'bytes' => 1]);
+        $collected = $this->repo->pendingRollups();
+        TopNCollector::maintain(time() + TopNCollector::ROLLUP_IDLE - 5);
+        $early = $this->repo->pendingRollups();
+        TopNCollector::maintain(time() + TopNCollector::ROLLUP_IDLE);
+
+        expect([$leftByRestart, $afterTick, $collected, $early, $this->repo->pendingRollups()])->toBe([2, 0, 16, 16, 0])
+            ->and($this->db->value('SELECT SUM(bytes) FROM topn_1h'))->toBe($this->db->value('SELECT SUM(bytes) FROM topn_5m'))
+        ;
+    });
+
+    test('a stop ends a rollup flush between two transactions and leaves the rest marked, still read exactly', function (): void {
+        TopNCollector::start($this->repo, 31, $this->now);
+        foreach ([0, 300, 3600] as $offset) {
+            $this->repo->storeInterval('live', 'gw', $this->ts - $offset, ['flows' => 1, 'packets' => 1, 'bytes' => 1], TopNRepository::STATUS_OK, 1, [
+                TopNStat::SrcIp->value => [['key' => 'a', 'flows' => 1, 'packets' => 1, 'bytes' => 10 + $offset], ['key' => 'b', 'flows' => 1, 'packets' => 1, 'bytes' => 5]],
+                TopNStat::Proto->value => [['key' => '6', 'flows' => 1, 'packets' => 1, 'bytes' => 3]],
+            ]);
+        }
+        $before = $this->repo->pendingRollups();
+
+        TopNCollector::stop();
+        $written = TopNCollector::flushRollups();
+
+        $after = $this->repo->pendingRollups();
+        $start = $this->ts - $this->ts % 86400 - 86400;
+        expect($written)->toBe(1)
+            ->and($before)->toBe(12)
+            ->and($after)->toBeGreaterThan(0)->toBeLessThan(12)
+            ->and(array_map(static fn (array $row): array => [$row['key'], $row['bytes']], $this->repo->rangeTop('live', TopNStat::SrcIp, ['gw'], $start, $start + 3 * 86400, 'bytes')))
+            ->toBe([['a', 3930], ['b', 15]])
+        ;
+    });
+
+    test('an idle flush gives way to the worker between two transactions, and what the worker stores meanwhile counts towards its flush', function (): void {
+        Config::$settings = topncSettings($this->root, 8);
+        topncLane()::$sleepUs = 0;
+        $day = $this->ts - $this->ts % 86400 - 86400;
+        $totals = ['flows' => 75, 'packets' => 525, 'bytes' => 51300];
+        $seen = [];
+
+        topncBooted($this->db, function () use ($day, $totals, &$seen): void {
+            // What a restart left: one day bucket and four hour buckets, a flush transaction each.
+            foreach (range(0, 3) as $hour) {
+                $this->repo->storeInterval('live', 'gw', $day + $hour * 3600, ['flows' => 1, 'packets' => 1, 'bytes' => 7], TopNRepository::STATUS_OK, 1, [
+                    TopNStat::SrcIp->value => [['key' => 'a', 'flows' => 1, 'packets' => 1, 'bytes' => 7]],
+                ]);
+            }
+            // Created up front: mkdir yields under the coroutine hooks and would let the idle flush resume early.
+            $first = topncCapture($this->root, 'gw', $this->ts);
+            $second = topncCapture($this->root, 'gw', $this->ts - 300);
+            $seen[] = $this->repo->pendingRollups();
+            Coroutine::create(static function (): void {
+                TopNCollector::maintain(time());
+            });
+            $seen[] = $this->repo->pendingRollups();
+
+            // With runs that never sleep, the worker stores this file during the idle flush's pause.
+            TopNCollector::enqueue('live', 'gw', $first, $this->ts, $totals);
+            $seen[] = TopNCollector::stats()['processed'];
+            topncLane()::$sleepUs = 50_000;
+            TopNCollector::enqueue('live', 'gw', $second, $this->ts - 300, $totals);
+            topncWaitFor(static fn (): bool => TopNCollector::stats()['processed'] === 2);
+            $seen[] = $this->repo->pendingRollups();
+
+            topncLane()::$sleepUs = 1_000;
+            for ($i = 2; $i < TopNCollector::ROLLUP_EVERY; ++$i) {
+                $ts = $this->ts - $i * 300;
+                TopNCollector::enqueue('live', 'gw', topncCapture($this->root, 'gw', $ts), $ts, $totals);
+            }
+            topncWaitFor(fn (): bool => $this->repo->pendingRollups() === 0);
+            $seen[] = $this->repo->pendingRollups();
+        });
+
+        expect($seen)->toBe([8, 4, 1, 4 + 2 * 16, 0])
+            ->and(TopNCollector::stats()['processed'])->toBe(TopNCollector::ROLLUP_EVERY)
+            ->and($this->db->value('SELECT SUM(bytes) FROM topn_1h'))->toBe($this->db->value('SELECT SUM(bytes) FROM topn_5m'))
+            ->and($this->db->value('SELECT SUM(bytes) FROM topn_1d'))->toBe($this->db->value('SELECT SUM(bytes) FROM topn_5m'))
+        ;
+    });
+
+    test('the worker checkpoints the WAL after every second write', function (): void {
+        Config::$settings = topncSettings($this->root, 4);
+        topncLane()::$sleepUs = 1_000;
+        $dir = $this->root . '/state';
+        mkdir($dir);
+        $db = Database::open("{$dir}/store.sqlite");
+        $db->exec('PRAGMA wal_autocheckpoint = 0');
+        (new TopNRepository($db))->checkpoint();
+        $inFile = static function () use ($dir): int {
+            copy("{$dir}/store.sqlite", "{$dir}/copy.sqlite");
+
+            return (int) (new PDO("sqlite:{$dir}/copy.sqlite"))->query('SELECT COUNT(*) FROM topn_interval')->fetchColumn();
+        };
+        $counts = [];
+
+        topncBooted($db, function () use ($inFile, &$counts): void {
+            foreach ([$this->ts, $this->ts - 300] as $n => $ts) {
+                TopNCollector::enqueue('live', 'gw', topncCapture($this->root, 'gw', $ts), $ts);
+                topncWaitFor(static fn (): bool => TopNCollector::stats()['processed'] === $n + 1);
+                Coroutine::usleep(20_000);
+                $counts[] = $inFile();
+            }
+        });
+
+        expect($db->journalMode())->toBe('wal')
+            ->and($counts)->toBe([0, 2])
         ;
     });
 });

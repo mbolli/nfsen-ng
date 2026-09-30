@@ -17,6 +17,15 @@
             </p>
             <p>{{ view.detail }}</p>
             <p>{{ view.notification }}</p>
+            <dl class="alert-test-channels">
+                {% for channel in view.channels %}
+                    <dt>{{ channel.label }}</dt>
+                    <dd>
+                        {%- if channel.level %}<span class="status-dot" data-level="{{ channel.level }}" aria-hidden="true"></span> {% endif -%}
+                        {{ channel.text }}
+                    </dd>
+                {% endfor %}
+            </dl>
             <p class="help">
                 Interval starting
                 <time datetime="{{ view.slotIso }}"

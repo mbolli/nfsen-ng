@@ -122,7 +122,7 @@ function overviewTestDatasource(): Datasource&TotalsProvider {
             return ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
         }
 
-        public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array {
+        public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds, ?int $end = null): array {
             return ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
         }
 

@@ -675,8 +675,8 @@ WARNING;
     }
 
     /**
-     * Returns summed flows/packets/bytes for the most recently completed 5-min slot
-     * across all given sources. Skips missing/unreadable RRD files silently.
+     * Each source's newest stored interval (a rate per second), summed. A source more than one
+     * interval behind the newest is left out, as one that stopped reporting; so is an unreadable file.
      *
      * @param string[] $sources
      *
@@ -685,14 +685,18 @@ WARNING;
     public function fetchLatestSlot(array $sources, string $profile): array {
         $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
 
+        $last = [];
         foreach ($sources as $source) {
             $file = $this->get_data_path($source, 0, $profile);
-            if (!file_exists($file)) {
-                continue;
+            $ts = file_exists($file) ? rrd_last($file) : false;
+            if (\is_int($ts) && $ts > 0) {
+                $last[$file] = $ts;
             }
+        }
+        $newest = $last !== [] ? max($last) : 0;
 
-            $ts = rrd_last($file);
-            if ($ts <= 0) {
+        foreach ($last as $file => $ts) {
+            if ($ts < $newest - 300) {
                 continue;
             }
 
@@ -721,16 +725,21 @@ WARNING;
     }
 
     /**
-     * Returns average flows/packets/bytes over a rolling window, summed across sources.
-     * Returns [0.0, 0.0, 0.0] when no data is available (cold-start safe).
+     * The average rate per second over the window before the interval starting at $end, summed
+     * across sources: the unit of fetchLatestSlot(). Without $end, the window before the newest
+     * complete interval by the clock, which is left out. Zeros without data.
      *
      * @param string[] $sources
      *
      * @return array{flows: float, packets: float, bytes: float}
      */
-    public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array {
+    public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds, ?int $end = null): array {
         $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
-        $now = time();
+        $end ??= intdiv(time(), 300) * 300 - 300;
+        // Row T holds the file starting at T, and rrd_fetch returns the rows T in
+        // (floor(start), floor(end) + 300]: here the files of [$end - window, $end).
+        $from = (string) ($end - $windowSeconds - 300);
+        $to = (string) ($end - 301);
 
         foreach ($sources as $source) {
             $file = $this->get_data_path($source, 0, $profile);
@@ -738,7 +747,7 @@ WARNING;
                 continue;
             }
 
-            $fetchResult = @rrd_fetch($file, ['AVERAGE', '--start', (string) ($now - $windowSeconds), '--end', (string) $now, '--resolution', '300']);
+            $fetchResult = @rrd_fetch($file, ['AVERAGE', '--start', $from, '--end', $to, '--resolution', '300']);
             if (!isset($fetchResult['data']) || !\is_array($fetchResult['data'])) {
                 continue;
             }

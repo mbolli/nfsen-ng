@@ -25,8 +25,9 @@ use Mbolli\PhpVia\Via;
  *                             lastFired: ?int, lastFiredLabel: string, form: array<string, mixed>}
  * @phpstan-type EventRow array{id: int, ts: int, iso: string, kind: string, label: string, level: string,
  *                              ruleName: string, profile: string, value: string}
+ * @phpstan-type ChannelRow array{label: string, level: string, text: string}
  * @phpstan-type TestView array{title: string, level: string, headline: string, detail: string, notification: string,
- *                              slot: int, slotIso: string, templates: list<array{label: string, text: string}>}
+ *                              channels: list<ChannelRow>, slot: int, slotIso: string, templates: list<array{label: string, text: string}>}
  */
 final class AlertsPage implements Page {
     /** Recent alerts shown beside the rules. */
@@ -323,10 +324,9 @@ final class AlertsPage implements Page {
             $kind = self::EVENT_KINDS[$event['kind']] ?? ['label' => ucfirst($event['kind']), 'level' => ''];
             // A deleted rule's time base is unknown, so its figures go without one.
             $rule = $byId[$event['ruleId'] ?? ''] ?? null;
-            $value = self::formatValue($event['metric'], $event['value'], $rule !== null ? self::valueBasis($rule) : '');
-            $threshold = $event['threshold'] !== null
-                ? self::formatValue($event['metric'], $event['threshold'], $rule !== null ? self::thresholdBasis($rule) : '')
-                : null;
+            $basis = $rule !== null ? self::valueBasis($rule) : '';
+            $value = self::formatValue($event['metric'], $event['value'], $basis);
+            $threshold = $event['threshold'] !== null ? self::formatValue($event['metric'], $event['threshold'], $basis) : null;
 
             $rows[] = [
                 'id' => $event['id'],
@@ -344,13 +344,20 @@ final class AlertsPage implements Page {
         return $rows;
     }
 
-    /** "bytes > absolute", "packets > 200% of 1 h average". */
+    /** "bytes > absolute", "packets > 200% of 1 h average", "bytes > 200% of the filter's own 1 h average". */
     public static function conditionLabel(AlertRule $rule): string {
         $head = $rule->metric . ' ' . $rule->operator . ' ';
 
         return $rule->thresholdType === 'percent_of_avg'
-            ? $head . self::number($rule->thresholdValue) . '% of ' . self::windowLabel($rule->avgWindow) . ' average'
+            ? $head . self::number($rule->thresholdValue) . '% of ' . self::averageLabel($rule)
             : $head . 'absolute';
+    }
+
+    /** What a relative rule averages: "1 h average", or for a filtered rule "the filter's own 1 h average". */
+    public static function averageLabel(AlertRule $rule): string {
+        $average = self::windowLabel($rule->avgWindow) . ' average';
+
+        return $rule->nfdumpFilter !== null ? "the filter's own " . $average : $average;
     }
 
     /** "5 GB/s" for an absolute threshold; a relative one names its averaging window. */
@@ -378,20 +385,11 @@ final class AlertsPage implements Page {
     }
 
     /**
-     * What a rule's values are counted over: RRD stores per second rates, while a filtered
+     * The time base of a rule's values, threshold and average: RRD stores rates per second, a filtered
      * rule sums one interval's flow records and VictoriaMetrics stores interval totals.
      */
     public static function valueBasis(AlertRule $rule): string {
         return $rule->nfdumpFilter !== null || self::storesTotals() ? self::PER_INTERVAL : self::PER_SECOND;
-    }
-
-    /** An absolute threshold is compared with the values as they are; a relative one comes from the stored average. */
-    public static function thresholdBasis(AlertRule $rule): string {
-        if ($rule->thresholdType !== 'percent_of_avg') {
-            return self::valueBasis($rule);
-        }
-
-        return self::storesTotals() ? self::PER_INTERVAL : self::PER_SECOND;
     }
 
     /** Whether the datasource stores totals per interval rather than per second rates. */
@@ -466,10 +464,11 @@ final class AlertsPage implements Page {
         } else {
             $level = $result['fired'] ? 'error' : 'success';
             $threshold = $result['threshold'] ?? PHP_FLOAT_MAX;
+            $average = self::averageLabel($rule);
             $detail = 'Current ' . $rule->metric . ': ' . self::formatValue($rule->metric, $result['value'], self::valueBasis($rule)) . '.'
-                . ' Threshold: ' . $rule->metric . ' ' . $rule->operator . ' ' . self::formatValue($rule->metric, $threshold, self::thresholdBasis($rule))
+                . ' Threshold: ' . $rule->metric . ' ' . $rule->operator . ' ' . self::formatValue($rule->metric, $threshold, self::valueBasis($rule))
                 . ($rule->thresholdType === 'percent_of_avg'
-                    ? ' (' . self::number($rule->thresholdValue) . '% of the ' . self::windowLabel($rule->avgWindow) . ' average)'
+                    ? ' (' . self::number($rule->thresholdValue) . '% of ' . ($rule->nfdumpFilter !== null ? $average : 'the ' . $average) . ')'
                     : '')
                 . '.';
         }
@@ -480,6 +479,7 @@ final class AlertsPage implements Page {
             'headline' => $result['fired'] ? 'Would fire' : 'Would not fire',
             'detail' => $detail,
             'notification' => self::notificationLine($result, $rule, $emailEnabled),
+            'channels' => self::channelRows($result, $rule, $emailEnabled),
             'slot' => $result['slot'],
             'slotIso' => gmdate('Y-m-d\TH:i:s\Z', $result['slot']),
             'templates' => [
@@ -576,40 +576,75 @@ final class AlertsPage implements Page {
     }
 
     /**
-     * What the Test sent. AlertManager reports one result for both channels, true when either
-     * of them worked, so with two channels the line cannot say which.
+     * What the Test sent, in one line: the channels that got the notification, then the ones that
+     * failed or are off on this server, as channelRows() lists them.
      *
      * @param TestResult $result
      */
     private static function notificationLine(array $result, AlertRule $rule, bool $emailEnabled): string {
-        $channels = [];
-        if ($rule->notifyWebhook !== null) {
-            $channels[] = 'the webhook';
-        }
-        if ($rule->notifyEmail !== null && $emailEnabled) {
-            $channels[] = $rule->notifyEmail;
-        }
-        $emailOff = $rule->notifyEmail !== null && !$emailEnabled ? 'email is off on this server (NFSEN_ALERT_EMAIL_FROM is not set)' : '';
-
-        if ($result['notified']) {
-            $line = match (\count($channels)) {
-                0 => 'Notification sent.',
-                1 => 'Notification sent to ' . $channels[0] . '.',
-                default => 'Notification sent to at least one of ' . implode(' and ', $channels) . '.',
-            };
-
-            return $emailOff !== '' ? $line . ' ' . ucfirst($emailOff) . '.' : $line;
-        }
         if (!$result['fired']) {
             return 'No notification sent.';
         }
 
-        $reasons = $channels !== [] ? ['sending failed'] : [];
-        if ($emailOff !== '') {
-            $reasons[] = $emailOff;
+        $sent = [];
+        $problems = [];
+        foreach (self::channels($rule) as $channel => $target) {
+            $delivery = $result['delivery'][$channel];
+            if ($delivery['status'] === AlertManager::DELIVERY_SENT) {
+                $sent[] = $target;
+            } elseif ($delivery['status'] === AlertManager::DELIVERY_FAILED) {
+                $problems[] = 'sending to ' . $target . ' failed (' . self::failure($delivery['detail']) . ')';
+            }
+        }
+        if ($rule->notifyEmail !== null && !$emailEnabled) {
+            $problems[] = 'email is off on this server (NFSEN_ALERT_EMAIL_FROM is not set)';
         }
 
-        return 'No notification sent: ' . ($reasons !== [] ? implode(', and ', $reasons) : 'the rule has no email or webhook set up') . '.';
+        if ($sent === []) {
+            return 'No notification sent: ' . ($problems !== [] ? implode(', and ', $problems) : 'the rule has no email or webhook set up') . '.';
+        }
+        $line = (\count($sent) > 1 ? 'Notifications sent to ' : 'Notification sent to ') . implode(' and to ', $sent) . '.';
+
+        return $problems !== [] ? $line . ' ' . ucfirst(implode(', and ', $problems)) . '.' : $line;
+    }
+
+    /**
+     * Each channel's delivery for the dialog: sent, failed and why, not configured, or not sent
+     * because the rule did not fire.
+     *
+     * @param TestResult $result
+     *
+     * @return list<ChannelRow>
+     */
+    private static function channelRows(array $result, AlertRule $rule, bool $emailEnabled): array {
+        $rows = [];
+        foreach (self::channels($rule) as $channel => $target) {
+            $delivery = $result['delivery'][$channel];
+            [$level, $text] = match ($delivery['status']) {
+                AlertManager::DELIVERY_SENT => ['success', $channel === 'email' ? 'Sent to ' . $target : 'Sent'],
+                AlertManager::DELIVERY_FAILED => ['error', 'Failed: ' . self::failure($delivery['detail'])],
+                AlertManager::DELIVERY_UNCONFIGURED => ['', $channel === 'email' && $rule->notifyEmail !== null && !$emailEnabled
+                    ? 'Not configured on this server (NFSEN_ALERT_EMAIL_FROM is not set)'
+                    : 'Not configured'],
+                default => ['', $result['evaluated'] ? 'Not sent: the rule would not fire' : 'Not sent: the rule could not be evaluated'],
+            };
+            $rows[] = ['label' => $channel === 'email' ? 'Email' : 'Webhook', 'level' => $level, 'text' => $text];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The channels in the order the dialog lists them, with how a sentence names each.
+     *
+     * @return array{webhook: string, email: string}
+     */
+    private static function channels(AlertRule $rule): array {
+        return ['webhook' => 'the webhook', 'email' => $rule->notifyEmail ?? 'the email address'];
+    }
+
+    private static function failure(string $detail): string {
+        return $detail !== '' ? rtrim($detail, '.') : 'no reason given';
     }
 
     /** Math.round(): halves round towards positive infinity. */

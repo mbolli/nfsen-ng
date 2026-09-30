@@ -37,15 +37,24 @@ function alertsPageTestRule(array $overrides = []): AlertRule {
 }
 
 /**
- * A TestResult as AlertManager::testRule() returns it.
+ * A channel's delivery as AlertManager reports it.
+ *
+ * @return array{status: string, detail: string}
+ */
+function alertsPageTestDelivery(string $status, string $detail = ''): array {
+    return ['status' => $status, 'detail' => $detail];
+}
+
+/**
+ * A TestResult as AlertManager::testRule() returns it; by default both channels were sent.
  *
  * @param array<string, mixed> $overrides
  *
  * @return array{fired: bool, evaluated: bool, value: float, threshold: ?float, condition: string, reason: string, slot: int,
- *               notified: bool, title: string, message: string, subject: string, body: string}
+ *               delivery: array{email: array{status: string, detail: string}, webhook: array{status: string, detail: string}},
+ *               title: string, message: string, subject: string, body: string}
  */
 function alertsPageTestResult(array $overrides = []): array {
-    /** @var array{fired: bool, evaluated: bool, value: float, threshold: ?float, condition: string, reason: string, slot: int, notified: bool, title: string, message: string, subject: string, body: string} */
     return [
         'fired' => true,
         'evaluated' => true,
@@ -54,7 +63,7 @@ function alertsPageTestResult(array $overrides = []): array {
         'condition' => 'bytes > 5,000,000,000.00',
         'reason' => '',
         'slot' => 1_700_000_100,
-        'notified' => true,
+        'delivery' => ['email' => alertsPageTestDelivery(AlertManager::DELIVERY_SENT), 'webhook' => alertsPageTestDelivery(AlertManager::DELIVERY_SENT)],
         'title' => 'nfsen-ng alert: High traffic',
         'message' => 'bytes = 6,100,000,000.00 (profile: live, sources: gw1)',
         'subject' => '[nfsen-ng] Alert: High traffic',
@@ -151,6 +160,15 @@ describe('labels', function (): void {
         ;
     });
 
+    test('a relative rule with a filter says its average is the filter\'s own traffic', function (): void {
+        $rule = alertsPageTestRule(['nfdumpFilter' => 'dst port 443', 'thresholdType' => 'percent_of_avg', 'thresholdValue' => 150, 'avgWindow' => '6h']);
+
+        expect(AlertsPage::conditionLabel($rule))->toBe("bytes > 150% of the filter's own 6 h average")
+            ->and(AlertsPage::averageLabel($rule))->toBe("the filter's own 6 h average")
+            ->and(AlertsPage::thresholdLabel($rule))->toBe('6 h window')
+        ;
+    });
+
     test('values scale by 1000 with up to three significant digits', function (string $metric, float $value, string $expected): void {
         expect(AlertsPage::formatValue($metric, $value))->toBe($expected);
     })->with([
@@ -180,23 +198,35 @@ describe('labels', function (): void {
     test('RRD rates are per second; a filtered rule and VictoriaMetrics count per interval', function (): void {
         $plain = alertsPageTestRule();
         $filtered = alertsPageTestRule(['nfdumpFilter' => 'proto icmp']);
-        $relative = alertsPageTestRule(['nfdumpFilter' => 'proto icmp', 'thresholdType' => 'percent_of_avg', 'thresholdValue' => 200]);
 
         expect(AlertsPage::valueBasis($plain))->toBe(AlertsPage::PER_SECOND)
             ->and(AlertsPage::thresholdLabel($plain))->toBe('5 GB/s')
             ->and(AlertsPage::valueBasis($filtered))->toBe(AlertsPage::PER_INTERVAL)
             ->and(AlertsPage::thresholdLabel($filtered))->toBe('5 GB per 5 min')
-            // A relative threshold comes from the stored average, filter or not.
-            ->and(AlertsPage::valueBasis($relative))->toBe(AlertsPage::PER_INTERVAL)
-            ->and(AlertsPage::thresholdBasis($relative))->toBe(AlertsPage::PER_SECOND)
         ;
 
         Config::$settings = Settings::fromArray(['general' => ['sources' => ['gw1'], 'db' => 'VictoriaMetrics']]);
 
         expect(AlertsPage::storesTotals())->toBeTrue()
             ->and(AlertsPage::valueBasis($plain))->toBe(AlertsPage::PER_INTERVAL)
-            ->and(AlertsPage::thresholdBasis($relative))->toBe(AlertsPage::PER_INTERVAL)
         ;
+    });
+
+    test('a relative threshold is shown in its values\' unit: its average is taken in that unit', function (): void {
+        $relative = ['thresholdType' => 'percent_of_avg', 'thresholdValue' => 200, 'metric' => 'packets'];
+        $events = [
+            ['id' => 1, 'ts' => 1_700_000_100, 'kind' => 'fired', 'ruleId' => 'plain', 'ruleName' => 'Plain', 'profile' => 'live', 'sources' => [], 'metric' => 'packets', 'operator' => '>', 'value' => 3000.0, 'threshold' => 2000.0, 'origin' => 'live'],
+            ['id' => 2, 'ts' => 1_700_000_100, 'kind' => 'fired', 'ruleId' => 'filtered', 'ruleName' => 'Filtered', 'profile' => 'live', 'sources' => [], 'metric' => 'packets', 'operator' => '>', 'value' => 9e5, 'threshold' => 6e5, 'origin' => 'live'],
+        ];
+        $rules = [
+            alertsPageTestRule(['id' => 'plain', ...$relative]),
+            alertsPageTestRule(['id' => 'filtered', 'nfdumpFilter' => 'proto udp', ...$relative]),
+        ];
+
+        expect(array_column(AlertsPage::eventRows($events, $rules), 'value'))->toBe([
+            '3k packets/s vs 2k packets/s',
+            '900k packets per 5 min vs 600k packets per 5 min',
+        ]);
     });
 
     test('the form title names the rule being edited', function (): void {
@@ -342,7 +372,11 @@ describe('testResultView()', function (): void {
             ->and($view['level'])->toBe('error')
             ->and($view['headline'])->toBe('Would fire')
             ->and($view['detail'])->toBe('Current bytes: 6.1 GB/s. Threshold: bytes > 5 GB/s.')
-            ->and($view['notification'])->toBe('Notification sent to at least one of the webhook and noc@example.net.')
+            ->and($view['notification'])->toBe('Notifications sent to the webhook and to noc@example.net.')
+            ->and($view['channels'])->toBe([
+                ['label' => 'Webhook', 'level' => 'success', 'text' => 'Sent'],
+                ['label' => 'Email', 'level' => 'success', 'text' => 'Sent to noc@example.net'],
+            ])
             ->and($view['slotIso'])->toBe('2023-11-14T22:15:00Z')
             ->and(array_column($view['templates'], 'label'))->toBe(['Webhook title', 'Webhook message', 'Email subject', 'Email body'])
             ->and(array_column($view['templates'], 'text'))->toBe([
@@ -356,12 +390,17 @@ describe('testResultView()', function (): void {
 
     test('a rule that does not fire still shows the four rendered templates', function (): void {
         $rule = alertsPageTestRule(['metric' => 'packets', 'thresholdType' => 'percent_of_avg', 'thresholdValue' => 200, 'notifyWebhook' => 'https://h.example/x']);
-        $view = AlertsPage::testResultView(alertsPageTestResult(['fired' => false, 'notified' => false, 'value' => 900.0, 'threshold' => 2400.0]), $rule, true);
+        $skipped = ['email' => alertsPageTestDelivery(AlertManager::DELIVERY_UNCONFIGURED), 'webhook' => alertsPageTestDelivery(AlertManager::DELIVERY_SKIPPED)];
+        $view = AlertsPage::testResultView(alertsPageTestResult(['fired' => false, 'delivery' => $skipped, 'value' => 900.0, 'threshold' => 2400.0]), $rule, true);
 
         expect($view['level'])->toBe('success')
             ->and($view['headline'])->toBe('Would not fire')
             ->and($view['detail'])->toBe('Current packets: 900 packets/s. Threshold: packets > 2.4k packets/s (200% of the 1 h average).')
             ->and($view['notification'])->toBe('No notification sent.')
+            ->and($view['channels'])->toBe([
+                ['label' => 'Webhook', 'level' => '', 'text' => 'Not sent: the rule would not fire'],
+                ['label' => 'Email', 'level' => '', 'text' => 'Not configured'],
+            ])
             ->and($view['templates'])->toHaveCount(4)
             ->and($view['templates'][0]['text'])->toBe('nfsen-ng alert: High traffic')
         ;
@@ -374,33 +413,57 @@ describe('testResultView()', function (): void {
         expect($view['detail'])->toBe('Current bytes: 1.8 TB per 5 min. Threshold: bytes > 5 GB per 5 min.');
     });
 
+    test('a filtered relative rule compares with the filter\'s own average, per interval', function (): void {
+        $rule = alertsPageTestRule(['nfdumpFilter' => 'proto udp', 'thresholdType' => 'percent_of_avg', 'thresholdValue' => 200, 'avgWindow' => '10m']);
+        $view = AlertsPage::testResultView(alertsPageTestResult(['value' => 1.8e12, 'threshold' => 1.2e12]), $rule, true);
+
+        expect($view['detail'])->toBe("Current bytes: 1.8 TB per 5 min. Threshold: bytes > 1.2 TB per 5 min (200% of the filter's own 10 min average).");
+    });
+
     test('a rule that could not be evaluated says why', function (): void {
-        $result = alertsPageTestResult(['fired' => false, 'evaluated' => false, 'notified' => false, 'threshold' => null, 'reason' => 'no baseline yet for the 1h average']);
-        $view = AlertsPage::testResultView($result, alertsPageTestRule(), true);
+        $skipped = ['email' => alertsPageTestDelivery(AlertManager::DELIVERY_SKIPPED), 'webhook' => alertsPageTestDelivery(AlertManager::DELIVERY_UNCONFIGURED)];
+        $result = alertsPageTestResult(['fired' => false, 'evaluated' => false, 'delivery' => $skipped, 'threshold' => null, 'reason' => 'no baseline yet for the 1 h average']);
+        $view = AlertsPage::testResultView($result, alertsPageTestRule(['notifyEmail' => 'noc@example.net']), true);
 
         expect($view['level'])->toBe('warning')
             ->and($view['headline'])->toBe('Would not fire')
-            ->and($view['detail'])->toBe('Could not evaluate: no baseline yet for the 1h average.')
+            ->and($view['detail'])->toBe('Could not evaluate: no baseline yet for the 1 h average.')
             ->and($view['notification'])->toBe('No notification sent.')
+            ->and(array_column($view['channels'], 'text'))->toBe(['Not configured', 'Not sent: the rule could not be evaluated'])
             ->and($view['templates'])->toHaveCount(4)
             ->and(AlertsPage::testResultView(['reason' => ''] + $result, alertsPageTestRule(), true)['detail'])
             ->toBe('Could not evaluate: the traffic could not be read.')
         ;
     });
 
-    test('what was sent follows the rule and whether email is set up', function (): void {
+    test('what was sent names each channel, and why one failed or is off', function (): void {
         $both = alertsPageTestRule(['notifyEmail' => 'noc@example.net', 'notifyWebhook' => 'https://h.example/x']);
         $emailOnly = alertsPageTestRule(['notifyEmail' => 'a@b.example']);
-        $line = static fn (array $result, AlertRule $rule, bool $emailEnabled): string => AlertsPage::testResultView(alertsPageTestResult($result), $rule, $emailEnabled)['notification'];
+        $sent = alertsPageTestDelivery(AlertManager::DELIVERY_SENT);
+        $none = alertsPageTestDelivery(AlertManager::DELIVERY_UNCONFIGURED);
+        $refused = alertsPageTestDelivery(AlertManager::DELIVERY_FAILED, 'the mail system did not accept it');
+        $http500 = alertsPageTestDelivery(AlertManager::DELIVERY_FAILED, 'HTTP 500');
+        $view = static fn (array $email, array $webhook, AlertRule $rule, bool $emailEnabled): array => AlertsPage::testResultView(alertsPageTestResult(['delivery' => ['email' => $email, 'webhook' => $webhook]]), $rule, $emailEnabled);
+        $line = static fn (array $email, array $webhook, AlertRule $rule, bool $emailEnabled): string => $view($email, $webhook, $rule, $emailEnabled)['notification'];
 
-        expect($line([], $both, false))->toBe('Notification sent to the webhook. Email is off on this server (NFSEN_ALERT_EMAIL_FROM is not set).')
-            ->and($line([], $emailOnly, true))->toBe('Notification sent to a@b.example.')
-            ->and($line(['notified' => false], alertsPageTestRule(), true))->toBe('No notification sent: the rule has no email or webhook set up.')
-            ->and($line(['notified' => false], $both, true))->toBe('No notification sent: sending failed.')
-            ->and($line(['notified' => false], $emailOnly, false))->toBe('No notification sent: email is off on this server (NFSEN_ALERT_EMAIL_FROM is not set).')
-            ->and($line(['notified' => false], $both, false))
-            ->toBe('No notification sent: sending failed, and email is off on this server (NFSEN_ALERT_EMAIL_FROM is not set).')
-            ->and($line(['fired' => false, 'notified' => false], $emailOnly, false))->toBe('No notification sent.')
+        expect($line($none, $sent, $both, false))->toBe('Notification sent to the webhook. Email is off on this server (NFSEN_ALERT_EMAIL_FROM is not set).')
+            ->and($line($sent, $none, $emailOnly, true))->toBe('Notification sent to a@b.example.')
+            ->and($line($refused, $sent, $both, true))->toBe('Notification sent to the webhook. Sending to noc@example.net failed (the mail system did not accept it).')
+            ->and($line($sent, $http500, $both, true))->toBe('Notification sent to noc@example.net. Sending to the webhook failed (HTTP 500).')
+            ->and($line($none, $none, alertsPageTestRule(), true))->toBe('No notification sent: the rule has no email or webhook set up.')
+            ->and($line($refused, $http500, $both, true))
+            ->toBe('No notification sent: sending to the webhook failed (HTTP 500), and sending to noc@example.net failed (the mail system did not accept it).')
+            ->and($line($none, $none, $emailOnly, false))->toBe('No notification sent: email is off on this server (NFSEN_ALERT_EMAIL_FROM is not set).')
+            ->and($line($none, $http500, $both, false))
+            ->toBe('No notification sent: sending to the webhook failed (HTTP 500), and email is off on this server (NFSEN_ALERT_EMAIL_FROM is not set).')
+            ->and($view($none, $http500, $both, false)['channels'])->toBe([
+                ['label' => 'Webhook', 'level' => 'error', 'text' => 'Failed: HTTP 500'],
+                ['label' => 'Email', 'level' => '', 'text' => 'Not configured on this server (NFSEN_ALERT_EMAIL_FROM is not set)'],
+            ])
+            ->and($view($refused, $none, $emailOnly, true)['channels'])->toBe([
+                ['label' => 'Webhook', 'level' => '', 'text' => 'Not configured'],
+                ['label' => 'Email', 'level' => 'error', 'text' => 'Failed: the mail system did not accept it'],
+            ])
         ;
     });
 });
@@ -638,6 +701,29 @@ describe('templates', function (): void {
         }
     });
 
+    test('the Average over help says where the baseline comes from, the filter\'s own traffic once there is a filter', function (): void {
+        $prefs = new ReflectionProperty(Config::class, 'prefsFile');
+        $prefsBefore = $prefs->isInitialized() ? Config::$prefsFile : null;
+
+        try {
+            [$c, $data, $html] = alertsPageTestRender([]);
+            $help = static fn (string $page): string => trim(HTMLDocument::createFromString($page, LIBXML_NOERROR)->getElementById('alertFormAvgWindowHelp')?->textContent ?? '');
+            $c->getSignal('alert_form_nfdumpFilter')?->setValue('dst port 443', broadcast: false);
+            $filtered = $c->render('pages/alerts.html.twig', $data);
+            $select = HTMLDocument::createFromString($filtered, LIBXML_NOERROR)->getElementById('alertFormAvgWindow');
+
+            expect($help($html))->toBe("The average of the stored traffic of the rule's sources over this window, before the interval checked.")
+                ->and($help($filtered))->toBe("The average of the filter's own traffic over this window, before the interval checked. An enabled rule records that traffic at each check, so there is no baseline until it has checked one interval, or while the filter matched nothing in the window.")
+                ->and($select?->getAttribute('aria-describedby'))->toBe('alertFormAvgWindowHelp')
+                ->and($html)->toContain("a percentage of the average compares with the filter's own recent traffic")
+            ;
+        } finally {
+            if ($prefsBefore !== null) {
+                Config::$prefsFile = $prefsBefore;
+            }
+        }
+    });
+
     test('without rules the Rules card shows the empty state with a New rule button', function (): void {
         $prefs = new ReflectionProperty(Config::class, 'prefsFile');
         $prefsBefore = $prefs->isInitialized() ? Config::$prefsFile : null;
@@ -701,12 +787,19 @@ describe('templates', function (): void {
         $c = new Context('ctx-alert-test', '/', $app);
         $c->signal('browser', 'displayTz');
         $c->signal('UTC', 'nfcapdTz');
-        $view = AlertsPage::testResultView(alertsPageTestResult(['title' => '<img src=x onerror=alert(1)>']), alertsPageTestRule(), true);
+        $delivery = ['email' => alertsPageTestDelivery(AlertManager::DELIVERY_UNCONFIGURED), 'webhook' => alertsPageTestDelivery(AlertManager::DELIVERY_FAILED, '<b>HTTP 500</b>')];
+        $view = AlertsPage::testResultView(alertsPageTestResult(['title' => '<img src=x onerror=alert(1)>', 'delivery' => $delivery]), alertsPageTestRule(['notifyWebhook' => 'https://h.example/x']), true);
 
         $html = $c->render('pages/alert-test-result.html.twig', ['view' => $view]);
+        $channels = HTMLDocument::createFromString($html, LIBXML_NOERROR)->querySelector('#alertTestResult .alert-test-channels');
+        $rows = [];
+        foreach ($channels?->querySelectorAll('dt') ?? [] as $term) {
+            $rows[trim($term->textContent)] = [trim((string) $term->nextElementSibling?->textContent), $term->nextElementSibling?->querySelector('.status-dot')?->getAttribute('data-level')];
+        }
 
         expect($html)->toContain('id="alertTestResult"', 'data-preserve-attr="open"', 'Test: High traffic', 'Would fire', 'Webhook title', 'Email subject', '&lt;img src=x onerror=alert(1)&gt;')
-            ->and($html)->not->toContain('<img')
+            ->and($html)->not->toContain('<img', '<b>')
+            ->and($rows)->toBe(['Webhook' => ['Failed: <b>HTTP 500</b>', 'error'], 'Email' => ['Not configured', null]])
         ;
     });
 });

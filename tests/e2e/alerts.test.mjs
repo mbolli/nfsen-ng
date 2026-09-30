@@ -2,14 +2,17 @@
 // and once where it cannot (the dialog shows the rendered templates, the history gains a Test
 // event, focus returns to the Test button), switch it on and off from its row while it is in the
 // form, save a default template with another profile selected and see the template, the profile
-// and the disabled rule survive a reload, then delete the rule. A second tab (a fresh context)
-// follows the create, the template save and the delete without a reload. After that, saving
-// nothing: Last triggered's sb-relative-time keeps the server's label when it upgrades, counts on
-// its own, and its hover date follows displayTz together with Recent alerts. Only the live
-// evaluation records a firing, so these checks are skipped where no rule has one.
+// and the disabled rule survive a reload, then delete the rule. The Test dialog reports each
+// channel: a webhook that answers (the app's own port) is sent, one that refuses the connection
+// failed. A percent-of-average rule with a filter says its average is the filter's own traffic,
+// which a disabled rule has not recorded, so its Test has no baseline. A second tab (a fresh
+// context) follows the create, the template save and the delete without a reload. After that,
+// saving nothing: Last triggered's sb-relative-time keeps the server's label when it upgrades,
+// counts on its own, and its hover date follows displayTz together with Recent alerts. Only the
+// live evaluation records a firing, so these checks are skipped where no rule has one.
 // The rule stays disabled whenever its condition can hold, so the live evaluation never fires it.
-// Mutates backend/settings/preferences.json and restores it, also after a failure. The two Test
-// events stay in the alert history: the store has no way to remove them.
+// Mutates backend/settings/preferences.json and restores it, also after a failure. Deleting the
+// rule removes its Test events from the history.
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
 
@@ -115,10 +118,33 @@ async function updateCondition(page, name, operator, threshold) {
 }
 
 /**
- * Test the rule from the keyboard and read the dialog. Retried while the rule cannot be
- * evaluated, as during a rotation.
+ * Edit the rule, set the given form fields and save it; waits for the row to show `condition`.
+ * Fields: operator, threshold, thresholdType, avgWindow, webhook, filter.
  */
-async function testRule(page, name) {
+async function updateRule(page, name, fields, condition) {
+    await page.evaluate(`document.activeElement?.blur()`);
+    await clickRowButton(page, name, 'Edit');
+    await page.waitFor(`document.getElementById('alertFormName').value === ${JSON.stringify(name)}`, { label: 'Edit to fill the form' });
+    await page.waitFor(`document.activeElement?.id === 'alertFormName'`, { label: 'focus on the Name field after Edit' });
+    const selects = { thresholdType: '#alertFormThresholdType', avgWindow: '#alertFormAvgWindow', operator: '#alertFormOperator' };
+    const inputs = { threshold: '#alertFormThresholdValue', webhook: '#alertFormWebhook', filter: '#alertNfdumpFilter' };
+    for (const [field, value] of Object.entries(fields)) {
+        if (selects[field]) await page.setSelectValue(selects[field], value);
+        else await page.setInputValue(inputs[field], String(value));
+    }
+    await page.evaluate(`document.querySelector('${SECTION} .alert-form-actions button[data-variant="primary"]').click()`);
+    // A saved rule resets the form; the condition alone may read the same before and after.
+    await page.waitFor(`document.getElementById('alertFormName').value === ''`, { label: 'the form to reset after the save' });
+    await page.waitFor(`${rowExpr(name)}?.children[1].textContent.trim() === ${JSON.stringify(condition)}`, {
+        label: `the row to show "${condition}"`,
+    });
+}
+
+/**
+ * Test the rule from the keyboard and read the dialog. Retried while the rule cannot be
+ * evaluated, as during a rotation, unless the dialog already says `settled`.
+ */
+async function testRule(page, name, settled = null) {
     for (let attempt = 1; ; attempt++) {
         await page.evaluate(`(function(){
             var d = document.getElementById('alertTestResult');
@@ -135,11 +161,12 @@ async function testRule(page, name) {
             return {
                 title: d.querySelector('h2').textContent.trim(),
                 headline: d.querySelector('.alert-test-outcome').textContent.trim(),
-                terms: [...d.querySelectorAll('dt')].map(function(t){ return t.textContent.trim(); }),
+                terms: [...d.querySelectorAll('.alert-test-templates dt')].map(function(t){ return t.textContent.trim(); }),
+                channels: [...d.querySelectorAll('.alert-test-channels dt')].map(function(t){ return [t.textContent.trim(), t.nextElementSibling.textContent.trim()]; }),
                 text: d.textContent.replace(/\\s+/g, ' '),
             };
         })()`);
-        if (!dialog.text.includes('Could not evaluate') || attempt === 3) return dialog;
+        if (!dialog.text.includes('Could not evaluate') || settled?.test(dialog.text) || attempt === 3) return dialog;
         await press(page, 'Escape');
         await sleep(5000);
     }
@@ -522,6 +549,10 @@ export default async function alertsTest() {
                 assertEvaluated(fires);
                 assert.equal(fires.headline, 'Would fire');
                 assert.match(fires.text, /No notification sent: the rule has no email or webhook set up\./);
+                assert.deepEqual(fires.channels, [
+                    ['Webhook', 'Not configured'],
+                    ['Email', 'Not configured'],
+                ]);
                 await page.waitFor(
                     `[...document.querySelectorAll('#alertHistory .alert-event[data-kind="test"]')].some(function(e){ return e.textContent.includes(${JSON.stringify(ruleName)}); })`,
                     { label: 'a Test event for the rule in Recent alerts' }
@@ -533,8 +564,55 @@ export default async function alertsTest() {
                 assert.equal(await page.evaluate(`document.getElementById('alertTestResult').open`), true, 'the dialog stays open');
                 await closeTestDialog(page, ruleName);
 
+                // Delivery per channel: the app's own port answers the webhook, port 9 refuses it.
+                await updateRule(page, ruleName, { webhook: 'http://127.0.0.1:9000/favicon.svg' }, 'bytes >= absolute');
+                const sent = await testRule(page, ruleName);
+                assertEvaluated(sent);
+                assert.equal(sent.headline, 'Would fire');
+                assert.match(sent.text, /Notification sent to the webhook\./);
+                assert.deepEqual(sent.channels, [
+                    ['Webhook', 'Sent'],
+                    ['Email', 'Not configured'],
+                ]);
+                await closeTestDialog(page, ruleName);
+                await updateRule(page, ruleName, { webhook: 'http://127.0.0.1:9/hook' }, 'bytes >= absolute');
+                const refused = await testRule(page, ruleName);
+                assertEvaluated(refused);
+                assert.match(refused.text, /No notification sent: sending to the webhook failed \(connection refused\)\./);
+                assert.deepEqual(refused.channels[0], ['Webhook', 'Failed: connection refused']);
+                await closeTestDialog(page, ruleName);
+
+                // A percent of the average with a filter compares with the filter's own traffic, which a disabled rule never recorded.
+                const noBaseline = /Could not evaluate: no baseline yet for the 10 min average of the filter's own traffic, which an enabled rule records at each check\./;
+                await updateRule(
+                    page,
+                    ruleName,
+                    { webhook: '', thresholdType: 'percent_of_avg', threshold: 200, avgWindow: '10m', filter: 'proto tcp' },
+                    "bytes >= 200% of the filter's own 10 min average"
+                );
+                assert.equal(await rowCell(page, ruleName, 2), '10 min window');
+                await page.evaluate(`document.activeElement?.blur()`);
+                await clickRowButton(page, ruleName, 'Edit');
+                // Edit focuses the Name field on the next frame; a later focus must not race it.
+                await page.waitFor(`document.activeElement?.id === 'alertFormName'`, { label: 'focus on the Name field after Edit' });
+                await page.waitFor(`document.getElementById('alertFormAvgWindowHelp')?.textContent.startsWith("The average of the filter's own traffic")`, {
+                    label: "the Average over help to name the filter's own traffic",
+                });
+                await clickButtonText(page, 'Cancel edit');
+                await page.waitFor(`document.getElementById('alertFormAvgWindowHelp')?.textContent.startsWith('The average of the stored traffic')`, {
+                    label: 'the Average over help to name the stored traffic without a filter',
+                });
+                const cold = await testRule(page, ruleName, noBaseline);
+                assert.match(cold.text, noBaseline);
+                assert.equal(cold.headline, 'Would not fire');
+                assert.deepEqual(cold.channels, [
+                    ['Webhook', 'Not configured'],
+                    ['Email', 'Not configured'],
+                ]);
+                await closeTestDialog(page, ruleName);
+
                 // Test a rule that cannot fire: "< 0". The templates are shown all the same.
-                await updateCondition(page, ruleName, '<', 0);
+                await updateRule(page, ruleName, { thresholdType: 'absolute', filter: '', operator: '<', threshold: 0 }, 'bytes < absolute');
                 const quiet = await testRule(page, ruleName);
                 assertEvaluated(quiet);
                 assert.equal(quiet.headline, 'Would not fire');
@@ -624,6 +702,10 @@ export default async function alertsTest() {
                 await page.waitFor(`!${rowExpr(ruleName)}`, { label: 'the deleted rule to leave the table' });
                 restore.rule = false;
                 assert.equal(await ruleCount(page), baseline, 'the rule count is back to its baseline');
+                await page.waitFor(
+                    `![...document.querySelectorAll('#alertHistory .alert-event[data-kind="test"]')].some(function(e){ return e.textContent.includes(${JSON.stringify(ruleName)}); })`,
+                    { label: "the deleted rule's Test events to leave Recent alerts" }
+                );
                 await other.waitFor(`!${rowExpr(ruleName)}`, { label: 'the other tab to drop the deleted rule' });
 
                 otherErrors = other.realErrors();

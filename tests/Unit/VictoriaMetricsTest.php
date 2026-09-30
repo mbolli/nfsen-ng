@@ -835,15 +835,42 @@ describe('VictoriaMetrics load queries', function (): void {
         $this->queries = fn (): array => array_map(static fn (string $url): string => vmQueryParams($url)['query'], $this->vm->capturedGetUrls);
     });
 
-    test('fetchLatestSlot() sums the sources, each source once', function (): void {
+    // A sample carries its interval start and arrives after the interval ends, so a 5 minute look-back from now never reaches it.
+    test('fetchLatestSlot() sums each source\'s newest sample, read at the newest one of any source', function (): void {
+        $this->vm->responder = static fn (string $url): string => str_contains(vmQueryParams($url)['query'], 'tlast_over_time')
+            ? '{"status":"success","data":{"result":[{"metric":{},"value":[0,"1790000100"]}]}}'
+            : '{"status":"success","data":{"result":[]}}';
+
         $this->vm->fetchLatestSlot(['gw', 'srv'], 'live');
 
-        expect(($this->queries)()[0])->toBe('sum(max by (source) (last_over_time(nfsen_flows{source=~"gw|srv",port="",profile=~"live|"}[5m])))');
+        expect(($this->queries)())->toBe([
+            'max(tlast_over_time(nfsen_flows{source=~"gw|srv",port="",profile=~"live|"}[3600s]))',
+            'sum(max by (source) (last_over_time(nfsen_flows{source=~"gw|srv",port="",profile=~"live|"}[600s])))',
+            'sum(max by (source) (last_over_time(nfsen_packets{source=~"gw|srv",port="",profile=~"live|"}[600s])))',
+            'sum(max by (source) (last_over_time(nfsen_bytes{source=~"gw|srv",port="",profile=~"live|"}[600s])))',
+        ])
+            ->and(vmQueryParams($this->vm->capturedGetUrls[0]))->not->toHaveKey('time')
+            ->and(vmQueryParams($this->vm->capturedGetUrls[1])['time'])->toBe('1790000100')
+        ;
     });
 
-    test('fetchRollingAverage() sums the sources, each source once', function (): void {
-        $this->vm->fetchRollingAverage(['gw'], 'live', 3600);
+    test('fetchLatestSlot() looks back to the import horizon only when the last hour holds no sample', function (): void {
+        expect($this->vm->fetchLatestSlot(['gw'], 'live'))->toBe(['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0])
+            ->and(($this->queries)())->toBe([
+                'max(tlast_over_time(nfsen_flows{source="gw",port="",profile=~"live|"}[3600s]))',
+                'max(tlast_over_time(nfsen_flows{source="gw",port="",profile=~"live|"}[1095d]))',
+            ])
+        ;
+    });
 
-        expect(($this->queries)()[0])->toBe('sum(max by (source) (avg_over_time(nfsen_flows{source="gw",port="",profile=~"live|"}[3600s])))');
+    test('fetchRollingAverage() sums the sources, each source once, over the window before the newest complete interval or before $end', function (): void {
+        $newest = intdiv(time(), 300) * 300 - 300;
+        $this->vm->fetchRollingAverage(['gw'], 'live', 3600);
+        $this->vm->fetchRollingAverage(['gw'], 'live', 3600, 1_790_000_100);
+
+        expect(($this->queries)()[0])->toBe('sum(max by (source) (avg_over_time(nfsen_flows{source="gw",port="",profile=~"live|"}[3600s])))')
+            ->and((int) vmQueryParams($this->vm->capturedGetUrls[0])['time'])->toBeIn([$newest - 1, $newest + 299])
+            ->and(vmQueryParams($this->vm->capturedGetUrls[3])['time'])->toBe('1790000099')
+        ;
     });
 });

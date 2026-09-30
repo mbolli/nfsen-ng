@@ -142,8 +142,8 @@ interface Datasource {
     public function healthChecks(string $group, array $sources): array;
 
     /**
-     * Returns the summed flows/packets/bytes for the most recently completed 5-min slot
-     * across the given sources. Used by the alert evaluator.
+     * Returns the summed flows/packets/bytes of each source's newest stored interval, leaving
+     * out a source more than one interval behind the newest. Used by the alert evaluator.
      *
      * @param string[] $sources Source names to sum over
      * @param string   $profile Profile name (e.g. 'live')
@@ -153,15 +153,17 @@ interface Datasource {
     public function fetchLatestSlot(array $sources, string $profile): array;
 
     /**
-     * Returns the average flows/packets/bytes over a rolling window ending now,
-     * summed across the given sources. Returns [0.0, 0.0, 0.0] when no data is
-     * available (cold-start safe: callers must treat 0 as "no baseline yet").
+     * Returns the average flows/packets/bytes over the window before the interval starting at
+     * $end, in the unit of fetchLatestSlot(), summed across the given sources. Without $end, the
+     * window before the newest complete interval by the clock, which is left out. Returns
+     * [0.0, 0.0, 0.0] when no data is available (cold-start safe: callers must treat 0 as "no baseline yet").
      *
      * @param string[] $sources       Source names to sum over
      * @param string   $profile       Profile name
      * @param int      $windowSeconds Window length in seconds (e.g. 3600 = 1 h)
+     * @param null|int $end           start of the interval the window ends before
      *
      * @return array{flows: float, packets: float, bytes: float}
      */
-    public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array;
+    public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds, ?int $end = null): array;
 }

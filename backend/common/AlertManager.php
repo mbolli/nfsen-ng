@@ -9,6 +9,7 @@ use mbolli\nfsen_ng\processor\MultiStatCsvParser;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
 use mbolli\nfsen_ng\store\AlertEventRepository;
+use mbolli\nfsen_ng\store\AlertSampleRepository;
 use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\StoreUnavailableException;
 use OpenSwoole\Coroutine;
@@ -16,7 +17,8 @@ use OpenSwoole\Coroutine\Http\Client;
 
 /**
  * Evaluates alert rules once per data interval and dispatches notifications. Rule state lives in
- * alerts-state.json, the event history in SQLite. One instance lives as long as the server process.
+ * alerts-state.json, the event history and the filtered rules' samples in SQLite. One instance
+ * lives as long as the server process.
  *
  * @phpstan-import-type AlertEvent from AlertEventRepository
  * @phpstan-import-type LegacyEntry from AlertEventRepository
@@ -24,8 +26,10 @@ use OpenSwoole\Coroutine\Http\Client;
  * @phpstan-type SlotValues array{flows: float, packets: float, bytes: float}
  * @phpstan-type Measurement array{values: ?SlotValues, threshold: ?float, reason: string}
  * @phpstan-type RenderedTemplates array{title: string, message: string, subject: string, body: string}
+ * @phpstan-type Delivery array{status: string, detail: string}
+ * @phpstan-type Deliveries array{email: Delivery, webhook: Delivery}
  * @phpstan-type TestResult array{fired: bool, evaluated: bool, value: float, threshold: ?float, condition: string,
- *                                reason: string, slot: int, notified: bool, title: string, message: string, subject: string, body: string}
+ *                                reason: string, slot: int, delivery: Deliveries, title: string, message: string, subject: string, body: string}
  */
 final class AlertManager {
     public const DEFAULT_EMAIL_SUBJECT = '[nfsen-ng] Alert: {rule}';
@@ -38,6 +42,18 @@ final class AlertManager {
 
     /** How long one live evaluation waits for nfdump slots in total. The import daemon waits for it. */
     public const float LIVE_SLOT_BUDGET_SECONDS = 60.0;
+
+    /** Delivery statuses: sent, failed (the detail says why), not set up, or not tried because the rule did not fire. */
+    public const string DELIVERY_SENT = 'sent';
+
+    public const string DELIVERY_FAILED = 'failed';
+
+    public const string DELIVERY_UNCONFIGURED = 'unconfigured';
+
+    public const string DELIVERY_SKIPPED = 'skipped';
+
+    /** How long a webhook may take to answer. */
+    public const int WEBHOOK_TIMEOUT_SECONDS = 10;
 
     /** A last evaluated slot this far in the future, followed by one that is not, means the clock or NFCAPD_TZ moved back. */
     private const int REWIND_SECONDS = 3600;
@@ -84,13 +100,23 @@ final class AlertManager {
 
     private bool $stopped = false;
 
-    /** @param null|AlertEventRepository $events null: opened from Database::shared() on first use */
+    /** The rule IDs whose leftovers were last swept (see dropMissingRules()); null: not yet. */
+    private ?string $sweptRules = null;
+
+    /** @var array<string, string> rule ID => the sample fingerprint the last sweep kept */
+    private array $sweptFingerprints = [];
+
+    /**
+     * @param null|AlertEventRepository  $events  null: opened from Database::shared() on first use
+     * @param null|AlertSampleRepository $samples null: opened from Database::shared() on first use
+     */
     public function __construct(
         private readonly Datasource $db,
         private readonly string $statePath,
         private readonly string $logPath,
         private readonly string $emailFrom,
         private ?AlertEventRepository $events = null,
+        private ?AlertSampleRepository $samples = null,
     ) {
         $this->loadState();
     }
@@ -179,10 +205,9 @@ final class AlertManager {
     }
 
     /**
-     * Evaluates the rule for the newest complete slot with the sources the live evaluation would
-     * use, records a 'test' event and notifies only when the condition holds. Never touches the
-     * rule's state. The four templates are rendered whether or not the rule would fire. A user
-     * waits for it, so a filtered rule's nfdump takes an interactive slot.
+     * The live evaluation of the newest complete slot (same sources, same baseline) without touching
+     * state or samples: records a 'test' event, and notifies when the condition holds, waiting for
+     * the webhook's answer. Renders the templates either way; a filtered rule's nfdump is interactive.
      *
      * @return TestResult
      */
@@ -199,7 +224,6 @@ final class AlertManager {
         if ($evaluated) {
             $this->recordEvent('test', $rule, $value, $threshold, time(), $profile);
         }
-        $notified = $fired && $this->notify($rule, $values, $vars, $slot);
 
         return [
             'fired' => $fired,
@@ -209,19 +233,22 @@ final class AlertManager {
             'condition' => $vars['{condition}'],
             'reason' => $measured['reason'],
             'slot' => $slot,
-            'notified' => $notified,
+            'delivery' => $fired ? $this->notify($rule, $values, $vars, $slot, await: true) : $this->unsent($rule),
         ] + self::renderTemplates($rule, $vars);
     }
 
     /**
-     * Drops the rule's state (disabled or deleted rule), including the result of an evaluation
-     * still in flight. A rule that was firing gets a 'resolved' event with its last value.
+     * Drops the rule's state, even from an evaluation in flight; a firing rule gets a 'resolved' event.
+     * A rule gone from the settings was deleted: its samples and 'test' events go too.
      */
     public function forget(string $ruleId, ?AlertRule $rule = null): void {
         $known = isset($this->states[$ruleId]);
         $this->release($ruleId, $rule);
         if ($known) {
             $this->saveState();
+        }
+        if (self::configuredRule($ruleId) === null) {
+            $this->purge($ruleId);
         }
     }
 
@@ -249,36 +276,23 @@ final class AlertManager {
     }
 
     /**
-     * Compute the effective threshold value for a rule given the current metrics.
-     * For percent_of_avg: returns PHP_FLOAT_MAX when the rolling average is 0
-     * (cold start: there is no baseline yet, so the rule cannot be evaluated).
-     *
-     * @param SlotValues $current
+     * The rule's threshold for the interval starting at $slot; PHP_FLOAT_MAX while a
+     * percent-of-average rule has no baseline yet (see baseline()).
      */
-    public function computeThreshold(AlertRule $rule, array $current): float {
-        if ($rule->thresholdType === 'absolute') {
-            return $rule->thresholdValue;
-        }
+    public function computeThreshold(AlertRule $rule, int $slot): float {
+        $threshold = $this->threshold($rule, $slot);
 
-        $windowSeconds = $this->parseWindow($rule->avgWindow);
-        $avg = $this->db->fetchRollingAverage($this->sourcesOf($rule), $rule->profile, $windowSeconds);
-        $avgValue = $avg[$rule->metric] ?? 0.0;
-
-        if ($avgValue <= 0.0) {
-            return PHP_FLOAT_MAX;
-        }
-
-        return $avgValue * ($rule->thresholdValue / 100.0);
+        return \is_string($threshold) ? PHP_FLOAT_MAX : $threshold;
     }
 
     /**
-     * Records an event of $kind and sends the rule's email and webhook.
+     * Records an event of $kind and sends the email and, in a coroutine of its own, the webhook.
      *
      * @param SlotValues $values
      */
     public function dispatchNotifications(AlertRule $rule, array $values, float $threshold, int $ts, string $kind = 'test'): void {
         $this->recordEvent($kind, $rule, $values[$rule->metric] ?? 0.0, $threshold, $ts);
-        $this->notify($rule, $values, self::buildTemplateVars($rule, $values, $threshold, $ts), $ts);
+        $this->notify($rule, $values, self::buildTemplateVars($rule, $values, $threshold, $ts), $ts, await: false);
     }
 
     // ── History ────────────────────────────────────────────────────────────────
@@ -566,6 +580,10 @@ final class AlertManager {
             if (($this->generation[$rule->id] ?? 0) !== $generation) {
                 continue;
             }
+            // Recorded with or without a baseline: the recorded values are what builds one.
+            if ($rule->nfdumpFilter !== null && $measured['values'] !== null) {
+                $this->recordSample($rule, $slot, $measured['values'][$rule->metric] ?? 0.0);
+            }
             if ($measured['values'] === null || $measured['threshold'] === null) {
                 $this->log("Alert '{$rule->name}': slot " . gmdate('Y-m-d H:i', $slot) . " UTC not evaluated: {$measured['reason']}", LOG_INFO);
 
@@ -613,22 +631,137 @@ final class AlertManager {
         if ($changed) {
             $this->saveState();
         }
+        $this->pruneSamples($rules, $profile, $slot);
 
         return $fired;
     }
 
     // ── Internals ──────────────────────────────────────────────────────────────
 
-    /** @param list<AlertRule> $rules */
+    /**
+     * Drops what belongs to rules no longer in the list: their state, and, whenever the list
+     * changed, the samples and 'test' events of every rule not in it. A rule whose fingerprint
+     * changed since the last sweep loses its samples of the old one.
+     *
+     * @param list<AlertRule> $rules
+     */
     private function dropMissingRules(array $rules): void {
-        $known = array_flip(array_map(static fn (AlertRule $rule): string => $rule->id, $rules));
-        $missing = array_diff_key($this->states, $known);
+        $ids = array_values(array_unique(array_map(static fn (AlertRule $rule): string => $rule->id, $rules)));
+        $missing = array_diff_key($this->states, array_flip($ids));
         foreach (array_keys($missing) as $ruleId) {
             $this->release((string) $ruleId, null);
         }
         if ($missing !== []) {
             $this->saveState();
         }
+
+        sort($ids);
+        $key = implode("\n", $ids);
+        $fingerprints = [];
+        foreach ($rules as $rule) {
+            $fingerprints[$rule->id] = $this->fingerprint($rule);
+        }
+        $edited = array_diff_assoc($fingerprints, $this->sweptFingerprints);
+        $samples = $this->samples();
+        $events = $this->events();
+        if (($key === $this->sweptRules && $edited === []) || $samples === null || $events === null) {
+            return;
+        }
+
+        try {
+            $samples->keepOnly($ids);
+            if ($edited !== []) {
+                $samples->keepFingerprints($edited);
+            }
+            $events->deleteForOtherRules($ids, ['test']);
+            $this->sweptRules = $key;
+            $this->sweptFingerprints = $fingerprints;
+        } catch (\Throwable $e) {
+            $this->log('Alert samples and test events of deleted or edited rules could not be dropped: ' . $e->getMessage(), LOG_WARNING);
+        }
+    }
+
+    /**
+     * Drops the samples of the profile's rules that no averaging window reaches from $slot on,
+     * including those of rules that no longer record.
+     *
+     * @param list<AlertRule> $rules
+     */
+    private function pruneSamples(array $rules, string $profile, int $slot): void {
+        $ids = array_values(array_unique(array_map(
+            static fn (AlertRule $rule): string => $rule->id,
+            array_filter($rules, static fn (AlertRule $rule): bool => $rule->profile === $profile),
+        )));
+
+        try {
+            $this->samples()?->prune($ids, $slot - AlertSampleRepository::KEEP_SECONDS);
+        } catch (\Throwable $e) {
+            $this->log('Alert samples older than ' . gmdate('Y-m-d H:i', $slot - AlertSampleRepository::KEEP_SECONDS) . ' UTC could not be dropped: ' . $e->getMessage(), LOG_WARNING);
+        }
+    }
+
+    /** A deleted rule's samples and 'test' events; its fired and resolved events stay in the history. */
+    private function purge(string $ruleId): void {
+        try {
+            $this->samples()?->deleteRule($ruleId);
+            $this->events()?->deleteForRule($ruleId, ['test']);
+        } catch (\Throwable $e) {
+            $this->log("Alert {$ruleId}: dropping its samples and test events failed: " . $e->getMessage(), LOG_WARNING);
+        }
+    }
+
+    /**
+     * A filtered rule's value of $slot, which its percent-of-average baseline averages; only the live
+     * evaluation records. Its later samples go only when the timeline moved back (see rewound()).
+     */
+    private function recordSample(AlertRule $rule, int $slot, float $value): void {
+        try {
+            $this->samples()?->record($rule->id, $this->fingerprint($rule), $slot, $value, self::horizon());
+        } catch (\Throwable $e) {
+            $this->log("Alert '{$rule->name}': recording the value of " . gmdate('Y-m-d H:i', $slot) . ' UTC failed: ' . $e->getMessage(), LOG_WARNING);
+        }
+    }
+
+    private function fingerprint(AlertRule $rule): string {
+        return $rule->sampleFingerprint($this->sourcesOf($rule));
+    }
+
+    /** The threshold for $slot, or why there is none. */
+    private function threshold(AlertRule $rule, int $slot): float|string {
+        if ($rule->thresholdType !== 'percent_of_avg') {
+            return $rule->thresholdValue;
+        }
+        $baseline = $this->baseline($rule, $slot);
+
+        return \is_string($baseline) ? $baseline : $baseline * ($rule->thresholdValue / 100.0);
+    }
+
+    /**
+     * In the values' unit, over the window before $slot: a filtered rule's own recorded values (one
+     * at least), else the datasource's average of its sources. A zero average is no baseline either.
+     *
+     * @return float|string the average, or why there is none
+     */
+    private function baseline(AlertRule $rule, int $slot): float|string {
+        $window = $this->parseWindow($rule->avgWindow);
+        $average = 'the ' . self::windowLabel($window) . ' average';
+
+        if ($rule->nfdumpFilter !== null) {
+            $samples = $this->samples();
+            if ($samples === null) {
+                return "no baseline for {$average} of the filter's traffic: the alert store is unavailable ({$this->eventsError})";
+            }
+            $recorded = $samples->average($rule->id, $this->fingerprint($rule), $slot - $window, $slot);
+            if ($recorded['count'] === 0) {
+                return "no baseline yet for {$average} of the filter's own traffic, which an enabled rule records at each check";
+            }
+
+            return $recorded['average'] > 0.0 ? $recorded['average'] : "no baseline while {$average} of the filter's own traffic is zero";
+        }
+
+        $value = $this->db->fetchRollingAverage($this->sourcesOf($rule), $rule->profile, $window, $slot)[$rule->metric] ?? 0.0;
+
+        return $value > 0.0 ? $value : "no baseline yet for {$average}";
     }
 
     /**
@@ -755,9 +888,14 @@ final class AlertManager {
      * hour ahead of now and $slot does not. A timeline that is always ahead is no rewind.
      */
     private static function rewound(int $last, int $slot): bool {
-        $horizon = time() + self::REWIND_SECONDS;
+        $horizon = self::horizon();
 
         return $slot < $last && $last > $horizon && $slot <= $horizon;
+    }
+
+    /** A slot after this lies more than REWIND_SECONDS ahead of the clock. */
+    private static function horizon(): int {
+        return time() + self::REWIND_SECONDS;
     }
 
     /**
@@ -787,9 +925,9 @@ final class AlertManager {
         }
 
         try {
-            $computed = $this->computeThreshold($rule, $values ?? self::ZERO);
-            if ($computed === PHP_FLOAT_MAX) {
-                $reason = $reason !== '' ? $reason : 'no baseline yet for the ' . self::windowLabel($this->parseWindow($rule->avgWindow)) . ' average';
+            $computed = $this->threshold($rule, $slot);
+            if (\is_string($computed)) {
+                $reason = $reason !== '' ? $reason : $computed;
             } else {
                 $threshold = $computed;
             }
@@ -988,22 +1126,39 @@ final class AlertManager {
 
     /** The repository, opened lazily; null while the store is unavailable. */
     private function events(): ?AlertEventRepository {
-        if ($this->events !== null) {
-            return $this->events;
+        if ($this->events === null) {
+            $db = $this->store();
+            $this->events = $db !== null ? new AlertEventRepository($db) : null;
         }
 
+        return $this->events;
+    }
+
+    /** The filtered rules' samples, opened lazily; null while the store is unavailable. */
+    private function samples(): ?AlertSampleRepository {
+        if ($this->samples === null) {
+            $db = $this->store();
+            $this->samples = $db !== null ? new AlertSampleRepository($db) : null;
+        }
+
+        return $this->samples;
+    }
+
+    private function store(): ?Database {
         try {
-            $this->events = new AlertEventRepository(Database::shared());
+            $db = Database::shared();
             $this->eventsError = '';
+
+            return $db;
         } catch (StoreUnavailableException $e) {
             $this->eventsError = $e->reason;
             if (!$this->eventsWarned) {
                 $this->eventsWarned = true;
-                $this->log('Alert history unavailable, rules are still evaluated and notified: ' . $e->getMessage(), LOG_WARNING);
+                $this->log('Alert store unavailable, rules are still evaluated and notified, but have no history and filtered rules no baseline: ' . $e->getMessage(), LOG_WARNING);
             }
-        }
 
-        return $this->events;
+            return null;
+        }
     }
 
     private function renameLegacyLog(): void {
@@ -1013,40 +1168,85 @@ final class AlertManager {
     }
 
     /**
+     * Sends the email and the webhook the rule has. With $await the webhook's answer is waited
+     * for; otherwise a coroutine of its own sends it and logs a failure.
+     *
      * @param SlotValues            $values
      * @param array<string, string> $vars
      *
-     * @return bool whether an email or a webhook was sent
+     * @return Deliveries
      */
-    private function notify(AlertRule $rule, array $values, array $vars, int $ts): bool {
+    private function notify(AlertRule $rule, array $values, array $vars, int $ts, bool $await): array {
         $templates = self::renderTemplates($rule, $vars);
-        $sent = false;
+        $delivery = $this->unsent($rule);
 
-        if ($rule->notifyEmail !== null && $this->emailFrom !== '') {
-            $sent = $this->sendEmail($rule, $templates);
+        if ($delivery['email']['status'] === self::DELIVERY_SKIPPED) {
+            $delivery['email'] = $this->sendEmail($rule, $templates);
         }
-        if ($rule->notifyWebhook !== null) {
-            $sent = $this->sendWebhook($rule, $values[$rule->metric] ?? 0.0, $ts, $templates) || $sent;
+        if ($delivery['webhook']['status'] === self::DELIVERY_SKIPPED) {
+            $delivery['webhook'] = $this->sendWebhook($rule, $values[$rule->metric] ?? 0.0, $ts, $templates, $await);
         }
 
-        return $sent;
+        return $delivery;
     }
 
-    /** @param RenderedTemplates $templates */
-    private function sendEmail(AlertRule $rule, array $templates): bool {
+    /**
+     * Each channel before anything is sent: not set up (for email also when the server has no
+     * sender address), or not tried.
+     *
+     * @return Deliveries
+     */
+    private function unsent(AlertRule $rule): array {
+        $email = $rule->notifyEmail !== null && $this->emailFrom !== '';
+
+        return [
+            'email' => self::delivery($email ? self::DELIVERY_SKIPPED : self::DELIVERY_UNCONFIGURED),
+            'webhook' => self::delivery($rule->notifyWebhook !== null ? self::DELIVERY_SKIPPED : self::DELIVERY_UNCONFIGURED),
+        ];
+    }
+
+    /** @return Delivery */
+    private static function delivery(string $status, string $detail = ''): array {
+        return ['status' => $status, 'detail' => $detail];
+    }
+
+    /**
+     * @param RenderedTemplates $templates
+     *
+     * @return Delivery
+     */
+    private function sendEmail(AlertRule $rule, array $templates): array {
         $headers = "From: {$this->emailFrom}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8";
+        $error = '';
+        set_error_handler(static function (int $level, string $message) use (&$error): bool {
+            $error = $message;
 
-        return @mail((string) $rule->notifyEmail, $templates['subject'], $templates['body'], $headers);
+            return true;
+        });
+
+        try {
+            $sent = mail((string) $rule->notifyEmail, $templates['subject'], $templates['body'], $headers);
+        } finally {
+            restore_error_handler();
+        }
+
+        return $sent
+            ? self::delivery(self::DELIVERY_SENT)
+            : self::delivery(self::DELIVERY_FAILED, $error !== '' ? $error : 'the mail system did not accept it');
     }
 
-    /** @param RenderedTemplates $templates */
-    private function sendWebhook(AlertRule $rule, float $value, int $ts, array $templates): bool {
+    /**
+     * @param RenderedTemplates $templates
+     *
+     * @return Delivery
+     */
+    private function sendWebhook(AlertRule $rule, float $value, int $ts, array $templates, bool $await): array {
         $url = (string) $rule->notifyWebhook;
 
         // SSRF guard: only http:// and https://
         $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
         if ($scheme !== 'http' && $scheme !== 'https') {
-            return false;
+            return self::delivery(self::DELIVERY_FAILED, 'the URL does not start with http:// or https://');
         }
 
         $payload = json_encode([
@@ -1067,50 +1267,70 @@ final class AlertManager {
         ], JSON_UNESCAPED_SLASHES);
 
         if ($payload === false) {
-            return false;
+            return self::delivery(self::DELIVERY_FAILED, 'the message could not be encoded as JSON');
         }
 
-        // Use OpenSwoole coroutine HTTP client when inside a coroutine context,
-        // fall back to cURL otherwise (e.g. tests).
-        if (class_exists(Coroutine::class) && Coroutine::getCid() > 0) {
-            $this->sendWebhookCoroutine($url, $payload);
-        } else {
-            $this->sendWebhookCurl($url, $payload);
+        if (!$await && self::inCoroutine()) {
+            Coroutine::create(function () use ($rule, $url, $payload): void {
+                $error = $this->postWebhook($url, $payload);
+                if ($error !== null) {
+                    $this->log("Alert '{$rule->name}': the webhook failed: {$error}", LOG_WARNING);
+                }
+            });
+
+            return self::delivery(self::DELIVERY_SENT);
         }
 
-        return true;
+        $error = $this->postWebhook($url, $payload);
+
+        return $error === null ? self::delivery(self::DELIVERY_SENT) : self::delivery(self::DELIVERY_FAILED, $error);
     }
 
-    private function sendWebhookCoroutine(string $url, string $payload): void {
+    private static function inCoroutine(): bool {
+        return class_exists(Coroutine::class) && Coroutine::getCid() > 0;
+    }
+
+    /**
+     * POSTs the payload and waits for the answer: the coroutine HTTP client inside a coroutine,
+     * cURL outside one (tests, CLI).
+     *
+     * @return null|string null when the receiver answered 2xx, otherwise why not
+     */
+    private function postWebhook(string $url, string $payload): ?string {
+        if (!self::inCoroutine()) {
+            return $this->postWebhookCurl($url, $payload);
+        }
+
         $parts = parse_url($url);
-        if ($parts === false) {
-            return;
+        if ($parts === false || ($parts['host'] ?? '') === '') {
+            return 'the URL has no host';
+        }
+        $ssl = strtolower($parts['scheme'] ?? '') === 'https';
+        $port = (int) ($parts['port'] ?? ($ssl ? 443 : 80));
+        $path = ($parts['path'] ?? '/') . (isset($parts['query']) ? '?' . $parts['query'] : '');
+
+        try {
+            $client = new Client($parts['host'], $port, $ssl);
+            $client->set(['timeout' => self::WEBHOOK_TIMEOUT_SECONDS]);
+            $client->setHeaders([
+                'Content-Type' => 'application/json',
+                'User-Agent' => 'nfsen-ng-alert/1.0',
+            ]);
+            $client->post($path, $payload);
+            $status = $client->statusCode;
+            $error = (string) $client->errMsg;
+            $client->close();
+        } catch (\Throwable $e) {
+            return $e->getMessage();
         }
 
-        $host = (string) ($parts['host'] ?? '');
-        $port = (int) ($parts['port'] ?? (($parts['scheme'] ?? 'http') === 'https' ? 443 : 80));
-        $path = ($parts['path'] ?? '/') . (isset($parts['query']) ? '?' . $parts['query'] : '');
-        $ssl = ($parts['scheme'] ?? '') === 'https';
-
-        Coroutine::create(function () use ($host, $port, $path, $payload, $ssl): void {
-            try {
-                $client = new Client($host, $port, $ssl);
-                $client->setHeaders([
-                    'Content-Type' => 'application/json',
-                    'User-Agent' => 'nfsen-ng-alert/1.0',
-                ]);
-                $client->post($path, $payload);
-                $client->close();
-            } catch (\Throwable) {
-                // Webhook failures are best-effort and must not crash the server
-            }
-        });
+        return self::webhookError($status, $error);
     }
 
-    private function sendWebhookCurl(string $url, string $payload): void {
+    private function postWebhookCurl(string $url, string $payload): ?string {
         $ch = curl_init($url);
         if ($ch === false) {
-            return;
+            return 'cURL could not start the request';
         }
 
         curl_setopt_array($ch, [
@@ -1118,10 +1338,23 @@ final class AlertManager {
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => $payload,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'User-Agent: nfsen-ng-alert/1.0'],
-            CURLOPT_TIMEOUT => 10,
+            CURLOPT_TIMEOUT => self::WEBHOOK_TIMEOUT_SECONDS,
         ]);
-        @curl_exec($ch);
+        $answered = curl_exec($ch) !== false;
+        $status = $answered ? (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE) : -1;
+        $error = curl_error($ch);
         curl_close($ch);
+
+        return self::webhookError($status, $error);
+    }
+
+    /** A $status of 0 or less: no answer, and $error says why. */
+    private static function webhookError(int $status, string $error): ?string {
+        return match (true) {
+            $status >= 200 && $status < 300 => null,
+            $status <= 0 => $error !== '' ? lcfirst($error) : 'no answer',
+            default => "HTTP {$status}",
+        };
     }
 
     /** Evaluate the threshold condition. */

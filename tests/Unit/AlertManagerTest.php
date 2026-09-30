@@ -10,10 +10,13 @@ use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Datasource;
+use mbolli\nfsen_ng\datasources\Rrd;
+use mbolli\nfsen_ng\datasources\VictoriaMetrics;
 use mbolli\nfsen_ng\pages\AlertsPage;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
 use mbolli\nfsen_ng\store\AlertEventRepository;
+use mbolli\nfsen_ng\store\AlertSampleRepository;
 use mbolli\nfsen_ng\store\Database;
 use OpenSwoole\Coroutine;
 use Tests\Support\captures\FixtureCaptures;
@@ -59,6 +62,9 @@ function makeDatasource(array|Throwable $latestSlot, array $rollingAvg = ['flows
 
         public ?Closure $onRead = null;
 
+        /** @var list<?int> the end of each average asked for */
+        public array $rollingEnds = [];
+
         public function __construct(
             public array|Throwable $latestSlot,
             public array $rollingAvg,
@@ -93,7 +99,9 @@ function makeDatasource(array|Throwable $latestSlot, array $rollingAvg = ['flows
             return ($this->rows[$source] ?? []) === [] ? 0 : max(array_keys($this->rows[$source]));
         }
 
-        public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array {
+        public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds, ?int $end = null): array {
+            $this->rollingEnds[] = $end;
+
             return $this->rollingAvg;
         }
 
@@ -152,9 +160,9 @@ function alertSlotValues(Database $db): array {
     return array_map(static fn (array $event): array => [$event['ts'], $event['value']], alertEvents($db));
 }
 
-/** A manager with its state and log in the test's temp directory and an in-memory history. */
+/** A manager with its state and log in the test's temp directory and an in-memory store. */
 function alertManager(object $test, Datasource $ds, string $emailFrom = ''): AlertManager {
-    return new AlertManager($ds, $test->dir . '/alerts-state.json', $test->dir . '/alerts-log.json', $emailFrom, $test->events);
+    return new AlertManager($ds, $test->dir . '/alerts-state.json', $test->dir . '/alerts-log.json', $emailFrom, $test->events, $test->samples);
 }
 
 /** @return list<array{ts: int, kind: string, value: float, threshold: ?float}> oldest first */
@@ -238,6 +246,7 @@ beforeEach(function (): void {
     mkdir($this->dir . '/profiles', 0o777, true);
     $this->db = Database::open(':memory:');
     $this->events = new AlertEventRepository($this->db);
+    $this->samples = new AlertSampleRepository($this->db);
 
     $this->settingsBefore = isset(Config::$settings) ? Config::$settings : null;
     $this->stateDirBefore = isset(Config::$stateDir) ? Config::$stateDir : null;
@@ -286,7 +295,7 @@ describe('AlertManager::computeThreshold()', function (): void {
         $rule = makeRule(['thresholdType' => 'absolute', 'thresholdValue' => 5000.0]);
         $mgr = alertManager($this, makeDatasource(alertBytes(9000.0)));
 
-        expect($mgr->computeThreshold($rule, alertBytes(9000.0)))->toBe(5000.0);
+        expect($mgr->computeThreshold($rule, 3000))->toBe(5000.0);
     });
 
     test('percent_of_avg computes percentage of rolling average', function (): void {
@@ -294,14 +303,14 @@ describe('AlertManager::computeThreshold()', function (): void {
         // Rolling average: 500 bytes, 200% = 1000
         $mgr = alertManager($this, makeDatasource(alertBytes(1200.0), alertBytes(500.0)));
 
-        expect($mgr->computeThreshold($rule, alertBytes(1200.0)))->toBe(1000.0);
+        expect($mgr->computeThreshold($rule, 3000))->toBe(1000.0);
     });
 
     test('percent_of_avg returns PHP_FLOAT_MAX when avg is zero (cold-start protection)', function (): void {
         $rule = makeRule(['thresholdType' => 'percent_of_avg', 'thresholdValue' => 150.0, 'avgWindow' => '1h']);
         $mgr = alertManager($this, makeDatasource(alertBytes(9999.0), alertBytes(0.0)));
 
-        expect($mgr->computeThreshold($rule, alertBytes(9999.0)))->toBe(PHP_FLOAT_MAX);
+        expect($mgr->computeThreshold($rule, 3000))->toBe(PHP_FLOAT_MAX);
     });
 });
 
@@ -1147,12 +1156,15 @@ describe('AlertManager::testRule()', function (): void {
             'threshold' => 1000.0,
             'condition' => 'bytes > 1,000.00',
             'reason' => '',
-            'notified' => false,
+            'delivery' => [
+                'email' => ['status' => AlertManager::DELIVERY_UNCONFIGURED, 'detail' => ''],
+                'webhook' => ['status' => AlertManager::DELIVERY_UNCONFIGURED, 'detail' => ''],
+            ],
             'title' => 'nfsen-ng alert: Test rule',
             'message' => 'bytes = 500.00 (profile: live, sources: gw1, gw2)',
             'subject' => '[nfsen-ng] Alert: Test rule',
         ])
-            ->and(array_keys($result))->toBe(['fired', 'evaluated', 'value', 'threshold', 'condition', 'reason', 'slot', 'notified', 'title', 'message', 'subject', 'body'])
+            ->and(array_keys($result))->toBe(['fired', 'evaluated', 'value', 'threshold', 'condition', 'reason', 'slot', 'delivery', 'title', 'message', 'subject', 'body'])
             ->and($result['body'])->toContain("Alert rule \"Test rule\" fired.\n")->toContain('Value:   500.00')
             ->and($mgr->states())->toBe([])
             ->and(alertEvents($this->db))->toHaveCount(1)
@@ -1172,21 +1184,11 @@ describe('AlertManager::testRule()', function (): void {
 
         expect($result['fired'])->toBeTrue()
             ->and($result['evaluated'])->toBeTrue()
-            ->and($result['notified'])->toBeFalse()
+            ->and(array_column($result['delivery'], 'status'))->toBe([AlertManager::DELIVERY_UNCONFIGURED, AlertManager::DELIVERY_UNCONFIGURED])
             ->and($result['title'])->toBe('Custom Test rule bytes > 1,000.00')
             ->and($result['subject'])->toBe('Global subject 2,000.00')
             ->and($mgr->states())->toEqual($before)
             ->and(array_column(alertEvents($this->db), 'kind'))->toBe(['fired', 'test'])
-        ;
-    });
-
-    test('notified is true once a webhook is sent', function (): void {
-        $mgr = alertManager($this, makeDatasource(alertBytes(2000.0)));
-
-        $result = $mgr->testRule(makeRule(['notifyWebhook' => 'http://127.0.0.1:1/hook']), 'live');
-
-        expect($result['fired'])->toBeTrue()
-            ->and($result['notified'])->toBeTrue()
         ;
     });
 
@@ -1203,7 +1205,10 @@ describe('AlertManager::testRule()', function (): void {
             'threshold' => null,
             'condition' => 'bytes > ∞',
             'reason' => 'no baseline yet for the 1 h average',
-            'notified' => false,
+            'delivery' => [
+                'email' => ['status' => AlertManager::DELIVERY_UNCONFIGURED, 'detail' => ''],
+                'webhook' => ['status' => AlertManager::DELIVERY_UNCONFIGURED, 'detail' => ''],
+            ],
             'title' => 'nfsen-ng alert: Test rule',
         ])
             ->and($result['message'])->toBe('bytes = 2,000.00 (profile: live, sources: gw1)')
@@ -1318,6 +1323,721 @@ describe('AlertManager::testRule()', function (): void {
             ->and(alertEvents($this->db))->toBe([])
         ;
     });
+});
+
+// ── Percent-of-average baselines ──────────────────────────────────────────
+
+/** A filtered relative rule on gw1: 200% of the 10 min average of its own interval totals. */
+function alertFilteredRule(array $overrides = []): AlertRule {
+    return makeRule(['nfdumpFilter' => 'proto tcp', 'thresholdType' => 'percent_of_avg', 'thresholdValue' => 200.0, 'avgWindow' => '10m', 'cooldownSlots' => 0, ...$overrides]);
+}
+
+/**
+ * The live evaluation of $rule over gw1's slots, nfdump summing the given bytes for each.
+ *
+ * @param array<int, int> $bytesBySlot slot => bytes of the filter's traffic
+ *
+ * @return array<int, list<string>> slot => names of the rules that fired
+ */
+function alertFilteredRun(AlertManager $mgr, AlertRule $rule, array $bytesBySlot): array {
+    $fired = [];
+    foreach ($bytesBySlot as $slot => $bytes) {
+        alertCaptureFile('gw1', $slot);
+        putenv('NFDUMP_STUB_STDOUT=' . alertProtoCsv([['TCP', 6, 1, 2, $bytes]]));
+        $fired[$slot] = $mgr->runPeriodic([$rule], 'live', $slot);
+    }
+
+    return $fired;
+}
+
+/** @return list<array{ts: int, value: float}> the rule's samples, oldest first */
+function alertSamples(Database $db, string $ruleId = 'test-id-001'): array {
+    return $db->all('SELECT ts, value FROM alert_samples WHERE rule_id = ? ORDER BY ts', [$ruleId]);
+}
+
+/**
+ * Runs $body again when a 5 minute boundary passed while it ran: the datasources' averages end
+ * before the newest complete interval, which moves with the clock.
+ *
+ * @param Closure(int): void $body gets the start of the newest complete interval
+ */
+function alertInOneInterval(Closure $body): void {
+    for ($attempt = 1;; ++$attempt) {
+        $newest = intdiv(time(), 300) * 300 - 300;
+        $body($newest);
+        if (intdiv(time(), 300) * 300 - 300 === $newest || $attempt === 3) {
+            return;
+        }
+    }
+}
+
+/**
+ * VictoriaMetrics answering its instant queries from in-memory samples the way VictoriaMetrics
+ * evaluates them: a window [d] at time T holds the samples in (T - d, T].
+ *
+ * @param array<string, array<int, array{flows: float, packets: float, bytes: float}>> $samples source => interval start => totals
+ */
+function alertVictoriaMetrics(array $samples): VictoriaMetrics {
+    return new class($samples) extends VictoriaMetrics {
+        /** @param array<string, array<int, array{flows: float, packets: float, bytes: float}>> $samples */
+        public function __construct(private readonly array $samples) {
+            parent::__construct();
+        }
+
+        protected function httpGet(string $url, int $timeout = 30): string {
+            parse_str((string) parse_url($url, PHP_URL_QUERY), $params);
+            $query = (string) $params['query'];
+            $time = isset($params['time']) ? (int) $params['time'] : time();
+            if (!preg_match('/^(sum\(max by \(source\) \(|max\()?(\w+)\(nfsen_(\w+)\{source(=~?)"([^"]*)"[^}]*\}\[(\d+)([sd])\]\)/', $query, $m)) {
+                throw new RuntimeException("Unexpected query: {$query}");
+            }
+            [, $aggregate, $function, $metric, $op, $selector, $length, $unit] = $m;
+            $range = (int) $length * ($unit === 'd' ? 86_400 : 1);
+            $sources = $op === '=~' ? explode('|', $selector) : [$selector];
+
+            $bySource = [];
+            foreach ($sources as $source) {
+                $window = array_filter($this->samples[$source] ?? [], static fn (int $ts): bool => $ts > $time - $range && $ts <= $time, ARRAY_FILTER_USE_KEY);
+                if ($window === []) {
+                    continue;
+                }
+                $values = array_column($window, $metric);
+                $bySource[] = match ($function) {
+                    'tlast_over_time' => (float) max(array_keys($window)),
+                    'last_over_time' => (float) $window[max(array_keys($window))][$metric],
+                    'avg_over_time' => array_sum($values) / count($values),
+                    default => throw new RuntimeException("Unexpected function: {$function}"),
+                };
+            }
+            $total = $bySource === [] ? null : ($aggregate === 'max(' ? max($bySource) : array_sum($bySource));
+
+            return (string) json_encode(['status' => 'success', 'data' => ['resultType' => 'vector', 'result' => $total === null ? [] : [['metric' => [], 'value' => [$time, (string) $total]]]]]);
+        }
+    };
+}
+
+describe('AlertManager percent-of-average baselines', function (): void {
+    afterEach(function (): void {
+        foreach (NfdumpSlots::CLASSES as $class) {
+            NfdumpSlots::release($class, NfdumpSlots::inUse($class));
+        }
+        putenv('NFDUMP_STUB_STDOUT');
+    });
+
+    test('a filtered rule compares its interval total with the average of its own totals before it, not the datasource\'s rate', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        $t = intdiv(time(), 300) * 300 - 300;
+        // The datasource's average is a rate per second of every flow: the old baseline, 300 times too small.
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0), alertBytes(1.0)));
+
+        $fired = alertFilteredRun($mgr, alertFilteredRule(), [$t - 900 => 100, $t - 600 => 300, $t - 300 => 400, $t => 1500]);
+
+        expect($fired)->toBe([$t - 900 => [], $t - 600 => ['Test rule'], $t - 300 => [], $t => ['Test rule']])
+            // 200% of 100; of (100 + 300) / 2; of (300 + 400) / 2, the 10 minutes before each interval.
+            ->and(alertEvents($this->db))->toBe([
+                ['ts' => $t - 600, 'kind' => 'fired', 'value' => 300.0, 'threshold' => 200.0],
+                ['ts' => $t - 300, 'kind' => 'resolved', 'value' => 400.0, 'threshold' => 400.0],
+                ['ts' => $t, 'kind' => 'fired', 'value' => 1500.0, 'threshold' => 700.0],
+            ])
+            ->and(alertSamples($this->db))->toBe([
+                ['ts' => $t - 900, 'value' => 100.0],
+                ['ts' => $t - 600, 'value' => 300.0],
+                ['ts' => $t - 300, 'value' => 400.0],
+                ['ts' => $t, 'value' => 1500.0],
+            ])
+        ;
+    });
+
+    test('until the rule has checked one interval there is no baseline, and the Test says where it comes from', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        $t = intdiv(time(), 300) * 300 - 300;
+        alertCaptureFile('gw1', $t);
+        putenv('NFDUMP_STUB_STDOUT=' . alertProtoCsv([['TCP', 6, 1, 2, 500]]));
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0), alertBytes(1.0)));
+
+        $result = $mgr->testRule(alertFilteredRule(), 'live');
+
+        expect($result)->toMatchArray([
+            'evaluated' => false,
+            'fired' => false,
+            'value' => 500.0,
+            'threshold' => null,
+            'reason' => "no baseline yet for the 10 min average of the filter's own traffic, which an enabled rule records at each check",
+        ])
+            ->and(alertSamples($this->db))->toBe([])
+        ;
+    });
+
+    test('Test and the live evaluation of the same interval agree, before and after it, and Test records nothing', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        $t = intdiv(time(), 300) * 300 - 300;
+        $rule = alertFilteredRule();
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0), alertBytes(1.0)));
+        alertFilteredRun($mgr, $rule, [$t - 900 => 100, $t - 600 => 300, $t - 300 => 400]);
+        alertCaptureFile('gw1', $t);
+        putenv('NFDUMP_STUB_STDOUT=' . alertProtoCsv([['TCP', 6, 1, 2, 1500]]));
+
+        $before = $mgr->testRule($rule, 'live');
+        $recordedBefore = alertSamples($this->db);
+        $mgr->runPeriodic([$rule], 'live', $t);
+        $after = $mgr->testRule($rule, 'live');
+        $live = array_values(array_filter(alertEvents($this->db), static fn (array $e): bool => $e['kind'] === 'fired' && $e['ts'] === $t));
+
+        $same = ['slot' => $t, 'evaluated' => true, 'fired' => true, 'value' => 1500.0, 'threshold' => 700.0];
+        expect($before)->toMatchArray($same)
+            ->and($after)->toMatchArray($same)
+            ->and($live)->toBe([['ts' => $t, 'kind' => 'fired', 'value' => 1500.0, 'threshold' => 700.0]])
+            ->and(array_column($recordedBefore, 'ts'))->toBe([$t - 900, $t - 600, $t - 300])
+            ->and(array_column(alertSamples($this->db), 'ts'))->toBe([$t - 900, $t - 600, $t - 300, $t])
+        ;
+    });
+
+    test('only the rule\'s samples of the window before the interval count', function (): void {
+        $rule = alertFilteredRule(['thresholdValue' => 100.0]);
+        $fingerprint = $rule->sampleFingerprint(['gw1']);
+        $t = 1_790_000_100;
+        foreach ([$t - 900 => 1000.0, $t - 600 => 10.0, $t - 300 => 20.0] as $ts => $value) {
+            $this->samples->record($rule->id, $fingerprint, $ts, $value);
+        }
+        $this->samples->record('another-rule', $fingerprint, $t - 300, 9000.0);
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0), alertBytes(1.0)));
+
+        expect($mgr->computeThreshold($rule, $t))->toBe(15.0)
+            ->and($mgr->computeThreshold($rule, $t - 300))->toBe(505.0)
+            ->and($mgr->computeThreshold($rule, $t + 900))->toBe(PHP_FLOAT_MAX)
+        ;
+    });
+
+    test('a zero average of recorded totals is no baseline, so a filter that carried nothing does not fire on its first byte', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        $t = intdiv(time(), 300) * 300 - 300;
+        $rule = alertFilteredRule();
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0), alertBytes(1.0)));
+
+        $fired = alertFilteredRun($mgr, $rule, [$t - 600 => 0, $t - 300 => 0, $t => 5]);
+
+        expect($fired)->toBe([$t - 600 => [], $t - 300 => [], $t => []])
+            ->and($mgr->testRule($rule, 'live'))->toMatchArray([
+                'evaluated' => false,
+                'value' => 5.0,
+                'threshold' => null,
+                'reason' => "no baseline while the 10 min average of the filter's own traffic is zero",
+            ])
+            ->and($mgr->computeThreshold($rule, $t))->toBe(PHP_FLOAT_MAX)
+            ->and(alertEvents($this->db))->toBe([])
+            ->and(array_column(alertSamples($this->db), 'value'))->toBe([0.0, 0.0, 5.0])
+        ;
+    });
+
+    test('editing the filter, metric, sources or profile starts the baseline over; threshold and window do not', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        $t = intdiv(time(), 300) * 300 - 300;
+        $rule = alertFilteredRule();
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0), alertBytes(1.0)));
+        alertFilteredRun($mgr, $rule, [$t - 600 => 300, $t - 300 => 400]);
+        $threshold = static fn (array $edit): float => $mgr->computeThreshold(alertFilteredRule($edit), $t);
+
+        expect($threshold([]))->toBe(700.0)
+            ->and($threshold(['nfdumpFilter' => '  proto   tcp ']))->toBe(700.0)
+            ->and($threshold(['thresholdValue' => 300.0]))->toBe(1050.0)
+            ->and($threshold(['avgWindow' => '30m']))->toBe(700.0)
+            ->and($threshold(['nfdumpFilter' => 'proto udp']))->toBe(PHP_FLOAT_MAX)
+            ->and($threshold(['metric' => 'packets']))->toBe(PHP_FLOAT_MAX)
+            ->and($threshold(['sources' => ['gw1', 'gw2']]))->toBe(PHP_FLOAT_MAX)
+            ->and($threshold(['profile' => 'lab']))->toBe(PHP_FLOAT_MAX)
+        ;
+
+        // The edited rule's first check keeps its own value and drops the older ones.
+        alertFilteredRun($mgr, alertFilteredRule(['nfdumpFilter' => 'proto udp']), [$t => 50]);
+
+        expect(alertSamples($this->db))->toBe([['ts' => $t, 'value' => 50.0]])
+            ->and($threshold([]))->toBe(PHP_FLOAT_MAX)
+        ;
+    });
+
+    test('an import that sees an edit starts the baseline over, even when the edit is undone before the rule checks again', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        $t = intdiv(time(), 300) * 300 - 300;
+        $rule = alertFilteredRule();
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0), alertBytes(1.0)));
+        alertFilteredRun($mgr, $rule, [$t - 600 => 300, $t - 300 => 400]);
+
+        // Seen as it is, then with another filter and switched off, so nothing checks or records under it.
+        $mgr->onFileImported([$rule], 'live', $t - 300, true);
+        $unchanged = alertSamples($this->db);
+        $mgr->onFileImported([alertFilteredRule(['nfdumpFilter' => 'proto udp', 'enabled' => false])], 'live', $t, true);
+
+        expect($unchanged)->toHaveCount(2)
+            ->and(alertSamples($this->db))->toBe([])
+            ->and($mgr->computeThreshold($rule, $t))->toBe(PHP_FLOAT_MAX)
+        ;
+    });
+
+    test('each checked interval drops the profile\'s samples no window reaches, also those of a rule that stopped recording', function (): void {
+        $t = intdiv(time(), 300) * 300 - 300;
+        $keep = AlertSampleRepository::KEEP_SECONDS;
+        $off = alertFilteredRule(['enabled' => false]);
+        $lab = alertFilteredRule(['id' => 'lab-rule', 'profile' => 'lab']);
+        foreach ([[$off->id, $t - $keep - 300], [$off->id, $t - $keep], [$off->id, $t - 300], [$lab->id, $t - $keep - 300]] as [$ruleId, $ts]) {
+            $this->db->exec("INSERT INTO alert_samples (rule_id, ts, fingerprint, value) VALUES (?, ?, 'f', 1)", [$ruleId, $ts]);
+        }
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
+
+        $mgr->runPeriodic([$off, $lab], 'live', $t);
+
+        expect(array_column(alertSamples($this->db, $off->id), 'ts'))->toBe([$t - $keep, $t - 300])
+            ->and(array_column(alertSamples($this->db, $lab->id), 'ts'))->toBe([$t - $keep - 300])
+        ;
+    });
+
+    test('an interval checked late keeps the samples recorded after it', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        $t = intdiv(time(), 300) * 300 - 300;
+        $rule = alertFilteredRule();
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0), alertBytes(1.0)));
+
+        // Neither check has a baseline yet, so neither sets the rule's last evaluated slot.
+        alertFilteredRun($mgr, $rule, [$t => 400, $t - 300 => 300]);
+
+        expect(alertSamples($this->db))->toBe([['ts' => $t - 300, 'value' => 300.0], ['ts' => $t, 'value' => 400.0]])
+            ->and($mgr->computeThreshold($rule, $t + 300))->toBe(700.0)
+        ;
+    });
+
+    test('an interval checked after the clock or NFCAPD_TZ moved back drops the samples recorded ahead of it', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        $t = intdiv(time(), 300) * 300 - 300;
+        $ahead = $t + 7500;
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0), alertBytes(1.0)));
+
+        alertFilteredRun($mgr, alertFilteredRule(), [$ahead - 300 => 100, $ahead => 200, $t => 300]);
+
+        expect(alertSamples($this->db))->toBe([['ts' => $t, 'value' => 300.0]]);
+    });
+
+    test('deleting a rule drops its samples and Test events and keeps what fired; switching it off keeps them', function (): void {
+        $t = intdiv(time(), 300) * 300 - 300;
+        $rule = alertFilteredRule();
+        Config::$settings = alertCannedSettings($this, 2)->withAlerts([$rule]);
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0), alertBytes(1.0)));
+        alertFilteredRun($mgr, $rule, [$t - 300 => 100, $t => 400]);
+        $mgr->testRule($rule, 'live');
+
+        Config::$settings = Config::$settings->withAlerts([$rule->withEnabled(false)]);
+        $mgr->forget($rule->id, $rule);
+        $kindsWhileOff = array_column(alertEvents($this->db), 'kind');
+        $samplesWhileOff = count(alertSamples($this->db));
+
+        Config::$settings = Config::$settings->withAlerts([]);
+        $mgr->forget($rule->id, $rule);
+
+        expect($kindsWhileOff)->toBe(['fired', 'test', 'resolved'])
+            ->and($samplesWhileOff)->toBe(2)
+            ->and(array_column(alertEvents($this->db), 'kind'))->toBe(['fired', 'resolved'])
+            ->and(alertSamples($this->db))->toBe([])
+        ;
+    });
+
+    test('an import after the rules changed drops the samples and Test events of rules no longer there', function (): void {
+        $t = intdiv(time(), 300) * 300 - 300;
+        $kept = alertFilteredRule(['enabled' => false]);
+        $this->samples->record('gone', 'f', $t - 300, 1.0);
+        $this->samples->record($kept->id, $kept->sampleFingerprint(['gw1']), $t - 300, 2.0);
+        $this->events->record('test', $t, 'gone', 'Gone', 'live', [], 'bytes', '>', 1.0, 1.0);
+        $this->events->record('fired', $t, 'gone', 'Gone', 'live', [], 'bytes', '>', 1.0, 1.0);
+        $this->events->record('test', $t, $kept->id, 'Kept', 'live', [], 'bytes', '>', 1.0, 1.0);
+        $this->events->record('fired', $t, null, 'Migrated', 'live', [], 'bytes', '', 1.0, null, 'migrated');
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
+        $left = fn (): array => [
+            array_column($this->db->all('SELECT rule_id FROM alert_samples ORDER BY rule_id'), 'rule_id'),
+            array_map(static fn (array $e): string => ($e['rule_id'] ?? '-') . ' ' . $e['kind'], $this->db->all('SELECT rule_id, kind FROM alert_events ORDER BY id')),
+        ];
+
+        $mgr->onFileImported([$kept], 'live', $t, true);
+        $afterFirst = $left();
+        // Once per set of rules: a leftover of the same set stays until the rules change again.
+        $this->samples->record('late', 'f', $t - 300, 1.0);
+        $mgr->onFileImported([$kept], 'live', $t + 300, true);
+        $sameRules = $left();
+        $mgr->onFileImported([], 'live', $t + 600, true);
+
+        expect($afterFirst)->toBe([[$kept->id], ['gone fired', $kept->id . ' test', '- fired']])
+            ->and($sameRules[0])->toBe(['late', $kept->id])
+            ->and($left())->toBe([[], ['gone fired', '- fired']])
+        ;
+    });
+
+    test('the event store deletes Test events by rule, and never those without a rule', function (): void {
+        foreach ([['test', 'r1'], ['fired', 'r1'], ['test', 'r2'], ['resolved', 'r2'], ['test', null]] as [$kind, $rule]) {
+            $this->events->record($kind, 300, $rule, 'R', 'live', [], 'bytes', '>', 1.0, 1.0);
+        }
+        $kinds = fn (): array => array_map(static fn (array $e): string => ($e['rule_id'] ?? '-') . ' ' . $e['kind'], $this->db->all('SELECT rule_id, kind FROM alert_events ORDER BY id'));
+
+        expect($this->events->deleteForRule('r1', []))->toBe(0)
+            ->and($this->events->deleteForRule('r1', ['test', 'bogus']))->toBe(1)
+            ->and($kinds())->toBe(['r1 fired', 'r2 test', 'r2 resolved', '- test'])
+            ->and($this->events->deleteForOtherRules(['r2'], ['test']))->toBe(0)
+            ->and($this->events->deleteForOtherRules([], ['test']))->toBe(1)
+            ->and($kinds())->toBe(['r1 fired', 'r2 resolved', '- test'])
+        ;
+    });
+
+    test('without the store a filtered rule has no baseline and says why', function (): void {
+        Config::$settings = alertCannedSettings($this, 2);
+        $t = intdiv(time(), 300) * 300 - 300;
+        alertCaptureFile('gw1', $t);
+        putenv('NFDUMP_STUB_STDOUT=' . alertProtoCsv([['TCP', 6, 1, 2, 500]]));
+        Database::resetShared();
+        Config::$stateDir = '';
+        // No sample repository given, so it is opened from the shared store, which cannot open.
+        $mgr = new AlertManager(makeDatasource(alertBytes(0.0), alertBytes(1.0)), $this->dir . '/alerts-state.json', $this->dir . '/alerts-log.json', '', $this->events);
+
+        expect($mgr->testRule(alertFilteredRule(), 'live'))->toMatchArray([
+            'evaluated' => false,
+            'value' => 500.0,
+            'reason' => "no baseline for the 10 min average of the filter's traffic: the alert store is unavailable (the state directory is not configured yet)",
+        ])
+            ->and($mgr->testRule(alertFilteredRule(['thresholdType' => 'absolute', 'thresholdValue' => 100.0]), 'live'))->toMatchArray(['evaluated' => true, 'fired' => true])
+        ;
+    });
+
+    test('a rule without a filter compares the newest RRD rate with the average rate of the window before it', function (): void {
+        $data = $this->dir . '/rrd';
+        mkdir($data . '/live', 0o777, true);
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw1', 'gw2'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump'],
+            'db' => ['RRD' => ['data_path' => $data]],
+            'nfdump' => ['binary' => '/nonexistent/nfdump', 'profiles-data' => $this->dir . '/profiles', 'profile' => 'live', 'max-processes' => 2],
+            'log' => ['priority' => LOG_ERR],
+        ]);
+        $rule = makeRule(['sources' => ['gw1', 'gw2'], 'thresholdType' => 'percent_of_avg', 'thresholdValue' => 200.0, 'avgWindow' => '10m']);
+
+        alertInOneInterval(function (int $newest) use ($data, $rule): void {
+            array_map('unlink', glob($data . '/live/*') ?: []);
+            $rrd = new Rrd();
+            // Bytes per 5 minutes; the oldest write only starts the file, as an RRD rates the step before it.
+            foreach ([-1200 => 0, -900 => 30_000, -600 => 60_000, -300 => 120_000, 0 => 900_000] as $offset => $bytes) {
+                foreach (['gw1' => 1, 'gw2' => 2] as $source => $factor) {
+                    $rrd->write(['fields' => ['flows' => 1, 'packets' => 1, 'bytes' => $bytes * $factor], 'source' => $source, 'port' => 0, 'profile' => 'live', 'date_iso' => '', 'date_timestamp' => $newest + $offset]);
+                }
+            }
+            $this->result = alertManager($this, $rrd)->testRule($rule, 'live');
+            $this->newest = $newest;
+        });
+
+        // Per second: 900,000 + 1,800,000 bytes in 300 s now, against 200% of (180,000 + 360,000) / 2 / 300 before.
+        expect($this->result)->toMatchArray(['slot' => $this->newest, 'evaluated' => true, 'fired' => true, 'value' => 9000.0, 'threshold' => 1800.0]);
+    });
+
+    test('a rule without a filter compares the newest VictoriaMetrics total with the average total of the window before it', function (): void {
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw1', 'gw2'], 'ports' => [], 'db' => 'VictoriaMetrics', 'processor' => 'Nfdump'],
+            'db' => ['VictoriaMetrics' => ['host' => 'vm.invalid', 'port' => 8428]],
+            'nfdump' => ['binary' => '/nonexistent/nfdump', 'profiles-data' => $this->dir . '/profiles', 'profile' => 'live', 'max-processes' => 2],
+            'log' => ['priority' => LOG_ERR],
+        ]);
+        $rule = makeRule(['sources' => ['gw1', 'gw2'], 'thresholdType' => 'percent_of_avg', 'thresholdValue' => 200.0, 'avgWindow' => '10m']);
+
+        alertInOneInterval(function (int $newest) use ($rule): void {
+            $samples = [];
+            foreach ([-900 => 30_000, -600 => 60_000, -300 => 120_000, 0 => 900_000] as $offset => $bytes) {
+                foreach (['gw1' => 1, 'gw2' => 2] as $source => $factor) {
+                    $samples[$source][$newest + $offset] = ['flows' => 1.0, 'packets' => 1.0, 'bytes' => (float) ($bytes * $factor)];
+                }
+            }
+            $this->result = alertManager($this, alertVictoriaMetrics($samples))->testRule($rule, 'live');
+            $this->newest = $newest;
+        });
+
+        // Per 5 minutes: 2,700,000 bytes now, against 200% of (180,000 + 360,000) / 2 before.
+        expect($this->result)->toMatchArray(['slot' => $this->newest, 'evaluated' => true, 'fired' => true, 'value' => 2_700_000.0, 'threshold' => 540_000.0]);
+    });
+
+    test('a rule without a filter averages the window before the interval it checks, however far behind the clock', function (): void {
+        $data = $this->dir . '/rrd';
+        mkdir($data . '/live', 0o777, true);
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw1'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump'],
+            'db' => ['RRD' => ['data_path' => $data]],
+            'nfdump' => ['binary' => '/nonexistent/nfdump', 'profiles-data' => $this->dir . '/profiles', 'profile' => 'live', 'max-processes' => 2],
+            'log' => ['priority' => LOG_ERR],
+        ]);
+        $rule = makeRule(['thresholdType' => 'percent_of_avg', 'thresholdValue' => 200.0, 'avgWindow' => '10m']);
+        // A catch-up: the store ends 20 minutes back, so the window before the clock's newest interval is empty.
+        $checked = intdiv(time(), 300) * 300 - 1500;
+        $rrd = new Rrd();
+        foreach ([$checked - 900 => 0, $checked - 600 => 90_000, $checked - 300 => 120_000, $checked => 900_000] as $ts => $bytes) {
+            $rrd->write(['fields' => ['flows' => 1, 'packets' => 1, 'bytes' => $bytes], 'source' => 'gw1', 'port' => 0, 'profile' => 'live', 'date_iso' => '', 'date_timestamp' => $ts]);
+        }
+        $ds = makeDatasource(alertBytes(3000.0), alertBytes(350.0));
+        alertManager($this, $ds)->runPeriodic([$rule], 'live', $checked);
+
+        // 900,000 bytes in 300 s against 200% of (90,000 + 120,000) / 2 / 300.
+        expect(alertManager($this, $rrd)->testRule($rule, 'live'))->toMatchArray(['slot' => $checked, 'evaluated' => true, 'fired' => true, 'value' => 3000.0, 'threshold' => 700.0])
+            ->and($ds->rollingEnds)->toBe([$checked])
+        ;
+    });
+
+    test('both datasources can average the window before a given interval, whatever the clock says', function (): void {
+        $data = $this->dir . '/rrd';
+        mkdir($data . '/live', 0o777, true);
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw1'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump'],
+            'db' => ['RRD' => ['data_path' => $data], 'VictoriaMetrics' => ['host' => 'vm.invalid', 'port' => 8428]],
+            'nfdump' => ['binary' => '/nonexistent/nfdump', 'profiles-data' => $this->dir . '/profiles', 'profile' => 'live', 'max-processes' => 2],
+            'log' => ['priority' => LOG_ERR],
+        ]);
+        $t = intdiv(time(), 300) * 300 - 300;
+        $checked = $t - 1200;
+        // Bytes per 5 minutes; the first write only starts the RRD file, and the store holds later intervals too.
+        $bytes = [$checked - 1500 => 0, $checked - 1200 => 30_000, $checked - 900 => 60_000, $checked - 600 => 90_000, $checked - 300 => 120_000, $checked => 900_000];
+        for ($ts = $checked + 300; $ts <= $t; $ts += 300) {
+            $bytes[$ts] = 600_000;
+        }
+        $rrd = new Rrd();
+        $samples = [];
+        foreach ($bytes as $ts => $value) {
+            $rrd->write(['fields' => ['flows' => 1, 'packets' => 1, 'bytes' => $value], 'source' => 'gw1', 'port' => 0, 'profile' => 'live', 'date_iso' => '', 'date_timestamp' => $ts]);
+            $samples['gw1'][$ts] = ['flows' => 1.0, 'packets' => 1.0, 'bytes' => (float) $value];
+        }
+
+        // (90,000 + 120,000) / 2 per 5 minutes: a rate per second on RRD, a total on VictoriaMetrics.
+        // Over 30 minutes, the four intervals with data: (30,000 + ... + 120,000) / 4 = 75,000.
+        expect($rrd->fetchRollingAverage(['gw1'], 'live', 600, $checked)['bytes'])->toBe(350.0)
+            ->and(alertVictoriaMetrics($samples)->fetchRollingAverage(['gw1'], 'live', 600, $checked)['bytes'])->toBe(105_000.0)
+            ->and($rrd->fetchRollingAverage(['gw1'], 'live', 1800, $checked)['bytes'])->toBe(250.0)
+        ;
+    });
+
+    test('the newest stored interval of several sources leaves out one that stopped reporting, on both datasources', function (): void {
+        $data = $this->dir . '/rrd';
+        mkdir($data . '/live', 0o777, true);
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw1', 'gw2', 'gw3'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump'],
+            'db' => ['RRD' => ['data_path' => $data], 'VictoriaMetrics' => ['host' => 'vm.invalid', 'port' => 8428]],
+            'nfdump' => ['binary' => '/nonexistent/nfdump', 'profiles-data' => $this->dir . '/profiles', 'profile' => 'live', 'max-processes' => 2],
+            'log' => ['priority' => LOG_ERR],
+        ]);
+        $t = intdiv(time(), 300) * 300 - 300;
+        // gw1 holds $t, gw2 lags one interval, gw3 stopped two hours ago: bytes per 5 minutes.
+        $newest = ['gw1' => [$t, 3000], 'gw2' => [$t - 300, 6000], 'gw3' => [$t - 7200, 90_000]];
+        $rrd = new Rrd();
+        $samples = [];
+        foreach ($newest as $source => [$ts, $bytes]) {
+            // The first write only starts the file, as an RRD rates the step before it.
+            foreach ([$ts - 300 => 0, $ts => $bytes] as $at => $value) {
+                $rrd->write(['fields' => ['flows' => 1, 'packets' => 1, 'bytes' => $value], 'source' => $source, 'port' => 0, 'profile' => 'live', 'date_iso' => '', 'date_timestamp' => $at]);
+                $samples[$source][$at] = ['flows' => 1.0, 'packets' => 1.0, 'bytes' => (float) $value];
+            }
+        }
+        $vm = alertVictoriaMetrics($samples);
+
+        expect($rrd->fetchLatestSlot(['gw1', 'gw2', 'gw3'], 'live')['bytes'])->toBe(30.0)
+            ->and($rrd->fetchLatestSlot(['gw3'], 'live')['bytes'])->toBe(300.0)
+            ->and($vm->fetchLatestSlot(['gw1', 'gw2', 'gw3'], 'live')['bytes'])->toBe(9000.0)
+            // A catch-up reads the source's newest interval however old: beyond the last hour, up to the import horizon.
+            ->and($vm->fetchLatestSlot(['gw3'], 'live')['bytes'])->toBe(90_000.0)
+            ->and(alertVictoriaMetrics([])->fetchLatestSlot(['gw1'], 'live'))->toBe(['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0])
+        ;
+    });
+});
+
+// ── Notification delivery ─────────────────────────────────────────────────
+
+/**
+ * A PHP built-in server on 127.0.0.1 answering each POST with the status in its path (/500), 204
+ * without one, after a second for /slow; it appends every body it gets to <dir>/webhook.log.
+ *
+ * @return array{string, resource} base URL and process
+ */
+function alertWebhookServer(string $dir): array {
+    $router = $dir . '/webhook-router.php';
+    file_put_contents($router, <<<'PHP'
+        <?php
+        file_put_contents(getenv('WEBHOOK_LOG'), file_get_contents('php://input') . "\n", FILE_APPEND);
+        if (str_starts_with($_SERVER['REQUEST_URI'], '/slow')) {
+            sleep(1);
+        }
+        http_response_code((int) (preg_replace('/\D/', '', $_SERVER['REQUEST_URI']) ?: 204));
+        PHP);
+    $port = alertFreePort();
+    $process = proc_open([PHP_BINARY, '-S', "127.0.0.1:{$port}", $router], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, [...getenv(), 'WEBHOOK_LOG' => $dir . '/webhook.log']);
+    if (!is_resource($process)) {
+        throw new RuntimeException('php -S did not start');
+    }
+    // Refused until the server listens; those warnings are expected.
+    set_error_handler(static fn (): bool => true);
+
+    try {
+        for ($i = 0; $i < 100; ++$i) {
+            $probe = fsockopen('127.0.0.1', $port, $errno, $errstr, 0.1);
+            if ($probe !== false) {
+                fclose($probe);
+
+                break;
+            }
+            usleep(20_000);
+        }
+    } finally {
+        restore_error_handler();
+    }
+
+    return ["http://127.0.0.1:{$port}", $process];
+}
+
+/** A port nothing listens on. */
+function alertFreePort(): int {
+    $socket = stream_socket_server('tcp://127.0.0.1:0');
+    if ($socket === false) {
+        throw new RuntimeException('no free port');
+    }
+    $port = (int) substr((string) strrchr((string) stream_socket_get_name($socket, false), ':'), 1);
+    fclose($socket);
+
+    return $port;
+}
+
+/** @param resource $process */
+function alertStopServer($process): void {
+    proc_terminate($process);
+    proc_close($process);
+}
+
+/** @return list<string> the bodies the webhook server got */
+function alertWebhookBodies(string $dir): array {
+    $log = $dir . '/webhook.log';
+
+    return is_file($log) ? array_values(array_filter(explode("\n", (string) file_get_contents($log)))) : [];
+}
+
+describe('AlertManager notification delivery', function (): void {
+    beforeEach(function (): void {
+        [$this->hook, $this->server] = alertWebhookServer($this->dir);
+    });
+
+    afterEach(function (): void {
+        alertStopServer($this->server);
+    });
+
+    test('the Test reports each channel: the webhook sent, the email not configured on this server', function (): void {
+        $mgr = alertManager($this, makeDatasource(alertBytes(2000.0)));
+
+        $result = $mgr->testRule(makeRule(['notifyWebhook' => $this->hook . '/hook', 'notifyEmail' => 'noc@example.net']), 'live');
+
+        expect($result['fired'])->toBeTrue()
+            ->and($result['delivery'])->toBe([
+                'email' => ['status' => AlertManager::DELIVERY_UNCONFIGURED, 'detail' => ''],
+                'webhook' => ['status' => AlertManager::DELIVERY_SENT, 'detail' => ''],
+            ])
+            ->and(json_decode(alertWebhookBodies($this->dir)[0] ?? '', true))->toMatchArray(['event' => 'alert_fired', 'rule' => 'Test rule', 'value' => 2000.0])
+        ;
+    });
+
+    test('a webhook that answers with an error or not at all failed, and the Test says why', function (): void {
+        $mgr = alertManager($this, makeDatasource(alertBytes(2000.0)));
+        $webhook = static fn (string $url): array => $mgr->testRule(makeRule(['notifyWebhook' => $url]), 'live')['delivery']['webhook'];
+
+        expect($webhook($this->hook . '/500'))->toBe(['status' => AlertManager::DELIVERY_FAILED, 'detail' => 'HTTP 500'])
+            ->and($webhook('http://127.0.0.1:' . alertFreePort() . '/hook'))->toMatchArray(['status' => AlertManager::DELIVERY_FAILED])
+            ->and($webhook('http://127.0.0.1:' . alertFreePort() . '/hook')['detail'])->toContain('connect')
+            ->and($webhook('ftp://files.example/hook'))->toBe(['status' => AlertManager::DELIVERY_FAILED, 'detail' => 'the URL does not start with http:// or https://'])
+        ;
+    });
+
+    test('inside a coroutine the Test waits for the webhook\'s answer as well', function (): void {
+        $mgr = alertManager($this, makeDatasource(alertBytes(2000.0)));
+        $results = [];
+
+        Coroutine::run(function () use ($mgr, &$results): void {
+            foreach (['sent' => $this->hook . '/hook', 'error' => $this->hook . '/503', 'closed' => 'http://127.0.0.1:' . alertFreePort() . '/hook'] as $case => $url) {
+                $results[$case] = $mgr->testRule(makeRule(['notifyWebhook' => $url]), 'live')['delivery']['webhook'];
+            }
+        });
+
+        expect($results)->toBe([
+            'sent' => ['status' => AlertManager::DELIVERY_SENT, 'detail' => ''],
+            'error' => ['status' => AlertManager::DELIVERY_FAILED, 'detail' => 'HTTP 503'],
+            'closed' => ['status' => AlertManager::DELIVERY_FAILED, 'detail' => 'connection refused'],
+        ]);
+    });
+
+    test('a rule that would not fire sends nothing, and says which channels are set up', function (): void {
+        $mgr = alertManager($this, makeDatasource(alertBytes(500.0)), 'nfsen@example.net');
+
+        $result = $mgr->testRule(makeRule(['notifyWebhook' => $this->hook . '/hook', 'notifyEmail' => 'noc@example.net']), 'live');
+        $noEmail = $mgr->testRule(makeRule(['notifyWebhook' => $this->hook . '/hook']), 'live');
+
+        expect($result['fired'])->toBeFalse()
+            ->and(array_column($result['delivery'], 'status'))->toBe([AlertManager::DELIVERY_SKIPPED, AlertManager::DELIVERY_SKIPPED])
+            ->and($noEmail['delivery']['email']['status'])->toBe(AlertManager::DELIVERY_UNCONFIGURED)
+            ->and(alertWebhookBodies($this->dir))->toBe([])
+        ;
+    });
+
+    test('the live evaluation does not wait for the webhook, and logs a failure', function (): void {
+        $mgr = alertManager($this, makeDatasource(alertBytes(2000.0)));
+        $slow = makeRule(['notifyWebhook' => $this->hook . '/slow']);
+        $broken = makeRule(['id' => 'broken', 'name' => 'Broken hook', 'notifyWebhook' => 'http://127.0.0.1:' . alertFreePort() . '/hook']);
+        Debug::drainBuffer();
+        $elapsed = null;
+
+        Coroutine::run(function () use ($mgr, $slow, $broken, &$elapsed): void {
+            $started = microtime(true);
+            $mgr->runPeriodic([$slow, $broken], 'live', 300);
+            $elapsed = microtime(true) - $started;
+        });
+        $warnings = array_column(Debug::drainBuffer(), 'msg');
+
+        expect($elapsed)->toBeLessThan(0.5)
+            ->and(alertWebhookBodies($this->dir))->toHaveCount(1)
+            ->and($warnings)->toContain("Alert 'Broken hook': the webhook failed: connection refused")
+        ;
+    });
+
+    test('email counts as sent once the mail system takes it, and as failed when it refuses it', function (string $sendmail, string $status): void {
+        $script = <<<'PHP'
+            use mbolli\nfsen_ng\common\AlertManager;
+            use mbolli\nfsen_ng\common\AlertRule;
+            use mbolli\nfsen_ng\common\Config;
+            use mbolli\nfsen_ng\common\Settings;
+            use mbolli\nfsen_ng\datasources\Datasource;
+            use mbolli\nfsen_ng\store\AlertEventRepository;
+            use mbolli\nfsen_ng\store\AlertSampleRepository;
+            use mbolli\nfsen_ng\store\Database;
+
+            require getenv('NFSEN_TEST_ROOT') . '/vendor/autoload.php';
+            Config::$settings = Settings::fromArray(['general' => ['sources' => ['gw1']], 'log' => ['priority' => LOG_ERR]]);
+            $ds = new class implements Datasource {
+                public function write(array $data): bool { return true; }
+                public function get_graph_data(int $start, int $end, array $sources, array $protocols, array $ports, string $type = 'flows', string $display = 'sources', ?int $maxrows = 500, string $profile = ''): array|string { return []; }
+                public function reset(array $sources, string $profile = ''): bool { return true; }
+                public function acceptsHistoricWrites(): bool { return true; }
+                public function date_boundaries(string $source, string $profile = ''): array { return [0, 0]; }
+                public function last_update(string $source, int $port = 0, string $profile = ''): int { return 0; }
+                public function get_data_path(string $source = '', int $port = 0, string $profile = ''): string { return ''; }
+                public function healthChecks(string $group, array $sources): array { return []; }
+                public function fetchLatestSlot(array $sources, string $profile): array { return ['flows' => 1.0, 'packets' => 1.0, 'bytes' => 2000.0]; }
+                public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds, ?int $end = null): array { return ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0]; }
+            };
+            $db = Database::open(':memory:');
+            $dir = sys_get_temp_dir();
+            $mgr = new AlertManager($ds, $dir . '/nfsen-mail-state-' . getmypid() . '.json', $dir . '/nfsen-mail-log.json', 'nfsen@example.net', new AlertEventRepository($db), new AlertSampleRepository($db));
+            $rule = AlertRule::fromArray(['id' => 'm', 'name' => 'Mail', 'sources' => ['gw1'], 'metric' => 'bytes', 'thresholdValue' => 1000, 'notifyEmail' => 'noc@example.net']);
+            echo json_encode($mgr->testRule($rule, 'live')['delivery']['email']);
+            PHP;
+        $process = proc_open([PHP_BINARY, '-d', 'sendmail_path=' . $sendmail, '-r', $script], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, [...getenv(), 'NFSEN_TEST_ROOT' => dirname(__DIR__, 2)]);
+        $out = (string) stream_get_contents($pipes[1]);
+        $err = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        expect(proc_close($process))->toBe(0, $err . $out)
+            ->and(json_decode($out, true)['status'] ?? null)->toBe($status, $out)
+        ;
+    })->with([
+        'taken' => ['cat > /dev/null', AlertManager::DELIVERY_SENT],
+        'refused' => ['/bin/false', AlertManager::DELIVERY_FAILED],
+    ]);
 });
 
 // ── AlertManager::forget, states, firingCount ─────────────────────────────

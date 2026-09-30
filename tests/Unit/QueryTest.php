@@ -136,7 +136,7 @@ function recordingDatasource(): Datasource {
             return $this->latestSlot;
         }
 
-        public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array {
+        public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds, ?int $end = null): array {
             return $this->rollingAverage;
         }
     };

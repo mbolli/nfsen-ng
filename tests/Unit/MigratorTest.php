@@ -7,6 +7,7 @@ use mbolli\nfsen_ng\store\Database;
 use mbolli\nfsen_ng\store\Migration;
 use mbolli\nfsen_ng\store\migrations\M0001Initial;
 use mbolli\nfsen_ng\store\migrations\M0002QueryRunParts;
+use mbolli\nfsen_ng\store\migrations\M0003AlertSamples;
 use mbolli\nfsen_ng\store\Migrator;
 
 /** @return array<string, list<string>> table and index names by type */
@@ -50,9 +51,10 @@ test('the migration list is strictly increasing and starts with M0001Initial', f
 
     expect($migrations[0])->toBeInstanceOf(M0001Initial::class)
         ->and($migrations[1])->toBeInstanceOf(M0002QueryRunParts::class)
+        ->and($migrations[2])->toBeInstanceOf(M0003AlertSamples::class)
         ->and($versions)->toBe(array_values(array_unique($sorted)))
         ->and(Migrator::latestVersion())->toBe(end($versions))
-        ->and(Migrator::latestVersion())->toBe(2)
+        ->and(Migrator::latestVersion())->toBe(3)
     ;
 });
 
@@ -61,7 +63,7 @@ test('a fresh database reaches the latest version with every table and index', f
 
     expect($db->schemaVersion())->toBe(Migrator::latestVersion())
         ->and(migratorTestSchema($db))->toBe([
-            'table' => ['alert_events', 'meta', 'query_runs', 'saved_filters', 'topn_1d', 'topn_1h', 'topn_5m', 'topn_interval'],
+            'table' => ['alert_events', 'alert_samples', 'meta', 'query_runs', 'saved_filters', 'topn_1d', 'topn_1h', 'topn_5m', 'topn_interval'],
             'index' => [
                 'alert_events_by_rule',
                 'alert_events_by_ts',
@@ -99,6 +101,7 @@ test('the schema enforces its constraints', function (): void {
         ->and(fn () => $db->exec($insertFilter, ['Other', 'port 80', 'port 80', 'somewhere']))->toThrow(PDOException::class)
         ->and(fn () => $db->exec("INSERT INTO alert_events (ts, kind, rule_name, metric, value) VALUES (0, 'maybe', 'r', 'bytes', 1)"))->toThrow(PDOException::class)
         ->and(fn () => $db->exec('INSERT INTO query_runs (kind, ts, bytes, elapsed_ms, ok) VALUES (?, 0, 0, 0, 2)', ['flows']))->toThrow(PDOException::class)
+        ->and(fn () => $db->exec("INSERT INTO alert_samples (rule_id, ts, fingerprint, value) VALUES ('r', 0, 'f', 1), ('r', 0, 'g', 2)"))->toThrow(PDOException::class)
     ;
 });
 
@@ -182,8 +185,30 @@ test('version 2 counts the processes and passes of each query run, 1 for the run
         $db = Database::open($path);
         $db->exec("INSERT INTO query_runs (kind, ts, bytes, elapsed_ms, ok, parts, passes) VALUES ('stats', 2, 100, 50, 1, 4, 2)");
 
-        expect($db->schemaVersion())->toBe(2)
+        expect($db->schemaVersion())->toBe(Migrator::latestVersion())
             ->and($db->all('SELECT ts, parts, passes FROM query_runs ORDER BY ts'))->toBe([['ts' => 1, 'parts' => 1, 'passes' => 1], ['ts' => 2, 'parts' => 4, 'passes' => 2]])
+        ;
+    } finally {
+        unset($db);
+        array_map('unlink', glob($path . '*') ?: []);
+    }
+});
+
+test('version 3 adds the alert samples to a version 2 store and keeps what it holds', function (): void {
+    $path = sys_get_temp_dir() . '/nfsen-migrator-' . bin2hex(random_bytes(6)) . '.sqlite';
+    $db = Database::open($path);
+    $db->exec('DROP TABLE alert_samples');
+    $db->exec('PRAGMA user_version = 2');
+    $db->exec("INSERT INTO alert_events (ts, kind, rule_id, rule_name, metric, value) VALUES (1, 'fired', 'r1', 'R', 'bytes', 5)");
+    unset($db);
+
+    try {
+        $db = Database::open($path);
+        $db->exec("INSERT INTO alert_samples (rule_id, ts, fingerprint, value) VALUES ('r1', 300, 'f', 2.5)");
+
+        expect($db->schemaVersion())->toBe(3)
+            ->and($db->value('SELECT COUNT(*) FROM alert_events'))->toBe(1)
+            ->and($db->all('SELECT rule_id, ts, fingerprint, value FROM alert_samples'))->toBe([['rule_id' => 'r1', 'ts' => 300, 'fingerprint' => 'f', 'value' => 2.5]])
         ;
     } finally {
         unset($db);

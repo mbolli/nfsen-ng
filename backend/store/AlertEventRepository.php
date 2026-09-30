@@ -107,6 +107,46 @@ final class AlertEventRepository {
     }
 
     /**
+     * Deletes the rule's events of the given kinds; no kind deletes nothing.
+     *
+     * @param list<string> $kinds
+     *
+     * @return int deleted rows
+     */
+    public function deleteForRule(string $ruleId, array $kinds): int {
+        $kinds = array_values(array_intersect(self::KINDS, $kinds));
+        if ($kinds === []) {
+            return 0;
+        }
+
+        return $this->db->exec(
+            'DELETE FROM alert_events WHERE rule_id = ? AND kind IN (' . implode(', ', array_fill(0, \count($kinds), '?')) . ')',
+            [$ruleId, ...$kinds],
+        );
+    }
+
+    /**
+     * Deletes the events of the given kinds whose rule is not in $ruleIds; events without a rule stay.
+     *
+     * @param list<string> $ruleIds
+     * @param list<string> $kinds
+     *
+     * @return int deleted rows
+     */
+    public function deleteForOtherRules(array $ruleIds, array $kinds): int {
+        $kinds = array_values(array_intersect(self::KINDS, $kinds));
+        if ($kinds === []) {
+            return 0;
+        }
+        $keep = $ruleIds === [] ? '' : ' AND rule_id NOT IN (' . implode(', ', array_fill(0, \count($ruleIds), '?')) . ')';
+
+        return $this->db->exec(
+            'DELETE FROM alert_events WHERE rule_id IS NOT NULL AND kind IN (' . implode(', ', array_fill(0, \count($kinds), '?')) . ')' . $keep,
+            [...$kinds, ...$ruleIds],
+        );
+    }
+
+    /**
      * Deletes events older than $olderThan, but never the newest $keepAtLeast.
      *
      * @return int deleted rows

@@ -336,8 +336,8 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
     }
 
     /**
-     * Returns summed flows/packets/bytes for the most recently completed 5-min slot
-     * across all given sources.
+     * Each source's newest stored interval (a total per 5 minutes), summed. A source more than one
+     * interval behind the newest is left out, as one that stopped reporting.
      *
      * @param string[] $sources
      *
@@ -346,32 +346,40 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
     public function fetchLatestSlot(array $sources, string $profile): array {
         $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
         $sel = $this->querySelector(array_values($sources), 0, null, $profile);
+        $newest = $this->newestSample($sel);
+        if ($newest === null) {
+            return $result;
+        }
 
         foreach (['flows', 'packets', 'bytes'] as $metric) {
             $metricName = $this->buildMetricName($metric, null);
-            $promql = self::sumPerSource("last_over_time({$metricName}{$sel}[5m])");
-            $result[$metric] = $this->queryInstantScalar($promql);
+            // At the newest sample, the window (newest - 600, newest] holds the newest one of each source not further behind.
+            $promql = self::sumPerSource("last_over_time({$metricName}{$sel}[600s])");
+            $result[$metric] = $this->queryInstantScalar($promql, $newest);
         }
 
         return $result;
     }
 
     /**
-     * Returns average flows/packets/bytes over a rolling window, summed across sources.
-     * Returns [0.0, 0.0, 0.0] when no data is available (cold-start safe).
+     * The average total per 5 minutes over the window before the interval starting at $end, summed
+     * across sources: the unit of fetchLatestSlot(). Without $end, the window before the newest
+     * complete interval by the clock, which is left out. Zeros without data.
      *
      * @param string[] $sources
      *
      * @return array{flows: float, packets: float, bytes: float}
      */
-    public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array {
+    public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds, ?int $end = null): array {
         $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
         $sel = $this->querySelector(array_values($sources), 0, null, $profile);
+        $end ??= intdiv(time(), 300) * 300 - 300;
 
         foreach (['flows', 'packets', 'bytes'] as $metric) {
             $metricName = $this->buildMetricName($metric, null);
             $promql = self::sumPerSource("avg_over_time({$metricName}{$sel}[{$windowSeconds}s])");
-            $result[$metric] = $this->queryInstantScalar($promql);
+            // Evaluated at $end - 1, the window holds the samples of [$end - window, $end).
+            $result[$metric] = $this->queryInstantScalar($promql, $end - 1);
         }
 
         return $result;
@@ -585,9 +593,8 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
      * time (unlike `timestamp(last_over_time(...))` which returns ~eval_time).
      */
     private function querySingleValue(string $query, string $field = 'timestamp', bool $first = true): int {
-        $windowDays = $this->importYears * 365;
         $fn = $first ? 'tfirst_over_time' : 'tlast_over_time';
-        $wrappedQuery = "{$fn}({$query}[{$windowDays}d])";
+        $wrappedQuery = "{$fn}({$query}[{$this->lookback()}])";
 
         $url = str_replace('query_range', 'query', $this->queryUrl) . '?' . http_build_query([
             'query' => $wrappedQuery,
@@ -604,6 +611,27 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
         return isset($data['data']['result'][0]['value'][1])
             ? (int) (float) $data['data']['result'][0]['value'][1]
             : 0;
+    }
+
+    /** How far back the newest sample of a series is looked for: the import horizon. */
+    private function lookback(): string {
+        return ($this->importYears * 365) . 'd';
+    }
+
+    /**
+     * Start of the newest interval stored for the selector, null without one. A sample arrives after
+     * its interval ends, so the last hour holds it while imports keep up; only a catch-up or a
+     * stopped source needs the import horizon.
+     */
+    private function newestSample(string $selector): ?int {
+        foreach (['3600s', $this->lookback()] as $range) {
+            $newest = (int) $this->queryInstantScalar("max(tlast_over_time({$this->buildMetricName('flows', null)}{$selector}[{$range}]))");
+            if ($newest > 0) {
+                return $newest;
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -24,7 +24,13 @@
 {% set resetForm %}const r = JSON.parse(document.getElementById('alert-form-card').dataset.defaults); {{ fillForm }}{% endset %}
 {% set filterText = "String($" ~ alert_form_nfdumpFilter.id() ~ " ?? '')" %}
 {# A filtered rule sums one interval's flows, and some datasources store interval totals (AlertsPage::valueBasis). #}
-{% set perInterval = f.perInterval or alert_form_nfdumpFilter.string()|trim != '' %}
+{% set filtered = alert_form_nfdumpFilter.string()|trim != '' %}
+{% set perInterval = f.perInterval or filtered %}
+{# Where a percent-of-average rule's baseline comes from (AlertManager::baseline). #}
+{% set averageHelp = {
+    stored: 'The average of the stored traffic of the rule\'s sources over this window, before the interval checked.',
+    filtered: 'The average of the filter\'s own traffic over this window, before the interval checked. An enabled rule records that traffic at each check, so there is no baseline until it has checked one interval, or while the filter matched nothing in the window.',
+} %}
 {% set previewVars %}window.buildAlertPreviewVars({ rule: ${{ alert_form_name.id() }}, metric: ${{ alert_form_metric.id() }}, operator: ${{ alert_form_operator.id() }}, profile: ${{ alert_form_profile.id() }}, sources: ${{ alert_form_sources.id() }}, allSources: '{{ t.allSources|e('js') }}', thresholdType: ${{ alert_form_thresholdType.id() }}, thresholdValue: ${{ alert_form_thresholdValue.id() }} }){% endset %}
 {# Busy or blocked buttons stay focusable (aria-disabled plus a guard), so focus is not dropped to the body. #}
 {% set saveBlocked %}$_alert_saving{% if f.filterStatus %} || ({{ filterText }}.trim() !== '' && ${{ f.filterStatus }}?.checked === {{ filterText }} && ${{ f.filterStatus }}?.status === 'invalid'){% endif %}{% endset %}
@@ -249,11 +255,13 @@
                     <div class="field" {{ alert_form_thresholdType.string() != 'percent_of_avg' ? 'hidden' }}
                          data-attr:hidden="${{ alert_form_thresholdType.id() }} !== 'percent_of_avg'" data-preserve-attr="hidden">
                         <label for="alertFormAvgWindow">Average over</label>
-                        <select id="alertFormAvgWindow" {{ bind(alert_form_avgWindow) }}>
+                        <select id="alertFormAvgWindow" aria-describedby="alertFormAvgWindowHelp" {{ bind(alert_form_avgWindow) }}>
                             {% for value, label in f.windows %}
                                 <option value="{{ value }}" {{ value == alert_form_avgWindow.string() ? 'selected' }}>{{ label }}</option>
                             {% endfor %}
                         </select>
+                        <p class="help" id="alertFormAvgWindowHelp"
+                           data-text="{{ filterText }}.trim() !== '' ? '{{ averageHelp.filtered|e('js') }}' : '{{ averageHelp.stored|e('js') }}'">{{ filtered ? averageHelp.filtered : averageHelp.stored }}</p>
                     </div>
                     <div class="field">
                         <label for="alertFormCooldown">Cooldown (5 minute intervals)</label>
@@ -267,7 +275,7 @@
             <fieldset class="alert-form-group">
                 <legend>Traffic filter (optional)</legend>
                 {% include 'components/filter-field.html.twig' with {target: 'alert', signal: alert_form_nfdumpFilter, textareaId: 'alertNfdumpFilter', label: 'nfdump filter', rows: 2} %}
-                <p class="help">With a filter the rule counts only the matching flows in each interval's capture files, so its threshold is a total per 5 minutes, not a rate. Without one it reads the stored traffic.</p>
+                <p class="help">With a filter the rule counts only the matching flows in each interval's capture files, so its threshold is a total per 5 minutes, not a rate, and a percentage of the average compares with the filter's own recent traffic. Without one it reads the stored traffic.</p>
             </fieldset>
 
             <fieldset class="alert-form-group">

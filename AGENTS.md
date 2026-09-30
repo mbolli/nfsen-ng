@@ -298,10 +298,19 @@ with the patched bundle: 0008 keeps a first render during a server morph from cl
 (Datastar issue #1209: elements with ids that the outer morph moved later were recreated and lost their client
 state), and 0009 lets a light component render inside a `data-ignore-morph` container.
 
-Rules, checked in part by `tests/e2e/rocket.test.mjs`:
+Rules, checked in part by `tests/e2e/rocket.test.mjs` (and K1 in the templates' popovers by
+`tests/Unit/PopoverMarkupTest.php`):
 
-- K1. No Datastar plugin attribute (`data-on`, `data-text`, `data-bind:*`, `data-ref`, `data-signals`, ...) in the
-  light DOM of a Rocket host, except inside a `data-ignore` subtree: Rocket rescopes them to the component.
+- K1. No Datastar plugin attribute (`data-on`, `data-text`, `data-bind:*`, `data-ref`, `data-signals`, ...) in the light
+  DOM of a Rocket host, except inside a `data-ignore` subtree: Rocket rescopes them to the component. It renames
+  `data-signals`, `data-ref` and keyed `data-bind:`, `data-computed:` and `data-indicator:` inside `data-ignore` as
+  well, so those stay out of it. The exception is `sb-popover`, whose slotted trigger and panel may carry `data-on:*`,
+  `data-attr:*`, `data-class:*`, `data-style:*`, `data-effect`, `data-text`, `data-show` and value-form `data-bind` that
+  read and write page signals (`$name`, `${{ signal.id() }}`, never `$$`): patch 0011 binds them on first load, and
+  Rocket's rewrite of `@name(` to `@dispatchRocket("name",` falls back to the page's action. Keyed signal attributes,
+  `data-ref`, `data-init`, `data-persist`, `data-json-signals` and the `data-on-*` plugins stay out of a popover, and no
+  `data-*` value inside any Rocket host holds free text from users or nfdump, since that rewrite also changes every `$$`
+  and `@word(` in it: such text goes into element content.
 - K2. No `data-init` on a Rocket host: it can run twice.
 - K3. A light host (shapes B and C) carries no `data-*` attribute from the server or the page; its props use plain
   names (`level`, `message`, `for`).
@@ -339,7 +348,8 @@ Load order in `layout.html.twig`:
    `alert-template-preview`, `filter-drawer`, `chunks`.
 4. `datastar-rocket.js`, then `datastar-persist.js` (a Datastar plugin).
 5. The elements `nfsen-chart`, `nfsen-sankey`, `nfsen-matrix`, `nfsen-table`, `nfsen-toast`,
-   `nfsen-filter-editor`, then the plain `nfsen-controls` and `clipboard`.
+   `nfsen-filter-editor`, then the plain `nfsen-controls` (menus, tabs and the popover layer that completes
+   `sb-popover`, all delegated on `document`) and `clipboard`.
 6. The Starbase components whose lock entry says `"load": true`.
 
 A module with a script tag that is also an import-map target (`chunks`, `clipboard`) uses the identical URL, so it
@@ -351,7 +361,9 @@ script URL.
 Components from [Starbase](https://github.com/zweiundeins/starbase) (MIT) are vendored under
 `frontend/js/starbase/<slug>@<version>/`, unchanged, with `LICENSE` and `starbase.lock.json`. The version in the
 folder name is Starbase's content hash of the folder, so the URL changes with every byte. Never edit a vendored
-file: change Starbase first, then move the pin. Only `sb-relative-time` (Alerts, Last triggered) is vendored.
+file: change Starbase first, then move the pin. Two are vendored: `sb-relative-time` (Alerts, Last triggered) and
+`sb-popover` (the Export menus of Flows, Top Talkers and Conversations, and the Columns picker of the result tables;
+see Popovers below).
 
 ```bash
 node scripts/starbase-vendor.mjs check                        # offline: hashes, lock, licence, imports, Datastar banner
@@ -390,6 +402,34 @@ one `:root` block serves light and dark. A package that adopts a component:
   them as text colour (4.5:1);
 - checks the component under `data-density="compact"`: Starbase hard-codes control heights.
 
+### Popovers
+
+A floating panel under a button is an `sb-popover`, built to one contract (`PopoverMarkupTest` and
+`rocket.test.mjs` check K1 in its markup, `ui-controls.test.mjs` its behaviour):
+
+- Host: `<sb-popover id="..." class="<component>" label="<name of the panel>" placement="...">` with a stable `id`,
+  so the morph matches it (a replaced menu's host takes that menu's id). Never `open`, `mode`, `arrow` or `name`; no
+  `data-ref` or `data-init`; a host attribute set by `data-attr` is in the host's `data-preserve-attr`. No `.menu`
+  class on the host or between it and its trigger, or nfsen-controls takes the trigger for a menu.
+- Trigger: one slotted `<button type="button" slot="trigger" class="menu-toggle" data-size="sm"
+  data-preserve-attr="aria-expanded aria-haspopup">`, so the default trigger never renders. `sb-popover` writes
+  `aria-haspopup="dialog"` and `aria-expanded`, the server neither. Only the Columns trigger has `aria-controls`.
+- Panel: K1's popover exception applies. Commands go into a `<ul class="popover-list">` (a `div.popover-list` for
+  mixed content) of `button.menu-item` or `a.menu-item[href]`, separators are `li.menu-sep[role=separator]`, current
+  choices keep `aria-pressed` or `aria-current` with the check mark. No `role=menu`, `menuitem`, `role=none` or
+  `tabindex="-1"`. A list keeps the id of the menu list it replaces.
+- CSS: component rules in `starbase.css` under `/* sb-popover */`, item rules as `.popover-list` in `ui.css`, a page's
+  placement and panel size (`::part(panel)`) in its page CSS.
+- Behaviour: click, Enter or Space opens the panel and moves focus to its `[autofocus]` or first focusable element; Tab
+  and Shift+Tab move through the panel and on out of it; Escape closes the innermost popover and returns focus to
+  its trigger, leaving a modal dialog around it open; an outside press closes it; a morph keeps it open with focus in
+  place. The popover layer of `nfsen-controls` adds the rest: choosing a `button` or `a[href]` closes it after the
+  item's handler and returns focus (`data-menu-keep`, `aria-disabled="true"`, `preventDefault()` or `stopPropagation()`
+  in the handler keep it open; fields, checkboxes and switches never close it); focus leaving the popover closes it;
+  ArrowDown or ArrowUp on the trigger opens on the first or last `.popover-list` item, and the arrows, Home and End move
+  among the items and wrap; a `.menu` and a popover never stay open together; a modal dialog opening closes every
+  popover outside it.
+
 ## Bumping Datastar and Rocket
 
 In this order:
@@ -413,9 +453,14 @@ In this order:
    `rocket-observer-rescan` (0012, the reorder cost that `nfsen-table` avoids by emptying its body first). A move
    that sets a host up again has no page: patch 0002 fixes it. Without that branch, `/tmp/rkt-review/exp.js` on the development host holds one
    case per page, e1 to e12, run by `run.mjs` next to it, as long as that folder exists. Relax K13, K14 or K15
-   only in a change of its own.
-7. Update the plugin list of K1 in `tests/e2e/rocket.test.mjs` if `library/src/plugins/attributes` changed. Its
-   heap case asserts that every removed host is collected, so a bundle without patch 0010's fix fails it.
+   only in a change of its own. A bundle that fails `rocket-queued-definition-children` ends K1's popover
+   exception, and every popover moves its behaviour onto the host: no plugin attribute in its light DOM, `data-on`
+   handlers on the host that act on `evt.target.closest('[data-...]')`, and a host `data-effect` that writes into
+   the children. That effect runs twice at load, so it is idempotent and never posts; an attribute it writes is in
+   the child's `data-preserve-attr`, and text it writes goes into a `data-ignore-morph` span.
+7. Update the plugin list of K1 in `tests/e2e/rocket.test.mjs` and `tests/Unit/PopoverMarkupTest.php` if
+   `library/src/plugins/attributes` changed. The heap cases of `rocket.test.mjs` assert that every removed host is
+   collected, so a bundle without patch 0010's fix fails them.
 8. Move the Starbase pin to a commit whose `static/vendor/datastar-rocket.js` has the same banner (`pull` refuses
    otherwise).
 9. Run `node scripts/starbase-vendor.mjs check`, `sh scripts/vendor-rocket.sh --check`,

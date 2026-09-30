@@ -1,5 +1,6 @@
-// Rocket (ROCKET-SPEC 8.3): one engine, K1 and K2 on every Rocket host, toasts in all four stacks, identity, names, copying,
-// what removed hosts leave behind. Only the alert Test dialog step writes (a Test event); E2E_SKIP_MUTATING=1 skips it.
+// Rocket (ROCKET-SPEC 8.3): one engine, K1 (with its sb-popover exception) and K2 on every Rocket host, toasts in all four
+// stacks, identity, names, copying, what removed hosts leave behind. Only the alert Test dialog step writes (a Test event);
+// E2E_SKIP_MUTATING=1 skips it.
 import assert from 'node:assert/strict';
 import { BASE, withPage } from './lib/cdp.mjs';
 
@@ -26,12 +27,22 @@ const PLUGINS = [
     'text',
     'persist',
 ];
+// K1's exception: the plugin attributes an sb-popover's light DOM may carry, value forms that read page signals.
+const POPOVER_ALLOWED = '^data-((on|attr|class|style):|(effect|text|show|bind)(__|$))';
+// The lists of each result page's Export menu and Columns picker; they keep their ids as popovers.
+const RESULT_LISTS = {
+    flows: ['flowsExportMenu', 'flowTable-columns'],
+    talkers: ['statsExportMenu', 'statsTable-columns'],
+    conversations: ['convExportMenu'],
+};
 const ENGINE = /\/js\/datastar(-rocket)?\.js(\?|$)/;
 // Markup, a Rocket signal and a Rocket action: all of it must stay text.
 const TRICKY = `<b>bold</b> $$count @post('/nope') \${1}`;
 const HEAP_TOASTS = 100;
 const HEAP_RUNS = 5;
 const HEAP_BOUND = 8;
+const HEAP_TRIPS = 6;
+const HEAP_TRIP_BOUND = 300;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -82,11 +93,15 @@ const nextCopy = `new Promise(function(resolve){
 })`;
 
 /**
- * Every element, shadow trees included; the Rocket hosts among them (rocketInstanceId), with
- * K1, K2 and the naming rule checked on each.
+ * Every element, shadow trees included; the Rocket hosts among them (rocketInstanceId), with K1 and its
+ * sb-popover exception, K2, free text in data-* values and the naming rule checked on each. Attributes that
+ * Rocket renamed into a component scope are reported inside data-ignore too, since the rewrite does not skip it.
  */
 const SCAN = `(function(){
     var PLUGIN = new RegExp('^data-(' + ${JSON.stringify(PLUGINS.join('|'))} + ')(:|__|$)');
+    var ALLOWED = new RegExp(${JSON.stringify(POPOVER_ALLOWED)});
+    // What Rocket's rewrite leaves in a data-* value: a $$ signal or an @action( of the component's scope.
+    var REWRITTEN = /_rocket\\.|dispatchRocket/;
     var all = [];
     (function walk(root){
         for (var el of root.querySelectorAll('*')) {
@@ -96,30 +111,48 @@ const SCAN = `(function(){
     })(document);
     var hosts = all.filter(function(el){ return el.rocketInstanceId !== undefined; });
     var problems = [];
+    var freeText = function(a){ return a.name.startsWith('data-') && !PLUGIN.test(a.name) && REWRITTEN.test(a.value); };
     hosts.forEach(function(host){
         var name = host.localName + (host.id ? '#' + host.id : '') + ' (' + host.rocketInstanceId + ')';
         for (var a of host.attributes) {
             if (/^data-init(:|__|$)/.test(a.name)) problems.push(name + ': ' + a.name + ' on the host (K2)');
             if (a.name.includes('_rocket.') || a.name === 'data-rocket-ref') problems.push(name + ': ' + a.name + ' on the host');
+            else if (freeText(a)) problems.push(name + ': ' + a.name + '="' + a.value + '" on the host holds free text Rocket rewrote (K1)');
         }
         for (var el of host.querySelectorAll('*')) {
             var ignored = el.closest('[data-ignore]');
             var skip = !!ignored && ignored !== host && host.contains(ignored);
+            var popover = el.parentElement.closest('sb-popover');
+            var inPopover = !!popover && (popover === host || host.contains(popover));
             for (var b of el.attributes) {
-                if (b.name.includes('_rocket.') || b.name === 'data-rocket-ref') problems.push(name + ': ' + b.name + ' on ' + el.localName);
-                else if (!skip && PLUGIN.test(b.name)) problems.push(name + ': plugin attribute ' + b.name + ' on ' + el.localName + ' (K1)');
+                var on = ' on ' + el.localName;
+                if (b.name.includes('_rocket.') || b.name === 'data-rocket-ref') problems.push(name + ': ' + b.name + on);
+                else if (freeText(b)) problems.push(name + ': ' + b.name + '="' + b.value + '"' + on + ' holds free text Rocket rewrote (K1)');
+                else if (!PLUGIN.test(b.name)) continue;
+                // A popover holds no $$ at all, as PopoverMarkupTest checks, data-ignore or not.
+                else if (inPopover && b.value.includes('_rocket.')) problems.push(name + ': ' + b.name + '="' + b.value + '"' + on + ' reads a $$ signal (K1)');
+                else if (skip) continue;
+                else if (!inPopover) problems.push(name + ': plugin attribute ' + b.name + on + ' (K1)');
+                else if (!ALLOWED.test(b.name)) problems.push(name + ': plugin attribute ' + b.name + on + ', not one a popover may carry (K1)');
             }
         }
     });
     var custom = all.filter(function(el){ return /^(nfsen|sb)-/.test(el.localName); });
     return {
         hosts: hosts.map(function(h){ return h.localName; }),
+        popovers: hosts.filter(function(h){ return h.localName === 'sb-popover'; }).map(function(h){ return h.id || h.className || '(no id)'; }),
         problems: problems,
         undefinedTags: [...new Set(custom.filter(function(el){ return !customElements.get(el.localName); }).map(function(el){ return el.localName; }))],
         roles: custom.filter(function(el){ return el.hasAttribute('role'); }).length,
         unnamed: custom.filter(function(el){ return el.hasAttribute('role') && !(el.getAttribute('aria-label') || '').trim(); }).map(function(el){ return el.localName + (el.id ? '#' + el.id : ''); }),
     };
 })()`;
+
+/** Each of the lists `ids` that sits in an sb-popover: that popover's name as SCAN gives it, and whether it is a Rocket host. */
+const listPopovers = (ids) => `${JSON.stringify(ids)}.flatMap(function(id){
+    var host = document.getElementById(id)?.closest('sb-popover');
+    return host ? [{ list: id, popover: host.id || host.className || '(no id)', rocket: host.rocketInstanceId !== undefined }] : [];
+})`;
 
 /** The toast a test tagged with `label` (an expando: a light host carries no data-* attribute, K3). */
 const tagged = (label) => `[...document.querySelectorAll('nfsen-toast')].find(function(t){ return t.__e2e === ${JSON.stringify(label)}; })`;
@@ -353,26 +386,160 @@ export default async function rocketTest() {
         await earlyToast(page);
     });
 
-    // ── What removed Rocket hosts leave behind: DOM nodes per host after garbage collection ──
+    // ── K1's popover exception in the scan itself: fixture popovers, clean and not ──
+    await withPage(async (page) => {
+        await onOneDocument(page, 'popover fixtures', `${BASE}/#/overview`, () => popoverFixtures(page));
+    });
+
+    // ── What removed Rocket hosts leave behind: DOM nodes per host, or per round trip, after garbage collection ──
     const heapCases = [
-        ['heap', `${BASE}/#/conversations`, measureHeap, HEAP_TOASTS + 2 * HEAP_RUNS, HEAP_BOUND],
+        {
+            name: 'heap',
+            url: `${BASE}/#/conversations`,
+            measure: measureHeap,
+            least: HEAP_TOASTS + 2 * HEAP_RUNS,
+            bound: HEAP_BOUND,
+        },
         // Before patch 0010 an emptied light host kept 3 nodes (EXP e8); now every removed host is collected.
-        ['heap of hosts removed with an ancestor', `${BASE}/#/overview`, measureAncestorHeap, HEAP_TOASTS, 3],
+        {
+            name: 'heap of hosts removed with an ancestor',
+            url: `${BASE}/#/overview`,
+            measure: measureAncestorHeap,
+            least: HEAP_TOASTS,
+            bound: 3,
+        },
+        {
+            name: 'heap of Flows round trips',
+            url: `${BASE}/#/flows`,
+            measure: measureRoundTrips,
+            least: HEAP_TRIPS,
+            bound: HEAP_TRIP_BOUND,
+            trips: HEAP_TRIPS,
+        },
     ];
-    for (const [name, url, measure, least, bound] of heapCases) {
+    for (const { name, url, measure, least, bound, trips } of heapCases) {
         await withPage(async (page) => {
-            const { removed, baseline, after, alive } = await onOneDocument(page, name, url, () => measure(page));
-            const perHost = (after - baseline) / removed;
+            const { removed, baseline, after, alive, tags, popovers = 0 } = await onOneDocument(page, name, url, () => measure(page));
+            const per = (after - baseline) / (trips ?? removed);
+            const byTag = Object.entries(tags)
+                .map(([tag, n]) => `${tag} ${n}`)
+                .join(', ');
             console.log(
-                `  rocket ${name}: ${removed} Rocket hosts removed, DOM nodes ${baseline} -> ${after}, ${perHost.toFixed(2)} per host; ` +
-                    `${alive} of ${removed} still reachable through a WeakRef`
+                `  rocket ${name}: ${removed} Rocket hosts removed (${byTag}), DOM nodes ${baseline} -> ${after}, ` +
+                    `${per.toFixed(2)} per ${trips ? 'round trip' : 'host'}; ${alive} of ${removed} still reachable through a WeakRef`
             );
             assert.equal(alive, 0, `${name}: every removed Rocket host is collected (patch 0010), ${alive} of ${removed} are not`);
             assert.ok(removed >= least, `${name}: at least ${least} Rocket hosts removed, got ${removed}`);
-            assert.ok(perHost <= bound, `${name}: a removed Rocket host keeps at most ${bound} DOM nodes, got ${perHost.toFixed(2)}`);
+            if (trips) {
+                assert.ok(
+                    (tags['sb-popover'] ?? 0) >= popovers * trips,
+                    `${name}: the ${popovers} popovers of the Flows page go on each round trip, ${tags['sb-popover'] ?? 0} removed`
+                );
+                assert.ok(per < bound, `${name}: under ${bound} DOM nodes kept per round trip, got ${per.toFixed(2)}`);
+            } else {
+                assert.ok(per <= bound, `${name}: a removed Rocket host keeps at most ${bound} DOM nodes, got ${per.toFixed(2)}`);
+            }
             assert.deepEqual(page.realErrors(), [], 'no console errors');
         });
     }
+}
+
+/** Fixture popovers in #client-root: one that keeps to K1's exception, and one per form the scan must report. */
+async function popoverFixtures(page) {
+    await page.waitForPage('overview');
+    const bad = {
+        e2epopbindkey: ['<input data-bind:e2e_x>', /data-bind:/],
+        e2epopref: ['<span data-ref="e2e_ref"></span>', /data-rocket-ref/],
+        e2epopsignal: ['<span data-text="$$e2e_count"></span>', /data-text=.*reads a \$\$ signal/],
+        e2epopname: ['<span data-name="a $$b"></span>', /data-name=.*free text/],
+        e2epopaction: ['<span data-expression="tcp # see @docs(1)"></span>', /data-expression=.*dispatchRocket.*free text/],
+        e2epopsignals: ['<span data-signals="{e2e_s: 1}"></span>', /data-signals/],
+        e2epopcomputed: ['<span data-computed:e2e_c="1"></span>', /data-computed:/],
+        e2epopindicator: ['<span data-indicator:e2e_i></span>', /data-indicator:/],
+        e2epopinit: ['<span data-init="void 0"></span>', /plugin attribute data-init/],
+        e2epopjson: ['<pre data-json-signals></pre>', /plugin attribute data-json-signals/],
+        e2epopinterval: ['<span data-on-interval__duration.60s="void 0"></span>', /plugin attribute data-on-interval/],
+        e2epopignoredsignals: ['<div data-ignore><span data-signals:e2e_y="1"></span></div>', /data-signals:_rocket\./],
+        e2epopignoredsignal: ['<div data-ignore><span data-text="$$e2e_z"></span></div>', /data-text=.*reads a \$\$ signal/],
+    };
+    const trigger =
+        '<button type="button" slot="trigger" class="menu-toggle" data-size="sm" data-preserve-attr="aria-expanded aria-haspopup">Open</button>';
+    const clean = `<sb-popover id="e2epopclean" label="Clean" placement="bottom-start" data-attr:data-pick="$_e2e_pick" data-preserve-attr="data-pick">
+        <button type="button" slot="trigger" class="menu-toggle" data-size="sm" data-preserve-attr="aria-expanded aria-haspopup"
+                data-attr:title="'Pick ' + $_e2e_pick">Pick</button>
+        <ul class="popover-list" id="e2epopcleanlist">
+            <li><button type="button" class="menu-item" id="e2epopcleanpick" data-export="b"
+                        data-on:click="$_e2e_pick = el.dataset.export" data-attr:aria-pressed="String($_e2e_pick === 'b')"
+                        data-class:e2e-on="$_e2e_pick === 'b'"
+                        data-style:outline-width="$_e2e_pick === 'b' ? '2px' : ''">B</button></li>
+            <li><button type="button" class="menu-item" data-on:click__prevent="@post('/e2e-never-posted')">Never clicked</button></li>
+            <li><span id="e2epopcleantext" data-text="$_e2e_pick" data-show="true"></span></li>
+            <li><input id="e2epopcleaninput" data-bind="_e2e_pick" data-effect="el.dataset.seen = $_e2e_pick"
+                       data-preserve-attr="data-seen"></li>
+            <li data-ignore><span data-init="void 0"></span></li>
+        </ul>
+    </sb-popover>`;
+    const markup =
+        clean +
+        Object.entries(bad)
+            .map(([id, [body]]) => `<sb-popover id="${id}" label="${id}">${trigger}<div class="popover-list">${body}</div></sb-popover>`)
+            .join('');
+    await page.evaluate(`(async function(){
+        await customElements.whenDefined('sb-popover');
+        var box = document.createElement('div');
+        box.id = 'e2ePopFixtures';
+        box.setAttribute('data-signals', "{_e2e_pick: 'a'}");
+        box.innerHTML = ${JSON.stringify(markup)};
+        document.getElementById('client-root').append(box);
+    })()`);
+    await page.waitFor(
+        `[...document.querySelectorAll('#e2ePopFixtures sb-popover')].every(function(h){ return h.hasAttribute('data-rocket-host'); })` +
+            ` && document.getElementById('e2epopcleantext').textContent === 'a'`,
+        { label: 'the fixture popovers to set up, and the clean one to read the page signal' }
+    );
+
+    // Value forms in a popover read and write the page's signal, not one of the popover's own.
+    await page.evaluate(`document.getElementById('e2epopcleanpick').click()`);
+    await page.waitFor(`document.getElementById('e2epopcleantext').textContent === 'b'`, {
+        label: 'the clean popover to write the page signal',
+    });
+    assert.deepEqual(
+        await page.evaluate(`(async function(){
+            var pick = document.getElementById('e2epopcleanpick');
+            return {
+                signal: (await import('datastar')).root._e2e_pick,
+                input: document.getElementById('e2epopcleaninput').value,
+                seen: document.getElementById('e2epopcleaninput').dataset.seen,
+                host: document.getElementById('e2epopclean').dataset.pick,
+                pressed: pick.getAttribute('aria-pressed'),
+                classed: pick.classList.contains('e2e-on'),
+                title: document.querySelector('#e2epopclean [slot=trigger]').title,
+            };
+        })()`),
+        { signal: 'b', input: 'b', seen: 'b', host: 'b', pressed: 'true', classed: true, title: 'Pick b' },
+        'value forms in a popover follow the page signal'
+    );
+
+    const { scan, lists } = await page.evaluate(`({ scan: ${SCAN}, lists: ${listPopovers(['e2epopcleanlist', 'client-root'])} })`);
+    const of = (id) => scan.problems.filter((p) => p.startsWith(`sb-popover#${id} `));
+    assert.deepEqual(of('e2epopclean'), [], 'the clean fixture keeps to K1 and its popover exception');
+    assert.deepEqual(lists, [{ list: 'e2epopcleanlist', popover: 'e2epopclean', rocket: true }], 'the walk finds a list in a popover');
+    assert.ok(scan.popovers.includes('e2epopclean'), `the scan names the popovers it checked: ${scan.popovers.join(', ')}`);
+    for (const [id, [body, expected]] of Object.entries(bad)) {
+        assert.ok(
+            of(id).some((p) => expected.test(p)),
+            `the scan reports ${body} in a popover: ${JSON.stringify(of(id))}`
+        );
+    }
+    assert.deepEqual(
+        scan.problems.filter((p) => !p.includes('#e2epop')),
+        [],
+        'no problem outside the fixtures'
+    );
+
+    await page.evaluate(`document.getElementById('e2ePopFixtures').remove()`);
+    assertScan(await page.evaluate(SCAN), 'the fixture popovers removed');
+    assert.deepEqual(page.realErrors(), [], 'no console errors');
 }
 
 /** Holds nfsen-toast.js back, calls showMessage the way a server script does, then lets the module in. */
@@ -553,14 +720,35 @@ async function pageCases(page, requests, consoleText) {
         await page.evaluate(`window.showMessage('info', ${JSON.stringify(`walk: ${TRICKY}`)}, false).__e2e = 'walk'`);
         const walkStart = requests.length;
         await page.runQuery('flows', { timeout: 60000 });
+        // A result on every result page, so the walk scans their Export and Columns popovers too.
+        for (const id of ['talkers', 'conversations']) {
+            await page.gotoPage(id);
+            await page.runQuery(id, { timeout: 60000 });
+        }
         let roles = 0;
         for (let pass = 1; pass <= 2; pass++) {
             for (const id of [...PAGES.filter((p) => p !== 'flows'), 'flows']) {
                 await page.gotoPage(id);
+                if (RESULT_LISTS[id]) {
+                    await page.waitFor(`${JSON.stringify(RESULT_LISTS[id])}.every(function(l){ return !!document.getElementById(l); })`, {
+                        timeout: 15000,
+                        label: `${id}: the result with ${RESULT_LISTS[id].join(' and ')}`,
+                    });
+                }
                 await sleep(400);
-                const scan = await page.evaluate(SCAN);
+                const { scan, lists } = await page.evaluate(`({ scan: ${SCAN}, lists: ${listPopovers(RESULT_LISTS[id] ?? [])} })`);
                 assert.ok(scan.hosts.length > 0, `${id}: at least one Rocket host to check`);
                 assertScan(scan, `pass ${pass}, ${id}`);
+                // A result list in an sb-popover makes that popover one the scan must have checked.
+                for (const { list, popover, rocket } of lists) {
+                    assert.ok(
+                        rocket && scan.popovers.includes(popover),
+                        `${id}: the popover ${popover} around #${list} is a Rocket host the scan checked`
+                    );
+                }
+                if (pass === 1 && RESULT_LISTS[id]) {
+                    console.log(`  rocket: ${id} scanned with a result; popovers: ${scan.popovers.join(', ') || 'none'}`);
+                }
                 roles += scan.roles;
             }
         }
@@ -669,7 +857,7 @@ async function pageCases(page, requests, consoleText) {
     }
 }
 
-/** Every Rocket host seen, held weakly; a removed one is disconnected or already collected. */
+/** Every Rocket host seen, held weakly with its tag; a removed one is disconnected or already collected. */
 const HEAP_HELPERS = `(function(){
     var seen = new WeakSet();
     window.__hosts = [];
@@ -677,14 +865,27 @@ const HEAP_HELPERS = `(function(){
         for (var el of document.querySelectorAll('*')) {
             if (el.rocketInstanceId === undefined || seen.has(el)) continue;
             seen.add(el);
-            window.__hosts.push(new WeakRef(el));
+            window.__hosts.push({ ref: new WeakRef(el), tag: el.localName });
         }
     };
+    var isGone = function(e){ var h = e.ref.deref(); return !h || !h.isConnected; };
+    // The hosts already gone at the baseline are not measured, whether collected or not.
+    window.__mark = function(){
+        window.__hosts.forEach(function(e){ e.before = isGone(e); });
+    };
+    var gone = function(){
+        return window.__hosts.filter(function(e){ return !e.before && isGone(e); });
+    };
     window.__removed = function(){
-        return window.__hosts.filter(function(r){ var h = r.deref(); return !h || !h.isConnected; }).length;
+        return gone().length;
+    };
+    window.__removedTags = function(){
+        var tags = {};
+        gone().forEach(function(e){ tags[e.tag] = (tags[e.tag] || 0) + 1; });
+        return tags;
     };
     window.__alive = function(){
-        return window.__hosts.filter(function(r){ var h = r.deref(); return !!h && !h.isConnected; }).length;
+        return gone().filter(function(e){ return !!e.ref.deref(); }).length;
     };
     window.__toasts = async function(n){
         var shown = [];
@@ -710,21 +911,21 @@ function resultRun(page, target, hostId) {
     };
 }
 
-/** DOM nodes before and after `runs` more results, and the Rocket hosts removed in between. */
+/** DOM nodes before and after `runs` more results, and the Rocket hosts removed in between, in all and by tag. */
 async function heapAround(page, run, runs, extra = async () => {}) {
     // Warm up, so what the first run creates for good is in the baseline.
     await run();
     await sleep(300);
-    const removedBefore = await page.evaluate('window.__removed()');
     const baseline = await gc(page);
-    const aliveBefore = await page.evaluate('window.__alive()');
+    await page.evaluate('window.__mark()');
     await extra();
     for (let i = 0; i < runs; i++) await run();
     await sleep(300);
-    const removed = (await page.evaluate('window.__removed()')) - removedBefore;
+    const removed = await page.evaluate('window.__removed()');
+    const tags = await page.evaluate('window.__removedTags()');
     const after = await gc(page);
-    const alive = (await page.evaluate('window.__alive()')) - aliveBefore;
-    return { removed, baseline, after, alive };
+    const alive = await page.evaluate('window.__alive()');
+    return { removed, baseline, after, alive, tags };
 }
 
 /**
@@ -743,6 +944,29 @@ async function measureHeap(page) {
         await page.evaluate(`window.__toasts(${HEAP_TOASTS})`);
         await page.waitFor(`!${heapToast}`, { timeout: 15000, label: 'the toasts to go' });
     });
+}
+
+/**
+ * Flows with a result to Overview and back: every return renders the result, its table and the page's
+ * popovers anew, and the ones before go with the page.
+ */
+async function measureRoundTrips(page) {
+    await page.waitForPage('flows');
+    await page.setRangePreset('1y');
+    await page.runQuery('flows', { timeout: 60000 });
+    const ready = `${JSON.stringify(RESULT_LISTS.flows)}.every(function(id){ return !!document.getElementById(id); })`;
+    await page.waitFor(ready, { timeout: 30000, label: 'the Flows result with its Export and Columns lists' });
+    await page.evaluate(HEAP_HELPERS);
+    await page.evaluate('window.__snap()');
+    const popovers = await page.evaluate(`document.querySelectorAll('#page-flows sb-popover').length`);
+    const trip = async () => {
+        await page.gotoPage('overview');
+        await page.evaluate('window.__snap()');
+        await page.gotoPage('flows');
+        await page.waitFor(ready, { timeout: 30000, label: 'the Flows result again' });
+        await page.evaluate('window.__snap()');
+    };
+    return { ...(await heapAround(page, trip, HEAP_TRIPS)), popovers };
 }
 
 /** Toasts in a box that goes as a whole: no host is removed itself, each goes with its ancestor. */

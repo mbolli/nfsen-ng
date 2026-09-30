@@ -332,25 +332,43 @@ function loadPageSize(host) {
 
 // ── Columns ───────────────────────────────────────────────────────────────
 
-/** The Columns disclosure; nfsen-controls.js opens and closes it (2.5). */
+/** A new Columns popover (POPOVER-SPEC PC1, PC2, PC5); the trigger names its list, which is in the same tree. */
+function createColumnPopover(host) {
+    const listId = `${host.id}-columns`;
+    const popover = document.createElement('sb-popover');
+    popover.id = `${host.id}-columnsPopover`;
+    popover.className = 'column-selector';
+    popover.setAttribute('label', 'Columns to show');
+    popover.setAttribute('placement', 'bottom-end');
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.slot = 'trigger';
+    trigger.className = 'menu-toggle';
+    trigger.dataset.size = 'sm';
+    trigger.dataset.preserveAttr = 'aria-expanded aria-haspopup';
+    trigger.setAttribute('aria-controls', listId);
+    trigger.textContent = 'Columns';
+    const list = document.createElement('ul');
+    list.className = 'popover-list column-selector-menu';
+    list.id = listId;
+    popover.append(trigger, list);
+    return popover;
+}
+
+/**
+ * The Columns popover, one per host for all its results. Table::toolbar() marks the placeholder data-ignore-morph,
+ * so a new result keeps host and trigger and replaces only the list's items.
+ */
 function buildColumnMenu(host, state) {
     const slot = host.querySelector('.column-selector-placeholder');
     if (!slot || !state.headers.length) return;
-    const listId = `${host.id}-columns`;
-
-    const menu = document.createElement('div');
-    menu.className = 'menu column-selector';
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'menu-toggle';
-    toggle.dataset.size = 'sm';
-    toggle.setAttribute('aria-expanded', 'false');
-    toggle.setAttribute('aria-controls', listId);
-    toggle.textContent = 'Columns';
-    const list = document.createElement('ul');
-    list.className = 'menu-list column-selector-menu';
-    list.id = listId;
-    list.setAttribute('aria-label', 'Columns to show');
+    let popover = slot.querySelector(':scope > sb-popover.column-selector');
+    if (!popover) {
+        popover = createColumnPopover(host);
+        slot.replaceChildren(popover);
+    }
+    const list = popover.querySelector('.column-selector-menu');
+    const focused = list.contains(document.activeElement) ? document.activeElement : null;
 
     const item = (text, input) => {
         const li = document.createElement('li');
@@ -362,20 +380,18 @@ function buildColumnMenu(host, state) {
     };
     const all = document.createElement('input');
     all.dataset.columnAll = '';
-    list.append(item('Show all', all));
     const separator = document.createElement('li');
     separator.className = 'menu-sep';
     separator.setAttribute('role', 'separator');
-    list.append(separator);
-    state.headers.forEach((th, i) => {
+    const boxes = state.keys.map((key) => {
         const box = document.createElement('input');
         box.className = 'column-checkbox';
-        box.dataset.columnKey = state.keys[i];
-        list.append(item(titleOf(th), box));
+        box.dataset.columnKey = key;
+        return box;
     });
-
-    menu.append(toggle, list);
-    slot.replaceChildren(menu);
+    list.replaceChildren(item('Show all', all), separator, ...boxes.map((box, i) => item(titleOf(state.headers[i]), box)));
+    // A result that lands while the popover is open leaves the focus on the same column.
+    if (focused) (boxes.find((box) => box.dataset.columnKey === focused.dataset.columnKey) ?? all).focus();
 }
 
 function applyColumns(host, state, rows = state.rows) {

@@ -469,7 +469,7 @@ class Table {
             $id
         );
 
-        return $html . "<div class=\"column-selector-placeholder\"></div></div>\n";
+        return $html . "<div class=\"column-selector-placeholder\" data-ignore-morph></div></div>\n";
     }
 
     /** The pager as nfsen-table.js renders it for the first page, so nothing moves when it takes over. */

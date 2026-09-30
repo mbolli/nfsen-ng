@@ -37,15 +37,16 @@ nfsen-table {
     margin-inline-start: auto;
 }
 
-.column-selector {
+sb-popover.column-selector {
     display: flex;
     justify-content: flex-end;
     margin-block-end: var(--size-2);
 }
 
-.column-selector-menu {
+/* The panel scrolls, not the list, so the component's edge stays around the items. */
+sb-popover.column-selector::part(panel) {
     min-inline-size: 12.5rem;
-    max-block-size: 20rem;
+    max-block-size: min(20rem, 80dvh);
 }
 
 .column-selector-menu :is(label, input) {
@@ -66,7 +67,7 @@ nfsen-table {
 
 nfsen-table:not([data-overflow]) > .table-scrollbar,
 nfsen-table[data-view='original'] > :is(.table-scrollbar, .table-wrap, .table-pager),
-nfsen-table[data-view='original'] .column-selector {
+nfsen-table[data-view='original'] sb-popover.column-selector {
     display: none;
 }
 

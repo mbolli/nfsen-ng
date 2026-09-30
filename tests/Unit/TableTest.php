@@ -189,7 +189,7 @@ describe('Table', function (): void {
         test('leaves the export buttons to the page and keeps the Enhanced data choice', function (): void {
             $result = Table::generate([['a' => 1]], 'flowTable');
 
-            expect($result)->toContain('class="export-enhanced-data"', 'Enhanced data', 'column-selector-placeholder')
+            expect($result)->toContain('class="export-enhanced-data"', 'Enhanced data', '<div class="column-selector-placeholder" data-ignore-morph></div>')
                 ->not->toContain('export-csv', 'export-json', 'export-print', 'data-ref', 'style=')
             ;
         });

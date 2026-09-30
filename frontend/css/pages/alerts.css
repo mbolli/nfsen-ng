@@ -38,9 +38,12 @@
     font-weight: var(--font-weight-normal);
 }
 
-/* Room for "30 seconds ago", so the column keeps its width while sb-relative-time counts the seconds. */
+/* Room for "59 seconds ago", so the column keeps its width while sb-relative-time counts the seconds.
+   A fixed width keeps the table's spare space from following the text's width. */
 .alert-rules td[data-kind='time'] {
+    box-sizing: content-box;
     min-inline-size: 15ch;
+    inline-size: 15ch;
 }
 
 .alert-rule-status,

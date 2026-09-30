@@ -120,17 +120,19 @@ export default async function routerTest() {
         const offline = await page.evaluate(`(async function(){
             var root = (await import('datastar')).root;
             var get = function(n){ return root[Object.keys(root).find(function(k){ return k.startsWith(n + '____'); })]; };
+            // Overview has no Run button while its precomputed lists answer; the drawer's is always there.
+            var runs = Array.from(document.querySelectorAll('button[data-run], #drawerApplyRun'));
             return {
                 running: get('query_running'),
                 live: get('range_live'),
                 range: document.querySelector('#rangeMenu .menu-toggle span').textContent.trim(),
-                runnable: !!document.querySelector('button[data-run]:not(:disabled)'),
+                runnable: runs.length > 0 && runs.every(function(b){ return !b.disabled; }),
             };
         })()`);
         assert.equal(offline.running, false, 'query_running is seeded');
         assert.equal(offline.live, true, 'range_live is seeded');
         assert.doesNotMatch(offline.range, /undefined|NaN|Invalid/, `the range label is computed from the seed: "${offline.range}"`);
-        assert.ok(offline.runnable, 'a Run button is enabled without a sync');
+        assert.ok(offline.runnable, 'every Run button is enabled without a sync');
         assert.deepEqual(page.realErrors(), [], 'no console error without the SSE stream');
     });
 

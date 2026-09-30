@@ -1,7 +1,7 @@
 // Conversations (4.4): one run shown as a Sankey, a Matrix and ranked IP pairs; switching views
 // posts nothing; Kill cancels a run and keeps the result; a filter applied from the drawer marks
 // the result stale; group by /24 labels subnets; Both is disabled for the port grouping; a second
-// run replaces the charts; the Export menu, the keyboard walk and a forced-colors screenshot.
+// run replaces the charts; the Export popover, the keyboard walk and a forced-colors screenshot.
 // Needs flows in the last year of the dev stack.
 import assert from 'node:assert/strict';
 import { BASE, withPage } from './lib/cdp.mjs';
@@ -115,6 +115,20 @@ async function key(page, name, code = name, keyCode = 0) {
     const text = name === 'Enter' ? '\r' : undefined;
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: name, code, windowsVirtualKeyCode: keyCode, text });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code, windowsVirtualKeyCode: keyCode });
+}
+
+/** A mouse click on the middle of `selector`, so the press goes through sb-popover's outside-press listener. */
+async function press(page, selector) {
+    const at = await page.evaluate(`(function(){
+        var el = document.querySelector(${JSON.stringify(selector)});
+        var r = el.getBoundingClientRect();
+        var x = r.left + r.width / 2, y = r.top + r.height / 2;
+        return { x: x, y: y, hit: el.contains(document.elementFromPoint(x, y)) };
+    })()`);
+    assert.ok(at.hit, `${selector} is on top at ${at.x}, ${at.y}`);
+    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+        await page.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 });
+    }
 }
 
 /** Clicks node `index` of the shown Sankey with the mouse, so the chart's own click handler runs; returns its name. */
@@ -595,22 +609,70 @@ export default async function conversationsTest() {
         });
         assert.equal(log.count('conversations-run'), 1, 'switching views posts no run');
 
-        // ── Export menu ──────────────────────────────────────────────────────
+        // ── Export popover ───────────────────────────────────────────────────
+        const exportState = `(function(){
+            var host = document.getElementById('convExport'), trigger = document.getElementById('convExportToggle');
+            return { open: host.open, expanded: trigger.getAttribute('aria-expanded'), active: document.activeElement.id || document.activeElement.dataset.export || document.activeElement.localName };
+        })()`;
+        const closedOnTrigger = { open: false, expanded: 'false', active: 'convExportToggle' };
+        assert.deepEqual(
+            await page.evaluate(`(function(){
+                var host = document.getElementById('convExport');
+                var trigger = document.getElementById('convExportToggle');
+                return { popover: host.localName, rocket: typeof host.rocketInstanceId === 'string', slotted: host.shadowRoot.querySelector('slot[name=trigger]').assignedElements().length,
+                         trigger: trigger.getAttribute('slot') + '|' + trigger.getAttribute('aria-haspopup') + '|' + trigger.hasAttribute('aria-controls'),
+                         items: [...document.querySelectorAll('#convExportMenu [data-export]')].map(function(b){ return b.dataset.export; }),
+                         menuMarkup: document.querySelectorAll('#convExportMenu :is([role], [tabindex], [data-command])').length,
+                         command: host.contains(document.getElementById('convCommand')) ? 'inside' : document.getElementById('convCommand').hidden ? 'hidden outside' : 'shown' };
+            })()`),
+            {
+                popover: 'sb-popover',
+                rocket: true,
+                slotted: 1,
+                trigger: 'trigger|dialog|false',
+                items: ['csv', 'json', 'png', 'command'],
+                menuMarkup: 0,
+                command: 'hidden outside',
+            },
+            'Export is an sb-popover with the slotted trigger, four plain items and the command outside it'
+        );
         await page.evaluate(`window.__downloads.length = 0`);
         await page.evaluate(`document.getElementById('convExportToggle').focus()`);
         await key(page, 'Enter', 'Enter', 13);
-        await page.waitFor(`document.getElementById('convExportMenu').hasAttribute('data-open')`, { label: 'the Export menu to open' });
-        assert.equal(await page.evaluate(`document.activeElement.dataset.export`), 'csv', 'the first item has the focus');
+        await page.waitFor(`document.getElementById('convExport').open === true && document.activeElement.dataset.export === 'csv'`, {
+            label: 'Enter to open Export on its first item',
+        });
+        assert.equal(await page.evaluate(`document.getElementById('convExportToggle').getAttribute('aria-expanded')`), 'true');
         await key(page, 'ArrowDown', 'ArrowDown', 40);
-        assert.equal(await page.evaluate(`document.activeElement.dataset.export`), 'json');
+        assert.equal(await page.evaluate(`document.activeElement.dataset.export`), 'json', 'ArrowDown moves to JSON');
+        // A sync morphs the page around the open popover.
+        await page.syncNow('conversations');
+        assert.deepEqual(
+            await page.evaluate(exportState),
+            { open: true, expanded: 'true', active: 'json' },
+            'a sync keeps Export open with the focus on JSON'
+        );
         await key(page, 'Escape', 'Escape', 27);
-        assert.equal(await page.evaluate(`document.activeElement.id`), 'convExportToggle', 'Escape returns to the toggle');
-        assert.equal(await page.evaluate(`document.getElementById('convExportMenu').hasAttribute('data-open')`), false);
+        assert.deepEqual(await page.evaluate(exportState), closedOnTrigger, 'Escape closes Export and returns to the trigger');
+        await key(page, 'ArrowUp', 'ArrowUp', 38);
+        await page.waitFor(`document.getElementById('convExport').open === true && document.activeElement.dataset.export === 'command'`, {
+            label: 'ArrowUp to open Export on its last item',
+        });
+        await key(page, 'Home', 'Home', 36);
+        assert.equal(await page.evaluate(`document.activeElement.dataset.export`), 'csv', 'Home moves to the first item');
+        await key(page, 'Enter', 'Enter', 13);
+        await page.waitFor(`window.__downloads.some(function(d){ return d.download === 'conversations-pairs.csv'; })`, {
+            label: 'Enter on CSV to export',
+        });
+        assert.deepEqual(await page.evaluate(exportState), closedOnTrigger, 'choosing CSV closes Export and returns to the trigger');
 
+        await page.evaluate(`window.__downloads.length = 0`);
         for (const kind of ['csv', 'json', 'png', 'command']) {
             await page.evaluate(`document.getElementById('convExportToggle').click()`);
+            await page.waitFor(`document.getElementById('convExport').open === true`, { label: `Export open for ${kind}` });
             await page.evaluate(`document.querySelector('#convExportMenu [data-export="${kind}"]').click()`);
             await sleep(300);
+            assert.deepEqual(await page.evaluate(exportState), closedOnTrigger, `${kind} closes Export and returns to the trigger`);
         }
         const downloads = await page.evaluate(`window.__downloads`);
         const byName = Object.fromEntries(downloads.map((d) => [d.download, d]));
@@ -618,19 +680,48 @@ export default async function conversationsTest() {
         assert.ok(byName['conversations-pairs.json']?.text?.startsWith('['), 'the JSON is a list');
         assert.ok(byName['conversations-sankey.png']?.href.startsWith(PNG_URL), 'the PNG of the current chart');
         assert.match((await page.evaluate(`window.__copied`)) ?? '', /nfdump .*-A/, 'Copy nfdump command copies the command');
+        assert.equal(
+            await page.evaluate(`window.__copied`),
+            await page.evaluate(`document.getElementById('convCommand').textContent`),
+            'the copy is the text of #convCommand'
+        );
         const copyToast = `[...document.querySelectorAll('nfsen-toast')].some(function(t){ return t.message === 'Copied the nfdump command.'; })`;
         await page.waitFor(copyToast, { label: 'the copy toast' });
-        // With the Matrix shown, the menu saves the Matrix.
+        // With the Matrix shown, the popover saves the Matrix.
         await page.evaluate(`document.getElementById('convView-matrix').click()`);
         await page.waitFor(`${visible('#convPanel-matrix')} && !!document.querySelector('nfsen-matrix').chart`, {
             label: 'the Matrix view',
         });
         await page.evaluate(`document.getElementById('convExportToggle').click()`);
+        await page.waitFor(`document.querySelector('#convExportMenu [data-export="png"]').textContent === 'PNG of the Matrix'`, {
+            label: 'the PNG item named for the Matrix',
+        });
         await page.evaluate(`document.querySelector('#convExportMenu [data-export="png"]').click()`);
         await page.waitFor(
             `window.__downloads.some(function(d){ return d.download === 'conversations-matrix.png' && d.href.startsWith(${JSON.stringify(PNG_URL)}); })`,
-            { label: 'the PNG of the Matrix from the menu' }
+            { label: 'the PNG of the Matrix from the popover' }
         );
+        // The IP pairs view has no chart: the PNG item is disabled, a press saves nothing and Export stays open.
+        await show(page, 'pairs');
+        await page.evaluate(`window.__downloads.length = 0`);
+        await page.evaluate(`document.getElementById('convExportToggle').click()`);
+        await page.waitFor(
+            `document.getElementById('convExport').open === true && document.querySelector('#convExportMenu [data-export="png"]').getAttribute('aria-disabled') === 'true'`,
+            { label: 'Export open with the PNG item disabled' }
+        );
+        assert.equal(
+            await page.evaluate(`document.querySelector('#convExportMenu [data-export="png"]').textContent`),
+            'PNG of a chart (open Sankey or Matrix)'
+        );
+        await press(page, '#convExportMenu [data-export="png"]');
+        await sleep(300);
+        assert.deepEqual(
+            await page.evaluate(`({ open: document.getElementById('convExport').open, downloads: window.__downloads.length })`),
+            { open: true, downloads: 0 },
+            'the disabled PNG item saves nothing and keeps Export open'
+        );
+        await key(page, 'Escape', 'Escape', 27);
+        assert.deepEqual(await page.evaluate(exportState), closedOnTrigger, 'and Escape closes it');
         await page.evaluate(`document.getElementById('convView-sankey').click()`);
         await page.waitFor(visible('#convPanel-sankey'), { label: 'the Sankey view' });
 
@@ -769,6 +860,19 @@ export default async function conversationsTest() {
             (await page.evaluate(sankeyNames)).some((n) => n.startsWith('port:')),
             'the ports form the middle column'
         );
+
+        // A filter comment with @x(1) and $$y copies unchanged: the command is element text, never a data-* value (PC4).
+        const commented = 'any # see @x(1) and $$y';
+        await applyFromDrawer(page, commented);
+        const withComment = await run(page);
+        assert.ok(withComment?.meta.command.includes(commented), `the run's command holds the comment, got ${withComment?.meta.command}`);
+        await page.evaluate('window.__copied = null');
+        await page.evaluate(`document.getElementById('convExportToggle').click()`);
+        await page.waitFor(`document.getElementById('convExport').open === true`, { label: 'Export open for the command' });
+        await page.evaluate(`document.querySelector('#convExportMenu [data-export="command"]').click()`);
+        await page.waitFor(`typeof window.__copied === 'string'`, { label: 'the command with the comment copied' });
+        assert.equal(await page.evaluate('window.__copied'), withComment.meta.command, 'the copied command is the one the run returned');
+        await applyFromDrawer(page, '');
 
         // Back to the default so the next test starts from it.
         await choose(page, '#convGroupBy', 'ip');

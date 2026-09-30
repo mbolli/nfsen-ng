@@ -124,12 +124,12 @@
     padding-block: var(--size-1);
 }
 
-.conv-export [role='menuitem'][aria-disabled='true'] {
+.conv-export .menu-item[aria-disabled='true'] {
     color: var(--text-3);
     cursor: not-allowed;
 }
 
-.conv-export [role='menuitem'][aria-disabled='true']:hover {
+.conv-export .menu-item[aria-disabled='true']:hover {
     background: none;
 }
 

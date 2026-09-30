@@ -38,11 +38,11 @@ for example) and `tests/Arch/` (namespace and dependency rules).
   check that hangs until the timeout. `nfdump-no-nel` is an nfdump built
   without the NEL statistics, for `StatisticCatalog`.
 - **Offline test doubles for I/O-bound classes.** `VictoriaMetricsTest.php`
-  declares a `class VictoriaMetricsTest extends VictoriaMetrics` at the top of the
-  file that overrides `httpGet()`/`sendToVM()`/`tcpConnect()` with in-memory
-  stubs, so the suite runs without a real VictoriaMetrics. If you add a method to
-  `VictoriaMetrics` that the double overrides, keep the signatures in lockstep:
-  PHP fatals on a parent/child signature mismatch.
+  replaces `httpGet()`/`sendToVM()`/`tcpConnect()` with in-memory stubs, so the
+  suite runs without a real VictoriaMetrics. Its doubles are named classes, an
+  older pattern that predates the rule below; new doubles are anonymous classes.
+  If you add a method to `VictoriaMetrics` that a double overrides, keep the
+  signatures in lockstep: PHP fatals on a parent/child signature mismatch.
 - **Env-var isolation.** A test asserting "defaults when no env vars are set" has
   to `putenv('NFSEN_SOURCES')` etc. itself, and clean up what it sets; `getenv()`
   sees the real ambient environment, which in a dev container may already have
@@ -54,6 +54,46 @@ for example) and `tests/Arch/` (namespace and dependency rules).
   test that needs a page's template data sets the `page` signal to it before
   rendering. `PageRegistryTest` pins what each page and module declares and
   renders.
+- **Shared helpers.** Pest loads `tests/Helpers.php` before every test file:
+  `makeCaptureTree()` builds a throwaway nfcapd tree and `removeTree()` removes
+  it. A helper that two files need goes there, so every file also runs on its
+  own.
+- **Anonymous test doubles.** A named class at the top of a test file gives
+  *Class not found* once Pest runs more than one file, and php-cs-fixer's PSR-4
+  rule renames it after the file. Test processors and datasources are anonymous
+  classes, or come from a function that returns one.
+- **Coroutines hook file functions.** OpenSwoole's `Coroutine::run()` turns on
+  every hook, so `mkdir` and `file_put_contents` yield inside it (`touch`,
+  `is_dir`, `filemtime` and PDO do not). A test that races two coroutines
+  creates its files before it starts them.
+
+## Front-end and deployment checks
+
+Four Pest files check things that are not PHP code:
+
+- `FrontendAssetsTest`: `frontend/js/datastar-rocket.js` starts with the banner
+  of Datastar 1.0.4, Rocket beta.2 and `patches/rocket`, the patch files match
+  `patches/rocket/rocket.lock.json`, `package.json` pins that Datastar release,
+  the import map's `datastar` URL is the bundle's script URL, the old
+  `datastar.js` is gone, the licence files are there, and
+  `StarbaseAssets::modules()` reads the Starbase lock (on, off, missing file,
+  bad JSON, bad slug).
+- `StarbaseVendorTest`: the offline checks of `scripts/starbase-vendor.mjs check`
+  in PHP. Every vendored folder hashes to its version, every file to the lock,
+  the licence is there, the lock's Datastar banner and sha256 match the bundle,
+  and a vendored module imports only `'datastar'` or files of its own folder.
+  Two fixture folders in `tests/Support/starbase-walk/` pin the order Starbase's
+  Go code hashes files in.
+- `StarbaseBridgeTest`: every `var(--sb-*)` a vendored module reads is defined in
+  `frontend/css/starbase.css` or listed as a size knob, every token there maps to
+  a token of `tokens.css`, and no module carries a pixel trait the tokens cannot
+  neutralise (`steps(`, `pixelated`, uppercase labels, fixed notch clip paths).
+- `DeployFilesTest`: both Dockerfiles and the systemd unit give PHP the same
+  `memory_limit`.
+
+`NfdumpVersionTest` builds a capture with nfcapd, a flow and its reverse, and
+checks that the installed nfdump pairs them under `-B`; it skips where nfdump is
+older than 1.7.10 or not installed.
 
 ## End-to-end tests
 
@@ -88,15 +128,20 @@ Playwright-managed Chromium under `~/.cache/ms-playwright`
 | `mobile` | The phone and tablet shell |
 | `ui-controls` | The shared controls: tabs, menus, focus, forced colours |
 | `no-auto-query` | Nothing reads a capture file without a Run (checks the requests and the `query_runs` table) |
+| `rocket` | The Rocket rules on every page: one engine, no plugin attribute or `data-init` on a host, toasts in all four stacks, elements that keep their identity through a run and every page, labels, copying, and the DOM nodes removed hosts leave behind |
+| `starbase-bridge` | Every colour token of `starbase.css` resolves to its nfsen-ng token in light and dark, and every vendored Starbase component mounts without a console error |
 
-`run.mjs` runs every `*.test.mjs` file sequentially and exits non-zero on any
-failure; each file also runs on its own through an `import.meta.url` check.
+`run.mjs` runs every `*.test.mjs` file, or the files named as arguments
+(`node tests/e2e/run.mjs flows rocket`), one after another, and exits non-zero on
+any failure. A file that has not finished after `E2E_FILE_TIMEOUT` seconds (900)
+fails, and its browsers are killed. Each file also runs on its own through an
+`import.meta.url` check.
 
 Switches:
 
 - `E2E_SKIP_MUTATING=1` skips the files that change persisted state (`alerts`,
   `drawer`, `settings` export `MUTATING = true`) and the mutating parts of
-  `controls` and `health`.
+  `controls`, `health` and `rocket` (its alert Test dialog step).
 - `NFSEN_SQLITE=<path>` tells `no-auto-query` where the instance's SQLite store
   is, when it is not `backend/settings/nfsen-ng.sqlite`; `E2E_SKIP_QUERY_RUNS=1`
   skips that check.
@@ -105,6 +150,12 @@ Switches:
 - `E2E_FAST=1` skips the wait for a real live tick in `filter-validation`.
 - `E2E_SHOTS=<dir>` is where `flows` writes its forced-colours screenshots
   (default `/tmp`).
+- `STARBASE_DIR=<Starbase clone>` makes `starbase-bridge` also mount the
+  catalog components that are not vendored (input, select, tabs and the like)
+  and fail on a colour that is neither neutral nor an nfsen-ng status or series
+  colour, on text below 4.5:1, and on a selected state that differs only in font
+  weight. It reads the clone from disk. `OUT=<dir>` is where its screenshots go
+  (default `/tmp/starbase-bridge`).
 
 ### Helpers and patterns
 
@@ -115,7 +166,11 @@ tab bar or its More menu, and waits for `#page-<id>[data-ready]`),
 `button[data-run=<target>]` of a query and waits for it to finish),
 `signalValue(name)` and `signalValues(names)` (read signals by name through the
 hashed ids), `chooseTheme(choice)`, `withForcedColors(fn)`, `requestLog()` and
-`realErrors()` (console errors, none of them tolerated).
+`realErrors()` (console errors, none of them tolerated). `runQuery` waits up to
+30 seconds for the Run button, since it stays disabled while any query of the
+tab runs, and also accepts an action that answers without a run (a cached
+build). A test reaches Datastar's store through the page's import map,
+`(await import('datastar')).root`.
 
 - **Only the active page is in the DOM in full.** The other page sections hold a
   skeleton, so wait for `#page-<id>[data-ready]` before querying a page, and scope
@@ -125,9 +180,18 @@ hashed ids), `chooseTheme(choice)`, `withForcedColors(fn)`, `requestLog()` and
 - **Don't assume query results have rows.** A dev instance may have gaps in its
   stored series, and the top-N lists fill in over time. Tests assert on the result
   notice or the empty state where data may be missing, and say when they skip.
-- **The dev app restarts on every file change**, anyone's. A failure at "Datastar
-  to boot" or an `Invalid context` during a run is usually such a restart; rerun
-  the file.
+- **The dev app restarts on every file change**, anyone's, and php-via then
+  reloads every open tab. The page object notices a load it did not ask for:
+  the next `evaluate`, `waitFor`, `gotoPage` or `runQuery` throws
+  `AppReloadedError` (*THE APP RELOADED the page mid-test*), and a test that
+  fails for another reason after a reload says so in its message. Rerun the
+  file. `navigate()` and `reload()` are expected loads; a test that causes one
+  some other way (a link, `location.reload()`) calls `page.expectNavigation()`
+  first, and `page.reloadCount` counts the ones nobody announced.
+- **No browser outlives the run.** Every Chromium gets a debugging pipe, so it
+  exits when Node does, even after a `SIGKILL`; exit and signal handlers kill it
+  otherwise, and a detached watchdog removes its profile directory. Each browser
+  picks a free debugging port.
 - **The mutating files clean up after themselves** where the page offers a way:
   `alerts` creates a uniquely named rule and deletes it, `drawer` deletes the
   filters it saved. Test events of alert rules stay in the history.
@@ -154,9 +218,9 @@ composer test-phpstan     # phpstan analyse backend
 ```
 
 The level is **8**, set in `phpstan.neon` rather than on the command line, so an
-IDE or a bare `vendor/bin/phpstan` analyses exactly what CI does. In a
-memory-constrained container, PHPStan's default 128M can run out before it
-finishes; run it with an explicit limit:
+IDE or a bare `vendor/bin/phpstan` analyses exactly what CI does. The app image
+gives PHP the server's `memory_limit` of 512M, which PHPStan can run out of;
+run it with an explicit limit:
 
 ```bash
 php -d memory_limit=1G vendor/bin/phpstan analyse backend -a backend/settings/settings.php --memory-limit=1G
@@ -165,4 +229,12 @@ php -d memory_limit=1G vendor/bin/phpstan analyse backend -a backend/settings/se
 `composer before-commit` runs `fix` (php-cs-fixer) then `test-phpstan`; the
 convention is to run it after any PHP change, before committing. For the
 frontend, `pnpm run lint` and `pnpm run format` run Biome over
-`frontend/js/components` and `frontend/css`.
+`frontend/js/components` and `frontend/css`; Biome leaves the vendored
+`frontend/js/starbase/` alone.
+
+Two scripts check the vendored JavaScript offline:
+
+```bash
+sh scripts/vendor-rocket.sh --check          # datastar-rocket.js is the build of Datastar + patches/rocket
+node scripts/starbase-vendor.mjs check       # frontend/js/starbase/ matches its lock
+```

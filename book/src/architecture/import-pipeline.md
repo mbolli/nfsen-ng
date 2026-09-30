@@ -47,7 +47,11 @@ A normal pass skips every file at or before that watermark. **Backfill** does no
 it offers every capture file to the datasource, which writes each sample at the
 timestamp it belongs to, so an archive older than the install is filled in.
 **Rescan** resets the profile's datasource first and then imports everything.
-Progress is broadcast on `admin:import`, and `cancel-import` stops a pass.
+Progress is broadcast on `admin:import`, and `cancel-import` stops a pass. The
+progress broadcasts, and the `rrd:live` broadcasts of the catch-up, go out at most
+once every 250 ms with the latest state (`ImportDaemon::broadcast()`); the start,
+a cancel and the end of a pass go out at once. The warnings and errors of a pass
+keep their newest 100 entries in the Import log, and the rest are counted.
 
 ## Per-port series
 
@@ -93,22 +97,35 @@ inotify watch, the catch-up, Trigger, Backfill, Rescan) calls
   this one is skipped, and so is a file that failed three times without changing.
   So a Backfill or Rescan does not collect the same intervals again unless the
   capture file changed.
-- **Worker.** A single coroutine works through the queue (up to 4096 files),
-  oldest first, and lives only while the queue has items. For each file it runs
-  nfdump twice (`-o csv`, eight `-s` statistics and then the ninth, since nfdump
-  takes at most eight per run), parses the multi-statistic csv with
-  `MultiStatCsvParser`, and writes the rows and the hour and day sums in one
-  transaction.
-- **Slot rule.** The collector never takes the last free nfdump slot: with
-  `NFSEN_NFDUMP_MAX_PROCESSES` of 2 or more it starts a run only when a slot stays
-  free for a user query; with 1 it runs only while nothing else does, and waits a
-  little longer than a user query polls after each run so the query gets the
-  slot first. It also waits while a bulk import holds a daemon lock. Its runs use
-  the query handle `topn`, so a user's Kill never reaches them.
+- **Worker.** A worker coroutine lives while the queue (up to 4096 files) has
+  items. It starts up to half the nfdump process limit of collecting coroutines
+  (`NfdumpSlots::backgroundMax()`), each taking the oldest queued file. For each
+  file a coroutine runs nfdump twice (`-o csv`, eight `-s` statistics and then the
+  ninth, since nfdump takes at most eight per run) and parses the
+  multi-statistic csv with `MultiStatCsvParser`. It hands the rows to the
+  worker, which is the only coroutine that writes. With fewer than 4 processes
+  that is one file at a time; with 8 processes on a 20-core host, files of
+  300,000 flows took 85 to 110 ms each instead of 250 to 300 ms.
+- **Writes.** Each interval is stored in one small transaction together with a
+  pending mark. Every 48 stored intervals the worker adds the marked intervals
+  to the hour and day sums, one bucket per transaction, and checkpoints the WAL
+  every second write. After ten minutes without a store, the minute tick flushes
+  what is left, and gives way between two transactions once the worker runs
+  again. Range reads include the marked five-minute rows, so every answer stays
+  exact while sums are pending.
+- **Slot rule.** The collector runs as background work (see
+  [Nfdump Integration](nfdump-integration.md#processes-and-slots)): it holds at
+  most half the slots, starts a run only while a slot stays free for a user
+  query, and never while a user query waits. It also waits while a bulk import
+  holds a daemon lock. Its runs use the query handle `topn`, so a user's Kill
+  never reaches them.
 - **Gap filler.** One minute after start and then every ten minutes while the
   queue is empty, it walks the retention window day by day, newest first, and
-  queues up to 500 capture files that have no usable interval. **Collect missing
-  top-N now** on the Health page (`topn-fill`) runs the same pass at once.
+  queues up to 500 capture files that have no usable interval. During a
+  backfill, the next pass starts once the queue is down to 250 files, until
+  nothing is missing or a file fails. Files being collected count as collected,
+  so a pass never queues them twice. **Collect missing top-N now** on the Health
+  page (`topn-fill`) runs the same pass at once.
 - **Pruner.** Five minutes after start and then hourly, it deletes what fell out
   of `NFSEN_TOPN_RETENTION_DAYS`, in small per-statistic chunks with pauses in
   between.
@@ -127,8 +144,12 @@ configured source has reported that interval or a newer one, in any arrival
 order. A source with nothing waiting on disk once a later interval is in counts
 as down and is left out until it reports again. Rules without a traffic filter
 read each source's stored value right after its import; rules with a filter run
-one nfdump over the interval's files. `{time}` in a notification is the start of
-the interval. See [Alerts](../features/alerts.md).
+one `nfdump -s proto -n 0 -o csv` over the interval's files and add up the
+protocol rows, so nfdump sums the traffic and the worker reads a few lines. The
+evaluation runs as background work and waits at most 60 seconds in total for the
+processes of all its filtered rules; a rule still without one is left out of
+that interval with `no free nfdump process` in the log. `{time}` in a
+notification is the start of the interval. See [Alerts](../features/alerts.md).
 
 ## Environment caveat
 

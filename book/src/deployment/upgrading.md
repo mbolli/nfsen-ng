@@ -4,13 +4,18 @@
 
 This release rebuilds the interface around a sidebar and adds an SQLite store next
 to the RRD or VictoriaMetrics data. Nothing is re-imported and no setting has to
-change, but bare-metal installs need one more PHP extension.
+change, but bare-metal installs need one more PHP extension and a memory limit for
+the server, and should run nfdump 1.7.10 (the Health page warns below it).
 
 ### Docker
 
 Pull the new image and recreate the container. Everything the upgrade creates lands
 in the state directory on the `nfsen-data` volume (`/var/lib/nfsen-ng/state`), next
-to `preferences.json`. The image already contains `pdo_sqlite`.
+to `preferences.json`. The image already contains `pdo_sqlite`, nfdump 1.7.10 (it
+had 1.7.8) and the server's `memory_limit` of 512M. If the collector runs from the
+same image (the Unraid template, `nfcapd` services in a compose file), recreate it
+too: most of nfdump 1.7.9's security fixes are in `nfcapd`. Capture files written
+by 1.7.8 read unchanged.
 
 ### Bare metal
 
@@ -32,7 +37,13 @@ to `preferences.json`. The image already contains `pdo_sqlite`.
    php composer.phar install --no-dev --optimize-autoloader
    ```
 
-3. Make sure the state directory (`NFSEN_STATE_DIR`, by default `backend/settings`)
+3. Build nfdump 1.7.10 as the [installation page](installation.md#install-the-stack)
+   shows, point `nfcapd.service` at `/usr/local/nfdump/bin/nfcapd` if you run the
+   source build, and restart `nfcapd`. The Health page warns below 1.7.10.
+4. Give the server a memory limit: copy the new `deploy/systemd/nfsen-ng.service`,
+   which starts it with `php -d memory_limit=512M`, or set `memory_limit = 512M`
+   in the CLI configuration. See [PHP memory limit](configuration.md#php-memory-limit).
+5. Make sure the state directory (`NFSEN_STATE_DIR`, by default `backend/settings`)
    is writable by the user the server runs as, then restart the service.
 
 ### What happens on the first start
@@ -54,6 +65,34 @@ to `preferences.json`. The image already contains `pdo_sqlite`.
   the capture files that still exist. Until the first interval is in, the Overview
   table says *Collecting*. **Collect missing top-N now** on the Health page queues
   up to 500 missing files right away instead of waiting for the next pass.
+- Alert rules with a traffic filter and a **% of rolling average** threshold start
+  collecting their own baseline: from now on they compare with the filter's own
+  traffic, recorded at every check, so each has no baseline until it has checked
+  one interval. Their earlier events keep their thresholds, which were per-second
+  averages of all traffic, and the history now labels them as totals per five
+  minutes.
+
+### Settings whose default changed
+
+- **`NFSEN_NFDUMP_MAX_PROCESSES`** is `auto` now, a third of the CPU cores between
+  2 and 8; it was 2. A number you set keeps working. A `settings.php` copied from
+  an older template has `'max-processes' => (int) (getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 1)`,
+  which pins one process while the variable is unset or `0`: set it to `auto`,
+  delete that line or write
+  `getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 'auto'`. See
+  [nfdump processes and CPU cores](configuration.md#nfdump-processes-and-cpu-cores).
+- **`NFSEN_NFDUMP_WORKERS`** is new: every nfdump run gets `-W 2` instead of
+  nfdump's own default, filter threads for half the host's cores in every
+  process.
+
+### What looks different
+
+- **Bi-directional** on Top Talkers and Flows merges the two directions of a
+  conversation into one row with In and Out filled, where the 1.7.8 of earlier
+  images listed them as separate rows.
+- Large Top Talkers, Conversations and Overview exact runs, filtered graphs and
+  the top-N backfill use several nfdump processes where the limit allows; the
+  query status says how many.
 
 ### What moved in the interface
 

@@ -13,13 +13,19 @@ always resolve the URL with `{{ actionName.url() }}` so the base path is right
 Inputs are either signals, posted as the JSON body the way Datastar sends them, or
 query parameters on the action URL (`?id=`), read with `$c->input()`.
 
+Every action POST needs an `Origin` header naming the host of the request, as a
+browser sends it. Outside dev mode (`NFSEN_DEV_MODE`) php-via answers a POST
+without one with `403 Forbidden: missing Origin`, and one whose Origin names
+another host than the request's `Host` header with `403 Forbidden: untrusted
+origin`, so a reverse proxy has to pass the original `Host` on.
+
 ## Shell and controls
 
 | Action | File | Input | Does |
 |---|---|---|---|
 | `navigate` | `ShellActions.php` | signal `page` | Renders the page the client switched to; an unknown `page` is reset to the default page |
 | `dismiss-notification` | `ShellActions.php` | `?page=<page id>&id=<notice id>` | Removes a notice from that page's state; without a known page, from every page |
-| `kill-nfdump` | `UtilityActions.php` | none | Sends SIGTERM to this tab's own running nfdump, by query handle (see `NfdumpSlots`); the notice goes to the page that owns `query_kind` |
+| `kill-nfdump` | `UtilityActions.php` | none | Sends SIGTERM to every nfdump this tab's query runs (a split query and a filtered graph run several), by query handle (see `NfdumpSlots`), and names their PIDs; the notice goes to the page that owns `query_kind` |
 | `ip-info` | `UtilityActions.php` | `?ip=` | Renders the IP info dialog into the modal root: reverse DNS, then GeoIP or the web service (public) or Netbox (private) |
 | `set-range` | `RangeActions.php` | `?op=preset&v=1h\|24h\|7d\|30d\|1y`, `?op=duration&n=6&u=h\|d\|w`, `?op=abs&from=&to=` (epoch seconds), `?op=back`, `?op=forward`, `?op=now`, `?op=zoomout`, `?op=pin` | Moves the global window. Presets, durations and `now` make it live; `back`, `pin` and an absolute window that ends in the past pin it. `back` is refused at the start of the stored data. Reads no capture file |
 | `apply-globals` | `RangeActions.php` | signals `graph_sources`, `protocol`, `graph_trafficUnit` | Normalises the global sources, protocol and unit, then re-renders |
@@ -33,14 +39,14 @@ query parameters on the action URL (`?id=`), read with `$c->input()`.
 | Action | File | Input | Does |
 |---|---|---|---|
 | `overview-topn` | `OverviewPage.php` | signals `ov_tab`, `ov_dir`, `ov_limit`, `ov_order`, and the globals | Computes the KPI cards and the top-N table from the SQLite lists in a coroutine; a second request for the same inputs while one runs is dropped |
-| `overview-topn-run` | `OverviewPage.php` | the same | The exact run with nfdump for a window outside retention (query kind `overview-topn`) |
-| `run-filtered-graph` | `GraphActions.php` | signal `graph_filter` and the graph options | Builds the filtered series behind **Apply filter**, one nfdump per bin (query kind `graph`) |
+| `overview-topn-run` | `OverviewPage.php` | the same | The exact run with nfdump for a window outside retention (query kind `overview-topn`), split into parallel time slices when the read is large |
+| `run-filtered-graph` | `GraphActions.php` | signal `graph_filter` and the graph options | Builds the filtered series behind **Apply filter**, one nfdump per bin, one bin per free nfdump process (query kind `graph`) |
 
 ## Top Talkers
 
 | Action | File | Input | Does |
 |---|---|---|---|
-| `stats-actions` | `StatsActions.php` | the `stats_*` signals (`stats_for`, `stats_dir`, `stats_count`, `stats_orderBy`, filter, byte limits, aggregation) | Runs the statistic (query kind `stats`) and stores the result for that statistic |
+| `stats-actions` | `StatsActions.php` | the `stats_*` signals (`stats_for`, `stats_dir`, `stats_count`, `stats_orderBy`, filter, byte limits, aggregation) | Runs the statistic (query kind `stats`), split into parallel time slices when the read is large, and stores the result for that statistic |
 | `talkers-select` | `StatsActions.php` | signal `stats_for` | Re-renders only, so a statistic with a stored result shows it; runs nothing |
 | `talkers-panel` | `StatsActions.php` | `?panel=proto\|as` | Runs a side panel: `-o csv -n 10 -s proto/bytes` or `-s as/bytes` with the query card's filter (query kind `talkers-panel`) |
 
@@ -53,14 +59,14 @@ query parameters on the action URL (`?id=`), read with `$c->input()`.
 | `flows-raw` | `FlowActions.php` | `?result=<id>&chunk=<n>` | Sends the next 512 KiB of the raw output |
 | `flows-summary-estimate` | `FlowActions.php` | the query's signals | The estimate for the filtered totals |
 | `flows-summary-run` | `FlowActions.php` | the query's signals | Computes the filtered totals of the Summary tab (query kind `flows-summary`) |
-| `build-flows-graph` | `FlowGraphActions.php` | the query's signals, `flows_graph_unit` | Builds Traffic over time for the current filter, one nfdump per interval (query kind `flowsgraph`) |
+| `build-flows-graph` | `FlowGraphActions.php` | the query's signals, `flows_graph_unit` | Builds Traffic over time for the current filter, one nfdump per interval, one interval per free nfdump process (query kind `flowsgraph`) |
 | `touch-flows-graph` | `FlowGraphActions.php` | `flows_graph_unit` | Re-renders after a client-side change; reads nothing |
 
 ## Conversations
 
 | Action | File | Input | Does |
 |---|---|---|---|
-| `conversations-run` | `ConversationActions.php` | `conv_group` (`ip\|net24\|net16\|port`), `conv_direction` (`both\|forward`), `sankey_metric`, `sankey_topN`, filter and byte limits | Runs the aggregation (query kind `conversations`). A Kill before nfdump starts or before the result is stored keeps the previous result and its notices |
+| `conversations-run` | `ConversationActions.php` | `conv_group` (`ip\|net24\|net16\|port`), `conv_direction` (`both\|forward`), `sankey_metric`, `sankey_topN`, filter and byte limits | Runs the aggregation (query kind `conversations`), split into parallel time slices when the read is large. A Kill before nfdump starts or before the result is stored keeps the previous result and its notices |
 | `conversations-check` | `ConversationActions.php` | the same signals | Recomputes `_conv_stale` only and reads no capture file; an effect on the query card's signals posts it, so a filter applied from the drawer counts too |
 
 ## Filter builder
@@ -95,7 +101,7 @@ retried on the next load.
 | `save-alert` | `AlertActions.php` | the `alert_form_*` signals | Creates or updates a rule (by id) |
 | `delete-alert` | `AlertActions.php` | `?id=` | Removes a rule and its state |
 | `toggle-alert` | `AlertActions.php` | `?id=`, optional `&enabled=true\|false` | Sets a rule on or off; without `enabled` it flips |
-| `test-alert` | `AlertActions.php` | `?id=` | Evaluates the rule against the newest complete interval, records a test event, and opens the result dialog |
+| `test-alert` | `AlertActions.php` | `?id=` | Evaluates the rule against the newest complete interval, records a test event, sends the notifications if it would fire (waiting up to 10 s for the webhook), and opens the result dialog with each channel's delivery |
 | `save-alert-templates` | `AlertActions.php` | the four `settings_default*Template` signals | Saves the global notification templates |
 
 ## Health
@@ -123,7 +129,9 @@ the progress signals (`query_running`, `query_permille`, `query_status`,
 to: `graph` and `overview-topn` (Overview), `stats` and `talkers-panel` (Top
 Talkers), `flows`, `flows-summary` and `flowsgraph` (Flows), `conversations`
 (Conversations). The estimator records every finished run of a kind in
-`query_runs`.
+`query_runs`, with the nfdump processes it read its files with and whether it
+needed a second pass. A split run's `query_status` counts files (*Read 120 of 288
+files in 4 nfdump processes*), and its final status names the processes.
 
 An MCP client does not use these actions, which are bound to a browser tab's
 signals. The optional [MCP server](features/mcp.md) exposes ten read-only tools

@@ -125,6 +125,11 @@ too. The full list is in the [Actions Reference](../api.md).
 - `$app->broadcast($scope)` re-renders every context subscribed to a scope:
   `rrd:live` after each imported file, `admin:import` on import progress,
   `settings:saved` after a settings save, `alerts:fired` when rules fire.
+- The import's broadcasts go through `ImportDaemon::broadcast()`, which renders
+  a scope at most once every 250 ms after the previous render and always sends
+  the state at the end of that window. The start, a cancel and the end of a pass
+  go out at once. One render of every tab per imported file runs the worker out
+  of memory on a large import with several tabs open.
 
 php-via 0.13 drops element patches for a tab with more than 1 MB still unsent
 instead of parking the tab's SSE write, and `app.php` keeps that threshold
@@ -186,9 +191,15 @@ pulls it in chunks through its own action (`flows-rows`, `flows-raw`).
 ## Practical consequences
 
 - **No client build step.** The frontend is server-rendered Twig plus hand-written
-  Web Components (`frontend/js/components/`) for the pieces that need real
-  client-side behaviour: charts, the table, the router, the filter editor, menus
-  and toasts. There's nothing to bundle.
+  modules in `frontend/js/components/`. The pieces that need real client-side
+  behaviour (the charts, the result table, the Sankey and Matrix, the filter
+  editor and the toasts) are Rocket elements, Datastar's component system:
+  typed props from attributes, a `setup` and a `cleanup`. The server markup
+  stays in their light DOM, where the page CSS and a morph reach it; a
+  chart or table host holds only a `<slot>` in its shadow root. The router, the
+  menus and the copy buttons are plain modules. The engine,
+  `frontend/js/datastar-rocket.js`, is committed, and nothing is bundled at
+  runtime. `AGENTS.md` has the rules for Rocket elements and the load order.
 - **Signal names are not wire keys.** A signal's rendered id is its name plus a
   per-context hash; the human name is only a server-side lookup key
   (`$c->getSignal('name')`).

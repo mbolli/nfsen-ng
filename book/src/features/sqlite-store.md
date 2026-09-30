@@ -2,7 +2,8 @@
 
 Time series stay in RRD or VictoriaMetrics. Everything else nfsen-ng keeps that
 is not a preference lives in one SQLite database: the per-interval top-N lists,
-the saved filters, the alert history and the recorded query timings. The code is
+the saved filters, the alert history, the values filtered alert rules average,
+and the recorded query timings. The code is
 in `backend/store/`.
 
 ## File and driver
@@ -70,7 +71,9 @@ coroutines of the process share one connection. The binding rules:
 `Migrator` (`backend/store/Migrator.php`) runs every migration in
 `backend/store/migrations/` whose version is above `PRAGMA user_version`, each in
 its own transaction, and then sets `user_version`. The first `Database::shared()`
-in `AppStartup::boot()` migrates. `M0001Initial` is version 1. A database with a
+in `AppStartup::boot()` migrates. `M0001Initial` is version 1,
+`M0002QueryRunParts` (version 2) adds `parts` and `passes` to `query_runs`, and
+`M0003AlertSamples` (version 3) creates `alert_samples`. A database with a
 newer version than the code knows (after a downgrade) is logged as an error and
 used read-only for the tables the code knows; nothing is dropped.
 
@@ -78,13 +81,14 @@ used read-only for the tables the code knows; nothing is dropped.
 
 | Table | Holds |
 |---|---|
-| `meta` | Key/value pairs: `migrated.preference_filters`, `migrated.alerts_log`, `deployment_presets.seen` |
+| `meta` | Key/value pairs: `migrated.preference_filters`, `migrated.alerts_log`, `deployment_presets.seen`, and a `topn.pending...` mark per stored top-N interval not yet in the hour and day sums |
 | `topn_interval` | One row per collected capture file (profile, source, interval start): its flows, packets and bytes from `nfdump -I`, status (ok, empty, failed), attempts, and the file's mtime when collected |
 | `topn_5m` | The top 50 by bytes per statistic, interval and source: key, flows, packets, bytes |
 | `topn_1h`, `topn_1d` | Exact hourly and daily (UTC) sums of the `topn_5m` rows, every key |
 | `saved_filters` | Name, expression, normalised expression (unique), starred, origin, created, updated, last used, use count |
 | `alert_events` | `fired`, `resolved` or `test`, time, rule id and name, profile, sources, metric, operator, value, threshold, origin (`live` or `migrated`) |
-| `query_runs` | Per finished run: kind, time, capture bytes read, files, elapsed milliseconds, ok |
+| `alert_samples` | Per filtered alert rule and checked interval: the value, and a fingerprint of the rule's profile, sources, filter and metric; the baseline of its percent-of-average threshold, kept 24 hours |
+| `query_runs` | Per finished run: kind, time, capture bytes read, files, elapsed milliseconds, ok, the nfdump processes it read with (`parts`) and whether it read twice (`passes`) |
 
 The top-N and alert tables are `WITHOUT ROWID` or indexed on their time columns,
 so every range read is a primary-key range.
@@ -92,10 +96,14 @@ so every range read is a primary-key range.
 ## Top-N data
 
 `TopNCollector` writes one `topn_interval` row and up to 450 `topn_5m` rows (nine
-statistics, top 50) per capture file, and `TopNRepository` adds the same rows to
-the hour and day sums in the same transaction. Replacing an interval (a capture
-file rewritten, then re-collected) subtracts the old rows from the sums first and
-drops sums that reach zero, so the sums stay exact.
+statistics, top 50) per capture file in one small transaction, together with a
+pending mark in `meta`. Every 48 stored intervals it adds the marked intervals to
+the hour and day sums, one bucket per transaction, and drops their marks; after
+ten minutes without a store, the minute tick flushes the rest and gives way to
+the collector between two transactions. A range read takes the marked intervals
+from `topn_5m`, so every answer stays exact while sums are pending. Replacing an
+interval (a capture file rewritten, then re-collected) subtracts the old rows
+from the sums first and drops sums that reach zero.
 
 Retention is `NFSEN_TOPN_RETENTION_DAYS` (default 31, `0` disables collection).
 The pruner runs five minutes after start and then hourly, and deletes what fell
@@ -128,9 +136,10 @@ second of the last 20 successful runs of a kind that read at least 32 MiB and to
 at least 200 ms, once there are three of them; until then it uses a default rate.
 Estimates show *measured* when they use recorded runs.
 
-## Alert events
+## Alert events and samples
 
-See [Alerts](alerts.md#fired-and-resolved).
+See [Alerts](alerts.md#fired-and-resolved) for the events and
+[Baseline](alerts.md#baseline-of-percent-of-average-rules) for the samples.
 
 ## Backup
 

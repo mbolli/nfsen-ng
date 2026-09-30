@@ -56,11 +56,14 @@ line: the statistic element against `StatisticCatalog`, the order against
 (otherwise Kill would stop the shell and leave nfdump running). It separates
 stdout and stderr, and returns:
 
-- `rows`: the decoded records (JSON array or newline-delimited, csv, or the
+- `decoded`: the records (JSON array or newline-delimited, csv, or the
   fixed-width text of a bidirectional aggregation read back into columns);
 - `rawOutput`: nfdump's stdout, **untouched on every path**, which the Flows Raw
   output tab shows and `NfdumpSummary::fromTextFooter()` parses;
 - `command`: the exact command line, as shown to the user;
+- `stderr`: what nfdump printed on its error output, without the notices it
+  prints on every run (such as its lowered worker count); the key is missing
+  when nothing else was printed;
 - `notes`: what nfdump printed beside the data, such as a reached limit,
   `No matching flows`, a non-zero exit code or the execution time;
 - `exitCode`.
@@ -95,26 +98,99 @@ the newest request wins.
 statistics once per binary: `nfdump -Z '' -s nevent/bytes` exits 1 with
 *Unknown statistic* on an nfdump built without them.
 
-## The concurrency guard
+## Processes and slots
 
 `NfdumpSlots` caps how many nfdump processes run at once, at
-`Config::$settings->nfdumpMaxProcesses`, rather than piling up parallel scans on a
-system that is likely I/O-bound already. `execute()` takes a slot before spawning
-and releases it afterwards, so a caller that finds none free waits briefly and
-only fails if none frees up in time.
+`Config::$settings->nfdumpMaxProcesses`: `NFSEN_NFDUMP_MAX_PROCESSES`, or with
+`auto` a third of the CPU cores this process may use, between 2 and 8
+(`CpuBudget`). One nfdump keeps 2 to 3 cores busy (a reader thread, the main
+thread that aggregates, a filter thread) and holds its own aggregation table, so
+the cap bounds CPU and memory together. See
+[nfdump processes and CPU cores](../deployment/configuration.md#nfdump-processes-and-cpu-cores)
+for the settings.
 
-A slot is taken per nfdump run, not per query, because a filtered graph build
-runs one per time bin and would otherwise hold the cap for its whole duration.
-The import daemon's runs and the top-N collector's take slots too, which is why
-the default is `2` rather than `1`: browsing while an import is in progress should
-not queue behind it. The collector additionally leaves one slot free for users
-(see [Import Pipeline](import-pipeline.md#top-n-collection)).
+`execute()` takes a slot before it spawns nfdump and gives it back afterwards. A
+slot belongs to one of two classes, set per coroutine with `NfdumpSlots::runAs()`:
+
+- **Interactive** (the default): a user waits for it. Top Talkers, Flows,
+  Conversations, the filtered graphs, the Overview exact run and an alert's
+  **Test**. It may take every free slot and waits up to 30 seconds for one.
+- **Background**: the import, the top-N collector and the live alert
+  evaluation. It holds at most half the slots, starts only while a slot stays
+  free for a user query (with one slot: only while nothing else runs), and never
+  while a user query waits. It waits up to 10 minutes, so a long query delays an
+  import rather than dropping a file. The live alert evaluation limits its waits
+  to 60 seconds in total.
+
+A user query therefore waits only for a running nfdump to end, never in a queue
+behind background work. The import, the alert checks and the collector each run
+their own `Nfdump` instance, so a `reset()` of one never changes the options of
+another while it waits for its slot.
+
+Every run passes `-W` after the caller's options: `NFSEN_NFDUMP_WORKERS` filter
+threads, 2 by default, from nfdump 1.7.3 on. Without it every nfdump starts half
+the host's cores as filter threads. nfdump's notice that it lowered the count to
+the cores online is dropped from what the pages show.
 
 `NfdumpSlots` also records which query owns each running process, keyed by a
 query handle: the caller's context id for a browser tab, `topn` for the
-collector. The Kill action (`kill-nfdump`) stops the processes of its own tab's
-handle only, so with several queries in flight it hits the right one, and never a
-collector run.
+collector. The Kill action (`kill-nfdump`) stops every process of its own tab's
+handle and names their PIDs, so with several queries in flight it hits the right
+ones, and never a collector run. The cap counts this worker's own processes. An
+nfdump someone starts by hand, or a second nfsen-ng on the same host, is not
+counted.
 
-The cap counts this worker's own processes. An nfdump someone starts by hand, or a
-second nfsen-ng on the same host, is not counted.
+## Filtered graphs in parallel
+
+A filtered graph (**Apply filter** on Overview, **Build graph** on Flows) runs
+one `nfdump -s proto` per time bin (`FilteredSeries`). The build takes a pool of
+interactive slots with `acquireMany()` and runs one bin per slot, taking slots
+that free up. After each bin it gives one back to a user query that waits, and
+leaves background work the room it needs: two free slots to start a run, one
+while it runs. Both wait for one bin at most. **Kill** stops every bin in flight
+and keeps the bins that finished. With 4 slots, a 7-day build over busy captures
+took 14 s instead of 42 s (504 bins).
+
+## Statistics in parallel
+
+nfdump aggregates on one thread whatever `-W` says, so a large statistic runs as
+several nfdump processes over consecutive time slices, merged into exactly the
+rows one process prints (`PartitionPlanner`, `PartitionMerge`). Top Talkers and
+its side panels, Conversations and the Overview exact run use it.
+
+- **When.** A read estimated at more than a second over at least 12 capture
+  files, split into slices of at least 6 files each, balanced by size. The
+  number of parts is the free interactive slots, at most 8. Once the limit is 3
+  or more, a split leaves one slot free for another query when 3 or more are
+  free, and otherwise takes up to 2. Two processes gave 1.6
+  times the speed of one on `-s srcip`, four 1.9 times, eight 2.2 times.
+- **Always one process.** Rankings by a rate (pps, bps, bpp), Flow Records without
+  an `-A` aggregation (nfdump's per-record output cannot be summed), the
+  bi-directional aggregation, Conversations on nfdump 1.7.5, and windows within a
+  day of a daylight saving fall-back, whose local times repeat.
+- **First pass.** Each part lists up to its share of 40,000 keys (at most 10,000,
+  at least twice the rows asked for), which bounds the worker's memory. A part
+  that listed fewer keys than that is complete.
+- **Proof.** The merged top N is exact when every top key is known in every part
+  (listed there, or found or ruled out by a lookup), and when no other key could
+  still reach the N-th total: its known total plus the cutoff (the last listed
+  value) of each truncated part that did not list it. Otherwise the truncated
+  parts run again with `-n 0` and a filter naming the missing keys, and a lookup
+  keeps only the keys it asked for. If the filter cannot name them (at most 2,000
+  keys, 64 KiB) or the second pass still cannot prove the top, the query runs as
+  one process, as it does after any failure short of a Kill.
+- **Merge.** Counters add up, first seen is the earliest and last seen the
+  latest, and pps, bps, bpp, duration and the shares are recomputed the way
+  nfdump computes them. `-A` records and pairs rank by in plus out, as nfdump's
+  `-O` does.
+- **Progress and Kill.** The progress line counts files read across the parts,
+  Kill stops every part, each part gives its slot back when it ends, and the
+  final status names the processes the result came from (*Done in 3.1s with 4
+  nfdump processes.*). `query_runs` records the parts and passes of every run.
+
+With 24 million flows and 4 processes, Top Talkers ran 1.7 to 2.3 times faster
+and Conversations up to 2.8 times.
+
+When several sources are selected, `-M` names first a source that holds the
+window's first capture file: nfdump reads nothing at all when the first source
+lacks it, as after a capture gap or for a source added later.

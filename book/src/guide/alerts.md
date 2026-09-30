@@ -9,7 +9,8 @@ They live on the **Alerts** page:
 ![The Alerts page with one rule and its history](../images/04-page-alerts.png)
 
 The **Rules** table lists every rule with its condition, threshold, sources, when
-it last fired, and a switch to turn it on or off. The status says **OK**,
+it last fired (*12 minutes ago*, counting on while the page is open; point at it
+for the date and time), and a switch to turn it on or off. The status says **OK**,
 **Firing** or **Disabled**, and the sidebar shows how many rules are firing.
 **Recent alerts** beside it shows the last 50 events, newest first:
 
@@ -32,10 +33,12 @@ Press **New rule** and fill in the form below the table:
    - **Absolute value**: fire when the metric crosses this number. Use `< 1` to
      fire on an empty interval.
    - **% of rolling average**: fire when the metric is this percent of its own
-     average over the window you choose in **Average over** (10 min to 24 h). Use
-     this for "alert me when traffic is unusually high *for this network*" rather
-     than a fixed number that might be normal for one link and alarming for
-     another. A rule of this type waits until there is an average to compare with.
+     average over the window you choose in **Average over** (10 min to 24 h),
+     before the interval checked. Use this for "alert me when traffic is
+     unusually high *for this network*" rather than a fixed number that might be
+     normal for one link and alarming for another. A rule of this type waits
+     until there is an average to compare with, and skips intervals while the
+     average is zero.
 5. **Cooldown (5 minute intervals)**: how many intervals to wait before notifying
    again while the rule keeps firing, so a sustained spike doesn't flood you.
 6. **Notifications**: an email address and/or a webhook URL. Email works only
@@ -71,6 +74,22 @@ files and counts only the matching flows. Its value is then a **total per five
 minutes**, not a rate, so set the threshold accordingly. Without a filter it
 reads the stored series, which is cheaper and all you need for a general
 high-traffic alert.
+
+With a filter, **% of rolling average** compares with the filter's own recent
+traffic, not with all traffic: at every check, an enabled rule records how much
+its filter matched in that interval, and averages those records. So:
+
+- A new or edited rule has no average yet. It starts comparing after it has
+  checked one interval, and its average covers the full window only once it has
+  run that long. Changing its profile, sources, filter or metric starts the
+  average over.
+- A rule has no average while its filter matched nothing in the window. A rule
+  that should fire on traffic that is normally absent (any ICMP on a quiet link)
+  needs an **Absolute value** instead, such as `> 0`. A *below* rule that is
+  firing stays firing while its filter matches nothing.
+- Alerts such a rule recorded before this version show their old threshold
+  labelled as a total per five minutes; that threshold was a per-second average
+  of all traffic.
 
 ## When rules are checked
 
@@ -129,10 +148,12 @@ down is left out), and opens a dialog with the answer:
 
 - **Would fire** or **Would not fire**, with the value and the threshold it was
   compared with, or why there is none yet;
-- what happened with the notification: sent (to which channel; with both email
-  and a webhook set up, "at least one of" them, since one result covers both),
-  not sent because the rule would not fire, or not sent because email is off on
-  this server;
+- what happened with each notification channel: **Sent** (the email with its
+  address), **Failed** with the reason (the webhook's HTTP status, for example),
+  **Not configured**, or **Not sent** because the rule would not fire. An email
+  address on a server without a sender (`NFSEN_ALERT_EMAIL_FROM`) shows as not
+  configured on this server. Test waits up to ten seconds for the webhook to
+  answer;
 - the start of the interval it tested;
 - the email subject and body and the webhook title and message, rendered with
   the real figures.

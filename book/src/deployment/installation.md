@@ -116,6 +116,10 @@ Requirements for any fronting proxy:
   (`proxy_buffering off` / `X-Accel-Buffering: no` / `flush_interval -1`).
 - **Pass 5xx through as a connection abort** (or equivalent) so the Datastar SSE
   client retries on server restart rather than rendering an error page.
+- **Pass the original `Host` header on.** php-via refuses an action POST whose
+  `Origin` names another host than the request's `Host`
+  (`403 Forbidden: untrusted origin`). Caddy and Traefik keep the header; nginx
+  needs `proxy_set_header Host $host;`.
 
 #### Mode 3: hardened production (read-only capture, bundled Caddy)
 
@@ -241,8 +245,8 @@ php composer.phar install --no-dev --optimize-autoloader
 cp backend/settings/settings.php.dist backend/settings/settings.php
 $EDITOR backend/settings/settings.php   # set sources, ports, nfdump.binary, profiles-data
 
-# Start the HTTP server (listens on port 9000):
-sudo -u www-data php backend/app.php
+# Start the HTTP server (listens on port 9000), with the images' memory limit:
+sudo -u www-data php -d memory_limit=512M backend/app.php
 ```
 
 > **Which nfdump.** nfsen-ng needs nfdump 1.7.2 or later, and the Health page
@@ -279,6 +283,12 @@ On a bare-metal install point `nfdump.binary` (or `NFSEN_NFDUMP_BINARY`) at
 database is empty: trigger the first import from the web UI (see
 [First import](#first-import)).
 
+The server runs every tab in one PHP process, so give it the memory limit the
+Docker images use, 512M: the command above and `deploy/systemd/nfsen-ng.service`
+pass `-d memory_limit=512M`. The CLI `php.ini` of Debian and Ubuntu usually says
+`-1`, no limit, which also turns off the check that a large Flows listing fits.
+See [PHP memory limit](configuration.md#php-memory-limit).
+
 The state directory (`NFSEN_STATE_DIR`, by default `backend/settings`) must be
 writable by the user the server runs as, because the SQLite store
 `nfsen-ng.sqlite` and its journal live there. The `chown` above covers the
@@ -305,7 +315,7 @@ Pre-built units are in `deploy/systemd/`. They reference `/var/www/nfsen-ng` and
 | File | Purpose |
 |------|---------|
 | `nfsen-ng-docker.service` | Run nfsen-ng via `docker compose … --profile proxy up -d` (recommended) |
-| `nfsen-ng.service` | Run the app directly on bare metal (`php backend/app.php`, as `www-data`) |
+| `nfsen-ng.service` | Run the app directly on bare metal (`php -d memory_limit=512M backend/app.php`, as `www-data`) |
 | `nfcapd.service` | NetFlow capture daemon (`-z=lz4 -S 1`) |
 | `softflowd.service` | Software NetFlow exporter for testing/dev |
 

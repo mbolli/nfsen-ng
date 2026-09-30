@@ -40,10 +40,17 @@ the memory to parse them, so two 10,000-row runs cannot exhaust it together.
 ## The table
 
 The Flows tab is `nfsen-table` (`frontend/js/components/nfsen-table.js`), shared
-by every result table of the app. The server renders the first page (50 rows) in
-a result host; the rest arrives in chunks of 1,000 rows that the component pulls
-with `flows-rows?result=<id>&chunk=<n>`, one event each, so no single SSE event
-carries a large result. Paging is client-side, with page sizes 25, 50, 100 and 250.
+by every result table of the app. It is a Rocket element whose shadow root holds
+only a `<slot>`: the table markup stays in the light DOM, and its rows, page,
+sort and focus live in `nfsen/host-state`, so a morph that moves the table into
+a new result host keeps them. The server renders the first page (50 rows) in a
+result host; the rest arrives in chunks of 1,000 rows that `nfsen/chunks`
+(`chunks.js`) pulls with `flows-rows?result=<id>&chunk=<n>`, one event each, so
+no single SSE event carries a large result. `chunks.js` loads before the
+Datastar bundle, because a `data-effect` on first load reads its
+`window.nfsenPullChunks`. A new page empties the table body in one step and
+appends its rows 50 per animation frame, holding the table at its old height
+until the last batch, so the pager and a focused page button stay put. Paging is client-side, with page sizes 25, 50, 100 and 250.
 The pager says *Showing 1-50 of 1,234 returned (limit 10,000)*, and when the limit
 was reached, that nfdump cannot skip rows. Sorting, the Columns menu (hidden
 columns remembered per browser), CSV/JSON/Print export and the Enhanced data
@@ -94,8 +101,10 @@ and reads nothing.
   records match: one truncates the table, the other regroups its rows. The
   section says so.
 - **It never builds on its own.** Plotting a filter means one nfdump run per
-  interval, so the section states what it would read and waits for **Build
-  graph**. The window is clamped by `NFSEN_MAX_STATS_WINDOW`.
+  interval, so the section states what it would read (*in 145 nfdump runs*) and
+  waits for **Build graph**. The runs go side by side, one per free nfdump
+  process, and **Kill** stops them all and keeps the intervals that finished.
+  The window is clamped by `NFSEN_MAX_STATS_WINDOW`.
 - **A built graph survives a moving window.** The section renders the last build
   and reports that the query changed, instead of blanking a graph somebody waited
   for. The comparison rounds to the five-minute slot, so a live window end does
@@ -103,4 +112,7 @@ and reads nothing.
 
 A filtered series has no per-port breakdown: the filter *is* the port selection.
 With several sources selected the split is per source, otherwise per protocol.
-The chart carries its own legend, since the section has no series panel.
+The chart carries its own legend, since the section has no series panel. Its
+unit and the display timezone of its labels come from `data-chart-config`, which
+the page sets from client signals and lists in the host's `data-preserve-attr`,
+so a server update does not reset them.

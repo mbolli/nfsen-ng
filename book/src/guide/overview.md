@@ -50,14 +50,15 @@ Line only change the drawing and are remembered by this browser.
 The stored series hold totals per source, protocol and port, so there is nothing
 in them to narrow down by address after the fact. Switch the **Stored** and
 **Filtered** toggle in the graph header to **Filtered** to plot any nfdump filter
-instead: nfsen-ng then re-reads the capture files, one nfdump run per point.
+instead: nfsen-ng then re-reads the capture files, one nfdump run per point,
+several at a time.
 
 ![Overview in filtered mode after Apply filter](../images/guide-graphs-filtered.png)
 
 That reads capture files, so it never runs on its own. Type the filter (the field
 says whether nfdump accepts it), check the estimate next to it, and press **Apply
 filter**. An empty filter graphs all traffic. The button shows progress and the
-time left, and **Kill** stops the build between two points, keeping what it has.
+time left, and **Kill** stops the build at once, keeping the points it has.
 The graph then says **FILTERED** and does not refresh itself. The **Ports**
 display is not available in this mode, because the filter already is the port
 selection. Narrow the range first; the window width, not the number of points,

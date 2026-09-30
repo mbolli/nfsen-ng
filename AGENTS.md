@@ -1,8 +1,9 @@
 # nfsen-ng: Agent Instructions
 
 nfsen-ng is a web-based NetFlow analyser (an NfSen replacement).
-**Stack:** PHP 8.4 + OpenSwoole, php-via (coroutine HTTP server), Datastar (SSE hypermedia), Twig templates,
-Apache ECharts, RRD/VictoriaMetrics for time series, SQLite for everything else.
+**Stack:** PHP 8.4 + OpenSwoole, php-via 0.13 (coroutine HTTP server), Datastar 1.0.4 with Rocket (SSE hypermedia
+and components), Twig templates, Apache ECharts, nfdump 1.7.10, RRD/VictoriaMetrics for time series, SQLite for
+everything else.
 
 ## Dev Stack
 
@@ -25,7 +26,7 @@ composer test-phpstan   # Static analysis (level 8, set in phpstan.neon)
 composer fix            # Auto-format PHP
 composer before-commit  # fix + phpstan
 
-pnpm install            # Install JS deps (copies datastar.js and echarts into frontend/js/)
+pnpm install            # Install JS deps; rebuilds frontend/js/datastar-rocket.js, copies ECharts and the licences
 pnpm run lint           # Biome lint of frontend/js/components and frontend/css
 pnpm run format         # Biome format (write), same paths
 pnpm run test-e2e       # Browser suite against a running instance (BASE, CHROME)
@@ -33,9 +34,18 @@ pnpm run test-e2e       # Browser suite against a running instance (BASE, CHROME
 
 **Always run `composer before-commit` after a set of PHP changes and fix any reported errors before committing.**
 
+`pnpm install`'s postinstall runs `sh scripts/vendor-rocket.sh --if-tools`: it rebuilds
+`frontend/js/datastar-rocket.js` from `node_modules/datastar` and the patches in `patches/rocket/`, offline, and
+checks the result byte for byte against the sha256 in `patches/rocket/rocket.lock.json`. When esbuild or patch(1) is
+missing, or the build differs (as right after a pin bump), it warns and keeps the committed bundle. Then it copies
+`datastar.LICENSE.md`, `echarts.min.js`, `echarts.LICENSE` and `echarts.NOTICE` into `frontend/js/`. The source map
+embeds the TypeScript sources, so DevTools shows them.
+
 Until php-via 0.13.0 is published, `composer.json` takes `mbolli/php-via` from the local git repository at
 `/develop/php-via` (`dev-master as 0.13.0`), so Composer needs that path, also inside a container. Once it is
-out, require `^0.13.0`, drop the `repositories` entry and run `composer update mbolli/php-via`.
+out, require `"mbolli/php-via": "^0.13.0"`, drop the `repositories` entry, run `composer update mbolli/php-via`
+and build `deploy/Dockerfile` once. That build stops with *php-via is missing from vendor/* while `composer.lock`
+names no published release: `composer install --no-dev` exits 0 there but leaves php-via out.
 
 ## Architecture
 
@@ -97,6 +107,25 @@ Anything that reads nfcapd capture files runs only on an explicit user action, w
 a query kind (`stats`, `flows`, `conversations`, `graph`, ...). Stored-series reads (RRD/VM) and small SQLite reads
 may run automatically. `tests/e2e/no-auto-query.test.mjs` enforces this.
 
+### nfdump processes
+
+`NfdumpSlots` hands out one slot per nfdump process, up to `NFSEN_NFDUMP_MAX_PROCESSES` (`auto`: a third of
+`CpuBudget::cores()`, 2 to 8). Slots come in two classes: `INTERACTIVE` (a user waits; may take every free slot,
+waits up to 30 s) and `BACKGROUND` (import, top-N collector, live alert checks; at most half the slots, only while
+one stays free, never while a user query waits; waits up to 10 minutes).
+
+- `Nfdump::execute()` takes a slot of the calling scope's class. Background work wraps its runs in
+  `NfdumpSlots::runAs(NfdumpSlots::BACKGROUND, $fn, budget: $seconds)`; the budget limits all slot waits of that
+  scope together (live alert evaluation: `AlertManager::LIVE_SLOT_BUDGET_SECONDS`, 60 s). The scope is per
+  coroutine and not inherited by child coroutines.
+- Parallel work takes a pool with `$n = NfdumpSlots::acquireMany($want, $class, $wait)` (1 to `$want` slots),
+  runs each child's nfdump inside `NfdumpSlots::runInHeldSlot($class, $fn)` and gives slots back with
+  `NfdumpSlots::release($class, $n)`. `FilteredSeries` (one bin per slot) and `PartitionPlanner` (time slices of
+  one statistic, merged exactly by `PartitionMerge`) work this way.
+- Every concurrent run gets its own `Nfdump` instance: `Nfdump::getInstance()` is shared, and a `reset()` by
+  another coroutine during a slot wait would change the run's options.
+- Every run passes `-W` (`NFSEN_NFDUMP_WORKERS`, default 2) after the caller's options, from nfdump 1.7.3 on.
+
 ### SQLite store rules
 
 OpenSwoole has no PDO hook: every SQLite call blocks the worker, and all coroutines share one connection.
@@ -117,9 +146,10 @@ class is needed it names a component (`.card`, `.segmented`, `.notice`, `.menu`,
 There is no `.mb-3`, `.muted` or `.text-end` to reach for, and adding one is the wrong move. No inline `style` for
 presentation either; an inline custom property that carries data (`style="--share: 42%"`) is fine.
 
-- **Files**: `tokens.css` (design tokens), `ui.css` (reset, elements, shared components), one file per shell part
-  (`shell.css`, `controls-bar.css`, `traffic-graph.css`, `query-kit.css`, `drawer.css`), `nfsen-ng.css` (charts,
-  result tables, aggregation controls), and `pages/<id>.css` for what only one page needs.
+- **Files**: `tokens.css` (design tokens), `starbase.css` (Starbase's `--sb-*` tokens mapped onto ours, see
+  Starbase components), `ui.css` (reset, elements, shared components), one file per shell part (`shell.css`,
+  `controls-bar.css`, `traffic-graph.css`, `query-kit.css`, `drawer.css`), `nfsen-ng.css` (charts, result tables,
+  aggregation controls), and `pages/<id>.css` for what only one page needs.
 - **Layout** uses three primitives: `.stack` (vertical rhythm), `.cluster` (a wrapping row, `data-justify`),
   `.grid` (auto-fit columns). Prefer them over new one-off flex rules.
 - **Colours** come from the semantic tokens (`--surface-2`, `--text-2`, `--border`, `--danger`), never from a
@@ -249,6 +279,149 @@ const parse = (v) => Array.isArray(v) ? v : JSON.parse(v);
 const items = parse(config.sources); // config from data-chart-config attr (string); signal expr already a JS array
 ```
 
+## Front-end elements (Rocket)
+
+The page loads `frontend/js/datastar-rocket.js`: Datastar 1.0.4 with its Rocket component system (beta.2) and the
+patches in `patches/rocket/` (see Bumping Datastar and Rocket). It is the only engine on the page; its URL in the
+`<script>` tag and in the import map is the same string, `?v=` included, since a second URL would load a second
+engine. nfsen-ng's own elements are Rocket elements of three shapes, none with `render`:
+
+| Shape | Definition | Elements |
+|---|---|---|
+| A, enhancer | open shadow root holding only a `<slot>` that `setup` appends; the server markup stays in the light DOM and the logic works on it | `nfsen-chart`, `nfsen-table`, `nfsen-sankey`, `nfsen-matrix` |
+| B, owned content | light mode; `setup` builds the DOM with the DOM API, inside a `data-ignore-morph` container | `nfsen-toast` |
+| C, controller | light mode, no children; props on plain attributes, targets found by id (`for="drawerFilterTextarea"`) | `nfsen-filter-editor` |
+
+No element uses `render`. In light mode it draws nothing inside a `data-ignore-morph` container, and a first render
+during a server morph starts a second morph inside it, which clears the outer morph's id maps: elements with ids
+that the outer morph moves later are recreated and lose their client state (Datastar issue #1209). Server markup
+therefore stays in the light DOM, and `ui.css`, the page CSS and the tests' selectors reach it.
+
+Rules, checked in part by `tests/e2e/rocket.test.mjs`:
+
+- K1. No Datastar plugin attribute (`data-on`, `data-text`, `data-bind:*`, `data-ref`, `data-signals`, ...) in the
+  light DOM of a Rocket host, except inside a `data-ignore` subtree: Rocket rescopes them, and on first load
+  nothing there binds.
+- K2. No `data-init` on a Rocket host: it can run twice.
+- K3. A light host (shapes B and C) carries no `data-*` attribute from the server or the page; its props use plain
+  names (`level`, `message`, `for`).
+- K4. Every host attribute the client sets (`data-attr`, a script) is listed in the host's `data-preserve-attr`,
+  unless the host sits in a `data-ignore-morph` container; a morph resets the rest and with it the props.
+- K5. Props belong to the server: an element never writes its own props. Client state lives in `nfsen/host-state`,
+  not in `$$` signals (deleted on disconnect) or closure variables of `setup`.
+- K6. Should templates come back, signal attributes use value forms (`data-text="$$x"`), never keyed forms, which a
+  host id with uppercase letters corrupts.
+- K7. No server or user string goes into a `data-*` value of a Rocket template; use `textContent` or the DOM API.
+- K8. Public methods and read-only state are `defineHostProp` entries; an element held in a signal through
+  `data-ref` has a `toJSON()` that returns a small plain value.
+- K9. A module that defines `window.*` helpers read during Datastar's first pass does not import `'datastar'` and
+  loads before the bundle.
+- K10. Shared code comes from `nfsen/format`, `nfsen/clipboard`, `nfsen/download`, `nfsen/host-state`,
+  `nfsen/chunks`, `nfsen/theme-colors` and `nfsen/tz-utils`; no element keeps its own copy.
+- K11. Events keep their names and `bubbles: true` (Rocket's `emit()` adds `composed: true`).
+- K12. Each element declares `manifest.events` and documents its props with `.docs({ description })`.
+- K13. No element defines `render`: a shadow host appends its `<slot>` in `setup`, a light host builds its DOM
+  there. A vendored component with `render` is not loaded.
+- K14. State that must survive a move lives in `nfsen/host-state`: `hostState(host, create)` and `peekState(host)`.
+  `cleanup` calls `whenGone(host, release)`, which after a microtask releases the state of a host no move
+  reconnected, empties it and its shadow root, removes its attributes and detaches it: Datastar keeps every
+  removed Rocket host reachable, and an emptied one keeps 1.7 DOM nodes on average instead of its subtree.
+- K15. `observeProps` handlers never touch the DOM: they run in the middle of a morph, so they queue one
+  `queueMicrotask(update)` per burst, which runs after it.
+
+Load order in `layout.html.twig`:
+
+1. The import map: `datastar`, `nfsen/theme-colors`, `nfsen/tz-utils`, `nfsen/format`, `nfsen/clipboard`,
+   `nfsen/download`, `nfsen/host-state`, `nfsen/chunks`, each with `?v=`. Production caches static files for a
+   year, so a module that another module imports goes through the import map, never a relative import.
+2. The inline module that sets `window.tzOptions`.
+3. Plain modules whose `window.*` helpers `data-init` and `data-effect` expressions read (K9): `nfsen-router`,
+   `alert-template-preview`, `filter-drawer`, `chunks`.
+4. `datastar-rocket.js`, then `datastar-persist.js` (a Datastar plugin).
+5. The elements `nfsen-chart`, `nfsen-sankey`, `nfsen-matrix`, `nfsen-table`, `nfsen-toast`,
+   `nfsen-filter-editor`, then the plain `nfsen-controls` and `clipboard`.
+6. The Starbase components whose lock entry says `"load": true`.
+
+A module with a script tag that is also an import-map target (`chunks`, `clipboard`) uses the identical URL, so it
+runs once. Tests reach Datastar's store through the import map, `(await import('datastar')).root`, never through a
+script URL.
+
+## Starbase components
+
+Components from [Starbase](https://github.com/zweiundeins/starbase) (MIT) are vendored under
+`frontend/js/starbase/<slug>@<version>/`, unchanged, with `LICENSE` and `starbase.lock.json`. The version in the
+folder name is Starbase's content hash of the folder, so the URL changes with every byte. Never edit a vendored
+file: change Starbase first, then move the pin. Only `sb-relative-time` (Alerts, Last triggered) is vendored.
+
+```bash
+node scripts/starbase-vendor.mjs check                        # offline: hashes, lock, licence, imports, Datastar banner
+node scripts/starbase-vendor.mjs pull --from ../starbase --ref <commit> relative-time   # from a local clone, never the network
+node scripts/starbase-vendor.mjs load relative-time on|off    # whether the layout loads it
+node scripts/starbase-vendor.mjs remove relative-time
+node scripts/starbase-vendor.mjs verify-remote --base https://starbase.zweiundeins.gmbh   # optional, online
+```
+
+`pull` copies the committed bytes at the ref (`git archive`), refuses a Starbase whose
+`static/vendor/datastar-rocket.js` has another banner than ours, and records that bundle's sha256 and patch set in
+the lock. A vendored module may import only `'datastar'` or a file inside its own folder. `StarbaseAssets::modules()`
+reads the lock, and the layout loads every `"load": true` entry after the elements; no template names a component.
+A pin bump is a commit that touches only `frontend/js/starbase/**` and names the Starbase commit and every version.
+
+`frontend/css/starbase.css` maps every `--sb-*` token onto nfsen-ng's tokens (`--sb-notch: 0` for smooth corners), so
+one `:root` block serves light and dark. A package that adopts a component:
+
+- maps every `var(--sb-*)` the component reads, or lists it as a size knob (`StarbaseBridgeTest` fails otherwise);
+- overrides `--sb-*` on the host only for a component without slots, and uses `::part()` otherwise, since tokens set
+  on a host inherit into slotted children (slotting: alert, button, card, details, dropdown, echarts, modal, qr-code,
+  tabs, tooltip);
+- relies on page `::part()` rules winning over the component's own without `!important`; an outer shadow or outline
+  added through a part also needs `clip-path: none`, since the notch `clip-path` stays a full rectangle with
+  `--sb-notch: 0`;
+- adds no sheet to `shadowRoot.adoptedStyleSheets`: such sheets survive re-renders but target private class names;
+- gives a token that the component uses in two roles a per-component override: modal and drawer paint their
+  translucent backdrop with `--sb-surface-overlay`, `sb-echarts` its tooltip, so an adopter sets
+  `sb-echarts { --sb-surface-overlay: var(--chart-tooltip-bg); }` (the chart reads it on the host, and its slot holds
+  only a plain fallback);
+- puts the component's rules into `starbase.css` under a comment naming the tag, and checks them in light, dark and
+  forced colours in its e2e file;
+- makes selected, checked, current and invalid states differ from the default in more than font weight (a
+  background and an inset bar, a `Highlight` outline under forced colours);
+- overrides `--sb-warn` and `--sb-danger` with `--warning-emphasis` and `--danger-emphasis` where the component uses
+  them as text colour (4.5:1);
+- checks the component under `data-density="compact"`: Starbase hard-codes control heights.
+
+## Bumping Datastar and Rocket
+
+In this order:
+
+1. Set the pin in `package.json` (`"datastar": "github:starfederation/datastar#v1.0.x"`), run `pnpm install` (it
+   warns that the build differs and keeps the committed bundle) and commit what it writes.
+2. Take the patch set that matches the release from Starbase, which drops a patch once a release contains it:
+   `sh scripts/vendor-rocket.sh --from ../starbase --ref <commit>`. It rebuilds the bundle and rewrites
+   `patches/rocket/`. With no patch left, load the release's `bundles/datastar-rocket.js` directly and delete the
+   folder.
+3. Update the banner line in `tests/Unit/FrontendAssetsTest.php`.
+4. Read `git diff <old> <new> -- library/src/rocket library/src/engine library/src/plugins/watchers/patchElements.ts`
+   in a Datastar clone and note what changed.
+5. Rerun the pantry repro against the new bundle: one morph parks `<section><span id="z">stale z</span></section>`
+   in Datastar's pantry `<div hidden>` and takes only part of it back, then a full-document morph follows. With
+   1.0.2 to 1.0.4 the detached pantry still holds the section and the second morph reuses the stale `#z`. While it
+   does, keep the observer in `nfsen-router.js` that empties the pantry after each morph.
+6. Rerun the Rocket repro pages against the new bundle. Starbase main has `docs/repro/rocket-morph-reentrancy`
+   (#1209, K13). The others are only on Starbase's local branch `docs/rocket-upstream-drafts` until it merges:
+   `rocket-morph-ids` (#1209 without an exception, K13), `rocket-render-ignore-morph` (light `render`, K13),
+   `rocket-removed-elements` (K14), `rocket-queued-definition-children` (K1) and `rocket-observer-rescan` (the
+   reorder cost that `nfsen-table` avoids by emptying its body first). A move that sets a host up again has no
+   page: patch 0002 fixes it. Without that branch, `/tmp/rkt-review/exp.js` on the development host holds one
+   case per page, e1 to e12, run by `run.mjs` next to it, as long as that folder exists. Relax K13, K14 or K15
+   only in a change of its own.
+7. Update the plugin list of K1 in `tests/e2e/rocket.test.mjs` if `library/src/plugins/attributes` changed. Once
+   removed hosts are collected, make its heap case assert that every `WeakRef` clears.
+8. Move the Starbase pin to a commit whose `static/vendor/datastar-rocket.js` has the same banner (`pull` refuses
+   otherwise).
+9. Run `node scripts/starbase-vendor.mjs check`, `sh scripts/vendor-rocket.sh --check`,
+   `node tests/e2e/run.mjs rocket starbase-bridge` and then the whole suite.
+
 ## Dates and Timezones
 
 The container runs `TZ=UTC`. Store timestamps as Unix epochs and format them in the browser, in the display
@@ -273,18 +446,28 @@ docker run --rm --entrypoint php -v "$PWD":/app -w /app deploy-nfsen -d memory_l
 
 - SQLite in tests: `Database::useShared(Database::open(':memory:'))`, and `Database::resetShared()` afterwards.
 - nfdump in tests: `tests/Support/FakeProcessor.php`, and the fake binaries in `tests/Support/bin/` (keep the exec bit).
+- `tests/Helpers.php` is loaded before every test file (`makeCaptureTree()`, `removeTree()`); a helper two files
+  need goes there, so each file also runs on its own.
+- Test doubles are anonymous classes: a named class at the top of a test file gives *Class not found* once Pest
+  runs several files, and php-cs-fixer renames it after the file.
+- OpenSwoole's `Coroutine::run()` hooks file functions, so `mkdir` and `file_put_contents` yield inside it. A
+  timing-sensitive test creates its files before it starts the coroutine it races with.
 
 Browser tests (`tests/e2e/`, raw CDP, no Playwright dependency) drive a running instance:
 
 ```bash
 CHROME=/usr/bin/chromium BASE=http://localhost:8080 node tests/e2e/run.mjs   # all files
-node tests/e2e/flows.test.mjs                                                # one file
+node tests/e2e/run.mjs flows rocket                                          # the named files
+node tests/e2e/flows.test.mjs                                                # one file on its own
 E2E_SKIP_MUTATING=1 node tests/e2e/run.mjs                                   # leave persisted state alone
 ```
 
 `tests/e2e/lib/cdp.mjs` has the helpers (`withPage`, `gotoPage`, `runQuery`, `setRangePreset`, `signalValue`, ...).
 Only the active page is rendered in full: wait for `#page-<id>[data-ready]`. The dev app restarts on every file
-change; rerun a file that failed on a lost context.
+change, and php-via then reloads every tab: the next call of a test fails at once with `AppReloadedError` (*THE
+APP RELOADED the page mid-test*), and the file can be rerun. A navigation the test causes itself is announced
+with `page.expectNavigation()`. `run.mjs` fails a file after `E2E_FILE_TIMEOUT` seconds (900) and kills its
+browsers; Chromium never outlives the Node process, and its profile directory is removed.
 
 The book's screenshots come from `book/_capture.mjs` (same driver, needs ImageMagick):
 
@@ -299,12 +482,18 @@ CHROME=/usr/bin/chromium BASE=http://localhost:8080 node book/_capture.mjs   # O
   only for `_` signals seeded by `data-signals` in markup; never `${...}` around an expression
 - **`$c->sync()`** sends the rendered tab (shell and active page); Datastar diffs it client-side
 - **Broadcast scope**: only contexts that called `$c->addScope('rrd:live')` receive broadcasts
+- **Import broadcasts**: send `admin:import` and the import's `rrd:live` through `ImportDaemon::broadcast($app,
+  $scope)`, which renders at most one every 250 ms and always sends the last state; `now: true` for the start,
+  cancel and end of a pass. One render per imported file for every tab ran the worker out of memory
+- **Memory**: one worker holds every tab and runs with `memory_limit` 512M (images, systemd unit). Never read an
+  unbounded nfdump output whole: let nfdump aggregate (`-s ... -n`, `-c`), as the alert checks' `-s proto` does
 - **Config**: `Config::$cfg` is empty until `Config::initialize()` runs; don't read config at module load
 - **nfcapd path structure**: `<profile>/<source>/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`
 - **Import daemon**: embedded in `app.php`; `AppStartup::boot()` (from `onStart()`) runs the catch-up in a coroutine
   and polls inotify every second with `setInterval` (`ImportDaemon::pollOnce()`)
-- **Shutdown**: `AppStartup::shutdown()` (from `onShutdown()`, on every stop) stops the daemons, the top-N
-  collector and the alert checks, refuses new interactive nfdump slots and kills the runs of tabs and MCP calls.
+- **Shutdown**: `AppStartup::shutdown()` (from `onShutdown()`, on every stop) stops the event-loop lag probe, the
+  deferred import broadcasts, the daemons, the top-N collector and the alert checks, refuses new interactive nfdump
+  slots and kills the runs of tabs and MCP calls.
   A new loop or coroutine that can run for more than a moment ends there or checks `$app->isShuttingDown()`, or it
   holds every stop for `max_wait_time`
 - **`{{ bind() }}` in event handlers**: `{{ bind(signal) }}` expands to `data-bind="hash"` (an HTML attribute).

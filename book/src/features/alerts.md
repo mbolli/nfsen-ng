@@ -14,17 +14,15 @@ actions in `AlertActions.php`.
 | Profile, sources | The nfdump profile, and the sources to sum; none means every configured source, including ones added later |
 | Metric | flows / packets / bytes |
 | Operator | `>`, `>=`, `<`, `<=` |
-| Threshold type | **Absolute** value, or **percent of a rolling average** over a window (10 min to 24 h) |
+| Threshold type | **Absolute** value, or **percent of a rolling average** over a window (10 min to 24 h); see [Baseline](#baseline-of-percent-of-average-rules) |
 | Cooldown | Five-minute intervals to wait before notifying again while the rule keeps firing |
 | Traffic filter | Optional raw nfdump filter expression |
 | Notifications | Email and/or webhook (HTTP POST, JSON payload; see [libcurl 8.20 and OpenSwoole](../deployment/installation.md#libcurl-820-and-openswoole)) |
 
 Rules stay in `preferences.json` and their runtime state in `alerts-state.json`:
 whether the rule is firing, the remaining cooldown, and the last interval
-evaluated. Percent-of-average rules get an unreachable threshold
-(`PHP_FLOAT_MAX`) while the rolling average is still zero: a rule can't fire
-against a baseline that doesn't exist yet, and the interval is logged as not
-evaluated.
+evaluated. A percent-of-average rule without a baseline is not evaluated for
+that interval, and the log says why.
 
 ## Evaluation per interval
 
@@ -41,18 +39,68 @@ for a source that is still importing. The slot is the interval's start, and
 - **Without a traffic filter**, a rule reads each source's stored value for the
   interval right after that source's import (`fetchLatestSlot()` of the
   datasource) and sums the sources, so the value is the stored rate.
-- **With a traffic filter**, it runs one `nfdump` over the interval's capture
-  files of its sources, with the filter, and sums the matching flows, packets and
-  bytes. The value is a total per five minutes, not a rate, and the form says so.
-  This is what lets a rule watch "ICMP only" or "this one subnet".
+- **With a traffic filter**, it runs one `nfdump -s proto -n 0 -o csv` over the
+  interval's capture files of its sources, with the filter, and adds up the
+  flows, packets and bytes of the protocol rows (`AlertManager::sumProtocolRows()`).
+  nfdump does the summing, so a busy interval costs the worker no more memory
+  than a quiet one; packets and bytes count the input direction, as nfdump's
+  per-protocol statistic prints them. The value is a total per five minutes, not
+  a rate, and the form says so. This is what lets a rule watch "ICMP only" or
+  "this one subnet".
 
-A value that cannot be read (a failed nfdump run, a datasource that does not
-answer, no baseline yet) leaves that interval of that rule unevaluated with the
-reason in the log, rather than counting it as zero. The rule form validates the
+The live evaluation runs its nfdump calls as background work (see
+[Nfdump Integration](../architecture/nfdump-integration.md#processes-and-slots)):
+the import daemon waits for it, so one evaluation waits at most 60 seconds in
+total (`LIVE_SLOT_BUDGET_SECONDS`) for the processes of all its filtered rules. A
+rule still without one is left out of that interval with `no free nfdump
+process` in the log. Each check runs its own `Nfdump` instance.
+
+A value that cannot be read (a failed nfdump run, an nfdump output without a
+per-protocol statistic, a datasource that does not answer, no baseline yet)
+leaves that interval of that rule unevaluated with the reason in the log, rather
+than counting it as zero. The rule form validates the
 filter with `nfdump -Z` and refuses to save one nfdump rejects.
 
 `fetchCurrentSlot()` and `testRule()` use the same slot and sources as the live
 evaluation, so testing a rule and evaluating it behave identically.
+
+## Baseline of percent-of-average rules
+
+A percent-of-average rule compares the checked interval with its average over
+the window before that interval (`AlertManager::baseline()`), in the unit of the
+value:
+
+- **Without a filter**, the average comes from the datasource,
+  `fetchRollingAverage($sources, $profile, $window, $slot)`: per second on RRD,
+  per 5 minutes on VictoriaMetrics, over the window that ends where the checked
+  interval starts. The value is each source's stored interval,
+  `fetchLatestSlot()`, which leaves out a source more than one interval behind
+  the newest.
+- **With a filter**, the stored series cannot say how much of the traffic the
+  filter matched, so the rule averages its own values. The live evaluation of an
+  enabled rule records each checked interval's total in `alert_samples`
+  (`AlertSampleRepository`), keyed by rule and interval, with a fingerprint of
+  its profile, sources, filter and metric. The baseline is the mean of the
+  samples with the current fingerprint in the window before the checked
+  interval. An empty or failed read records nothing; an interval that matched
+  nothing records 0. Test only reads.
+
+There is no baseline until one earlier interval is recorded, and none while the
+average is zero, for either kind. So a filtered rule on traffic that is normally
+absent (`proto icmp` on a quiet link) cannot fire on a burst of it, and a firing
+*below x %* rule stays firing while its filter matches nothing, since those
+intervals are not evaluated.
+
+At each check, the profile's rules drop the samples more than 24 hours older than
+the checked interval. An interval checked late keeps the samples after it; those
+go only when the clock or `NFCAPD_TZ` moved back (the rule holds a sample more
+than an hour ahead of now and the checked interval is not). Changing a rule's
+profile, sources, filter or metric starts its baseline over from the next import
+or check, and deleting a rule drops its samples and its Test events.
+
+Events that filtered percent-of-average rules recorded before the samples existed
+(schema version 3) keep their threshold, which was a per-second average of all
+traffic; the history now labels it as a total per 5 minutes.
 
 ## Fired and resolved
 
@@ -66,7 +114,12 @@ Events live in SQLite (`alert_events`, see [SQLite store](sqlite-store.md)),
 written by `AlertEventRepository`: `fired`, `resolved` and `test`, with the rule,
 profile, sources, metric, operator, value and threshold. The page shows the last
 50, newest first, and the rules table reads each rule's last fired event from
-them. The sidebar counts the firing rules (`AlertManager::firingCount()`). When
+them. **Last triggered** is an `sb-relative-time` element (vendored from Starbase):
+the server renders the label (*12 minutes ago*), and the element keeps it
+counting while the page is open (*now*, *30 seconds ago*, *yesterday*, *last
+week*). On hover it shows the date and time with seconds, in the display
+timezone: its `time-zone` attribute is the capture timezone when Settings say so,
+and empty (the browser's) otherwise. The sidebar counts the firing rules (`AlertManager::firingCount()`). When
 the store is unavailable, the history says *History unavailable* with the reason,
 and evaluation and notifications go on.
 
@@ -80,14 +133,22 @@ fails, the next start tries again.
 
 `test-alert?id=` evaluates the rule against the newest complete interval, with
 the sources the live evaluation would use, records a `test` event, and sends the
-notifications only when the condition holds. It never touches the rule's state or
-cooldown. The result opens as a dialog rendered into the shell's modal root,
-so live updates do not close it. The dialog shows would fire or would not,
+notifications only when the condition holds. It never touches the rule's state,
+cooldown or samples. The result opens as a dialog rendered into the shell's modal
+root, so live updates do not close it. The dialog shows would fire or would not,
 the value and threshold or the reason there are none, the interval, the four
-rendered templates, and what happened with the notification: sent, sent to at
-least one of the webhook and the email address (`AlertManager` reports one result
-for both channels), not sent, or not sent because email is off on the server
-(`NFSEN_ALERT_EMAIL_FROM` is not set).
+rendered templates, and one line per channel (`TestResult['delivery']`):
+
+- **Sent** (the email names its address), when the webhook answered 2xx or
+  `mail()` accepted the email;
+- **Failed** and why: the webhook's status or error, or the mail error;
+- **Not configured**, or *Not configured on this server* for an email while
+  `NFSEN_ALERT_EMAIL_FROM` is not set;
+- **Not sent**, because the rule would not fire or could not be evaluated.
+
+Test waits up to 10 seconds for the webhook's answer. A live notification does
+not wait: it posts from its own coroutine and logs a failed webhook. The reasons
+name the average window as the form does (*the 1 h average*).
 
 ## Actions
 

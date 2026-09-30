@@ -81,7 +81,10 @@ restart; see [Configuration](../deployment/configuration.md).
 ![Settings, System](../images/08-page-settings-system.png)
 
 **System** shows what the instance runs with. **In effect** lists the values the
-app uses, each marked as a default or with where it came from. **Environment
+app uses, each marked as a default or with where it came from, among them how
+many nfdump processes may run at once (**Parallel nfdump processes**, *auto*
+when derived from the **CPU cores**), the **nfdump filter threads** each one
+starts, and the **nfdump slots in use** right now. **Environment
 variables** lists every variable nfsen-ng reads, grouped, with its value, whether
 it was set or defaulted, and what it does; tokens are masked. If a `settings.php`
 is loaded, the tab says so, because its values win over the variables.

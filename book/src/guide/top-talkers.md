@@ -23,7 +23,7 @@ flow records, addresses (including next hop and router), ports and protocols,
 AS, interfaces, ToS, masks, VLAN, MAC, MPLS, NSEL (Cisco ASA) and NEL (NAT).
 Statistics that the installed nfdump cannot compute are shown but disabled,
 marked *not supported by this nfdump*, with nfdump's reason in the tooltip. The
-nfdump 1.7.8 in the Docker image, for example, rejects the five NEL statistics.
+nfdump 1.7.10 in the Docker image, for example, rejects the five NEL statistics.
 
 Choosing a statistic never runs a query. It shows the estimate for the new
 statistic, and if you ran that statistic before in this tab, its last result
@@ -43,6 +43,14 @@ The range, the sources and the protocol come from the controls bar. Check the
 estimate, then press **Run**. The result card is titled with what it ranks
 (*Dst IP address, ordered by bytes*) and shows the exact nfdump command it ran,
 with a **Copy** button and the time it took.
+
+A large query runs faster on a server with several nfdump processes: nfsen-ng
+splits a read of more than a second over at least 12 capture files into time
+slices, runs one nfdump per slice at the same time and merges them into exactly
+the rows a single run prints. The progress then counts files (*Read 120 of 288
+files in 4 nfdump processes*), and the status says *Done in 3.1s with 4 nfdump
+processes.* Rankings by a rate (packets or bits per second, bytes per packet)
+and **Bi-directional** always run as one process.
 
 The table sorts by any column, and **Columns** hides the ones you don't need
 (remembered by this browser). **Export** saves the rows as CSV or JSON or prints
@@ -85,9 +93,13 @@ that statistic alone. The columns change with the aggregation: aggregating by
 destination port yields a table of ports, because the fields you did not
 aggregate on no longer identify a row.
 
-**Bi-directional** is the one query whose output format nfdump chooses for
+**Bi-directional** merges both directions of a conversation into one row: the
+request and its answer become one flow record with **In** and **Out** counters
+and **Flows** 2. It is the one query whose output format nfdump chooses for
 itself: it prints its merged-flow table as fixed-width text whatever `-o` it is
 given. nfsen-ng reads that table back into columns, so it behaves like any other
-result, with nfdump's text one click away under **Original**.
+result, with nfdump's text one click away under **Original**. It needs nfdump
+1.7.10: a gcc build of 1.7.8 or 1.7.9 lists the two directions as separate rows
+with an empty Out side, and the Health page warns about it.
 
 ![A bi-directional statistic](../images/guide-statistics-bidirectional.png)

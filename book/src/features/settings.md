@@ -84,6 +84,11 @@ app-wide cache that lives 30 seconds.
 variable, or `settings.php`), and every `EnvRegistry` variable by group with its
 value (`EnvVar::display()` masks secrets), whether it was set, and its
 description. When a `settings.php` is loaded, a notice says its values win.
+*In effect* (`SettingsPage::deployment()`) includes the nfdump process budget:
+**Parallel nfdump processes** (*6, auto* on 20 cores), **CPU cores** with the file or call
+they were read from, **nfdump filter threads** (the `-W` passed), and **nfdump
+slots in use** by class, which is counted on every render instead of coming from
+the 30 second cache.
 
 ![Settings, System](../images/08-page-settings-system.png)
 

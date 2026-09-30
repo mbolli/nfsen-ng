@@ -20,12 +20,13 @@ for new files, starting, or disabled (`NFSEN_SKIP_DAEMON`). Below that:
   milliseconds per file.
 - **Pending files**: capture files of the last seven days that are not imported
   yet.
-- **Top-N collector**: how many capture files wait for their top-N lists, how
-  many are done or failed, the time the last one took, and how many days are
-  kept. **Collect missing top-N now** looks for intervals of the retention window
-  that have no lists yet and queues up to 500 of their files at once, instead of
-  waiting for the collector's next pass. See
-  [Overview](overview.md#top-of-the-range) for what the lists are for.
+- **Top-N collector**: how many capture files wait for their top-N lists or are
+  being collected, how many are done or failed, the time the last one took, and
+  how many days are kept. **Collect missing top-N now** looks for intervals of
+  the retention window that have no lists yet and queues up to 500 of their
+  files at once, and more as those are done, instead of waiting for the
+  collector's next pass. See [Overview](overview.md#top-of-the-range) for what
+  the lists are for.
 
 The table lists each nfdump profile with its daemon status, its last automatic
 import and how many directories it watches. New nfcapd files are picked up and
@@ -53,7 +54,8 @@ and a destructive reset would be pointless there.
 **Scan ports** decides whether a manual pass also rebuilds the per-port series.
 While a pass runs, the card shows its progress, the time left and the current
 file, the controls bar shows an import chip, and **Cancel import** stops it.
-Warnings and errors of the last pass are listed under **Import log**.
+Warnings and errors of the last pass are listed under **Import log**, the newest
+100 of them, with the count of all (*3 warnings, 1 error, the last 100 shown*).
 
 ## Capture sources
 
@@ -76,9 +78,22 @@ same filesystem share a row. It turns to a warning at 85 % and an error at 95 %,
 since nfcapd, the import and the SQLite store fail once a disk is full.
 VictoriaMetrics data lives elsewhere and is not measured.
 
-**System** lists the nfdump version, the active nfdump processes against the
-maximum (and how many belong to the import), the uptime, the datasource, and the
-PHP, OpenSwoole and SQLite versions with SQLite's journal mode.
+**System** lists the nfdump version, the CPU cores nfsen-ng may use and where
+that number came from, **Parallel nfdump processes** (for example *6 (auto, with
+-W 2; each uses about 2 to 3 CPU cores)* on 20 cores), **Active queries** (*1 of 6
+(1 interactive, 0 background)*, plus how many wait), the **Event loop lag**, the
+uptime, the datasource, and the PHP, OpenSwoole and SQLite versions with SQLite's
+journal mode. How many nfdump processes run at once is set by
+`NFSEN_NFDUMP_MAX_PROCESSES`; see
+[nfdump processes and CPU cores](../deployment/configuration.md#nfdump-processes-and-cpu-cores).
+
+**Event loop lag** says how late the server answers: one process serves every
+tab, and while it is busy with something (a render, a scan of a capture
+directory, a database write), every click, live update and timer waits. The row
+shows the p95, the median (p50) and the maximum delay over the last minute. A
+p95 of 100 ms or more gets the warning sign, 1 s or more the error sign; either
+means the server is too busy for its tabs, usually during a large import or
+backfill.
 
 ## Checks
 
@@ -95,8 +110,12 @@ with a note on what to do about anything that isn't OK:
 - **Timezone**: the PHP timezone, `NFCAPD_TZ`, and **nfcapd file time**, which
   warns when the newest file's name is far from the time it was written, the
   usual sign of a wrong `NFCAPD_TZ`.
-- **nfdump**: the binary and its version, and **Max processes**, how many of the
-  allowed nfdump processes run right now.
+- **nfdump**: the binary; **Minimum version**, a warning below 1.7.10 whose note
+  says what the installed version lacks (the security fixes of 1.7.9, or the
+  Bi-directional pairing that gcc builds of 1.7.8 and 1.7.9 get wrong); **CPU
+  cores**, **Parallel processes** and **Filter threads** (the `-W` passed to
+  every run); and **Slots in use**, how many nfdump processes run right now, for
+  user queries and for background work.
 - **Sources**, **Import Daemon** and **nfcapd Paths**: the configured sources, the
   daemon, and each capture directory with its freshness.
 - **RRD Storage** or **VictoriaMetrics**: the datasource.

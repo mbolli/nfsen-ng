@@ -24,6 +24,12 @@ Tracked as [GitHub issues](https://github.com/mbolli/nfsen-ng/issues).
   checked against nfdump while you type, and a filter builder keeps saved filters
   on the server. Alerts record resolved events, and Health shows capture
   freshness, disks and the recent log. See the [Quick Tour](guide/quick-tour.md).
+- **Several nfdump processes per query** (unreleased). The process limit follows
+  the CPU cores (`auto`), user queries go ahead of the import and the top-N
+  collector, and large Top Talkers, Conversations and Overview exact runs, filtered
+  graphs and the top-N backfill run in parallel, with results identical to a
+  single nfdump run. The Docker images ship nfdump 1.7.10, and Health shows the
+  server's event-loop lag. See [Nfdump Integration](architecture/nfdump-integration.md).
 - **[#152: Sankey diagram](https://github.com/mbolli/nfsen-ng/issues/152), done.**
   [Conversations](guide/conversations.md) shows the top source and destination
   pairs as a Sankey, a Matrix and a ranked table, grouped by address, /24, /16 or

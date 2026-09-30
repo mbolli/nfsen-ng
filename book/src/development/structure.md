@@ -20,20 +20,27 @@ backend/
   query/                   transport-agnostic queries: TimeWindow, StatsQuery, FlowsQuery,
                             MatrixQuery, TopNQuery, TimelineQuery, LoadQuery, CoverageQuery,
                             FilterComposer, ProtocolFilter, StatisticCatalog, FilterGrammar,
-                            QueryEstimator, CostEstimate, ConversationPayload.
+                            QueryEstimator, CostEstimate, ConversationPayload, and
+                            PartitionPlanner with PartitionMerge (one statistic as parallel
+                            time slices, merged exactly).
                             Actions and the MCP tools both call these; neither calls the other
   store/                   the SQLite store (namespace mbolli\nfsen_ng\store): Database,
                             Migrator, migrations/, TopNRepository, SavedFilterRepository,
-                            SavedFilterSeeder, AlertEventRepository, QueryRunRepository
+                            SavedFilterSeeder, AlertEventRepository, AlertSampleRepository,
+                            QueryRunRepository
   common/                  Config, Settings, EnvRegistry, UserPreferences, HealthChecker,
                             HealthMetrics, AlertManager, ImportDaemon, Import, TopNCollector,
-                            ImportStats, LogRing, Debug, GeoIpDatabase, IpLookup, Table, ...
+                            ImportStats, CpuBudget (cores and the nfdump process limit),
+                            LoopLag (the event-loop lag probe), StarbaseAssets (the vendored
+                            components to load), LogRing, Debug, GeoIpDatabase, IpLookup,
+                            Table, ...
   mcp/                     optional read-only MCP server: ToolRegistry, Guard, HttpEndpoint,
                             Tool/ (one class per tool)
   datasources/             Datasource and TotalsProvider interfaces, Rrd, VictoriaMetrics
   processor/               Nfdump (the nfdump subprocess wrapper), NfdumpSlots (how many run
-                            at once, and which query owns each), FilterValidator (nfdump -Z),
-                            FilteredSeries, MultiStatCsvParser, NfdumpSummary
+                            at once, in which class, and which query owns each),
+                            FilterValidator (nfdump -Z), FilteredSeries, MultiStatCsvParser,
+                            NfdumpSummary
   templates/
     layout.html.twig        the document: head scripts, sidebar, controls bar, graph, pages
     shell/                  sidebar, controls-bar, traffic-graph, page-header, page-skeleton,
@@ -49,24 +56,40 @@ backend/
 frontend/
   css/
     tokens.css              design tokens: neutral surfaces and text, status and series colours
+    starbase.css            Starbase's --sb-* tokens mapped onto the tokens above
     ui.css                  elements and shared components (button, card, tabs, menu, notice, ...)
     shell.css, controls-bar.css, traffic-graph.css, query-kit.css, drawer.css   shell parts
     nfsen-ng.css            pieces several pages share: chart containers, result tables, aggregation controls
     pages/                  one stylesheet per page
-  js/components/            Web Components and helpers: nfsen-router, nfsen-chart, nfsen-table,
-                            nfsen-sankey, nfsen-matrix, nfsen-filter-editor, nfsen-controls,
-                            nfsen-toast, nfsen-tooltip, theme-colors, tz-utils, ...
-  js/datastar.js, echarts.min.js
-                            vendored, copied in by `pnpm install`'s postinstall (see package.json)
+  js/components/            Rocket elements: nfsen-chart, nfsen-table, nfsen-sankey,
+                            nfsen-matrix, nfsen-toast, nfsen-filter-editor.
+                            Plain modules loaded before the bundle: nfsen-router,
+                            alert-template-preview, filter-drawer, chunks (nfsen/chunks).
+                            Plain modules after it: datastar-persist (a Datastar plugin),
+                            nfsen-controls, clipboard (nfsen/clipboard).
+                            Imported only: format, download, host-state, theme-colors, tz-utils
+  js/datastar-rocket.js(.map)
+                            Datastar 1.0.4 with Rocket and the patches of patches/rocket/,
+                            rebuilt by `pnpm install` (scripts/vendor-rocket.sh)
+  js/echarts.min.js         copied in by `pnpm install`'s postinstall (see package.json)
+  js/starbase/              vendored Starbase components, one <slug>@<version>/ folder each,
+                            starbase.lock.json and Starbase's LICENSE
+                            (scripts/starbase-vendor.mjs; see AGENTS.md)
 tests/
   Unit/                    Pest unit tests, one file per class roughly
   Feature/                 tests that exercise real I/O (RRD file creation, etc.)
   Arch/                    architecture rules (namespaces, dependencies)
-  Support/                 FakeProcessor and fake nfdump binaries for the tests
+  Helpers.php              functions Pest loads before every file (capture trees and the like)
+  Support/                 FakeProcessor, fake nfdump binaries, nfcapd-written capture
+                            fixtures (captures/) and the Starbase hash fixtures (starbase-walk/)
   e2e/                     browser tests driving a real headless Chrome over CDP; run.mjs runs
-                            them all against a live instance (BASE=, CHROME=)
+                            them against a live instance (BASE=, CHROME=)
 deploy/
   Dockerfile, Dockerfile.dev, docker-compose*.yml, Caddyfile*, systemd/, unraid/
+patches/rocket/            the Rocket patches the bundle is built with, taken from Starbase,
+                            and rocket.lock.json (Starbase commit, banner, sha256 of each)
+scripts/                   vendor-rocket.sh (builds the Datastar bundle), starbase-vendor.mjs
+                            (vendors and checks Starbase components), seed and triage helpers
 .github/workflows/
   release.yml              version bump + tag, manually triggered
   docker-publish.yml       builds/pushes the app image to GHCR (bundled Caddy uses the stock image)
@@ -96,5 +119,15 @@ book/
 5. **Tests**: Pest in `tests/Unit/`, and an e2e check in `tests/e2e/<page>.test.mjs`
    for anything a user clicks.
 
-`AGENTS.md` at the repo root has the Datastar attribute syntax, the CSS rules and
-the common pitfalls; read it before your first template edit.
+`AGENTS.md` at the repo root has the Datastar attribute syntax, the CSS rules, the
+rules for Rocket elements and Starbase components, and the common pitfalls; read
+it before your first template edit.
+
+## Third-party notices
+
+The files nfsen-ng ships from other projects keep their licence next to them:
+`frontend/js/datastar.LICENSE.md` (Datastar, MIT), `frontend/js/echarts.LICENSE`
+and `frontend/js/echarts.NOTICE` (Apache ECharts, Apache-2.0) and
+`frontend/js/starbase/LICENSE` (Starbase, MIT). `pnpm install` copies the first
+three, `scripts/starbase-vendor.mjs pull` the last; the Docker image ships them
+with `frontend/`.

@@ -11,7 +11,11 @@ page shares.
 `TrafficGraph` (`backend/pages/TrafficGraph.php`) is a shell module, rendered by
 `shell/traffic-graph.html.twig` above the page content. There is one
 `<nfsen-chart id="trafficGraph">` for the whole app; it stays in the DOM when you
-switch pages, so the chart does not rebuild. `TrafficGraph::mode()` decides what
+switch pages, so the chart does not rebuild. `nfsen-chart` is a Rocket element:
+its shadow root holds only a `<slot>`, the chart container stays in the light DOM
+as `data-ignore-morph data-ignore`, and its ECharts instance, zoom and brush live
+in `nfsen/host-state`, so a morph that moves the element keeps them. The Flows
+*Traffic over time* chart is a second `nfsen-chart`. `TrafficGraph::mode()` decides what
 it plots:
 
 | Mode | Page | Series |
@@ -57,8 +61,12 @@ and assembles the same series shape the datasources return.
   The result is kept in `FilteredGraphCache`, so the renders that follow cost
   nothing.
 - The number of nfdump runs is bounded by the resolution, not by the width of
-  the window. Progress is exact (bins done out of bins), and Kill stops the run
-  between bins, keeping what was already scanned.
+  the window. The bins run side by side, one per free nfdump process, and give a
+  process back after each bin to a user query that waits (see
+  [Nfdump Integration](../architecture/nfdump-integration.md#filtered-graphs-in-parallel)).
+  Progress is exact (bins done out of bins). Kill stops every bin in flight at
+  once and keeps the bins that finished; the cancelled ones stay out of the
+  series.
 - The window is clamped by `NFSEN_MAX_STATS_WINDOW`, and the estimate
   (`estimate-query?target=overview`) says what a build will read.
 - The Ports display is disabled; the filter replaces it. The global protocol
@@ -91,9 +99,11 @@ produce its answer:
   interface. It stores the top 50 by bytes per statistic and source.
 - **`TopNRepository`** (`backend/store/TopNRepository.php`) writes those rows to
   `topn_5m` and keeps exact hourly and daily sums of them in `topn_1h` and
-  `topn_1d`, updated incrementally, so every range answer equals summing the
-  five-minute rows grouped by key. The only truncation is the per-interval top
-  50. See [SQLite store](sqlite-store.md) for the schema.
+  `topn_1d`, so every range answer equals summing the five-minute rows grouped
+  by key. An interval is stored with a pending mark, and the collector adds the
+  marked intervals to the sums every 48 intervals; until then a range read takes
+  the marked intervals from `topn_5m`. The only truncation is the per-interval
+  top 50. See [SQLite store](sqlite-store.md) for the schema.
 - **`TopNQuery`** (`backend/query/TopNQuery.php`) answers a range: the window is
   rounded down to five minutes and read as `[start, end)`, split into segments
   (five-minute rows for ranges up to six hours and the ragged edges, whole hours

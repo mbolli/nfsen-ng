@@ -61,9 +61,18 @@ would log it and answer `500`, which the browser does not show.
 
 ## Editor and grammar
 
-The Builder tab wraps its textarea in `<nfsen-filter-editor>`
-(`frontend/js/components/nfsen-filter-editor.js`); the Raw filter tab is a taller
-plain textarea bound to the same `drawer_filter`. The grammar comes from
+The Builder tab's textarea is a plain bound `<textarea id="drawerFilterTextarea">`.
+Next to it sits `<nfsen-filter-editor id="drawerEditor" for="drawerFilterTextarea">`
+(`frontend/js/components/nfsen-filter-editor.js`), a Rocket element without
+children that finds the textarea through `for`, its suggestion list through
+`list` and its status element through `status`, and takes the keywords from
+`grammar`. It adds its listeners to the textarea, so the textarea's own
+`data-bind` and `@post` handlers stay outside Rocket, and it binds a textarea
+that a render replaced when that one gets the focus. The drawer's other
+helpers (opening, the draft, the saved-list search) are plain functions in
+`frontend/js/components/filter-drawer.js`, which loads before the Datastar
+bundle because the drawer's `data-init` reads them. The Raw filter tab is a
+taller plain textarea bound to the same `drawer_filter`. The grammar comes from
 `FilterGrammar` (`backend/query/FilterGrammar.php`):
 
 - `fields()`: 18 Basic and 17 Advanced primitives, each with a label, a snippet
@@ -72,7 +81,7 @@ plain textarea bound to the same `drawer_filter`. The grammar comes from
 - `examples()`: eight complete filters with a description.
 - `keywords()`: every word the snippets spell out, plus protocol names and a few
   more nfdump words, sorted and unique. The template passes them to the editor in
-  `data-grammar`.
+  its `grammar` attribute.
 
 A click on a field or an example calls the editor's `insert()`, which puts the
 snippet at the cursor, adds a space on either side where it touches other text,
@@ -81,7 +90,7 @@ the next placeholder after the selection, forward only, so Tab leaves the
 textarea once none is left. While the user types, the editor offers up to eight
 keywords that start with the word before the caret; **Escape** closes that list
 and not the drawer. Suggestions and insertions are announced through the hidden
-status element named by `data-status`, because a textarea cannot be a combobox.
+status element named by `status`, because a textarea cannot be a combobox.
 
 `FilterGrammar::PLACEHOLDERS` holds a sample value for every placeholder.
 `FilterGrammarTest` fills every snippet with them and runs it, and every example,
@@ -122,8 +131,8 @@ one draft at a time.
 The right-hand column lists `SavedFilterRepository::list()`; uniqueness, order,
 origins and the seeding of presets are described under
 [SQLite Store](sqlite-store.md#saved-filters). The server sends the whole list,
-and the search box hides rows in the browser (`nfsenFilterEditor.matches()`, by
-name or expression, case-insensitive). A filter of origin `preference` or
+and the search box hides rows in the browser (`nfsenFilterEditor.matches()` in
+`filter-drawer.js`, by name or expression, case-insensitive). A filter of origin `preference` or
 `deployment` carries a *preset* badge.
 
 | Control | Action |

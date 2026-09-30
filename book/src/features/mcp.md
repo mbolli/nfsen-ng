@@ -92,7 +92,9 @@ cannot watch.
 - **`traffic_timeline`**: the series behind the Overview graph, broken down by source, protocol or
   port, measured in flows, packets, bytes or bits.
 - **`current_load`**: the latest interval next to its rolling average, with the multiple
-  between them. A ratio of `0` means the average is zero, not that traffic stopped.
+  between them. The latest interval is each source's newest stored one, leaving out a source
+  more than one interval behind; the average covers the window before the newest complete
+  interval. A ratio of `0` means the average is zero, not that traffic stopped.
 - **`data_coverage`**: first sample, last sample and last import per source. An import that
   has not caught up looks exactly like a quiet network; this is how you tell them apart.
 - **`status`**: the checks of the Health page (datasource reachability, capture collection,

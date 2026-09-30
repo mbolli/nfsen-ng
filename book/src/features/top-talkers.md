@@ -24,7 +24,7 @@ systems. Page: `TalkersPage` (`backend/pages/TalkersPage.php`), actions in
   checked against the catalog.
 - `unsupported()`: the NEL elements (`nevent`, `nsrcip`, `ndstip`, `nsrcport`,
   `ndstport`) probed once per nfdump binary with `nfdump -Z '' -s <element>/bytes`.
-  nfdump 1.7.8 exits 1 with *Unknown statistic*, and the select shows those
+  nfdump 1.7.10 exits 1 with *Unknown statistic*, and the select shows those
   options disabled with that reason. `TalkersPage` caches the answer for 60
   seconds per binary.
 
@@ -41,6 +41,15 @@ clamped by `NFSEN_MAX_STATS_WINDOW`. It runs through `QueryRunner` with progress
 and Kill, and its estimate is `estimate-query?target=talkers`. The
 server-owned `_stats_rows` signal carries the row count of the stored result,
 shown as "N rows returned" when the run finishes.
+
+`StatsQuery::runPartitioned()` splits a large read into time slices that run as
+parallel nfdump processes and merges them exactly (see
+[Statistics in parallel](../architecture/nfdump-integration.md#statistics-in-parallel)).
+`StatsQuery::splittable()` decides whether a statistic can be split at all: only
+rankings by flows, packets or bytes, and Flow Records only with an `-A`
+aggregation. The estimate counts a split only for a statistic that can take one,
+the progress counts files across the parts, and the final status names the
+processes the result came from. The side panels split the same way.
 
 The result is stored per statistic in `TalkersState`, with a fingerprint of its
 inputs. The window part of the fingerprint is `live:<width>` while the range is

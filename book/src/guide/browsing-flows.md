@@ -68,7 +68,10 @@ Click an IP address to [look it up](ip-lookup.md).
 **Raw output** is what nfdump printed, untouched: the command it ran (with
 **Copy**, handy for running the same query in a terminal), the lines nfdump
 printed beside the data, and its output with **Copy** and **Download**. The page
-keeps the first 5 MiB of a very large output and says so.
+keeps the first 5 MiB of a very large output and says so. A **Copy** button
+waits for output still on its way, works on an instance served over plain HTTP
+too, and answers *Copied*, *Nothing to copy* or *Copy failed*; a screen reader
+hears the same.
 
 **Summary** puts the rows into context, in three blocks:
 
@@ -100,7 +103,9 @@ to it, because they truncate and regroup the table rather than change which
 records match, so a table of 100 rows can sit beside a graph of every matching
 byte. And plotting a filter means reading capture files, one nfdump run per
 interval, so it never builds on its own: the section says what it would read and
-waits for **Build graph**.
+waits for **Build graph**. The runs go several at a time where the server allows
+more than one nfdump process, and **Kill** stops them all, keeping the intervals
+that finished.
 
 If the query or the window moves after a build, the section says so and keeps
 the graph it built.

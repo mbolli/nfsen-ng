@@ -41,7 +41,7 @@ whether it was set or defaulted.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NFSEN_STATE_DIR` | `backend/settings` | Directory for mutable runtime state: `preferences.json`, the alert rule state and the SQLite store `nfsen-ng.sqlite` (saved filters, alert history, top-N data). It must be writable. The Docker image sets this to `/var/lib/nfsen-ng/state` (on the persistent volume); see [State & persistence](#state--persistence). |
-| `NFSEN_SETTINGS_FILE` | `backend/settings/settings.php` | Path to a custom (deprecated) settings file (used only if it exists). |
+| `NFSEN_SETTINGS_FILE` | `backend/settings/settings.php` | Path to a custom (deprecated) settings file. The default path is used only if the file exists; a path set here must exist, or the server stops at start. |
 | `NFSEN_PREFERENCES_FILE` | `<state dir>/preferences.json` | Override just the preferences file path (normally derived from `NFSEN_STATE_DIR`). |
 | `NFSEN_DATASOURCE` | `RRD` | Datasource: `RRD` or `VictoriaMetrics`. |
 | `NFSEN_PROCESSOR` | `NfDump` | Flow processor. Only `NfDump` is implemented. |
@@ -126,6 +126,17 @@ query never queues behind background work: it waits only for a running nfdump
 to end. With a limit of `1`, a user query waits for at most one background run
 that had already started.
 
+One user query may hold several slots. A filtered graph runs as many intervals
+at once as there are free slots, and gives one back after each interval to a
+user query that waits or to background work that needs one. A large Top Talkers,
+Conversations or Overview exact run splits into time slices on up to 8 slots.
+Once the limit is 3 or more it leaves one free for another query when 3 or more
+are free, and otherwise takes up to 2. It gives each slot back as its slice ends. The top-N collector collects up to half the slots'
+worth of capture files at once. With `auto` on fewer than 12 cores the limit is
+2 or 3, so a split runs 2 processes and the collector takes one file at a time.
+See [Nfdump Integration](../architecture/nfdump-integration.md#statistics-in-parallel)
+for how a split query stays exact.
+
 The **nfdump** group on the **Health** page shows the detected cores and where
 the number came from, the process limit, the `-W` in use and the slots in use by
 class. **Settings > System** lists the same under *In effect*.
@@ -159,8 +170,9 @@ source come to roughly 180 MB for the per-interval lists and about as much again
 for the hourly and daily sums. The variable is read at start. After a restart
 with a lower retention, the pruner removes the older days, starting five minutes
 in and then hourly; after a raise, the gap filler queues the capture files of the
-older days that still exist, up to 500 every ten minutes while the collector is
-idle. `0` stops collection, and the Overview table then offers the exact run for
+older days that still exist, 500 at a time and the next ones once the queue is
+down to 250, until nothing is missing or a file fails; the collector works
+through them on background processes. `0` stops collection, and the Overview table then offers the exact run for
 every range. See [SQLite store](../features/sqlite-store.md) for the schema.
 
 ### RRD storage
@@ -321,6 +333,18 @@ The switch is saved in `preferences.json`; there is no environment variable for 
 | `SWOOLE_WORKER_NUM` | `1` | Worker processes. Leave it at `1`. php-via 0.13 can serve a tab from any worker, but nfsen-ng keeps its nfdump slots, running queries, filtered-graph cache and the server-owned tab signals (such as whether a query runs) in each worker's memory, so a Kill or a finished query could reach a worker that does not know the query. The inotify poll and the top-N collector's timer run on the first worker only, but every worker would run the start-up catch-up import against the same files and SQLite store. |
 | `SWOOLE_MAX_REQUEST` | `0` | Requests per worker before restart. `0` (unlimited) is correct for a long-lived SSE server. |
 | `SWOOLE_MAX_COROUTINE` | `10000` | Max concurrent coroutines / SSE connections. |
+
+### PHP memory limit
+
+One worker serves every browser tab, so its `memory_limit` is the memory of the
+whole instance: when it runs out, every open session ends at once and the
+restarted server begins with a catch-up import. The Docker images set
+`memory_limit = 512M`, and `deploy/systemd/nfsen-ng.service` starts the server
+with `php -d memory_limit=512M`. On bare metal without that unit, set the same:
+a Debian or Ubuntu CLI `php.ini` usually says `-1`, no limit at all, which also
+turns off the check that a Flows listing above 1,000 rows fits before it runs.
+Each nfdump process has its own memory on top, outside PHP: about 150 to 200 MB
+for `-s srcip` over 24 million flows.
 
 ## State & persistence
 

@@ -44,7 +44,11 @@ not available with the port grouping, where a port belongs to one direction; a
 request for it falls back to source to destination with a notice.
 
 `conversations-run` (query kind `conversations`) runs the query through
-`QueryRunner`. A Kill before nfdump starts, or before the result is stored, keeps
+`QueryRunner`, split into parallel time slices when the read is large enough
+(`MatrixQuery::runPartitioned()`, see
+[Statistics in parallel](../architecture/nfdump-integration.md#statistics-in-parallel));
+on nfdump 1.7.5, whose plain csv lacks the out counters, it always runs as one
+process. A Kill before nfdump starts, or before the result is stored, keeps
 the previous result and its notices. `conversations-check` only recomputes the
 server-owned `_conv_stale` flag and reads no capture files; an effect on the query
 card's signals posts it, so a filter applied from the drawer marks the result
@@ -67,6 +71,11 @@ The payload and the IP pairs table are sent once per result through a
 [result host](../architecture/reactive-loop.md#result-hosts).
 
 ## Views
+
+Both charts are Rocket elements whose shadow root holds only a `<slot>`: the
+canvas container stays in the light DOM, and the payload arrives as the
+`data-conversation` attribute. A new result replaces the chart hosts with its
+result host.
 
 - **Sankey** (`nfsen-sankey.js`, ECharts): source, optional port, and destination
   columns, with an **Others** node per column for the traffic outside the top

@@ -434,8 +434,8 @@ Every floating panel under a button is an `sb-popover`, built to one contract (`
   ArrowDown or ArrowUp on the trigger opens on the first or last `.popover-list` item, and the arrows, Home and End move
   among the items and wrap; a popover that opens closes the others, except one it sits in or holds; a modal dialog
   opening closes every popover outside it. A page switch leaves focus in an open popover that stays on screen (the
-  controls bar, the sidebar, the tab bar); one the switch hides vanishes with it but stays open until an outside press
-  or the next Escape, which it takes.
+  controls bar, the sidebar, the tab bar); `nfsen-router` closes one the switch hides (Live on the way to Health), so
+  it does not come back open with its page.
 
 `ui-controls.test.mjs` tests that layer on fixture popovers in `#client-root` (`popoverKeys`, `popoverStyles`,
 `popoverChoose`, `popoverLayers`, `popoverUnderModal`, `popoverMove`, `popoverSyncAround`, `popoverPageSwitch`,

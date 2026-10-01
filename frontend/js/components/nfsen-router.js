@@ -35,6 +35,13 @@ function keepsFocus() {
     return false;
 }
 
+/** A popover the switch hid closes now, so it does not come back open with its page. */
+function closeHidden() {
+    for (const host of document.querySelectorAll('sb-popover')) {
+        if (host.open === true && !host.checkVisibility()) host.hide();
+    }
+}
+
 let waiting = null;
 // The go() from the body's expressions, the page the client is on (the hash runs ahead of it
 // during a view transition), and the pages posted that no sync has shown yet.
@@ -63,6 +70,7 @@ function onNavigate(page, { initial = false } = {}) {
     if (initial) return;
 
     const focus = () => {
+        closeHidden();
         if (!keepsFocus()) heading(page)?.focus({ preventScroll: true });
     };
     if (document.querySelector(`#page-${page}[data-ready]`)) {

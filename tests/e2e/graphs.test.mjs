@@ -326,6 +326,18 @@ async function liveMenuTest() {
         await page.waitFor(`${LIVE}.open === false`, { label: 'an outside press to close Live' });
         assert.equal((await page.evaluate(LIVE_STATE)).focus, 'outside', 'an outside press does not pull the focus back');
 
+        // A page switch that hides the graph closes Live; one that keeps the graph on screen leaves it open.
+        await page.evaluate(`${LIVE_TRIGGER}.click()`);
+        await page.waitFor(`${LIVE}.open === true`, { label: 'a click to open Live before the page switches' });
+        await page.gotoPage('talkers');
+        await sleep(300);
+        assert.equal(await page.evaluate(`${LIVE}.open`), true, 'Top Talkers keeps the graph, and Live open');
+        await page.gotoPage('health');
+        await page.waitFor(`${LIVE}.open === false`, { label: 'Health hides the graph and closes Live' });
+        await page.gotoPage('overview');
+        await sleep(300);
+        assert.equal(await page.evaluate(`${LIVE}.open`), false, 'Live does not come back open with Overview');
+
         assert.equal(log.count('set-range'), 0, `opening and walking Live set no range: ${log.names().join(', ')}`);
         assert.deepEqual(
             log.names().filter((name) => READS_CAPTURE_FILES.includes(name)),

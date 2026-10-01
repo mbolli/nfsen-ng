@@ -94,7 +94,7 @@ rocket('sb-virtual-scroll', {
 	renderOnPropChange: false,
 	render: ({ html }) => html`
 		<div class="scroller" part="scroller" data-ref:scroller data-on:scroll__passive="@scroll()"
-			data-on:focusin="@trackFocus()" data-on:focusout="@leaveFocus()"
+			data-on:focusin="@trackFocus()" data-on:focusout="@leaveFocus()" data-on:keydown="@keyFirst()"
 			data-attr:role="$$role" data-attr:aria-label="($$role && $$label) || false" data-attr:tabindex="$$tab"
 			data-style:--_head="$$head + 'px'">
 			<div class="header" part="header" data-ref:header><slot name="header"></slot></div>
@@ -220,6 +220,8 @@ rocket('sb-virtual-scroll', {
 			const all = focusables(item)
 			place = all.indexOf(path.find((el) => all.includes(el)))
 		})
+		// Tab between a window and its refocus would move on from an element now showing another item.
+		action('keyFirst', ({ evt }) => evt.key === 'Tab' && frame && refocus())
 		action('leaveFocus', ({ evt }) => {
 			const t = evt.target, to = evt.relatedTarget
 			const unpark = () => parked && host.shadowRoot.activeElement !== scroller && ((parked = false), ($$.tab = tab()))

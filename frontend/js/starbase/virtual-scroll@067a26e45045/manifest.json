@@ -1,0 +1,84 @@
+{
+  "tag": "sb-virtual-scroll",
+  "props": [
+    {
+      "name": "total",
+      "attribute": "total",
+      "type": "number",
+      "default": 0,
+      "required": false,
+      "docs": {
+        "description": "Server data: how many items the whole list has."
+      }
+    },
+    {
+      "name": "offset",
+      "attribute": "offset",
+      "type": "number",
+      "default": 0,
+      "required": false,
+      "docs": {
+        "description": "Server data: the index of the first child in the whole list (from 0, a multiple of columns)."
+      }
+    },
+    {
+      "name": "itemSize",
+      "attribute": "item-size",
+      "type": "number",
+      "default": 32,
+      "required": false,
+      "docs": {
+        "description": "Row height in px. Every item is exactly one row high."
+      }
+    },
+    {
+      "name": "columns",
+      "attribute": "columns",
+      "type": "number",
+      "default": 1,
+      "required": false,
+      "docs": {
+        "description": "Items per row: more than 1 lays them out as a grid."
+      }
+    },
+    {
+      "name": "buffer",
+      "attribute": "buffer",
+      "type": "number",
+      "default": 4000,
+      "required": false,
+      "docs": {
+        "description": "How far a window reaches past the viewport, above and below, in px."
+      }
+    },
+    {
+      "name": "label",
+      "attribute": "label",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Accessible name of the list."
+      }
+    }
+  ],
+  "slots": [
+    {
+      "name": "default",
+      "description": "The items of the current window, one element each, in order. The server renders them."
+    },
+    {
+      "name": "header",
+      "description": "Stays at the top while the items scroll under it, and scrolls sideways with them (column headings)."
+    }
+  ],
+  "events": [
+    {
+      "kind": "custom-event",
+      "name": "sb-window",
+      "bubbles": true,
+      "composed": true,
+      "description": "Asks for a window of items. detail: { offset, count }. Answer by re-rendering the host with those items as children and the new offset and total."
+    }
+  ]
+}

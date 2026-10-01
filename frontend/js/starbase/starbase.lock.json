@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/zweiundeins/starbase.git",
-  "commit": "b80d0ea3a5b6b3d3b632f6bf36bc958c0fa3f79a",
-  "describe": "v0.5.0-8-gb80d0ea",
-  "catalog": "8a863eee72dd",
+  "commit": "7252a02abfed8371c63111e18990abdd975ff473",
+  "describe": "v0.5.0-16-g7252a02",
+  "catalog": "c829eb891add",
   "minFormat": "min2",
   "datastar": "Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)",
   "datastarSha256": "f602fbe19d74e4c16c2f28b3a92c4934072400337372787561089c26a8b3e1db",
@@ -42,6 +42,17 @@
         "README.md": "sha384-JoltUdu6EAw1L5ZiQh5Y83+HHGOOuZz8Uz32IcKcik5pDhtWMjPzLyXlBnwdyOA5",
         "manifest.json": "sha384-Gaz/jgDjnFrmanIAvATrEI5RBlptmLVz4cxhGHL1RmozDoGdG2Y7fnD8zzTSEUiI",
         "relative-time.js": "sha384-IM7iFA38izpbFABDjeKZ6TQfnjHHLB5Oej+q9wAnba1BSSP6Pd+XzGyQq+Q2nH+S"
+      }
+    },
+    "virtual-scroll": {
+      "tag": "sb-virtual-scroll",
+      "version": "067a26e45045",
+      "entry": "virtual-scroll.js",
+      "load": true,
+      "files": {
+        "README.md": "sha384-ad8PJ1xe7QhLgyvbGJM7a/QdX4KLO9XeOfW0u0JvS+aCQvcAltgNrpaffQ/Z07jX",
+        "manifest.json": "sha384-MSPoxwWUS17xpB4VEg+IPUgEJH5GQRXFEdRKzXf8gfkz3Xnpg8/ExoAra8ZTRPmm",
+        "virtual-scroll.js": "sha384-vKjqYf61+pWrTatc0RpswH1/KeukE8c/nfXuShmNfGNibvaN0pox4m3l6xSPLbbc"
       }
     }
   }

@@ -3,12 +3,9 @@
  * in the host state and only the current page is in the document; Datastar's observer takes seconds over 10,000 rows.
  */
 import { rocket, root } from 'datastar';
-import { ChunkPull, whenLoaded } from 'nfsen/chunks';
 import { download } from 'nfsen/download';
 import { escapeHtml } from 'nfsen/format';
 import { hostState, peekState, whenGone } from 'nfsen/host-state';
-
-export { ChunkPull, pullChunks, whenLoaded } from 'nfsen/chunks';
 
 const PAGE_SIZES = [25, 50, 100, 250];
 /** Rows per frame: at about 100, Datastar's and Rocket's observers and the table layout run a frame past 50 ms. */
@@ -115,9 +112,6 @@ function blank() {
         rows: [],
         filling: null,
         held: null,
-        received: 0,
-        pull: null,
-        started: null,
         page: 0,
         sort: {},
         hiddenColumns: [],
@@ -131,14 +125,13 @@ function blank() {
 }
 
 function release(state) {
-    state.pull?.stop();
     unhold(state);
-    Object.assign(state, { pull: null, started: null, rows: [], filling: null, table: null, body: null, headers: [] });
+    Object.assign(state, { rows: [], filling: null, table: null, body: null, headers: [] });
 }
 
 /**
  * Builds for a new result (a new <table>, or a new data-result when Datastar morphed this host into
- * the next one), else takes in arriving chunks; true when it built.
+ * the next one); true when it built.
  */
 function refresh(host, state) {
     const table = host.querySelector('table');
@@ -150,17 +143,15 @@ function refresh(host, state) {
             build(host, state);
             built = true;
         }
-    } else if (table) {
-        addChunks(host, state);
     }
     watch(host, state);
     return built;
 }
 
-/** After a morph or an arriving chunk; a new result asks for its chunks at once, its data-on being bound. */
+/** After a morph: a new result builds. */
 function update(host) {
     const state = peekState(host);
-    if (state && host.isConnected && refresh(host, state)) start(state);
+    if (state && host.isConnected) refresh(host, state);
 }
 
 /** One refresh per burst of prop changes, after the morph that made them (K15). */
@@ -174,7 +165,7 @@ function schedule(host) {
     });
 }
 
-/** The child observer sees chunk templates arrive and the <table> being replaced. */
+/** The child observer sees the <table> being replaced. */
 function watch(host, state) {
     const observer = state.watch;
     if (!observer) return;
@@ -185,15 +176,13 @@ function watch(host, state) {
 }
 
 function build(host, state) {
-    state.pull?.stop();
     const table = state.table;
     state.headers = [...table.querySelectorAll('thead th')];
     state.keys = state.headers.map((th) => th.dataset.originalTitle ?? titleOf(th));
     state.body = table.tBodies[0] ?? null;
     state.filling = null;
     unhold(state);
-    state.received = 0;
-    state.rows = [...(state.body?.rows ?? []), ...takeChunks(host, state)];
+    state.rows = [...(state.body?.rows ?? []), ...takeRows(host)];
     state.hiddenColumns = loadHidden(host, state);
     state.sort = loadSort(host);
     state.paginate = host.hasAttribute('data-page-size');
@@ -204,55 +193,18 @@ function build(host, state) {
     switchView(host, state, host.dataset.view ?? 'table');
     bindScrollbar(host, state);
     applyColumns(host, state);
-    const pull = new ChunkPull(host.dataChunks || 0, (chunk) => askFor(host, pull, chunk), state.received);
-    state.pull = pull;
-    pull.done.then(() => state.pull === pull && showPage(host, state));
     if (state.sort.key && state.keys.includes(state.sort.key)) sortBy(host, state, state.sort.key, state.sort.direction);
     else showPage(host, state);
 }
 
-/** The first request of the current pull; before it the host's data-on:nfsen-table-more must be bound. */
-function start(state) {
-    const pull = state.pull;
-    if (!pull || pull.complete || state.started === pull) return;
-    state.started = pull;
-    pull.ask();
-}
-
-/** data-on:nfsen-table-more on the host posts the request (Table::generateChunked()). */
-function askFor(host, pull, chunk) {
-    if (!host.isConnected) {
-        pull.stop();
-        return;
-    }
-    host.dispatchEvent(new CustomEvent('nfsen-table-more', { bubbles: true, composed: true, detail: { result: host.dataResult, chunk } }));
-}
-
-/** Rows of the <template> chunks inside the host, in order; a repeated chunk is dropped. */
-function takeChunks(host, state) {
+/** Rows past the first page, which the server sends with it in <template class="table-rows">. */
+function takeRows(host) {
     const rows = [];
     for (const template of host.querySelectorAll(':scope > template.table-rows')) {
-        const chunk = template.dataset.chunk;
-        if (chunk === undefined || Number(chunk) === state.received) {
-            rows.push(...template.content.children);
-            if (chunk !== undefined) state.received += 1;
-        }
+        rows.push(...template.content.children);
         template.remove();
     }
     return rows;
-}
-
-/** A chunk the server appended: its rows join in the current order, on the current page. */
-function addChunks(host, state) {
-    const before = state.received;
-    const rows = takeChunks(host, state);
-    if (!rows.length) return;
-    state.rows.push(...rows);
-    applyColumns(host, state, rows);
-    localiseTimes(rows);
-    if (state.sort.key && state.keys.includes(state.sort.key)) sortRows(state, state.sort.key, state.sort.direction);
-    showPage(host, state);
-    for (let chunk = before; chunk < state.received; chunk += 1) state.pull?.arrived(chunk);
 }
 
 function titleOf(th) {
@@ -496,13 +448,7 @@ function renderPager(host, state, from, to, total, pages) {
     if (!pager) return;
     const status = pager.querySelector('.table-pager-status');
     const reached = host.hasAttribute('data-limit-reached') ? host.dataLimitReached : undefined;
-    let text = pagerText(from, to, total, host.dataLimit || 0, reached);
-    const rest = (host.dataTotal || total) - total;
-    const pull = state.pull;
-    if (pull?.failed && rest > 0)
-        text = `${pagerText(from, to, total, 0)} The other ${n(rest)} rows did not arrive; run again to see them.`;
-    // The status is a live region, so it stays put while the chunks come in.
-    else if (pull && !pull.complete && rest > 0) text = `Showing ${n(from)}-${n(to)}; loading the other rows.`;
+    const text = pagerText(from, to, total, host.dataLimit || 0, reached);
     if (status && status.textContent !== text) status.textContent = text;
 
     const focused = pager.contains(document.activeElement) ? document.activeElement.dataset.page : undefined;
@@ -656,18 +602,10 @@ function fileName(host, extension) {
     return `${host.dataExportName || host.id}.${extension}`;
 }
 
-/**
- * The state with every row, once the chunks still on their way are in; null, and says so in the
- * pager, when some never arrived, since a partial export would pass for the whole result.
- */
-async function allRows(host) {
-    await whenLoaded(host);
+/** The state with every row, or null before the table is built. */
+function allRows(host) {
     const state = peekState(host);
-    if (!state?.table) return null;
-    if (!state.pull?.failed) return state;
-    const status = host.querySelector('.table-pager-status');
-    if (status) status.textContent = 'Some rows did not arrive, so nothing was exported. Run again to export every row.';
-    return null;
+    return state?.table ? state : null;
 }
 
 async function exportCsv(host) {
@@ -727,21 +665,12 @@ rocket('nfsen-table', {
         dataPageSize: number.docs({ description: 'Rows per page the server rendered; present means the table has pages.' }),
         dataLimit: number.docs({ description: 'The row limit nfdump ran with, for the pager text; 0 for none.' }),
         dataLimitReached: bool.docs({ description: 'Whether that limit cut the result, so the pager says why there are no more rows.' }),
-        dataTotal: number.docs({ description: 'Rows in the whole result, of which the chunks bring those past the first page.' }),
-        dataChunks: number.docs({ description: 'How many <template data-chunk> pieces to ask for with nfsen-table-more.' }),
+        dataTotal: number.docs({ description: 'Rows in the whole result.' }),
         dataCaption: string.docs({ description: 'The table caption, used as the print title.' }),
         dataExportName: string.docs({ description: 'File name of the CSV and JSON exports, without the extension.' }),
     }),
     manifest: {
-        events: [
-            {
-                name: 'nfsen-table-more',
-                kind: 'custom-event',
-                bubbles: true,
-                composed: true,
-                description: 'Asks for rows past the first page; detail.result is the result id, detail.chunk the piece.',
-            },
-        ],
+        events: [],
     },
     setup: ({ cleanup, defineHostProp, host, observeProps }) => {
         if (!host.shadowRoot.firstChild) host.shadowRoot.append(document.createElement('slot'));
@@ -750,13 +679,6 @@ rocket('nfsen-table', {
         defineHostProp('rows', { get: () => peekState(host)?.rows });
         defineHostProp('keys', { get: () => peekState(host)?.keys });
         defineHostProp('headers', { get: () => peekState(host)?.headers });
-        defineHostProp('pull', { get: () => peekState(host)?.pull ?? null });
-        defineHostProp('loading', {
-            get: () => {
-                const pull = peekState(host)?.pull;
-                return Boolean(pull && !pull.complete && !pull.failed);
-            },
-        });
         defineHostProp('exportCsv', { value: () => exportCsv(host) });
         defineHostProp('exportJson', { value: () => exportJson(host) });
         defineHostProp('print', { value: () => print(host) });
@@ -787,10 +709,5 @@ rocket('nfsen-table', {
             if (state.resizes === resizes) state.resizes = null;
             whenGone(host, release);
         });
-    },
-    // Rocket binds the host's data-on only after setup, so the first chunk is asked for here.
-    onFirstRender: ({ host }) => {
-        const state = peekState(host);
-        if (state) start(state);
     },
 });

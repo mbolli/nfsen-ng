@@ -80,3 +80,9 @@ sb-popover::part(panel) {
     padding: var(--size-1);
     border-radius: var(--radius-2);
 }
+
+/* sb-virtual-scroll */
+/* The Flows list. It reads --sb-surface-hover and --sb-brand-light, both mapped above. */
+sb-virtual-scroll:state(loading)::part(scroller) {
+    cursor: progress;
+}

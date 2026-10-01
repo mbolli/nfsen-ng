@@ -4,6 +4,17 @@ declare(strict_types=1);
 
 use Dom\Element;
 use Dom\HTMLDocument;
+use mbolli\nfsen_ng\actions\FlowActions;
+use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Settings;
+use mbolli\nfsen_ng\pages\PageRegistry;
+use mbolli\nfsen_ng\pages\PageStates;
+use mbolli\nfsen_ng\pages\Shell;
+use mbolli\nfsen_ng\query\QueryResult;
+use mbolli\nfsen_ng\query\TimeWindow;
+use Mbolli\PhpVia\Config as ViaConfig;
+use Mbolli\PhpVia\Context;
+use Mbolli\PhpVia\Via;
 
 /** Datastar 1.0.4's attribute plugins and nfsen-ng's persist, the list of K1 in tests/e2e/rocket.test.mjs. */
 const POPOVER_MARKUP_PLUGINS = [
@@ -163,20 +174,91 @@ describe('sb-popover markup in backend/templates', function (): void {
             ->and($problems)->toBe([])
         ;
     });
+
+    test('the Flows template writes both of its popovers as literal markup, so the scan reaches them', function (): void {
+        $source = (string) file_get_contents(__DIR__ . '/../../backend/templates/pages/flows.html.twig');
+        preg_match_all('/<sb-popover\b[^>]*\sid="([^"]+)"/', $source, $ids);
+
+        expect($ids[1])->toBe(['flowsExport', 'flowTable-columnsPopover']);
+    });
+
+    test('the rendered Flows page with a list keeps to K1, the values its Twig writes included', function (): void {
+        $settings = isset(Config::$settings) ? Config::$settings : null;
+        $prefs = isset(Config::$prefsFile) ? Config::$prefsFile : null;
+        Config::$prefsFile = sys_get_temp_dir() . '/nfsen-popover-markup-missing.json';
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw1'], 'ports' => [80]],
+            'nfdump' => ['profiles-data' => sys_get_temp_dir() . '/nfsen-popover-markup-missing', 'profile' => 'live'],
+            'frontend' => ['defaults' => ['view' => 'flows']],
+        ]);
+        $app = new Via((new ViaConfig())->withTemplateDir(dirname(__DIR__, 2) . '/backend/templates'));
+        $app->setGlobalState('_fatalError', 'No datasource in this test.');
+        $c = new Context('ctx-popover-' . bin2hex(random_bytes(3)), '/', $app);
+        $states = new PageStates();
+
+        try {
+            Shell::signals($c);
+            foreach ([...PageRegistry::MODULES, ...PageRegistry::PAGES] as $module) {
+                $module::signals($c);
+            }
+            Shell::register($c, $app, $states);
+            foreach ([...PageRegistry::MODULES, ...PageRegistry::PAGES] as $module) {
+                $module::register($c, $app, $states);
+            }
+            $c->getSignal('page')?->setValue('flows', broadcast: false);
+            $rows = [['src_addr' => '10.0.0.1', 'in_bytes' => 5], ['src_addr' => '10.0.0.2', 'in_bytes' => 7]];
+            FlowActions::storeResult($states->flows, new QueryResult($rows, 'nfdump -M x', '', 0.2, TimeWindow::raw(1_000, 2_000)), 0.2, '/_action/ip-info-x', [
+                'limit' => 20,
+                'list' => ['tz' => '', 'sortKey' => '', 'sortDir' => '', 'hidden' => ['in_bytes']],
+            ]);
+            $html = $c->render('pages/flows.html.twig', Shell::render($c, $app, $states, false));
+        } finally {
+            $states->flows->releaseStored();
+            if ($settings !== null) {
+                Config::$settings = $settings;
+            }
+            if ($prefs !== null) {
+                Config::$prefsFile = $prefs;
+            }
+        }
+
+        expect(popoverMarkupProblems($html, 'rendered pages/flows.html.twig'))->toBe([])
+            ->and($html)->toContain('id="flowTable-columnsPopover"', 'id="flowTable-col-in_bytes"', 'filterSignals: { include: /^via_ctx$/ }')
+            ->and(substr_count($html, 'id="flowsExport"'))->toBe(1)
+        ;
+    });
 });
 
 describe('the popover markup check', function (): void {
     test('passes markup that keeps to the popover contract', function (string $markup): void {
         expect(popoverMarkupProblems($markup))->toBe([]);
     })->with([
-        'Flows Export' => [<<<'TWIG'
+        'Flows Export: slim posts that read a client signal, and Print announcing itself first' => [<<<'TWIG'
             <sb-popover class="flows-export" id="flowsExport" label="Export the flows" placement="bottom-end">
                 <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
-                        data-preserve-attr="aria-expanded aria-haspopup" {{ f.count == 0 or f.result.lost ? 'disabled' }}>Export</button>
+                        data-preserve-attr="aria-expanded aria-haspopup" {{ f.count == 0 or f.result.lost or f.list is null ? 'disabled' }}>Export</button>
                 <ul class="popover-list" id="flowsExportMenu">
-                    <li><button type="button" class="menu-item" data-export="csv" data-on:click="document.getElementById('flowTable')?.exportCsv()">CSV</button></li>
-                    <li><button type="button" class="menu-item" data-export="json" data-on:click="document.getElementById('flowTable')?.exportJson()">JSON</button></li>
-                    <li><button type="button" class="menu-item" data-export="print" data-on:click="document.getElementById('flowTable')?.print()">Print</button></li>
+                    <li><button type="button" class="menu-item" data-export="csv"
+                                data-on:click="@post('{{ exportUrl }}csv&enhanced=' + ($_flows_enhanced ? 1 : 0), {{ slim }})">CSV</button></li>
+                    <li><button type="button" class="menu-item" data-export="json"
+                                data-on:click="@post('{{ exportUrl }}json&enhanced=' + ($_flows_enhanced ? 1 : 0), {{ slim }})">JSON</button></li>
+                    <li><button type="button" class="menu-item" data-export="print"
+                                data-on:click="window.nfsenFlowsList?.openPrint(); @post('{{ exportUrl }}print&enhanced=1', {{ slim }})">Print</button></li>
+                </ul>
+            </sb-popover>
+            TWIG],
+        'Flows Columns: a change on the list writes a client signal and posts the whole set' => [<<<'TWIG'
+            <sb-popover class="column-selector" id="flowTable-columnsPopover" label="Columns to show" placement="bottom-end">
+                <button type="button" slot="trigger" class="menu-toggle" data-size="sm" aria-controls="flowTable-columns"
+                        data-preserve-attr="aria-expanded aria-haspopup">Columns</button>
+                {# Each box sends the whole new set, so a retried request changes nothing twice (D6). #}
+                <ul class="popover-list column-selector-menu" id="flowTable-columns"
+                    data-on:change="$_flows_hidden = window.nfsenFlowsList.hidden($_flows_hidden, evt.target); @post('{{ flowsColumns.url() }}?result={{ f.list.id|url_encode }}&hidden=' + $_flows_hidden.join(','), {{ slim }})">
+                    <li><label><input type="checkbox" data-column-all{{ f.list.columns|filter(c => c.hidden) is empty ? ' checked' }}> Show all</label></li>
+                    <li class="menu-sep" role="separator"></li>
+                    {% for column in f.list.columns %}
+                        <li><label><input type="checkbox" class="column-checkbox" id="flowTable-col-{{ column.key }}" data-column-key="{{ column.key }}"{{ column.hidden ? '' : ' checked' }}> {{ column.title }}</label></li>
+                    {% endfor %}
                 </ul>
             </sb-popover>
             TWIG],

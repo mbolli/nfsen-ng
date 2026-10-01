@@ -1,9 +1,12 @@
-{# Flows (4.3, 2.7.5). The table and the raw output sit in result hosts (D26) and fill in chunks. #}
+{# Flows (4.3, 2.7.5). The list asks the server for windows of rows (ADOPT-VSCROLL 3.7); the raw output sits in a
+   result host (D26) and fills in chunks. #}
 {% import 'components/result-host.html.twig' as results %}
 {% import 'shell/icons.html.twig' as icons %}
 {% set f = pages.flows %}
 {% set tz = '$' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() %}
 {% set shown = '$' ~ flows_graph_shown.id() %}
+{# The list's requests post only via_ctx and read the tab's state on the server (D2). #}
+{% set slim = constant('mbolli\\nfsen_ng\\common\\FlowRows::SLIM') %}
 {% set progress = {
     killAction: killNfdump.url(),
     running: query_running.id(),
@@ -135,7 +138,7 @@
                     action: flowActions.url(),
                     kind: 'flows',
                     run: 'flows',
-                    onClick: "$_flows_tab = 'flows'; ",
+                    onClick: "$_flows_tab = 'flows'; $" ~ flows_tz.id() ~ " = Intl.DateTimeFormat().resolvedOptions().timeZone; $" ~ flows_sort.id() ~ " = $_flows_sort; $" ~ flows_hidden.id() ~ " = $_flows_hidden; ",
                     doneText: "Number($" ~ flows_count.id() ~ ").toLocaleString('en') + ' ' + $" ~ flows_count_label.id() ~ " + ' returned'",
                 }) only %}
             </div>
@@ -229,13 +232,17 @@
                     {%- if f.aggregated %}, aggregated from {{ f.limitReached ? 'the first ' }}{{ f.flowsRead|number_format }} flows{{ f.limitReached ? ' (the limit)' }}
                     {%- elseif f.limitReached %}, the limit of {{ f.limit|number_format }}{% endif -%}
                 </span>
+                {% set exportUrl = flowsExport.url() ~ '?result=' ~ f.result.id|url_encode ~ '&format=' %}
                 <sb-popover class="flows-export" id="flowsExport" label="Export the flows" placement="bottom-end">
                     <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
-                            data-preserve-attr="aria-expanded aria-haspopup" {{ f.count == 0 or f.result.lost ? 'disabled' }}>Export</button>
+                            data-preserve-attr="aria-expanded aria-haspopup" {{ f.count == 0 or f.result.lost or f.list is null ? 'disabled' }}>Export</button>
                     <ul class="popover-list" id="flowsExportMenu">
-                        <li><button type="button" class="menu-item" data-export="csv" data-on:click="document.getElementById('flowTable')?.exportCsv()">CSV</button></li>
-                        <li><button type="button" class="menu-item" data-export="json" data-on:click="document.getElementById('flowTable')?.exportJson()">JSON</button></li>
-                        <li><button type="button" class="menu-item" data-export="print" data-on:click="document.getElementById('flowTable')?.print()">Print</button></li>
+                        <li><button type="button" class="menu-item" data-export="csv"
+                                    data-on:click="@post('{{ exportUrl }}csv&enhanced=' + ($_flows_enhanced ? 1 : 0), {{ slim }})">CSV</button></li>
+                        <li><button type="button" class="menu-item" data-export="json"
+                                    data-on:click="@post('{{ exportUrl }}json&enhanced=' + ($_flows_enhanced ? 1 : 0), {{ slim }})">JSON</button></li>
+                        <li><button type="button" class="menu-item" data-export="print"
+                                    data-on:click="window.nfsenFlowsList?.openPrint(); @post('{{ exportUrl }}print&enhanced=1', {{ slim }})">Print</button></li>
                     </ul>
                 </sb-popover>
             {% endif %}
@@ -278,6 +285,27 @@
                      data-attr:hidden="$_flows_tab !== 'flows'" data-preserve-attr="hidden">
                     {% if f.result.lost %}
                         <p class="notice">The server dropped these rows to free memory for other results. Run again to see them.</p>
+                    {% elseif f.list %}
+                        <div class="table-toolbar" id="flowsListTools" data-init="window.nfsenFlowsList?.forResult('{{ f.list.id|e('js') }}')">
+                            <label class="choice table-enhanced" title="Export formatted values; unchecked exports the raw values">
+                                <input type="checkbox" id="flowTable-enhanced" data-bind="_flows_enhanced"> Enhanced data
+                            </label>
+                            <sb-popover class="column-selector" id="flowTable-columnsPopover" label="Columns to show" placement="bottom-end">
+                                <button type="button" slot="trigger" class="menu-toggle" data-size="sm" aria-controls="flowTable-columns"
+                                        data-preserve-attr="aria-expanded aria-haspopup">Columns</button>
+                                {# Each box sends the whole new set, so a retried request changes nothing twice (D6). #}
+                                <ul class="popover-list column-selector-menu" id="flowTable-columns"
+                                    data-on:change="$_flows_hidden = window.nfsenFlowsList.hidden($_flows_hidden, evt.target); @post('{{ flowsColumns.url() }}?result={{ f.list.id|url_encode }}&hidden=' + $_flows_hidden.join(','), {{ slim }})">
+                                    <li><label><input type="checkbox" data-column-all{{ f.list.columns|filter(c => c.hidden) is empty ? ' checked' }}> Show all</label></li>
+                                    <li class="menu-sep" role="separator"></li>
+                                    {% for column in f.list.columns %}
+                                        <li><label><input type="checkbox" class="column-checkbox" id="flowTable-col-{{ column.key }}" data-column-key="{{ column.key }}"{{ column.hidden ? '' : ' checked' }}> {{ column.title }}</label></li>
+                                    {% endfor %}
+                                </ul>
+                            </sb-popover>
+                        </div>
+                        {{ f.list.host|raw }}
+                        <div id="flowsExports" class="stack" data-ignore-morph aria-live="polite"></div>
                     {% else %}
                         {{ results.host('flowTableHost', f.result.id, f.result.send, f.tableHtml) }}
                     {% endif %}

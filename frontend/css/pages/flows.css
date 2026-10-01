@@ -220,3 +220,120 @@
 .flows-protocols .series-swatch {
     margin-inline-end: var(--size-2);
 }
+
+/* ── The list (sb-virtual-scroll, ADOPT-VSCROLL 3.7) ────────────────────── */
+
+/* Enhanced data, and the Columns picker at the end; on a phone the picker wraps onto its own line. */
+.flows-results .table-toolbar > sb-popover.column-selector {
+    margin-inline-start: auto;
+    margin-block-end: 0;
+}
+
+#flowsExports:has(> .notice) {
+    margin-block-start: var(--size-3);
+}
+
+/* Rows and the header share one grid template (--flow-cols, set by the server), so the columns
+   line up; a list wider than the card scrolls sideways inside the component. */
+.flows-results sb-virtual-scroll {
+    block-size: min(70dvh, 48rem);
+    border: 1px solid var(--border);
+    font-size: var(--font-size-0);
+}
+
+.flows-results sb-virtual-scroll > [role='row'] {
+    display: grid;
+    grid-template-columns: var(--flow-cols);
+    align-items: center;
+    min-inline-size: min-content;
+    overflow: hidden;
+}
+
+.flows-results sb-virtual-scroll > [role='row']:not([slot]) {
+    border-block-end: 1px solid var(--border);
+}
+
+.flows-results sb-virtual-scroll > [data-stripe] {
+    background: color-mix(in oklab, var(--surface-3) 60%, transparent);
+}
+
+.flows-results sb-virtual-scroll > [role='row']:not([slot]):hover {
+    background: var(--surface-3);
+}
+
+/* The component gives the header no background: rows would show through it. */
+.flows-results sb-virtual-scroll > [slot='header'] {
+    border-block-end: 2px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-weight: var(--font-weight-semibold);
+}
+
+.flows-results sb-virtual-scroll :is([role='cell'], [role='columnheader']) {
+    min-inline-size: 0;
+    padding-inline: var(--cell-pad-inline);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* Room above and below a link for its focus ring (2px outline at 2px offset), which the overflow would clip. */
+.flows-results sb-virtual-scroll [role='cell'] {
+    padding-block: var(--size-1);
+}
+
+.flows-results sb-virtual-scroll [role='columnheader'] {
+    padding-block: calc(var(--cell-pad-block) + var(--size-1));
+}
+
+.flows-results sb-virtual-scroll :is([role='cell'], [role='columnheader'])[data-num] {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+}
+
+.flows-results sb-virtual-scroll [role='cell'][data-kind='time'] {
+    font-variant-numeric: tabular-nums;
+}
+
+.flows-results sb-virtual-scroll [role='cell'][data-kind='address'] {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+}
+
+.flows-results sb-virtual-scroll [role='columnheader'] > button {
+    max-inline-size: 100%;
+    padding: 0;
+    overflow: hidden;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.flows-results sb-virtual-scroll [role='columnheader'] > button:hover {
+    background: none;
+    text-decoration: underline;
+}
+
+/* The sorted column: an arrow, and a bar that forced colours keep as an outline. */
+.flows-results sb-virtual-scroll [role='columnheader'][aria-sort] {
+    box-shadow: inset 0 -3px 0 var(--text-1);
+}
+
+.flows-results sb-virtual-scroll [role='columnheader'][aria-sort] > button::after {
+    content: ' \25B2' / '';
+    font-size: 0.7em;
+}
+
+.flows-results sb-virtual-scroll [role='columnheader'][aria-sort='descending'] > button::after {
+    content: ' \25BC' / '';
+}
+
+@media (forced-colors: active) {
+    .flows-results sb-virtual-scroll [role='columnheader'][aria-sort] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+}

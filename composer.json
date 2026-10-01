@@ -18,7 +18,7 @@
     "ext-openswoole": "*",
     "ext-rrd": "*",
     "maxmind-db/reader": "^1.12",
-    "mbolli/php-via": "dev-master as 0.13.0",
+    "mbolli/php-via": "dev-fix/revive-seed-from-sse as 0.13.0",
     "mcp/sdk": "^0.8.1"
   },
   "require-dev": {

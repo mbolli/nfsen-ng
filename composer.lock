@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "937b136e747619c58c048209a140be51",
+    "content-hash": "f0ad4dfa366d50c791296bb31ce1b5fe",
     "packages": [
         {
             "name": "doctrine/deprecations",
@@ -121,11 +121,11 @@
         },
         {
             "name": "mbolli/php-via",
-            "version": "dev-master",
+            "version": "dev-fix/revive-seed-from-sse",
             "source": {
                 "type": "git",
                 "url": "/develop/php-via",
-                "reference": "5ff9d25a735bb9735f2a42ab1a041a459a08d797"
+                "reference": "06397d86ed72e850322b2266b0bcf844dbccd5f7"
             },
             "require": {
                 "ext-openswoole": "^26.0",
@@ -189,7 +189,7 @@
                 }
             ],
             "description": "Real-time engine for building reactive web applications in PHP",
-            "time": "2026-09-29T17:16:10+00:00"
+            "time": "2026-10-01T08:38:12+00:00"
         },
         {
             "name": "mcp/sdk",
@@ -7354,7 +7354,7 @@
     "aliases": [
         {
             "package": "mbolli/php-via",
-            "version": "9999999-dev",
+            "version": "dev-fix/revive-seed-from-sse",
             "alias": "0.13.0",
             "alias_normalized": "0.13.0.0"
         }

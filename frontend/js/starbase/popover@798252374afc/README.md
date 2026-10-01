@@ -138,7 +138,7 @@ Popovers nest: a press inside an inner panel keeps the outer one open, and Escap
 
 Parts: `trigger` (the default button), `panel` (the notched box around the content) and `arrow`. The panel is at most `20rem` wide and `24rem` tall and scrolls beyond that; set `inline-size` or `max-inline-size` on `::part(panel)` for another size. Text inherits the page's font.
 
-Colours come from `--sb-surface-raised` (panel), `--sb-border-strong` (its edge and the arrow), `--sb-text-2` (content), and for the default trigger `--sb-control-bg`, `--sb-control-border`, `--sb-control-border-hover`, `--sb-surface-hover`, `--sb-brand-light` and `--sb-text-1`. `--sb-shadow-overlay` sets the panel's drop shadow. `--sb-notch: 0` rounds the pixel corners, with `--sb-radius` for the panel and `--sb-control-radius` for the trigger. Set the tokens on the element or an ancestor, not on a part.
+Colours come from `--sb-surface-raised` (panel), `--sb-border-strong` (its edge and the arrow), `--sb-text-2` (content), and for the default trigger `--sb-control-bg`, `--sb-control-border`, `--sb-control-border-hover`, `--sb-surface-hover`, `--sb-brand-light` and `--sb-text-1`. `--sb-shadow-overlay` sets the panel's drop shadow: one shadow without spread, such as `0 8px 16px rgb(0 0 0 / 0.3)`, or `none`. `--sb-notch: 0` rounds the pixel corners, with `--sb-radius` for the panel and `--sb-control-radius` for the trigger. Set the tokens on the element or an ancestor, not on a part.
 
 ```html preview
 <style>

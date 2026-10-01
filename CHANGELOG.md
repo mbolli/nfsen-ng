@@ -31,7 +31,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Event loop lag on Health.** The System card shows how late the server's event loop answers: the p95, p50 and maximum delay of a 100 ms timer over the last minute, with the warning glyph from a p95 of 100 ms and the error glyph from 1 s. Whatever holds the loop (a render, a file scan, an SQLite write) delays every tab's actions and live updates by as long.
 
-- **Components from [Starbase](https://github.com/zweiundeins/starbase) (MIT) are bundled** under `frontend/js/starbase/` with their licence, pinned by Starbase's content hash in a lock file; nothing loads from outside the instance. The Alerts page uses its `sb-relative-time`, the Export menus and the Columns picker its `sb-popover`. The Datastar and ECharts licence notices ship as well (`frontend/js/datastar.LICENSE.md`, `echarts.LICENSE`, `echarts.NOTICE`).
+- **Components from [Starbase](https://github.com/zweiundeins/starbase) (MIT) are bundled** under `frontend/js/starbase/` with their licence, pinned by Starbase's content hash in a lock file; nothing loads from outside the instance. The Alerts page uses its `sb-relative-time`, and every menu its `sb-popover`. The Datastar and ECharts licence notices ship as well (`frontend/js/datastar.LICENSE.md`, `echarts.LICENSE`, `echarts.NOTICE`).
 
 ### Changed
 

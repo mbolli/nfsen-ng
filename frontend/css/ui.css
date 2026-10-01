@@ -5,7 +5,7 @@
  * Written against elements and roles rather than utility classes, so the markup says what a
  * thing is and this file says what that looks like. Where a class is unavoidable it names a
  * component, never a declaration: .segmented, not .d-flex. State lives in attributes
- * (:checked, aria-pressed, aria-selected, aria-current, [data-open], [data-level]).
+ * (:checked, aria-pressed, aria-selected, aria-current, aria-expanded, [data-level]).
  *
  * Everything is neutral grey; colour only marks status ([data-level]) and data series
  * ([data-series]). Selected states always add a border, bar or outline for forced colors.
@@ -1007,13 +1007,8 @@ tbody tr[data-level='error']:hover {
 
 /* ── Menus ──────────────────────────────────────────────────────────────── */
 
-/* Disclosure: .menu > .menu-toggle[aria-controls] + .menu-list[data-open]. Action menu:
-   .menu[data-role=menu] > [aria-haspopup=menu] + [role=menu]. nfsen-controls.js drives both. */
-.menu {
-    position: relative;
-    display: inline-block;
-}
-
+/* Popover: sb-popover > [slot=trigger].menu-toggle + .popover-list. The component draws the
+   panel (starbase.css) and writes aria-expanded on the trigger; the list only holds the items. */
 .menu-toggle::after {
     content: '';
     inline-size: 0.4em;
@@ -1030,58 +1025,14 @@ tbody tr[data-level='error']:hover {
     rotate: 225deg;
 }
 
-.menu-list,
-.menu > [role='menu'] {
-    position: absolute;
-    z-index: var(--layer-menu);
-    inset-block-start: calc(100% + var(--size-1));
-    inset-inline-end: 0;
-    min-inline-size: 12rem;
-    max-block-size: 60vh;
-    overflow-y: auto;
-    padding: var(--size-1);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-2);
-    background: var(--surface-2);
-    color: var(--text-1);
-    box-shadow: var(--shadow-2);
-    list-style: none;
-}
-
-.menu-list[data-align='start'],
-.menu > [role='menu'][data-align='start'] {
-    inset-inline: 0 auto;
-}
-
-.menu-list:not([data-open], [popover]),
-.menu > [role='menu']:not([data-open], [popover]) {
-    display: none;
-}
-
-/* In the top layer the list escapes clipping containers; nfsen-controls.js places it below
-   or above its toggle and keeps it there while the page scrolls. */
-.menu-list[popover],
-.menu > [role='menu'][popover] {
-    position: fixed;
-    inset: auto;
-    top: var(--menu-top, auto);
-    bottom: var(--menu-bottom, auto);
-    left: var(--menu-left, auto);
-    max-block-size: min(60vh, var(--menu-room, 60vh));
-    margin: 0;
-}
-
-/* Popover: sb-popover > [slot=trigger].menu-toggle + .popover-list. The component draws the
-   panel (starbase.css); the list only holds the items. */
 .popover-list {
     margin: 0;
     padding: 0;
     list-style: none;
 }
 
-:is(.menu-list, .popover-list) li > :is(a, button, label),
-.menu-item,
-[role='menuitem'] {
+.popover-list li > :is(a, button, label),
+.menu-item {
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -1098,20 +1049,20 @@ tbody tr[data-level='error']:hover {
     text-decoration: none;
 }
 
-:is(.menu-list, .popover-list) li > :is(a, button, label):hover,
-:is(.menu-item, [role='menuitem']):hover:not(:disabled),
-:is(.menu-item, [role='menuitem']):focus-visible {
+.popover-list li > :is(a, button, label):hover,
+.menu-item:hover:not(:disabled),
+.menu-item:focus-visible {
     background: var(--surface-3);
 }
 
-:is(.menu-item, [role='menuitem']):focus-visible {
+.menu-item:focus-visible {
     outline-offset: -2px;
     box-shadow: none;
 }
 
 /* The current choice gets a check mark, never a fill: menus stay neutral. Every item of such
    a list keeps the mark's column; the mark is a mask, as no font is sure to have U+2713. */
-:is(.menu-list, .popover-list):has(.menu-item:is([aria-pressed], [aria-current])) .menu-item::before {
+.popover-list:has(.menu-item:is([aria-pressed], [aria-current])) .menu-item::before {
     content: '';
     flex: 0 0 1em;
     block-size: 0.75rem;
@@ -1124,7 +1075,7 @@ tbody tr[data-level='error']:hover {
     font-weight: var(--font-weight-semibold);
 }
 
-:is(.menu-list, .popover-list) .menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page'])::before {
+.popover-list .menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page'])::before {
     background: currentcolor;
     mask: var(--glyph-success) center / contain no-repeat;
 }

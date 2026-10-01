@@ -59,11 +59,6 @@ sb-popover.live-menu::part(panel) {
     min-inline-size: 14rem;
 }
 
-/* Until sb-popover is defined, its panel content would show in the graph header. */
-sb-popover.live-menu:not(:defined) > .popover-list {
-    display: none;
-}
-
 .traffic-graph-actions .segmented label {
     padding: var(--size-1) var(--size-2);
     font-size: var(--font-size-00);

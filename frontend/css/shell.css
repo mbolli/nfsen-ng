@@ -239,11 +239,6 @@ sb-popover.theme-menu {
     grid-template-columns: minmax(0, 1fr);
 }
 
-/* Until sb-popover is defined, its panel content would show in place. */
-sb-popover:is(.theme-menu, .tabbar-more):not(:defined) > .popover-list {
-    display: none;
-}
-
 /* The toggle shows the theme in effect; the head script sets data-theme before paint. */
 :root[data-theme='dark'] [data-theme-icon='light'],
 :root:not([data-theme='dark']) [data-theme-icon='dark'] {

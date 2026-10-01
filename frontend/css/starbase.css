@@ -70,6 +70,11 @@
 }
 
 /* sb-popover */
+/* Until the component is defined its panel content would show in place, beside the trigger. */
+sb-popover:not(:defined) > :not([slot='trigger']) {
+    display: none;
+}
+
 sb-popover::part(panel) {
     min-inline-size: 12rem;
     padding: var(--size-1);

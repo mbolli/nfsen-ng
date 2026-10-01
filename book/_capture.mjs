@@ -233,7 +233,7 @@ async function setAbsolute(page, from, to, { clamp = false } = {}) {
         await sleep(200);
     }
     await page.evaluate(`(function(){
-        document.getElementById('rangeDisplayList')?.hidePopover?.();
+        document.getElementById('rangeDisplay')?.hide?.();
         if (document.getElementById('controlsMore').getAttribute('aria-expanded') === 'true') document.getElementById('controlsMore').click();
     })()`);
     await sleep(1500);
@@ -541,7 +541,7 @@ async function step(page, names, fn, { optional = false } = {}) {
             }
             await page.evaluate(`(function(){
                 document.querySelectorAll('dialog[open]').forEach(function(d){ d.close(); });
-                document.querySelectorAll(':popover-open').forEach(function(p){ p.hidePopover(); });
+                document.querySelectorAll('sb-popover').forEach(function(p){ if (p.open) p.hide(); });
             })()`);
             await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
             await fn();
@@ -701,8 +701,14 @@ async function openMenu(page, toggle, list, { mouse = false } = {}) {
         );
     }
     await page.waitFor(`!!document.querySelector(${js(list)})?.getClientRects().length`, { label: `${list} open` });
+    // A popover moves focus into its panel on open; the images show no focus ring.
+    await page.evaluate(`(function(){ var a = document.activeElement; if (a && a.closest('sb-popover')) a.blur(); })()`);
     await sleep(200);
 }
+
+/** The panel of an open popover, from its host's selector, as a capture target. */
+const panelOf = (host) =>
+    `(function(){ var h = [...document.querySelectorAll(${js(host)})].find(function(p){ return p.open; }); return h ? h.shadowRoot.querySelector('[part~="panel"]') : null; })()`;
 
 /** Point at the traffic graph so its tooltip and the cursor legend show the values there. */
 async function hoverGraph(page, fraction = 0.55) {
@@ -795,7 +801,7 @@ async function desktop(page) {
         await live();
         // The menu hangs over the graph; with the plot hidden no cut band of it shows around the menu.
         try {
-            await shot(page, 'guide-controls-bar', ['.controls-bar', '#trafficGraphSection .traffic-graph-header', '#liveMenuList'], {
+            await shot(page, 'guide-controls-bar', ['.controls-bar', '#trafficGraphSection .traffic-graph-header', panelOf('#liveMenu')], {
                 prepare: async () => {
                     await stage(page, '#trafficGraphSection .traffic-graph-body { visibility: hidden; }');
                     await live();
@@ -975,12 +981,14 @@ async function desktop(page) {
         await sleep(1200);
         await shot(page, 'guide-filter-drawer', '#filter-drawer', { margin: 0 });
         const menu = () =>
-            openMenu(page, '#drawerSavedList .saved-filter [aria-haspopup="menu"]', '#drawerSavedList [role="menu"]', { mouse: true });
+            openMenu(page, '#drawerSavedList .saved-filter [slot="trigger"]', '#drawerSavedList sb-popover.saved-menu .popover-list', {
+                mouse: true,
+            });
         await menu();
         await shot(
             page,
             'guide-saved-filters',
-            ['#drawerSavedTitle', '#drawerSavedList .saved-filter:nth-child(6)', '#drawerSavedList [role="menu"]'],
+            ['#drawerSavedTitle', '#drawerSavedList .saved-filter:nth-child(6)', panelOf('#drawerSavedList sb-popover.saved-menu')],
             { prepare: menu, margin: [12, 12, 0, 12] }
         );
     });

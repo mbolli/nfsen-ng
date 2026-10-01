@@ -24,15 +24,15 @@ function heading(page) {
     return document.querySelector(`[data-page-heading="${page}"] h1`);
 }
 
-/** Focus that sits in a control which survives the switch stays where it is. */
+/** Focus the switch leaves on screen, in the controls bar or in an open popover, stays where it is. */
 function keepsFocus() {
     const active = document.activeElement;
     if (!active || active === document.body) return false;
-    try {
-        return !!active.closest('.controls-bar, .menu-list:is([data-open], :popover-open), [role="menu"][data-open]');
-    } catch {
-        return !!active.closest('.controls-bar, .menu-list[data-open], [role="menu"][data-open]');
+    if (active.closest('.controls-bar')) return true;
+    for (let host = active.closest('sb-popover'); host; host = host.parentElement?.closest('sb-popover')) {
+        if (host.open === true) return true;
     }
+    return false;
 }
 
 let waiting = null;

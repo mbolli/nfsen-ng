@@ -1,7 +1,6 @@
-// The shared controls of the design system (spec 2.2, 2.4, 2.5): the tab keyboard model, the
-// menus and the sb-popover layer from nfsen-controls.js, focus rings in every theme and in forced
-// colors, and the colours theme-colors.js hands to the charts. The markup is a fixture injected
-// into the live page.
+// The shared controls of the design system (spec 2.2, 2.4, 2.5): the tab keyboard model and the
+// sb-popover layer from nfsen-controls.js, focus rings in every theme and in forced colors, and the
+// colours theme-colors.js hands to the charts. The markup is a fixture injected into the live page.
 import assert from 'node:assert/strict';
 import { BASE, withPage } from './lib/cdp.mjs';
 
@@ -55,7 +54,6 @@ async function tapAt(page, selector) {
 
 const active = (page) => page.evaluate('document.activeElement?.id || document.activeElement?.tagName');
 const attr = (page, id, name) => page.evaluate(`document.getElementById(${JSON.stringify(id)})?.getAttribute(${JSON.stringify(name)})`);
-const popoverOpen = (page, id) => page.evaluate(`document.getElementById(${JSON.stringify(id)}).matches(':popover-open')`);
 
 const FIXTURE = `
 <div id="fx" class="stack card">
@@ -77,35 +75,6 @@ const FIXTURE = `
     <button role="tab" id="tm3" aria-selected="false" tabindex="-1">M3</button>
   </div>
   <div class="cluster">
-    <div class="menu" id="dm">
-      <button class="menu-toggle" aria-expanded="false" aria-controls="dmList" id="dmToggle">Range</button>
-      <div class="menu-list" id="dmList" data-align="start">
-        <button class="menu-item" aria-pressed="true" id="dmP1">Last 1 hour</button>
-        <button class="menu-item" aria-pressed="false" id="dmP2">Last 24 hours</button>
-        <div class="menu-sep"></div>
-        <input type="number" id="dmNum" aria-label="n">
-        <label class="switch"><input type="checkbox" id="dmSw"> Follow</label>
-      </div>
-    </div>
-    <div class="menu" data-role="menu" id="am">
-      <button aria-haspopup="menu" aria-expanded="false" aria-controls="amList" id="amToggle">Export</button>
-      <ul role="menu" id="amList">
-        <li role="none"><button role="menuitem" tabindex="-1" id="am1">CSV</button></li>
-        <li role="none"><button role="menuitem" tabindex="-1" id="am2">JSON</button></li>
-        <li role="none"><button role="menuitem" tabindex="-1" id="am3">Print</button></li>
-      </ul>
-    </div>
-    <div class="menu" id="pm">
-      <button class="menu-toggle" aria-expanded="false" aria-controls="pmList" id="pmToggle">Manual popover</button>
-      <div class="menu-list" popover="manual" id="pmList"><button class="menu-item" id="pm1">A</button></div>
-    </div>
-    <div class="menu" id="qm">
-      <button class="menu-toggle" aria-expanded="false" aria-controls="qmList" id="qmToggle">Auto popover</button>
-      <div class="menu-list" popover id="qmList"><button class="menu-item" id="qm1">A</button><input id="qmNum" type="number" aria-label="n"></div>
-    </div>
-    <button id="after">after</button>
-  </div>
-  <div class="cluster">
     <button id="pressed" aria-pressed="true">Pressed</button>
     <div class="segmented" role="radiogroup" aria-label="Unit">
       <input type="radio" name="fxUnit" id="sg1" checked><label for="sg1">Bytes</label>
@@ -115,23 +84,6 @@ const FIXTURE = `
     <button class="kill" id="kill">Kill</button>
     <label class="switch"><input type="checkbox" role="switch" id="sw"> Live</label>
   </div>
-</div>`;
-
-// Popover menus that have to follow a scrolling toggle, and one at the foot of the viewport.
-const FLOATING = `
-<div id="fx2" style="position: fixed; inset-block-start: 1rem; inset-inline-end: 1rem; z-index: 40; inline-size: 16rem">
-  <div id="sc" style="overflow: auto; block-size: 8rem; border: 1px solid">
-    <div style="block-size: 30rem; padding-block-start: 1rem">
-      <div class="menu" id="sm">
-        <button class="menu-toggle" aria-expanded="false" aria-controls="smList" id="smToggle">Scrolls</button>
-        <div class="menu-list" popover id="smList"><button class="menu-item" id="sm1">A</button><button class="menu-item">B</button></div>
-      </div>
-    </div>
-  </div>
-</div>
-<div class="menu" id="bm" style="position: fixed; inset-block-end: 0.5rem; inset-inline-end: 1rem; z-index: 40">
-  <button class="menu-toggle" aria-expanded="false" aria-controls="bmList" id="bmToggle">At the bottom</button>
-  <div class="menu-list" popover id="bmList">${'<button class="menu-item">Item</button>'.repeat(40)}</div>
 </div>`;
 
 // sb-popover hosts as the templates write them (POPOVER-SPEC 4.1), with nfsen-controls.js on top.
@@ -166,6 +118,10 @@ const POPOVERS = `
       <button type="button" class="menu-item" aria-pressed="false" id="pc1">Light</button>
       <button type="button" class="menu-item" aria-pressed="true" id="pc2">Dark</button>
     </div>
+    <sb-popover id="popN" label="Nested" placement="end-start">
+      <button type="button" slot="trigger" class="menu-toggle" data-size="sm" data-preserve-attr="aria-expanded aria-haspopup" id="popNT">More</button>
+      <ul class="popover-list"><li><button type="button" class="menu-item" id="pn1">Inner</button></li></ul>
+    </sb-popover>
   </sb-popover>
   <button id="pAfter">after popovers</button>
 </div>
@@ -184,13 +140,9 @@ async function inject(page) {
                 for (const t of list.querySelectorAll('[role=tab]')) t.setAttribute('aria-selected', String(t === tab));
             });
         }
-        window.__clicked = [];
         fx.addEventListener('click', (e) => {
-            const b = e.target.closest('button');
-            if (b) window.__clicked.push(b.id);
             if (e.target.closest('a[href="#"]')) e.preventDefault();
         });
-        document.getElementById('client-root').insertAdjacentHTML('beforeend', ${JSON.stringify(FLOATING)});
         document.getElementById('client-root').insertAdjacentHTML('beforeend', ${JSON.stringify(POPOVERS)});
         const fxp = document.getElementById('fxp');
         window.__popClicked = [];
@@ -253,152 +205,6 @@ async function tabs(page) {
     assert.equal(await active(page), 'tl3', 'arrows also move in a list without aria-selected');
     const stops = await page.evaluate(`[...document.querySelectorAll('#tlLeg [role=tab]')].map((t) => t.getAttribute('tabindex'))`);
     assert.deepEqual(stops, [null, null, null], 'a list without aria-selected gets no roving tabindex');
-}
-
-async function disclosureMenu(page) {
-    await page.evaluate(`document.getElementById('dmToggle').focus()`);
-    await press(page, 'Enter');
-    assert.equal(await attr(page, 'dmList', 'data-open'), '', 'Enter opens');
-    assert.equal(await attr(page, 'dmToggle', 'aria-expanded'), 'true');
-    await press(page, 'Tab');
-    assert.equal(await active(page), 'dmP1', 'Tab moves into the open menu');
-    await press(page, 'Tab');
-    await press(page, 'Tab');
-    assert.equal(await active(page), 'dmNum');
-    await press(page, '5');
-    assert.equal(await page.evaluate(`document.getElementById('dmNum').value`), '5');
-    assert.equal(await attr(page, 'dmList', 'data-open'), '', 'typing keeps the menu open');
-    await press(page, 'Tab');
-    assert.equal(await active(page), 'dmSw');
-    await press(page, ' ');
-    assert.equal(await page.evaluate(`document.getElementById('dmSw').checked`), true);
-    assert.equal(await attr(page, 'dmList', 'data-open'), '', 'a switch keeps the menu open');
-    await press(page, 'Escape');
-    assert.equal(await attr(page, 'dmList', 'data-open'), null, 'Escape closes');
-    assert.equal(await active(page), 'dmToggle', 'Escape returns focus to the toggle');
-    assert.equal(await attr(page, 'dmToggle', 'aria-expanded'), 'false');
-    await press(page, ' ');
-    assert.equal(await attr(page, 'dmList', 'data-open'), '', 'Space opens');
-    await press(page, 'Tab');
-    await press(page, 'Tab');
-    assert.equal(await active(page), 'dmP2');
-    await press(page, 'Enter');
-    assert.equal(await attr(page, 'dmList', 'data-open'), null, 'choosing an item closes');
-    assert.equal(await active(page), 'dmToggle', 'and focus returns to the toggle');
-    assert.ok((await page.evaluate('window.__clicked')).includes('dmP2'), 'the item still acted');
-
-    await clickAt(page, '#dmToggle');
-    assert.equal(await attr(page, 'dmList', 'data-open'), '', 'a click opens');
-    await clickAt(page, '#before');
-    assert.equal(await attr(page, 'dmList', 'data-open'), null, 'an outside click closes');
-    await clickAt(page, '#dmToggle');
-    await clickAt(page, '#dmToggle');
-    assert.equal(await attr(page, 'dmList', 'data-open'), null, 'a second click on the toggle closes');
-}
-
-async function actionMenu(page) {
-    await page.evaluate(`document.getElementById('amToggle').focus()`);
-    await press(page, 'Enter');
-    assert.equal(await attr(page, 'amList', 'data-open'), '');
-    assert.equal(await active(page), 'am1', 'opening focuses the first item');
-    await press(page, 'ArrowDown');
-    assert.equal(await active(page), 'am2');
-    await press(page, 'ArrowDown');
-    await press(page, 'ArrowDown');
-    assert.equal(await active(page), 'am1', 'arrows wrap');
-    await press(page, 'ArrowUp');
-    assert.equal(await active(page), 'am3');
-    await press(page, 'Home');
-    assert.equal(await active(page), 'am1');
-    await press(page, 'End');
-    assert.equal(await active(page), 'am3');
-    await press(page, 'Escape');
-    assert.equal(await attr(page, 'amList', 'data-open'), null);
-    assert.equal(await active(page), 'amToggle');
-    await press(page, 'ArrowUp');
-    assert.equal(await active(page), 'am3', 'ArrowUp on the toggle opens on the last item');
-    await press(page, 'Tab');
-    assert.equal(await attr(page, 'amList', 'data-open'), null, 'Tab closes');
-    assert.equal(await active(page), 'pmToggle', 'and moves on from the toggle');
-    await page.evaluate(`document.getElementById('amToggle').focus()`);
-    await press(page, 'ArrowDown');
-    await press(page, 'ArrowDown');
-    await press(page, 'Enter');
-    assert.equal(await attr(page, 'amList', 'data-open'), null, 'choosing a menuitem closes');
-    assert.equal(await active(page), 'amToggle');
-}
-
-async function popoverMenus(page) {
-    await clickAt(page, '#pmToggle');
-    assert.equal(await popoverOpen(page, 'pmList'), true, 'a manual popover list opens');
-    assert.match(await page.evaluate(`document.getElementById('pmList').style.getPropertyValue('--menu-top')`), /px$/);
-    await press(page, 'Escape');
-    assert.equal(await popoverOpen(page, 'pmList'), false, 'Escape closes it');
-    assert.equal(await attr(page, 'pmToggle', 'aria-expanded'), 'false');
-
-    // Auto popovers are light-dismissed by the browser before the toggle's click arrives.
-    await clickAt(page, '#qmToggle');
-    assert.equal(await popoverOpen(page, 'qmList'), true, 'an auto popover list opens');
-    assert.equal(await attr(page, 'qmToggle', 'aria-expanded'), 'true');
-    await clickAt(page, '#qmToggle');
-    assert.equal(await popoverOpen(page, 'qmList'), false, 'a second click on the toggle closes it');
-    assert.equal(await attr(page, 'qmToggle', 'aria-expanded'), 'false');
-    await clickAt(page, '#qmToggle');
-    assert.equal(await popoverOpen(page, 'qmList'), true, 'a third click opens it again');
-    await clickAt(page, '#qmNum');
-    await press(page, '5');
-    assert.equal(await popoverOpen(page, 'qmList'), true, 'typing inside keeps it open');
-    await clickAt(page, '#before');
-    assert.equal(await popoverOpen(page, 'qmList'), false, 'an outside click closes it');
-    assert.equal(await attr(page, 'qmToggle', 'aria-expanded'), 'false');
-    await page.evaluate(`document.getElementById('qmToggle').focus()`);
-    await press(page, 'Enter');
-    assert.equal(await popoverOpen(page, 'qmList'), true, 'Enter opens it');
-    await press(page, 'Enter');
-    assert.equal(await popoverOpen(page, 'qmList'), false, 'Enter on the toggle closes it');
-    await clickAt(page, '#qmToggle');
-    await clickAt(page, '#qm1');
-    assert.equal(await popoverOpen(page, 'qmList'), false, 'choosing an item closes it');
-}
-
-const box = (page, id) =>
-    page.evaluate(`(() => {
-    const r = document.getElementById(${JSON.stringify(id)}).getBoundingClientRect();
-    return { top: Math.round(r.top), bottom: Math.round(r.bottom) };
-})()`);
-
-async function floatingMenus(page) {
-    const { clientHeight } = await page.evaluate(`({ clientHeight: document.documentElement.clientHeight })`);
-
-    await clickAt(page, '#bmToggle');
-    assert.equal(await popoverOpen(page, 'bmList'), true);
-    const [toggle, list] = [await box(page, 'bmToggle'), await box(page, 'bmList')];
-    assert.ok(
-        Math.abs(list.bottom - (toggle.top - 4)) <= 1,
-        `a list with no room below opens above its toggle: ${JSON.stringify({ toggle, list })}`
-    );
-    assert.ok(list.top >= 0, `and stays inside the viewport: ${list.top}`);
-    assert.ok(list.bottom <= clientHeight);
-    await press(page, 'Escape');
-    assert.equal(await popoverOpen(page, 'bmList'), false);
-
-    await clickAt(page, '#smToggle');
-    assert.equal(await popoverOpen(page, 'smList'), true);
-    const opened = await box(page, 'smList');
-    assert.equal(opened.top, (await box(page, 'smToggle')).bottom + 4, 'the list opens under its toggle');
-    await page.evaluate(`document.getElementById('sc').scrollTop = 10`);
-    await sleep(100);
-    const [t2, l2] = [await box(page, 'smToggle'), await box(page, 'smList')];
-    assert.ok(
-        l2.top !== opened.top && Math.abs(l2.top - (t2.bottom + 4)) <= 1,
-        `the list follows a scroll: ${JSON.stringify({ t2, l2, opened })}`
-    );
-    assert.equal(await popoverOpen(page, 'smList'), true, 'and stays open while its toggle shows');
-    await page.evaluate(`document.getElementById('sc').scrollTop = 200`);
-    await sleep(100);
-    assert.equal(await popoverOpen(page, 'smList'), false, 'the list closes once its toggle scrolls out of sight');
-    assert.equal(await attr(page, 'smToggle', 'aria-expanded'), 'false');
-    await page.evaluate(`document.getElementById('sc').scrollTop = 0`);
 }
 
 /** Whether an sb-popover is open; throws when its open property and its top-layer panel disagree. */
@@ -553,55 +359,59 @@ async function popoverChoose(page) {
 }
 
 async function popoverLayers(page) {
-    const menuOpen = () => attr(page, 'dmList', 'data-open');
     await clickAt(page, '#popAT');
-    await clickAt(page, '#dmToggle');
-    assert.equal(await popOpen(page, 'popA'), false, 'opening a menu by pointer closes the popover');
-    assert.equal(await menuOpen(), '');
+    await clickAt(page, '#popBT');
+    assert.equal(await popOpen(page, 'popB'), true, 'a click opens a second popover');
+    assert.equal(await popOpen(page, 'popA'), false, 'and closes the first');
     await clickAt(page, '#popAT');
-    assert.equal(await menuOpen(), null, 'opening a popover by pointer closes the menu');
     assert.equal(await popOpen(page, 'popA'), true);
-    await clickAt(page, '#qmToggle');
-    assert.equal(await popOpen(page, 'popA'), false, 'and the same with a top-layer menu list');
-    assert.equal(await popoverOpen(page, 'qmList'), true);
+    assert.equal(await popOpen(page, 'popB'), false, 'and the reverse');
     await clickAt(page, '#popAT');
-    assert.equal(await popoverOpen(page, 'qmList'), false);
-    assert.equal(await popOpen(page, 'popA'), true);
-    await press(page, 'Escape');
-
-    // EXP-8: popover open, focus to a menu toggle, Enter; then the reverse.
-    await page.evaluate(`document.getElementById('popAT').focus()`);
-    await press(page, 'Enter');
-    await page.evaluate(`document.getElementById('qmToggle').focus()`);
-    await press(page, 'Enter');
-    assert.equal(await popoverOpen(page, 'qmList'), true, 'the menu opens by keyboard');
-    assert.equal(await popOpen(page, 'popA'), false, 'with the popover closed');
-    await press(page, 'Escape');
-    assert.equal(await popoverOpen(page, 'qmList'), false, 'so one Escape closes the menu');
-    assert.equal(await active(page), 'qmToggle', 'and returns focus to its toggle');
-    await press(page, 'Enter');
-    await page.evaluate(`document.getElementById('popAT').focus()`);
-    await press(page, 'Enter');
-    assert.equal(await popOpen(page, 'popA'), true, 'the popover opens by keyboard');
-    assert.equal(await popoverOpen(page, 'qmList'), false, 'with the menu closed');
-    await press(page, 'Escape');
-    assert.equal(await popOpen(page, 'popA'), false);
+    assert.equal(await popOpen(page, 'popA'), false, 'a second click on the trigger closes it');
     assert.equal(await active(page), 'popAT');
 
-    // Opened without a press or a focus move (a script, the server's open).
+    // EXP-8 with two popovers: focus off the open one, so only N4 can close it.
+    await page.evaluate(`document.getElementById('popA').show()`);
+    await page.evaluate(`document.activeElement.blur()`);
+    await page.evaluate(`document.getElementById('popBT').focus()`);
+    assert.equal(await popOpen(page, 'popA'), true, 'focus going nowhere keeps a popover open');
     await press(page, 'Enter');
-    await page.evaluate(`document.getElementById('dmToggle').click()`);
-    assert.equal(await menuOpen(), '', 'a menu opened by script');
-    assert.equal(await popOpen(page, 'popA'), false, 'closes the popover');
+    assert.equal(await popOpen(page, 'popB'), true, 'a popover opened by keyboard');
+    assert.equal(await popOpen(page, 'popA'), false, 'closes the open one');
+    await press(page, 'Escape');
+    assert.equal(await popOpen(page, 'popB'), false, 'so one Escape closes the new one');
+    assert.equal(await active(page), 'popBT', 'and returns focus to its trigger');
+
+    // Opened without a press or a focus move (a script, the server's open).
     await page.evaluate(`document.getElementById('popA').show()`);
     assert.equal(await popOpen(page, 'popA'), true, 'a popover opened by script');
-    assert.equal(await menuOpen(), null, 'closes the menu');
     await page.evaluate(`document.getElementById('popB').show()`);
     assert.equal(await popOpen(page, 'popB'), true, 'a second popover opened by script');
     assert.equal(await popOpen(page, 'popA'), false, 'closes the first');
     await press(page, 'Escape');
     assert.equal(await popOpen(page, 'popB'), false);
     assert.equal(await active(page), 'popBT');
+
+    // A popover in another one's panel keeps that one open, and Escape closes the inner one first.
+    await page.evaluate(`document.getElementById('popC').show()`);
+    await page.evaluate(`document.getElementById('popNT').focus()`);
+    await press(page, 'Enter');
+    assert.equal(await popOpen(page, 'popN'), true, 'a nested popover opens');
+    assert.equal(await popOpen(page, 'popC'), true, 'and keeps the popover it sits in open');
+    assert.equal(await active(page), 'pn1');
+    await press(page, 'Enter');
+    assert.equal(await popOpen(page, 'popN'), false, 'choosing in the nested popover closes it');
+    assert.equal(await popOpen(page, 'popC'), true, 'and only it');
+    assert.equal(await active(page), 'popNT');
+    await press(page, 'ArrowDown');
+    assert.equal(await active(page), 'pn1', 'ArrowDown on the nested trigger opens it');
+    await press(page, 'Escape');
+    assert.equal(await popOpen(page, 'popN'), false, 'Escape closes the nested popover');
+    assert.equal(await popOpen(page, 'popC'), true, 'not the outer one');
+    assert.equal(await active(page), 'popNT');
+    await press(page, 'Escape');
+    assert.equal(await popOpen(page, 'popC'), false, 'the next Escape closes the outer one');
+    assert.equal(await active(page), 'popCT');
 }
 
 async function popoverUnderModal(page) {
@@ -657,6 +467,41 @@ async function popoverSyncAround(page) {
     assert.equal(await active(page), 'pa3', 'and focus on the same item');
     await press(page, 'Escape');
     assert.equal(await popOpen(page, 'popA'), false);
+}
+
+// nfsen-router leaves focus in an open popover on a page switch, and moves it to the heading otherwise.
+async function popoverPageSwitch(page) {
+    const from = await page.evaluate(`location.hash.replace(/^#\\//, '')`);
+    const to = from === 'health' ? 'alerts' : 'health';
+    const go = async (id) => {
+        await page.evaluate(`location.hash = ${JSON.stringify(`#/${id}`)}`);
+        await page.waitForPage(id, { timeout: 15000 });
+        await sleep(300);
+    };
+    const onHeading = (id, label) => page.waitFor(`!!document.activeElement?.matches('[data-page-heading=${JSON.stringify(id)}] h1')`, { label });
+
+    await page.evaluate(`document.getElementById('popAT').focus()`);
+    await press(page, 'Enter');
+    assert.equal(await active(page), 'pa1');
+    await go(to);
+    assert.equal(await popOpen(page, 'popA'), true, 'a page switch leaves the popover open');
+    assert.equal(await active(page), 'pa1', 'and the focus in it');
+    await press(page, 'Escape');
+    assert.equal(await active(page), 'popAT');
+
+    await page.evaluate(`document.getElementById('popC').show()`);
+    await page.evaluate(`document.getElementById('popNT').focus()`);
+    await go(from);
+    assert.equal(await popOpen(page, 'popC'), true, 'a page switch leaves the outer popover open');
+    assert.equal(await active(page), 'popNT', 'with focus on the closed nested trigger in its panel');
+    await press(page, 'Escape');
+    assert.equal(await popOpen(page, 'popC'), false);
+    assert.equal(await active(page), 'popCT');
+
+    await go(to);
+    await onHeading(to, 'focus on a closed popover trigger to move to the page heading');
+    await go(from);
+    await onHeading(from, 'and again on the way back');
 }
 
 // Forced colors: a .popover-list item gets a focus ring, and a pressed one keeps its state
@@ -726,10 +571,24 @@ const EARLY = `
   </sb-popover>
 </div>`;
 
-/** Until Starbase defines sb-popover (a slow or failed load) its trigger is a plain button that N3 leaves alone. */
+/**
+ * Until Starbase defines sb-popover (a slow or failed load) every host shows only its trigger (starbase.css), and the
+ * trigger is a plain button that N3 leaves alone.
+ */
 async function popoverBeforeUpgrade(page, src) {
     assert.equal(await page.evaluate(`!!customElements.get('sb-popover')`), false, 'the popover module is held back');
     await page.evaluate(`document.getElementById('client-root').insertAdjacentHTML('beforeend', ${JSON.stringify(EARLY)})`);
+    const early = await page.evaluate(`(() => {
+        const hosts = [...document.querySelectorAll('sb-popover')];
+        return {
+            hosts: hosts.length,
+            shown: hosts.flatMap((h) => [...h.children].filter((c) => c.slot !== 'trigger' && getComputedStyle(c).display !== 'none').map(() => h.id)),
+            trigger: document.getElementById('popET').getClientRects().length > 0,
+        };
+    })()`);
+    assert.ok(early.hosts > 1, `the page has popovers besides the fixture: ${early.hosts}`);
+    assert.deepEqual(early.shown, [], 'no undefined host shows its panel content');
+    assert.equal(early.trigger, true, 'the trigger of an undefined host shows');
     await page.evaluate(`document.getElementById('popET').focus()`);
     for (const key of ['ArrowDown', 'ArrowUp']) {
         await press(page, key);
@@ -744,6 +603,7 @@ async function popoverBeforeUpgrade(page, src) {
     await press(page, 'ArrowUp');
     assert.equal(await popOpen(page, 'popE'), true, 'once upgraded, ArrowUp on the trigger opens it');
     assert.equal(await active(page), 'pe2', 'on the last item');
+    assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('#popE .popover-list')).display`), 'block', 'and its list shows in the panel');
     await press(page, 'Escape');
     assert.equal(await popOpen(page, 'popE'), false);
 }
@@ -752,8 +612,7 @@ async function focusRings(page) {
     const selectors = [
         '#before',
         '#ta1',
-        '#dmToggle',
-        '#amToggle',
+        '#popAT',
         '#kill',
         '#sg2',
         'select',
@@ -799,16 +658,13 @@ async function forcedColorsFocus(page) {
         { target: '#pressed' },
         { target: '#navActive' },
         { target: '#sg1', ring: 'label[for=sg1]' },
-        { target: '#dmP1', away: '#dmP2' },
     ];
     for (const c of cases) {
-        if (c.target === '#dmP1') await page.evaluate(`document.getElementById('dmToggle').click()`);
         const r = await ringBeforeAndAfter(page, c);
         assert.ok(r.fv, `${c.target} gets :focus-visible`);
         assert.notEqual(r.before.split(' ')[0], 'none', `${c.target} shows its state without focus: ${r.before}`);
         assert.notEqual(r.after, r.before, `focus on ${c.target} shows over its state ring: ${r.before} -> ${r.after}`);
     }
-    await press(page, 'Escape');
 
     // A mouse click paints no focus ring, but the pressed state must still show.
     await clickAt(page, '#pressed');
@@ -935,10 +791,6 @@ export default async function uiControlsTest() {
             await boot(page, [{ name: 'prefers-color-scheme', value: mode }]);
             await themeColors(page, mode);
             await tabs(page);
-            await disclosureMenu(page);
-            await actionMenu(page);
-            await popoverMenus(page);
-            await floatingMenus(page);
             await popoverStyles(page);
             await popoverKeys(page);
             await popoverChoose(page);
@@ -946,6 +798,7 @@ export default async function uiControlsTest() {
             await popoverUnderModal(page);
             await popoverMove(page);
             await popoverSyncAround(page);
+            await popoverPageSwitch(page);
             await mouseFocus(page);
             await focusRings(page);
             await killBoundary(page);
@@ -958,7 +811,6 @@ export default async function uiControlsTest() {
         const surface = await page.evaluate(`import('/js/components/theme-colors.js').then((m) => m.chartTheme().surface)`);
         assert.match(surface, /^rgba\(/, 'theme-colors resolves under forced colors');
         await tabs(page);
-        await disclosureMenu(page);
         await focusRings(page);
         await forcedColorsFocus(page);
         await popoverForcedColors(page);

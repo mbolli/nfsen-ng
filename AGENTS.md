@@ -142,7 +142,7 @@ OpenSwoole has no PDO hook: every SQLite call blocks the worker, and all corouti
 ## CSS
 
 No framework. Style elements, not utility classes: a `button` is styled as a button, a table as a table. Where a
-class is needed it names a component (`.card`, `.segmented`, `.notice`, `.menu`, `.kpi`), never a declaration.
+class is needed it names a component (`.card`, `.segmented`, `.notice`, `.popover-list`, `.kpi`), never a declaration.
 There is no `.mb-3`, `.muted` or `.text-end` to reach for, and adding one is the wrong move. No inline `style` for
 presentation either; an inline custom property that carries data (`style="--share: 42%"`) is fine.
 
@@ -157,7 +157,7 @@ presentation either; an inline custom property that carries data (`style="--shar
   data series (`[data-series]`, the eight slots of `theme-colors.js`). A colour means one thing per page.
 - **Themes** are `light-dark()` plus a real `color-scheme` set by `:root[data-theme]`, so a new rule usually needs
   no dark-mode counterpart. `<html data-density="compact">` tightens tables.
-- **State** belongs in the DOM: `:checked`, `aria-pressed`, `aria-selected`, `aria-current`, `[data-open]`,
+- **State** belongs in the DOM: `:checked`, `aria-pressed`, `aria-selected`, `aria-current`, `aria-expanded`,
   `[data-level]`. Every selected state also shows as a border, bar or outline, for forced colours.
 
 ## Writing
@@ -348,8 +348,8 @@ Load order in `layout.html.twig`:
    `alert-template-preview`, `filter-drawer`, `chunks`.
 4. `datastar-rocket.js`, then `datastar-persist.js` (a Datastar plugin).
 5. The elements `nfsen-chart`, `nfsen-sankey`, `nfsen-matrix`, `nfsen-table`, `nfsen-toast`,
-   `nfsen-filter-editor`, then the plain `nfsen-controls` (menus, tabs and the popover layer that completes
-   `sb-popover`, all delegated on `document`) and `clipboard`.
+   `nfsen-filter-editor`, then the plain `nfsen-controls` (tabs and the popover layer that completes `sb-popover`,
+   both delegated on `document`) and `clipboard`.
 6. The Starbase components whose lock entry says `"load": true`.
 
 A module with a script tag that is also an import-map target (`chunks`, `clipboard`) uses the identical URL, so it
@@ -362,8 +362,8 @@ Components from [Starbase](https://github.com/zweiundeins/starbase) (MIT) are ve
 `frontend/js/starbase/<slug>@<version>/`, unchanged, with `LICENSE` and `starbase.lock.json`. The version in the
 folder name is Starbase's content hash of the folder, so the URL changes with every byte. Never edit a vendored
 file: change Starbase first, then move the pin. Two are vendored: `sb-relative-time` (Alerts, Last triggered) and
-`sb-popover` (the Export menus of Flows, Top Talkers and Conversations, and the Columns picker of the result tables;
-see Popovers below).
+`sb-popover` (every menu: the controls bar's range, start and end, and sources, the Live menu, the theme menu, the tab
+bar's More, the Export menus, the Columns picker and the saved-filter kebab; see Popovers below).
 
 ```bash
 node scripts/starbase-vendor.mjs check                        # offline: hashes, lock, licence, imports, Datastar banner
@@ -407,17 +407,18 @@ one `:root` block serves light and dark. A package that adopts a component:
 
 ### Popovers
 
-A new floating panel under a button is an `sb-popover` (the shell's menus and the saved-filter kebab are still
-`.menu` lists that `nfsen-controls` drives), built to one contract (`PopoverMarkupTest` and `rocket.test.mjs` check
-K1 in its markup, `ui-controls.test.mjs` its behaviour):
+Every floating panel under a button is an `sb-popover`, built to one contract (`PopoverMarkupTest` and
+`rocket.test.mjs` check K1 in its markup, `ui-controls.test.mjs` its behaviour). There is no other menu: the
+`.menu` lists and the `role=menu` action menu are gone, and so is the code in `nfsen-controls` that drove them.
 
 - Host: `<sb-popover id="..." class="<component>" label="<name of the panel>" placement="...">` with a stable `id`,
   so the morph matches it (a replaced menu's host takes that menu's id). Never `open`, `mode`, `arrow` or `name`; no
-  `data-ref` or `data-init`; a host attribute set by `data-attr` is in the host's `data-preserve-attr`. No `.menu`
-  class on the host or between it and its trigger, or nfsen-controls takes the trigger for a menu.
+  `data-ref` or `data-init`; a host attribute set by `data-attr` is in the host's `data-preserve-attr`.
 - Trigger: one slotted `<button type="button" slot="trigger" class="menu-toggle" data-size="sm"
-  data-preserve-attr="aria-expanded aria-haspopup">`, so the default trigger never renders. `sb-popover` writes
-  `aria-haspopup="dialog"` and `aria-expanded`, the server neither. Only the Columns trigger has `aria-controls`.
+  data-preserve-attr="aria-expanded aria-haspopup">`, so the default trigger never renders. The shell's triggers
+  (`#themeMenu`, `#tabbarMoreMenu`) take their size from `sidebar-action` and `tabbar-item` instead of `data-size`.
+  `sb-popover` writes `aria-haspopup="dialog"` and `aria-expanded`, the server neither. Only the Columns trigger has
+  `aria-controls`.
 - Panel: K1's popover exception applies. Commands go into a `<ul class="popover-list">` (a `div.popover-list` for
   mixed content) of `button.menu-item` or `a.menu-item[href]`, separators are `li.menu-sep[role=separator]`, current
   choices keep `aria-pressed` or `aria-current` with the check mark. No `role=menu`, `menuitem`, `role=none` or
@@ -431,13 +432,17 @@ K1 in its markup, `ui-controls.test.mjs` its behaviour):
   item's handler and returns focus (`data-menu-keep`, `aria-disabled="true"`, `preventDefault()` or `stopPropagation()`
   in the handler keep it open; fields, checkboxes and switches never close it); focus leaving the popover closes it;
   ArrowDown or ArrowUp on the trigger opens on the first or last `.popover-list` item, and the arrows, Home and End move
-  among the items and wrap; a `.menu` and a popover never stay open together; a modal dialog opening closes every
-  popover outside it.
+  among the items and wrap; a popover that opens closes the others, except one it sits in or holds; a modal dialog
+  opening closes every popover outside it. A page switch leaves focus in an open popover that stays on screen (the
+  controls bar, the sidebar, the tab bar); one the switch hides vanishes with it but stays open until an outside press
+  or the next Escape, which it takes.
 
 `ui-controls.test.mjs` tests that layer on fixture popovers in `#client-root` (`popoverKeys`, `popoverStyles`,
-`popoverChoose`, `popoverLayers`, `popoverUnderModal`, `popoverMove`, `popoverSyncAround`, `popoverForcedColors`,
-`popoverPhone`, `popoverBeforeUpgrade`). The page files test the page's own popovers (`flows`, `talkers`,
-`conversations`, `columns`), each with a sync while one is open (`page.syncNow(id)`).
+`popoverChoose`, `popoverLayers`, `popoverUnderModal`, `popoverMove`, `popoverSyncAround`, `popoverPageSwitch`,
+`popoverForcedColors`, `popoverPhone`, `popoverBeforeUpgrade`). The files of the pages and the shell test their own
+popovers (`controls`, `graphs`, `smoke`, `mobile`, `drawer`, `flows`, `talkers`, `conversations`, `columns`), each
+with a sync while one is open (`page.syncNow(id)`, in `graphs` the Overview live tick). Until `sb-popover` is
+defined, `starbase.css` shows only a host's trigger.
 
 ## Bumping Datastar and Rocket
 

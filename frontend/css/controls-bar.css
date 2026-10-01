@@ -1,5 +1,5 @@
 /* Global controls bar (spec 4.0.2, 4.9). One row at 80em with the sidebar expanded, one
-   profile and no import running; it wraps otherwise. On phones the range menu and
+   profile and no import running; it wraps otherwise. On phones the range popover and
    #controlsMore stay, and the other controls fold behind it. */
 
 .controls-bar {
@@ -63,9 +63,14 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* ── Menu contents ──────────────────────────────────────────────────────── */
+/* ── Popover contents ───────────────────────────────────────────────────── */
 
-.range-menu-list {
+/* Until sb-popover is defined, its panel content would show inside the bar. */
+sb-popover:is(.range-menu, .range-display, .sources-menu):not(:defined) > :not([slot='trigger']) {
+    display: none;
+}
+
+sb-popover.range-menu::part(panel) {
     min-inline-size: 15rem;
 }
 
@@ -96,10 +101,6 @@
 
 .range-entry .status-text:empty {
     display: none;
-}
-
-.sources-list {
-    min-inline-size: 12rem;
 }
 
 /* ── Phones (4.9) ───────────────────────────────────────────────────────── */

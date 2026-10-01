@@ -36,14 +36,14 @@
         </select>
     {% endif %}
 
-    {# Presets and a custom duration; the toggle names the window (4.0.2). #}
-    <div class="menu range-menu" id="rangeMenu">
-        <button type="button" class="menu-toggle" data-size="sm" aria-controls="rangeMenuList"
-                aria-expanded="false" data-preserve-attr="aria-expanded" title="Time range">
+    {# Presets and a custom duration; the trigger names the window (4.0.2). #}
+    <sb-popover id="rangeMenu" class="range-menu" label="Time range" placement="bottom-start">
+        <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
+                data-preserve-attr="aria-expanded aria-haspopup" title="Time range">
             {{ icons.icon('clock') }}
             <span data-ignore-morph data-text="window.nfsenTime.rangeLabel({{ preset }}, {{ live }}, {{ ds }}, {{ de }}, {{ labels|json_encode }})">{{ range_live.bool() ? (labels[range_preset.string()] ?? 'Custom range') : 'Custom range' }}</span>
         </button>
-        <div class="menu-list range-menu-list" id="rangeMenuList" popover data-align="start" data-preserve-attr="style">
+        <div class="popover-list" id="rangeMenuList">
             {% for p in range.presets %}
                 <button type="button" class="menu-item" data-range-preset="{{ p.id }}"
                         aria-pressed="{{ range_live.bool() and range_preset.string() == p.id ? 'true' : 'false' }}"
@@ -67,7 +67,7 @@
                 </div>
             </div>
         </div>
-    </div>
+    </sb-popover>
 
     <button type="button" class="controls-more" id="controlsMore" data-size="sm" aria-controls="controlsPanel"
             aria-expanded="false" data-attr:aria-expanded="$_controlsMore ? 'true' : 'false'" data-preserve-attr="aria-expanded"
@@ -88,39 +88,39 @@
         </div>
 
         {# Where the window is, in the display timezone, and an entry for an absolute one. #}
-        <div class="menu range-display" id="rangeDisplay">
-            <button type="button" class="menu-toggle" data-size="sm" aria-controls="rangeDisplayList"
-                    aria-expanded="false" data-preserve-attr="aria-expanded" title="Set a start and an end"
+        <sb-popover id="rangeDisplay" class="range-display" label="Set a start and an end" placement="bottom-start">
+            {# Runs before sb-popover's own click handler, so aria-expanded still says whether this click opens it. #}
+            <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
+                    data-preserve-attr="aria-expanded aria-haspopup" title="Set a start and an end"
                     data-on:click="el.getAttribute('aria-expanded') !== 'true' && (document.getElementById('rangeFrom').value = window.nfsenTime.toLocalInput({{ ds }}, {{ tz }}), document.getElementById('rangeTo').value = window.nfsenTime.toLocalInput({{ de }}, {{ tz }}), $_rangeEntryError = '')">
                 <span data-ignore-morph data-text="window.nfsenTime.formatRange({{ ds }}, {{ de }}, {{ tz }})">{{ datestart.int()|date('M j, H:i', nfcapdTz.string()) }} to {{ dateend.int()|date('M j, H:i', nfcapdTz.string()) }}</span>
             </button>
-            <div class="menu-list" id="rangeDisplayList" popover data-align="start" data-preserve-attr="style">
-                <div class="range-entry">
-                    <div class="field">
-                        <label for="rangeFrom">From</label>
-                        <input type="datetime-local" id="rangeFrom" step="60"
-                               data-on:keydown="evt.key === 'Enter' && document.getElementById('rangeApply').click()">
-                    </div>
-                    <div class="field">
-                        <label for="rangeTo">To</label>
-                        <input type="datetime-local" id="rangeTo" step="60"
-                               data-on:keydown="evt.key === 'Enter' && document.getElementById('rangeApply').click()">
-                    </div>
-                    <p class="help" data-ignore-morph data-text="{{ '$' ~ displayTz.id() }} === 'server' ? 'Times in ' + {{ '$' ~ nfcapdTz.id() }} + ', the capture timezone.' : 'Times in this browser\'s timezone.'">Times in this browser's timezone.</p>
-                    <p class="status-text" data-level="error" role="alert" data-ignore-morph data-text="$_rangeEntryError"></p>
-                    <button type="button" id="rangeApply" data-variant="primary" data-size="sm"
-                            data-on:click="const from = window.nfsenTime.toEpoch(document.getElementById('rangeFrom').value, {{ tz }}); const to = window.nfsenTime.toEpoch(document.getElementById('rangeTo').value, {{ tz }}); from < to ? ({{ remember }}, $_rangeEntryError = '', @post('{{ setRange.url() }}?op=abs&from=' + from + '&to=' + to)) : (evt.stopPropagation(), $_rangeEntryError = Number.isNaN(from) || Number.isNaN(to) ? 'Enter a start and an end.' : 'The range has to end after it starts.')">Apply</button>
+            <div class="range-entry" id="rangeDisplayList">
+                {# preventDefault: the Enter would otherwise also press the trigger that Apply's close focuses. #}
+                <div class="field">
+                    <label for="rangeFrom">From</label>
+                    <input type="datetime-local" id="rangeFrom" step="60"
+                           data-on:keydown="evt.key === 'Enter' && (evt.preventDefault(), document.getElementById('rangeApply').click())">
                 </div>
+                <div class="field">
+                    <label for="rangeTo">To</label>
+                    <input type="datetime-local" id="rangeTo" step="60"
+                           data-on:keydown="evt.key === 'Enter' && (evt.preventDefault(), document.getElementById('rangeApply').click())">
+                </div>
+                <p class="help" data-ignore-morph data-text="{{ '$' ~ displayTz.id() }} === 'server' ? 'Times in ' + {{ '$' ~ nfcapdTz.id() }} + ', the capture timezone.' : 'Times in this browser\'s timezone.'">Times in this browser's timezone.</p>
+                <p class="status-text" data-level="error" role="alert" data-ignore-morph data-text="$_rangeEntryError"></p>
+                <button type="button" id="rangeApply" data-variant="primary" data-size="sm"
+                        data-on:click="const from = window.nfsenTime.toEpoch(document.getElementById('rangeFrom').value, {{ tz }}); const to = window.nfsenTime.toEpoch(document.getElementById('rangeTo').value, {{ tz }}); from < to ? ({{ remember }}, $_rangeEntryError = '', @post('{{ setRange.url() }}?op=abs&from=' + from + '&to=' + to)) : (evt.stopPropagation(), $_rangeEntryError = Number.isNaN(from) || Number.isNaN(to) ? 'Enter a start and an end.' : 'The range has to end after it starts.')">Apply</button>
             </div>
-        </div>
+        </sb-popover>
 
         {# At least one source stays checked; the post waits until the ticking stops. #}
-        <div class="menu sources-menu" id="sourcesMenu">
-            <button type="button" class="menu-toggle" data-size="sm" aria-controls="sourcesMenuList"
-                    aria-expanded="false" data-preserve-attr="aria-expanded" title="Sources">
+        <sb-popover id="sourcesMenu" class="sources-menu" label="Sources" placement="bottom-start">
+            <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
+                    data-preserve-attr="aria-expanded aria-haspopup" title="Sources">
                 <span data-ignore-morph data-text="{{ allPicked }} ? 'All sources' : {{ allSources }}.filter(s => {{ gs }}.includes(s)).length + ' of {{ sources|length }} sources'">All sources</span>
             </button>
-            <div class="menu-list sources-list" id="sourcesMenuList" popover data-align="start" data-preserve-attr="style"
+            <div class="popover-list sources-list" id="sourcesMenuList"
                  data-on:change__debounce.400ms="@post('{{ applyGlobals.url() }}')">
                 {% if sources|length > 1 %}
                     <label class="menu-item choice">
@@ -139,7 +139,7 @@
                     </label>
                 {% endfor %}
             </div>
-        </div>
+        </sb-popover>
 
         <select id="protocolSelect" class="protocol-select" aria-label="Protocol" title="Protocol"
                 {{ bind(protocol) }} data-on:change="@post('{{ applyGlobals.url() }}')">

@@ -383,10 +383,8 @@ node scripts/starbase-vendor.mjs verify-remote --base https://starbase.zweiundei
 the lock. A vendored module may import only `'datastar'` or a file inside its own folder. `StarbaseAssets::modules()`
 reads the lock, and the layout loads every `"load": true` entry after the elements; no template names a component.
 A pin bump is a commit that touches only `frontend/js/starbase/**` and names the Starbase commit and every version.
-Until the owner merges Starbase's feature branches into main, nfsen-ng pins from the local integration branch
-`nfsen-pin` (worktree `/develop/starbase-wt-nfsen`: Starbase 44b7341 with the relative-time time-zone commits, the
-popover shadow token and the virtual-scroll focus commits on top), so a `pull` takes
-`--from /develop/starbase-wt-nfsen --ref <nfsen-pin commit>`.
+Pin from a commit on Starbase's main (`--from ../starbase --ref <commit>`): a feature nfsen-ng needs goes into
+Starbase first.
 
 `frontend/css/starbase.css` maps every `--sb-*` token onto nfsen-ng's tokens (`--sb-notch: 0` for smooth corners), so
 one `:root` block serves light and dark. A package that adopts a component:

@@ -1,11 +1,13 @@
-// The result tables' Columns picker, an sb-popover that nfsen-table.js builds per table (POPOVER-SPEC PA8), and
-// the Original view switch the Top Talkers table keeps.
+// The Columns pickers: the Flows list's, an sb-popover the server renders next to the list (ADOPT-VSCROLL 3.7), and
+// the Top Talkers table's, which nfsen-table.js builds (POPOVER-SPEC PA8), with the Original view switch it keeps.
 import assert from 'node:assert/strict';
 import { BASE, withPage } from './lib/cdp.mjs';
 
-const POPOVER = '#flowTable sb-popover.column-selector';
-const BTN = '#flowTable .column-selector button';
-const MENU = '#flowTable .column-selector-menu';
+const POPOVER = '#flowTable-columnsPopover';
+const BTN = '#flowTable-columnsPopover [slot="trigger"]';
+const MENU = '#flowTable-columns';
+const LIST = `document.querySelector('sb-virtual-scroll[id^="flowRows-"]')`;
+const STORED = `JSON.parse(localStorage.getItem('nfsen-persist:_flows_hidden') ?? '[]')`;
 const MENU_OPEN = `(document.querySelector('${POPOVER}')?.open === true && !!document.querySelector('${MENU}')?.checkVisibility())`;
 const STATS_POPOVER = '#statsTable sb-popover.column-selector';
 const KEYS = { Enter: 13, Escape: 27, ArrowDown: 40, ArrowUp: 38, Home: 36, End: 35 };
@@ -102,6 +104,44 @@ const watchColumns = (id) => `(function(){
     p.addEventListener('sb-close', function(e){ log.closed.push(e.detail && e.detail.reason); });
 })();`;
 
+/** The Flows list's Columns picker keeps to the popover contract (PC1, PC2, PC5, PC6, PC7). */
+async function assertFlowsContract(page) {
+    const got = await page.evaluate(`(function(){
+        var p = document.querySelector('${POPOVER}');
+        var slotted = p.shadowRoot.querySelector('slot[name="trigger"]').assignedElements();
+        var t = slotted[0];
+        var list = document.getElementById(t.getAttribute('aria-controls'));
+        return {
+            className: p.className, rocket: typeof p.rocketInstanceId === 'string', tools: p.parentElement.id,
+            label: p.getAttribute('label'), placement: p.getAttribute('placement'),
+            serverState: ['open', 'mode', 'arrow', 'name'].filter(function(a){ return p.hasAttribute(a); }),
+            slotted: slotted.length, trigger: t.localName + '.' + t.className + '[type=' + t.type + ']', text: t.textContent.trim(),
+            haspopup: t.getAttribute('aria-haspopup'), controls: t.getAttribute('aria-controls'),
+            list: !!list && list.localName === 'ul' && list.classList.contains('popover-list') && list.parentElement === p,
+            roles: p.querySelectorAll('[role="menu"], [role="menuitem"], [tabindex="-1"]').length,
+        };
+    })()`);
+    assert.deepEqual(
+        got,
+        {
+            className: 'column-selector',
+            rocket: true,
+            tools: 'flowsListTools',
+            label: 'Columns to show',
+            placement: 'bottom-end',
+            serverState: [],
+            slotted: 1,
+            trigger: 'button.menu-toggle[type=button]',
+            text: 'Columns',
+            haspopup: 'dialog',
+            controls: 'flowTable-columns',
+            list: true,
+            roles: 0,
+        },
+        "the Flows list's Columns picker keeps to the popover contract"
+    );
+}
+
 export default async function columnsTest() {
     await withPage(async (page) => {
         await page.navigate(`${BASE}/`);
@@ -112,9 +152,11 @@ export default async function columnsTest() {
         await page.setSelectValue('#filterFlowsLimit select', 20);
         await page.runQuery('flows', { timeout: 60000 });
 
-        await page.waitFor(`!!document.querySelector('${BTN}')`, { timeout: 15000, label: 'column selector button' });
-        await assertRocketHost(page, 'flowTable');
-        await assertContract(page, 'flowTable');
+        await page.waitFor(`!!document.querySelector('${BTN}') && !!${LIST}?.hasAttribute('total')`, {
+            timeout: 15000,
+            label: 'column selector button',
+        });
+        await assertFlowsContract(page);
         assert.equal(await page.evaluate(MENU_OPEN), false, 'the popover should start closed');
         assert.equal(await page.evaluate(`document.querySelector('${BTN}').getAttribute('aria-expanded')`), 'false');
 
@@ -150,20 +192,20 @@ export default async function columnsTest() {
         assert.ok(box.inViewport, `expected the panel to fit in the viewport, got ${JSON.stringify(box)}`);
         assert.ok(box.capped && !box.listScrolls, `expected a panel of at most 20rem that scrolls itself, got ${JSON.stringify(box)}`);
 
-        // A click inside the popover keeps it open; the column goes by its key.
+        // A click inside the popover keeps it open; the column goes by its key, from the header and every row.
         const key = await page.evaluate(
             `(function(){var c=document.querySelector('${MENU} .column-checkbox');c.click();return c.dataset.columnKey;})()`
         );
         assert.equal(await page.evaluate(MENU_OPEN), true, 'clicking a checkbox keeps the popover open');
         const hidden = `(function(){
-            var th=document.querySelector('#flowTable thead th[data-original-title=${JSON.stringify(key)}]');
-            var i=[...th.parentNode.children].indexOf(th);
-            var cells=[...document.querySelectorAll('#flowTable tbody tr')].map(function(r){return r.cells[i];});
-            return th.hidden && cells.length>0 && cells.every(function(c){return c.hidden && c.getClientRects().length===0;});
+            var h = ${LIST};
+            if (!h || h.querySelector('button[data-sort-key=${JSON.stringify(key)}]')) return false;
+            var head = h.querySelectorAll('[slot="header"] [role="columnheader"]').length;
+            var rows = [...h.children].filter(function(el){ return !el.slot; });
+            return rows.length > 0 && rows.every(function(r){ return r.children.length === head; });
         })()`;
         await page.waitFor(hidden, { label: `column "${key}" to hide` });
-        const stored = await page.evaluate(`JSON.parse(localStorage.getItem('nfsen-table-hidden-columns-flowTable'))`);
-        assert.deepEqual(stored, [key], 'the choice is stored by column key');
+        assert.deepEqual(await page.evaluate(STORED), [key], 'the choice is kept in the browser by column key');
         assert.equal(await page.evaluate(`document.querySelector('${MENU} [data-column-all]').checked`), false, 'Show all is unchecked');
 
         // An outside press closes.
@@ -198,7 +240,7 @@ export default async function columnsTest() {
             label: 'ArrowUp on the trigger to open on the last column',
         });
 
-        // A sync morphs the page around the result host: the popover stays open, the focus where it was.
+        // A sync morphs the page around the list: the popover stays open, the focus where it was.
         await press(page, 'ArrowUp');
         const focused = await page.evaluate(`(function(){
             window.__e2eFocused = document.activeElement;
@@ -215,64 +257,52 @@ export default async function columnsTest() {
         await press(page, 'Escape');
         await page.waitFor(`!${MENU_OPEN}`, { label: 'popover to close after the sync' });
 
-        // Show all brings the column back and leaves localStorage as it found it.
+        // Show all brings the column back and empties the kept choice.
         await page.evaluate(`document.querySelector('${BTN}').click()`);
         await page.waitFor(MENU_OPEN, { label: 'popover to open again' });
         await page.evaluate(`document.querySelector('${MENU} [data-column-all]').click()`);
         await page.waitFor(`!${hidden}`, { label: `column "${key}" to come back` });
-        assert.deepEqual(await page.evaluate(`JSON.parse(localStorage.getItem('nfsen-table-hidden-columns-flowTable'))`), []);
+        assert.deepEqual(await page.evaluate(STORED), []);
 
-        // A second run lands while the popover is open: the morph skips the placeholder, so only the items are new.
+        // A second run lands while the popover is open: the morph keeps the popover, its trigger, its list and the
+        // focused box by their ids, and the new list carries the kept choice.
         await page.evaluate(`document.querySelector('${MENU} .column-checkbox').click()`);
         await page.waitFor(hidden, { label: `column "${key}" to hide before the second run` });
-        const keyBox = `${MENU} .column-checkbox[data-column-key=${JSON.stringify(key)}]`;
-        const firstResult = await page.evaluate(`(function(){
+        const keyBox = `#flowTable-col-${key}`;
+        const firstList = await page.evaluate(`(function(){
             var p = window.__e2eColumns = document.querySelector('${POPOVER}');
             window.__e2eTrigger = p.querySelector('[slot="trigger"]');
             window.__e2eList = p.querySelector('.column-selector-menu');
-            window.__e2eItem = p.querySelector('.column-checkbox');
-            document.querySelector('${keyBox}').focus();
-            ${watchColumns('flowTable')}
-            return document.getElementById('flowTable').dataset.result;
+            window.__e2eBox = document.querySelector('${keyBox}');
+            window.__e2eClosed = [];
+            p.addEventListener('sb-close', function(e){ window.__e2eClosed.push(e.detail && e.detail.reason); });
+            window.__e2eBox.focus();
+            return ${LIST}.id;
         })()`);
         assert.ok(await page.evaluate(`${MENU_OPEN} && ${focusIs(keyBox)}`), 'the popover is open before the second run');
         await page.runQuery('flows', { timeout: 60000 });
-        await page.waitFor(`document.getElementById('flowTable')?.dataset.result !== ${JSON.stringify(firstResult)}`, {
+        await page.waitFor(`${LIST}?.id !== ${JSON.stringify(firstList)} && ${LIST}?.hasAttribute('total')`, {
             timeout: 15000,
             label: 'the second Flows result',
         });
-        await page.waitFor(`(document.querySelector('${MENU} .column-checkbox') ?? window.__e2eItem) !== window.__e2eItem`, {
-            label: 'the Columns list of the second result',
-        });
         await page.waitFor(hidden, { label: `column "${key}" hidden in the second result` });
-        await assertContract(page, 'flowTable');
+        await assertFlowsContract(page);
         const rerun = await page.evaluate(`(function(){
             var p = document.querySelector('${POPOVER}');
             var b = document.querySelector('${keyBox}');
             return { popover: p === window.__e2eColumns, trigger: p.querySelector('[slot="trigger"]') === window.__e2eTrigger,
                 list: p.querySelector('.column-selector-menu') === window.__e2eList, open: ${MENU_OPEN},
-                focus: document.activeElement === b, box: !!b && !b.checked, all: p.querySelector('[data-column-all]').checked,
-                ids: document.querySelectorAll('#flowTable-columnsPopover, #flowTable-columns').length,
-                watched: document.getElementById('flowTable').__e2eColumnsWatch };
+                box: b === window.__e2eBox, focus: document.activeElement === b, unchecked: !!b && !b.checked,
+                all: p.querySelector('[data-column-all]').checked, closed: window.__e2eClosed };
         })()`);
         assert.deepEqual(
             rerun,
-            {
-                popover: true,
-                trigger: true,
-                list: true,
-                open: true,
-                focus: true,
-                box: true,
-                all: false,
-                ids: 2,
-                watched: { removed: 0, closed: [] },
-            },
-            'the second result keeps the open popover, its trigger and its list in the document, with the stored choice'
+            { popover: true, trigger: true, list: true, open: true, box: true, focus: true, unchecked: true, all: false, closed: [] },
+            'the second result keeps the open popover, its trigger, its list and the focused box, with the kept choice'
         );
         await page.evaluate(`document.querySelector('${MENU} [data-column-all]').click()`);
         await page.waitFor(`!${hidden}`, { label: `column "${key}" back in the second result` });
-        assert.deepEqual(await page.evaluate(`JSON.parse(localStorage.getItem('nfsen-table-hidden-columns-flowTable'))`), []);
+        assert.deepEqual(await page.evaluate(STORED), []);
         await press(page, 'Escape');
         await page.waitFor(`!${MENU_OPEN} && ${focusIs(BTN)}`, { label: 'the kept popover to close on Escape' });
         await page.evaluate(`document.querySelector('${BTN}').click()`);

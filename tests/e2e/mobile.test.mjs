@@ -113,7 +113,9 @@ const OVERFLOW = `(function(){
         var r = el.getBoundingClientRect();
         if (r.right <= width + 1 || r.width <= 1 || r.height <= 1 || !el.getClientRects().length) continue;
         var held = false;
-        for (var p = el.parentElement; p && p !== main && !held; p = p.parentElement) held = getComputedStyle(p).overflowX !== 'visible';
+        // Up the flat tree: a slotted element is held by the scroll container around its slot (sb-virtual-scroll's rows).
+        var up = function(n){ return n.assignedSlot || n.parentElement || n.getRootNode().host || null; };
+        for (var p = up(el); p && p !== main && !held; p = up(p)) held = getComputedStyle(p).overflowX !== 'visible';
         if (!held) out.push(el.tagName.toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\\s+/).join('.') : '') + ' ends at ' + Math.round(r.right) + ' px');
     }
     return out.slice(0, 6);

@@ -1,12 +1,13 @@
-// Flows (4.3, 5.4): run, pages, tabs, exports and the Export popover, result hosts (D26), 10,000 rows in
-// three tabs without a worker crash, keyboard walk and forced-colors screenshots to E2E_SHOTS (V-A11Y).
+// Flows (4.3, 5.4): run, the list, tabs, exports from the server and the Export popover, a new result's list, 10,000
+// rows in three tabs without a worker crash, keyboard walk and forced-colors screenshots to E2E_SHOTS (V-A11Y).
+// vscroll.test.mjs covers the list itself: windows, sorts, columns, the keyboard, revival.
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { BASE, withPage } from './lib/cdp.mjs';
 
 const SHOTS = process.env.E2E_SHOTS || '/tmp';
-const TABLE = '#flowTable';
-const STATUS = `${TABLE} .table-pager-status`;
+const HOST = `document.querySelector('sb-virtual-scroll[id^="flowRows-"]')`;
+const COLUMNS = `document.getElementById('flowTable-columnsPopover')`;
 const EXPORT = `document.getElementById('flowsExport')`;
 const EXPORT_TRIGGER = `document.querySelector('#flowsExport [slot="trigger"]')`;
 // The Flows page's actions that run nfdump over capture files (no-auto-query.test.mjs's READS_CAPTURE_FILES).
@@ -160,376 +161,12 @@ async function shot(page, path, selector) {
     writeFileSync(path, Buffer.from(data, 'base64'));
 }
 
-const shownRows = `document.querySelectorAll('${TABLE} tbody tr').length`;
 const activeId = 'document.activeElement?.id';
-const loaded = (rows) =>
-    `(function(){ var t = document.getElementById('flowTable'); return !!t && !!t.rows && t.rows.length ${rows} && !t.loading && !(t.pull && t.pull.failed); })()`;
+/** The list's row count (its total), once it holds rows; else 0. */
+const listTotal = `(${HOST}?.hasAttribute('total') ? Number(${HOST}.getAttribute('total')) : 0)`;
+const listRows = `(${HOST} ? [...${HOST}.children].filter(function(el){ return !el.slot; }).length : 0)`;
 const rawOutput = `document.querySelector('[id^="flowsRawOutput-"]')`;
 
-// Runs before any page script: each result's rows as the SSE stream sent them, keyed by what nfsen-table never
-// rewrites, and what a data-effect applied on first load saw of the chunk helpers.
-const BEFORE_BOOT = `(function(){
-    var rowKey = window.__e2eRowKey = function(tr){
-        return JSON.stringify([...tr.cells].map(function(c){
-            var time = c.querySelector('time[data-epoch]');
-            return c.dataset.sortValue ?? (time ? time.dataset.epoch : undefined) ?? c.dataset.raw ?? c.textContent.trim();
-        }));
-    };
-    var wire = window.__e2eWire = {};
-    var entry = function(id){ return wire[id] || (wire[id] = { first: null, chunks: {} }); };
-    var take = function(selector, html){
-        if (html.indexOf('table-rows') < 0) return;
-        var box = document.createElement('template');
-        box.innerHTML = html;
-        box.content.querySelectorAll('nfsen-table[data-result]').forEach(function(table){
-            var e = entry(table.getAttribute('data-result'));
-            e.first = [...(table.querySelector('tbody')?.rows ?? [])].map(rowKey);
-            table.querySelectorAll(':scope > template.table-rows').forEach(function(t){
-                var rows = [...t.content.children].map(rowKey);
-                if (t.dataset.chunk === undefined) e.first = e.first.concat(rows);
-                else e.chunks[t.dataset.chunk] ??= rows;
-            });
-        });
-        var m = /^#flowTableHost-(\\S+) > nfsen-table$/.exec(selector || '');
-        if (m) [...box.content.children].filter(function(t){ return t.matches('template.table-rows[data-chunk]'); }).forEach(function(t){
-            entry(m[1]).chunks[t.dataset.chunk] ??= [...t.content.children].map(rowKey);
-        });
-    };
-    var event = function(block){
-        var selector = null, html = [];
-        block.split('\\n').forEach(function(line){
-            if (line.startsWith('data: selector ')) selector = line.slice(15);
-            else if (line.startsWith('data: elements ')) html.push(line.slice(15));
-        });
-        if (html.length) take(selector, html.join('\\n'));
-    };
-    var read = function(stream){
-        var reader = stream.pipeThrough(new TextDecoderStream()).getReader();
-        var buffer = '';
-        var pump = function(){
-            return reader.read().then(function(r){
-                if (r.done) return;
-                buffer += r.value.replace(/\\r/g, '');
-                for (var at = buffer.indexOf('\\n\\n'); at >= 0; at = buffer.indexOf('\\n\\n')) {
-                    event(buffer.slice(0, at));
-                    buffer = buffer.slice(at + 2);
-                }
-                return pump();
-            });
-        };
-        pump().catch(function(){});
-    };
-    // Every patch, the chunks included, comes over the /_sse stream; the actions answer with an empty body.
-    var fetch = window.fetch;
-    window.fetch = function(){
-        return fetch.apply(this, arguments).then(function(res){
-            if (!res.body || (res.headers.get('content-type') || '').indexOf('text/event-stream') < 0) return res;
-            var pair = res.body.tee();
-            read(pair[1]);
-            return new Response(pair[0], { status: res.status, statusText: res.statusText, headers: res.headers });
-        });
-    };
-    new MutationObserver(function(records, observer){
-        var root = document.getElementById('client-root');
-        if (!root) return;
-        observer.disconnect();
-        var probe = document.createElement('i');
-        probe.hidden = true;
-        probe.setAttribute('data-effect', "window.__e2eFirstEffect = { pull: typeof window.nfsenPullChunks, loaded: typeof window.nfsenWhenLoaded, tableModule: performance.getEntriesByType('resource').some((e) => e.name.includes('/nfsen-table.js')) }");
-        root.append(probe);
-    }).observe(document, { childList: true, subtree: true });
-})()`;
-
-/** Sets the Flows limit signal; the select only offers some limits, the action takes any up to its maximum. */
-async function setLimit(page, rows) {
-    await page.evaluate(`(async function(){
-        var root = (await import('datastar')).root;
-        root[Object.keys(root).find(function(k){ return k.startsWith('flows_limit____'); })] = ${rows};
-    })()`);
-}
-
-/** The rows of result `id` in the order the server sent them, once every chunk is in. */
-const wireRows = (id) => `(function(){
-    var e = window.__e2eWire[${JSON.stringify(id)}];
-    return e.first.concat(...Object.keys(e.chunks).sort(function(x, y){ return x - y; }).map(function(k){ return e.chunks[k]; }));
-})()`;
-const wireComplete = (id) =>
-    `(function(){ var e = window.__e2eWire[${JSON.stringify(id)}]; return !!e && !!e.first && Object.keys(e.chunks).length === Number(document.getElementById('flowTable').dataset.chunks); })()`;
-
-/** The table holds exactly the rows the server sent, in its order (no sort is stored in a fresh profile). */
-async function assertRowsAsSent(page, id, label) {
-    await page.waitFor(wireComplete(id), { timeout: 15000, label: `${label}: every chunk seen on the wire` });
-    const check = await page.evaluate(`(function(){
-        var expected = ${wireRows(id)};
-        var got = document.getElementById('flowTable').rows.map(window.__e2eRowKey);
-        return { got: got.length, expected: expected.length, firstDiff: got.findIndex(function(k, i){ return k !== expected[i]; }) };
-    })()`);
-    assert.equal(check.got, check.expected, `${label}: as many rows as the server sent`);
-    assert.equal(check.firstDiff, -1, `${label}: every row is the one the server sent at that place`);
-}
-
-/** Pages to the last page and compares it with the tail of what the server sent. */
-async function assertLastPage(page, id, total, label) {
-    await page.evaluate(`[...document.querySelectorAll('${TABLE} .table-pager-pages button[data-page]')].pop().click()`);
-    await page.waitFor(`document.querySelector('${TABLE} [data-page="next"]').disabled`, { label: `${label}: the last page` });
-    const last = await page.evaluate(`(function(){
-        var expected = ${wireRows(id)};
-        var size = Number(document.querySelector('${TABLE} .table-pager select').value);
-        var shown = [...document.querySelectorAll('${TABLE} tbody tr')].map(window.__e2eRowKey);
-        return { size: size, shown: shown, tail: expected.slice(expected.length - shown.length), status: document.querySelector('${STATUS}').textContent };
-    })()`);
-    const count = total % last.size || last.size;
-    assert.equal(last.shown.length, count, `${label}: the last page holds the remainder`);
-    assert.deepEqual(last.shown, last.tail, `${label}: the last page shows the last rows the server sent`);
-    const from = (total - count + 1).toLocaleString('en');
-    assert.ok(
-        last.status.startsWith(`Showing ${from}-${total.toLocaleString('en')} of ${total.toLocaleString('en')}`),
-        `${label}: ${last.status}`
-    );
-}
-
-/** Pager state a move must keep: the rows array, its first row, the page, the sort and the status. */
-const PAGER_STATE = `(function(){
-    var t = document.getElementById('flowTable');
-    var sorted = t.headers.find(function(th){ return th.hasAttribute('aria-sort'); });
-    return {
-        rows: t.rows === window.__kept.rows, count: t.rows.length, first: t.rows[0] === window.__kept.first,
-        page: document.querySelector('${TABLE} [aria-current="page"]').textContent, status: document.querySelector('${STATUS}').textContent,
-        sort: sorted ? sorted.dataset.originalTitle + ' ' + sorted.getAttribute('aria-sort') : null,
-        instance: t.rocketInstanceId === window.__kept.instance, focus: document.activeElement === window.__kept.focus,
-    };
-})()`;
-
-// ROCKET-SPEC 6.8 reuse and morph order: result A (2,500 rows), then result B (5,000 rows) in the same #flowTable,
-// which Datastar moves into the new result host and morphs there.
-async function reuseCases(page, variant) {
-    // Result A: 2,500 rows, the first page and chunk 0 inline, chunks 1 and 2 pulled.
-    await setLimit(page, 2500);
-    await page.runQuery('flows', { timeout: 120000 });
-    await page.waitFor(loaded('=== 2500'), { timeout: 60000, label: `${variant}: result A, every row` });
-    const host = await page.evaluate(
-        `(function(){ var t = document.getElementById('flowTable'); return { id: t.rocketInstanceId, shadow: [...t.shadowRoot.childNodes].map(function(n){ return n.nodeName; }).join(), result: t.dataset.result, chunks: t.dataset.chunks }; })()`
-    );
-    assert.ok(typeof host.id === 'string' && host.id !== '', `${variant}: #flowTable is a Rocket host, got ${host.id}`);
-    assert.equal(host.shadow, 'SLOT', `${variant}: its shadow root only slots the light DOM (shape A)`);
-    assert.equal(host.chunks, '3', `${variant}: result A comes in three chunks`);
-    await assertRowsAsSent(page, host.result, `${variant}: result A`);
-    await assertLastPage(page, host.result, 2500, `${variant}: result A`);
-
-    // 25 rows a page, so the morph for result B turns 25 shown rows into its 50-row first page.
-    await page.setSelectValue(`${TABLE} .table-pager select`, 25);
-    await page.waitFor(`${shownRows} === 25`, { label: `${variant}: result A at 25 rows a page` });
-    const marked = await page.evaluate(`(function(){
-        var t = document.getElementById('flowTable');
-        window.__hostA = t;
-        window.__batches = [];
-        new MutationObserver(function(records){
-            window.__batches.push({
-                result: records.some(function(r){ return r.type === 'attributes' && r.attributeName === 'data-result'; }),
-                table: records.some(function(r){ return r.type === 'childList' && r.target.nodeType === 1 && !!r.target.closest('table'); }),
-            });
-        }).observe(t, { attributes: true, attributeFilter: ['data-result'], childList: true, subtree: true });
-        var off = t.rows.filter(function(r){ return !r.isConnected; });
-        off.forEach(function(r){ r.__resultA = true; });
-        return off.length;
-    })()`);
-    assert.equal(marked, 2475, `${variant}: every row of result A but the shown page is only in memory`);
-
-    // Result B, 5,000 rows: Datastar moves #flowTable into the new result host and morphs it there.
-    await setLimit(page, 5000);
-    await page.runQuery('flows', { timeout: 120000 });
-    await page.waitFor(loaded('=== 5000'), { timeout: 60000, label: `${variant}: result B, every row` });
-    const b = await page.evaluate(`(function(){
-        var t = document.getElementById('flowTable');
-        return {
-            reused: t === window.__hostA, result: t.dataset.result, chunks: t.dataset.chunks,
-            together: window.__batches.some(function(b){ return b.result && b.table; }),
-            leftovers: t.rows.filter(function(r){ return r.__resultA; }).length + [...t.querySelectorAll('tbody tr')].filter(function(r){ return !t.rows.includes(r); }).length,
-            size: document.querySelector('${TABLE} .table-pager select').value,
-        };
-    })()`);
-    assert.equal(b.reused, true, `${variant}: result B reuses the #flowTable host`);
-    assert.notEqual(b.result, host.result, `${variant}: with a new data-result`);
-    assert.equal(b.together, true, `${variant}: one patch changed data-result and the <table> together`);
-    assert.equal(b.leftovers, 0, `${variant}: no row of result A is left, in memory or on the page`);
-    assert.equal(b.size, '25', `${variant}: the rows per page choice carries over`);
-    await assertRowsAsSent(page, b.result, `${variant}: result B`);
-    await assertLastPage(page, b.result, 5000, `${variant}: result B`);
-}
-
-/** Datastar's morph falls back to insertBefore without moveBefore, so a reused host runs cleanup and setup mid-morph. */
-const NO_MOVE = 'delete Element.prototype.moveBefore; delete Document.prototype.moveBefore; delete DocumentFragment.prototype.moveBefore;';
-
-/** ROCKET-SPEC 6.8, in a page with moveBefore and in one without. */
-async function tableCases() {
-    await withPage(async (page) => {
-        // The table's module is held back until Datastar has applied the page, as on a slow link.
-        await page.send('Page.addScriptToEvaluateOnNewDocument', { source: BEFORE_BOOT });
-        await page.send('Fetch.enable', { patterns: [{ urlPattern: '*/js/components/nfsen-table.js*', requestStage: 'Request' }] });
-        page.ws.addEventListener('message', (event) => {
-            const msg = JSON.parse(event.data);
-            if (msg.method !== 'Fetch.requestPaused') return;
-            const release = () => page.send('Fetch.continueRequest', { requestId: msg.params.requestId }).catch(() => {});
-            page.waitFor('!!window.__e2eFirstEffect', { timeout: 15000 }).then(release, release);
-        });
-        await page.navigate(`${BASE}/`);
-        await page.waitForBoot({ timeout: 15000 });
-        await page.waitFor('!!window.__e2eFirstEffect', { label: 'the first-load data-effect' });
-        assert.deepEqual(
-            await page.evaluate('window.__e2eFirstEffect'),
-            { pull: 'function', loaded: 'function', tableModule: false },
-            'a data-effect applied on first load, before the table module arrived, finds the chunk helpers'
-        );
-        await page.send('Fetch.disable');
-
-        const instances = await page.evaluate(`(async function(){
-            var map = JSON.parse(document.querySelector('script[type=importmap]').textContent).imports;
-            var urls = [...new Set(performance.getEntriesByType('resource').map(function(e){ return e.name; }).filter(function(n){ return /\\/js\\/components\\/chunks\\.js(\\?|$)/.test(n); }))];
-            var chunks = await import('nfsen/chunks');
-            var table = await import(document.querySelector('script[src*="/nfsen-table.js"]').src);
-            return {
-                urls: urls, mapped: new URL(map['nfsen/chunks'], location.href).href,
-                same: chunks.pullChunks === window.nfsenPullChunks && chunks.whenLoaded === window.nfsenWhenLoaded
-                    && table.pullChunks === chunks.pullChunks && table.ChunkPull === chunks.ChunkPull && table.whenLoaded === chunks.whenLoaded,
-            };
-        })()`);
-        assert.deepEqual(instances.urls, [instances.mapped], 'chunks.js loads once, from the import-map URL');
-        assert.equal(instances.same, true, 'the globals, nfsen/chunks and the table re-exports are one module instance');
-
-        await page.gotoPage('flows');
-        await page.setRangePreset('1y');
-
-        await reuseCases(page, 'moveBefore');
-
-        // Move: sorted, on page 3, a pager button focused; moveBefore is atomic, insertBefore runs cleanup and setup again.
-        await page.evaluate(`document.querySelector('${TABLE} th[data-original-title="in_bytes"] .sort-button').click()`);
-        await page.waitFor(
-            `document.querySelector('${TABLE} th[data-original-title="in_bytes"]').getAttribute('aria-sort') === 'ascending'`,
-            {
-                label: 'sorted by in_bytes',
-            }
-        );
-        await page.evaluate(`document.querySelector('${TABLE} .table-pager-pages button[data-page="2"]').click()`);
-        await page.waitFor(`document.querySelector('${STATUS}').textContent.startsWith('Showing 51-75 ')`, { label: 'page 3' });
-        await page.evaluate(`(function(){
-            var t = document.getElementById('flowTable');
-            document.querySelector('${TABLE} [aria-current="page"]').focus();
-            window.__kept = { rows: t.rows, first: t.rows[0], instance: t.rocketInstanceId, focus: document.activeElement };
-        })()`);
-        const before = await page.evaluate(PAGER_STATE);
-        assert.deepEqual(
-            [before.count, before.page, before.sort, before.focus],
-            [5000, '3', 'in_bytes ascending', true],
-            'before the move: page 3 of the sorted rows, its button focused'
-        );
-        for (const how of ['moveBefore', 'insertBefore']) {
-            await page.evaluate(`(function(){
-                var t = document.getElementById('flowTable');
-                if (typeof t.parentNode.${how} !== 'function') throw new Error('no ${how} in this browser');
-                t.parentNode.${how}(t, t.nextSibling);
-            })()`);
-            await sleep(200);
-            const after = await page.evaluate(PAGER_STATE);
-            // A removal takes the focus away; only the atomic move keeps it.
-            assert.deepEqual(after, { ...before, focus: how === 'moveBefore' }, `after ${how}: rows, page, sort and focus`);
-        }
-        await page.evaluate(`document.querySelector('${TABLE} [data-page="next"]').click()`);
-        await page.waitFor(`document.querySelector('${STATUS}').textContent.startsWith('Showing 76-100 ')`, {
-            label: 'Next after the moves goes one page on (one listener)',
-        });
-
-        // The host's own data-on survived the moves: an address still opens the IP info modal.
-        await page.evaluate(`document.querySelector('${TABLE} .ip-link').click()`);
-        await page.waitFor(`!!document.querySelector('#modal-root dialog[open]')`, {
-            timeout: 15000,
-            label: 'the IP info modal after the moves',
-        });
-        await press(page, 'Escape', 'Escape', 27);
-
-        // 100 and 250 rows a page: the shown rows leave in one record (one each made Rocket's observer rescan the body
-        // per row), and the page comes in 50 rows a frame.
-        const settled = `!document.querySelector('${TABLE} .table-wrap').style.minBlockSize`;
-        for (const size of [100, 250]) {
-            await page.evaluate(`(function(){
-                window.__fill?.stop();
-                var fill = window.__fill = { records: [], frames: [] };
-                var rows = new MutationObserver(function(r){ fill.records.push(...r); });
-                var frames = new PerformanceObserver(function(l){ l.getEntries().forEach(function(e){ fill.frames.push(Math.round(e.duration)); }); });
-                rows.observe(document.querySelector('${TABLE} tbody'), { childList: true });
-                frames.observe({ type: 'long-animation-frame' });
-                fill.stop = function(){ rows.disconnect(); frames.disconnect(); };
-            })()`);
-            await page.setSelectValue(`${TABLE} .table-pager select`, size);
-            await page.waitFor(`${shownRows} === ${size} && ${settled}`, { label: `${size} rows a page` });
-            await sleep(300);
-            const fill = await page.evaluate(`(function(){
-                var t = document.getElementById('flowTable');
-                var records = window.__fill.records;
-                return {
-                    removals: records.filter(function(r){ return r.removedNodes.length > 0; }).length,
-                    batch: Math.max(...records.map(function(r){ return r.addedNodes.length; })),
-                    inOrder: [...t.querySelector('tbody').rows].every(function(r, i){ return r === t.rows[i]; }),
-                    status: document.querySelector('${STATUS}').textContent,
-                    frames: window.__fill.frames,
-                };
-            })()`);
-            console.log(`  (flows: ${size} rows a page, frames over 50 ms ${JSON.stringify(fill.frames)})`);
-            assert.deepEqual(
-                [fill.removals, fill.batch, fill.inOrder],
-                [1, 50, true],
-                `${size} rows a page: one removal record, at most 50 rows a frame, the first ${size} rows in order`
-            );
-            assert.ok(fill.status.startsWith(`Showing 1-${size} of 5,000 `), `${size} rows a page: ${fill.status}`);
-        }
-        await page.evaluate('window.__fill.stop()');
-
-        // The table keeps its height while a page comes in, so a pressed pager button stays in view.
-        const pressed = [
-            ['the last page button', '[data-page="19"]', '19'],
-            ['page 19', '[data-page="18"]', '18'],
-            ['Next onto the last page, which moves the focus off the disabled Next', '[data-page="next"]', '19'],
-        ];
-        for (const [label, button, to] of pressed) {
-            const { y } = await clickAt(page, `document.querySelector('${TABLE} .table-pager ${button}')`);
-            await page.waitFor(`document.querySelector('${TABLE} [aria-current="page"]').dataset.page === '${to}' && ${settled}`, {
-                label,
-            });
-            await sleep(300);
-            const at = await page.evaluate(`(function(){
-                var r = document.activeElement.getBoundingClientRect();
-                return { page: document.activeElement.dataset.page, y: Math.round(r.y + r.height / 2), inView: r.top >= 0 && r.bottom <= innerHeight };
-            })()`);
-            assert.deepEqual(
-                [at.page, at.inView],
-                [to, true],
-                `${label}: the focused page button is in view (pressed at ${Math.round(y)}, now ${at.y})`
-            );
-        }
-
-        // Another page and back: the table is all there again.
-        await page.gotoPage('overview');
-        await page.gotoPage('flows');
-        await page.waitFor(loaded('=== 5000'), { timeout: 60000, label: 'result B after leaving Flows and coming back' });
-
-        const errors = page.realErrors();
-        assert.deepEqual(errors, [], `expected no console errors in the table cases, got:\n${errors.join('\n')}`);
-    });
-
-    await withPage(async (page) => {
-        await page.send('Page.addScriptToEvaluateOnNewDocument', { source: NO_MOVE + BEFORE_BOOT });
-        await page.navigate(`${BASE}/`);
-        await page.waitForBoot({ timeout: 15000 });
-        assert.equal(await page.evaluate(`'moveBefore' in document.body`), false, 'this page has no moveBefore');
-        await page.gotoPage('flows');
-        await page.setRangePreset('1y');
-        await reuseCases(page, 'insertBefore');
-
-        const errors = page.realErrors();
-        assert.deepEqual(errors, [], `expected no console errors in the table cases without moveBefore, got:\n${errors.join('\n')}`);
-    });
-}
-
-/** A tab of its own that runs 10,000 rows and waits for every chunk; a marker shows it was never reloaded. */
 async function runLargeTab(page, label) {
     await page.navigate(`${BASE}/`);
     await page.waitForBoot();
@@ -538,7 +175,7 @@ async function runLargeTab(page, label) {
     await page.setSelectValue('#filterFlowsLimit select', 10000);
     await page.evaluate('window.__e2eTab = true');
     await page.runQuery('flows', { timeout: 120000 });
-    await page.waitFor(loaded('=== 10000'), { timeout: 60000, label: `${label}: every row` });
+    await page.waitFor(`${listTotal} === 10000`, { timeout: 60000, label: `${label}: the list of 10,000 rows` });
 }
 
 /**
@@ -589,7 +226,7 @@ async function exportRightAway() {
         );
         const took = Math.round(early.made - early.at);
         assert.ok(took >= 0 && took < 1000, `the CSV was made within a second of the trigger showing (${took} ms)`);
-        const rows = await page.evaluate(`document.getElementById('flowTable').rows.length`);
+        const rows = await page.evaluate(listTotal);
         assert.ok(rows > 0, 'the result has rows');
         assert.equal(csv.text.trimEnd().split('\n').length, rows + 1, 'the CSV chosen right away holds every row');
         assert.match(csv.name, /^flows-\d{12}-\d{12}\.csv$/, `export file name: ${csv.name}`);
@@ -608,11 +245,11 @@ async function popoversOnPhone() {
             await page.setRangePreset('1y');
             await page.setSelectValue('#filterFlowsLimit select', 20);
             await page.runQuery('flows', { timeout: 60000 });
-            await page.waitFor(loaded('> 0'), { timeout: 15000, label: 'the flow rows on a phone' });
+            await page.waitFor(`${listTotal} > 0`, { timeout: 15000, label: 'the flow rows on a phone' });
             const log = await page.requestLog();
             for (const [label, host] of [
                 ['Export', '#flowsExport'],
-                ['Columns', `${TABLE} sb-popover.column-selector`],
+                ['Columns', '#flowTable-columnsPopover'],
             ]) {
                 const trigger = `document.querySelector(${JSON.stringify(`${host} [slot="trigger"]`)})`;
                 await page.waitFor(`!!${trigger}`, { label: `${label}: the trigger on a phone` });
@@ -661,7 +298,7 @@ export default async function flowsTest() {
 
         await page.setSelectValue('#filterFlowsLimit select', 100);
         await page.runQuery('flows', { timeout: 60000 });
-        await page.waitFor(loaded('> 0'), { timeout: 15000, label: 'the flow rows' });
+        await page.waitFor(`${listTotal} > 0`, { timeout: 15000, label: 'the flow rows' });
         await page.waitFor(`/^[\\d,]+ (flows|rows) returned\\./.test(document.querySelector('#flowsRun [role="status"]').textContent)`, {
             label: 'the Run control to announce the count',
         });
@@ -669,58 +306,43 @@ export default async function flowsTest() {
         assert.match(notice, /nfdump:/, `the notice quotes the command: ${notice}`);
         assert.doesNotMatch(notice, /error/i, `no error: ${notice}`);
 
-        // One page of rows in the document; the pager says how many came back and why no more.
-        await page.waitFor(`${shownRows} > 0`, { timeout: 15000, label: 'the flow table' });
-        const total = await page.evaluate(`document.getElementById('flowTable').rows.length`);
-        assert.ok(total > 50, `a year of dev captures returns more than a page (${total} rows)`);
-        assert.equal(await page.evaluate(shownRows), 50, 'the first page shows 50 rows');
-        const status = await page.evaluate(`document.querySelector('${STATUS}').textContent`);
-        assert.match(status, /^Showing 1-50 of [\d,]+ returned \(limit 100\)\./, `pager text: ${status}`);
-        assert.equal(/nfdump cannot skip rows/.test(status), total === 100, `the limit sentence only when it was reached: ${status}`);
+        // The list: every row returned, a window of them in the document, no paged table.
+        const total = await page.evaluate(listTotal);
+        assert.ok(total > 50, `a year of dev captures returns more than 50 rows (${total})`);
+        assert.equal(await page.evaluate(`!!document.getElementById('flowTable')`), false, 'no paged table');
+        assert.ok((await page.evaluate(listRows)) > 0, 'the list holds rows');
+        assert.equal(await page.evaluate(`${HOST}.getAttribute('aria-rowcount')`), String(total + 1), 'the list says how many rows');
         assert.equal(await page.evaluate(`document.getElementById('flowsTab-flows').textContent.trim()`), `Flows (${total})`);
 
-        // Pages by keyboard: Next moves on and keeps the focus in the pager.
-        await page.evaluate(`document.querySelector('${TABLE} [data-page="next"]').focus()`);
-        await press(page, 'Enter', 'Enter', 13);
-        await page.waitFor(`document.querySelector('${STATUS}').textContent.startsWith('Showing 51-')`, { label: 'page 2' });
-        assert.ok(
-            await page.evaluate(`document.querySelector('${TABLE} .table-pager').contains(document.activeElement)`),
-            'focus stays in the pager'
+        // A sort orders every row, which the export shows.
+        await page.evaluate(`${HOST}.querySelector('button[data-sort-key="in_bytes"]').click()`);
+        await page.waitFor(
+            `!!${HOST}.querySelector('[aria-sort="ascending"] > button[data-sort-key="in_bytes"]') && !${HOST}.matches(':state(loading)')`,
+            {
+                label: 'the list sorted by bytes',
+            }
         );
-        assert.equal(await page.evaluate(`document.querySelector('${TABLE} [aria-current="page"]').textContent`), '2');
-        await page.setSelectValue(`${TABLE} .table-pager select`, 25);
-        await page.waitFor(`${shownRows} === 25`, { label: '25 rows per page' });
-        assert.match(
-            await page.evaluate(`document.querySelector('${STATUS}').textContent`),
-            /^Showing 51-75 /,
-            'the page keeps its first row'
+        await page.evaluate(
+            `document.getElementById('flowTable-enhanced').checked || document.getElementById('flowTable-enhanced').click()`
         );
-        await page.setSelectValue(`${TABLE} .table-pager select`, 50);
-
-        // Sorting covers every row, not just the page.
-        await page.evaluate(`document.querySelector('${TABLE} th[data-original-title="in_bytes"] .sort-button').click()`);
-        const sorted = JSON.parse(
-            await page.evaluate(`JSON.stringify((function(){
-                var t = document.getElementById('flowTable'); var i = t.keys.indexOf('in_bytes');
-                var all = t.rows.map(function(r){ var c = r.cells[i]; return Number(c.dataset.sortValue ?? c.dataset.raw ?? c.textContent); });
-                return { aria: t.headers[i].getAttribute('aria-sort'), all: all, first: document.querySelector('${STATUS}').textContent };
-            })())`)
-        );
-        assert.equal(sorted.aria, 'ascending');
+        await page.evaluate(`document.getElementById('flowTable-enhanced').click()`);
+        const byBytes = JSON.parse((await captureExport(page, 'json')).text).map((row) => Number(row['In Bytes'] ?? row.Bytes));
+        await page.evaluate(`document.getElementById('flowTable-enhanced').click()`);
+        assert.equal(byBytes.length, total, 'the raw JSON holds every row');
         assert.deepEqual(
-            sorted.all,
-            [...sorted.all].sort((a, b) => a - b),
+            byBytes,
+            [...byBytes].sort((a, b) => a - b),
             'every row is in order'
         );
-        assert.match(sorted.first, /^Showing 1-50 /, 'a sort goes back to the first page');
 
         // Exports hold the shown columns and every row. From here the popovers run no capture-file query.
         log.clear();
-        await page.evaluate(`document.querySelector('${TABLE} .column-selector .menu-toggle').click()`);
-        await page.evaluate(`document.querySelector('${TABLE} .column-checkbox[data-column-key="received"]').click()`);
-        await page.evaluate(`document.querySelector('${TABLE} .column-selector .menu-toggle').click()`);
+        await page.evaluate(`${COLUMNS}.querySelector('[slot="trigger"]').click()`);
+        await page.evaluate(`document.getElementById('flowTable-col-received').click()`);
+        await page.waitFor(`!${HOST}.querySelector('button[data-sort-key="received"]')`, { label: 'Received to leave the header' });
+        await page.evaluate(`${COLUMNS}.hide()`);
         const titles = await page.evaluate(
-            `[...document.querySelectorAll('${TABLE} thead th:not([hidden])')].map(function(th){ return th.textContent.trim(); })`
+            `[...${HOST}.querySelectorAll('[slot="header"] button[data-sort-key]')].map(function(b){ return b.textContent.trim(); })`
         );
         assert.ok(!titles.includes('Received'), 'the hidden column is gone from the header');
         const csv = await captureExport(page, 'csv');
@@ -731,9 +353,10 @@ export default async function flowsTest() {
         const json = JSON.parse((await captureExport(page, 'json')).text);
         assert.equal(json.length, total);
         assert.deepEqual(Object.keys(json[0]), titles, 'the JSON keys are the shown columns');
-        await page.evaluate(`document.querySelector('${TABLE} .column-selector .menu-toggle').click()`);
-        await page.evaluate(`document.querySelector('${TABLE} .column-checkbox[data-column-key="received"]').click()`);
-        await page.evaluate(`document.querySelector('${TABLE} .column-selector .menu-toggle').click()`);
+        await page.evaluate(`${COLUMNS}.querySelector('[slot="trigger"]').click()`);
+        await page.evaluate(`document.getElementById('flowTable-col-received').click()`);
+        await page.waitFor(`!!${HOST}.querySelector('button[data-sort-key="received"]')`, { label: 'Received back in the header' });
+        await page.evaluate(`${COLUMNS}.hide()`);
 
         // The Export popover by keyboard (POPOVER-SPEC 4.2): ArrowDown on the trigger opens it on CSV, Escape returns.
         const exportFocus = `({ open: ${EXPORT}.open, focus: document.activeElement === ${EXPORT_TRIGGER} ? 'trigger' : document.activeElement?.dataset.export ?? document.activeElement?.tagName })`;
@@ -828,11 +451,9 @@ export default async function flowsTest() {
         })()`;
         const density = await page.evaluate('document.documentElement.dataset.density');
         const looks = {};
-        const cellPads = {};
         await page.evaluate(`${EXPORT_TRIGGER}.scrollIntoView({ block: 'center' })`);
         for (const d of ['comfortable', 'compact']) {
             await page.evaluate(`document.documentElement.dataset.density = '${d}'`);
-            cellPads[d] = await page.evaluate(`getComputedStyle(document.querySelector('${TABLE} tbody td')).paddingTop`);
             await page.evaluate(`${EXPORT_TRIGGER}.click()`);
             await page.waitFor(`${EXPORT}.open === true`, { label: `Export open with ${d} tables` });
             await sleep(200);
@@ -841,7 +462,6 @@ export default async function flowsTest() {
             await page.waitFor(`${EXPORT}.open === false`, { label: `Escape to close Export with ${d} tables` });
         }
         await page.evaluate(`document.documentElement.dataset.density = ${JSON.stringify(density)}`);
-        assert.notEqual(cellPads.compact, cellPads.comfortable, `compact tightens the table cells: ${JSON.stringify(cellPads)}`);
         assert.deepEqual(
             [looks.compact.open, looks.compact.slotted, looks.compact.inside],
             [true, 1, true],
@@ -941,23 +561,23 @@ export default async function flowsTest() {
         });
         await page.evaluate(`document.getElementById('flowsTab-flows').click()`);
 
-        // D26: a second run with other rows replaces the host; a later sync does not resend it.
-        const firstHost = await page.evaluate(`document.querySelector('.result-host[id^="flowTableHost-"]').id`);
+        // D26: a second run with other rows replaces the list; a later sync does not resend it.
+        const firstHost = await page.evaluate(`${HOST}.id`);
         await page.evaluate('window.__e2eTab = true');
         await page.setSelectValue('#filterFlowsLimit select', 10000);
         await page.runQuery('flows', { timeout: 120000 });
-        await page.waitFor(loaded(`> ${total}`), { timeout: 60000, label: 'the 10,000 row table, every chunk' });
-        const big = await page.evaluate(
-            `JSON.stringify({ id: document.querySelector('.result-host[id^="flowTableHost-"]').id, rows: document.getElementById('flowTable').rows.length, dom: ${shownRows} })`
-        );
-        const bigRun = JSON.parse(big);
-        assert.notEqual(bigRun.id, firstHost, 'a new result gets a new host');
-        assert.equal(bigRun.dom, 50, 'only one page is in the document');
+        await page.waitFor(`${HOST}?.id !== ${JSON.stringify(firstHost)} && ${listTotal} > ${total}`, {
+            timeout: 60000,
+            label: 'the list of 10,000 rows',
+        });
+        const bigRun = await page.evaluate(`({ id: ${HOST}.id, rows: ${listTotal}, dom: ${listRows} })`);
+        assert.notEqual(bigRun.id, firstHost, 'a new result gets a new list');
+        assert.ok(bigRun.dom < 1000, `only a window of the rows is in the document (${bigRun.dom})`);
         console.log(`  (flows: ${total} rows, then ${bigRun.rows})`);
         const bigCsv = await captureExport(page, 'csv');
-        assert.equal(bigCsv.text.trimEnd().split('\n').length, bigRun.rows + 1, 'the CSV of the chunked table holds every row');
+        assert.equal(bigCsv.text.trimEnd().split('\n').length, bigRun.rows + 1, 'the CSV from the server holds every row');
 
-        await page.evaluate(`document.querySelector('.result-host[id^="flowTableHost-"]').__e2e = true`);
+        await page.evaluate(`${HOST}.__e2e = true`);
         await page.evaluate(`document.querySelector('#flowsGraph .flows-disclosure').click()`);
         await sleep(300);
         sse.reset();
@@ -967,16 +587,12 @@ export default async function flowsTest() {
         await sleep(2500);
         assert.ok(log.count('touch-flows-graph') >= 1, 'the unit change posted and synced');
         assert.ok(sse.bytes() < 1_000_000, `the sync after a 10,000 row run is small (${sse.bytes()} bytes)`);
-        assert.equal(
-            await page.evaluate(`document.querySelector('.result-host[id^="flowTableHost-"]').__e2e === true`),
-            true,
-            'the table host was not replaced'
-        );
+        assert.equal(await page.evaluate(`${HOST}.__e2e === true`), true, 'the list was not replaced');
         await page.evaluate(`document.getElementById('flowsGraphUnit_bytes').click()`);
         await page.evaluate(`document.querySelector('#flowsGraph .flows-disclosure').click()`);
 
-        // An address opens the IP info modal through the table's one click handler.
-        await page.evaluate(`document.querySelector('${TABLE} .ip-link').click()`);
+        // An address opens the IP info modal through the list's one click handler.
+        await page.evaluate(`${HOST}.querySelector('.ip-link').click()`);
         await page.waitFor(`!!document.querySelector('#modal-root dialog[open]')`, { timeout: 15000, label: 'the IP info modal' });
         await press(page, 'Escape', 'Escape', 27);
 
@@ -1009,17 +625,21 @@ export default async function flowsTest() {
                 assert.equal(await third.evaluate('window.__e2eTab === true'), true, 'the third tab was not reloaded');
             });
             assert.equal(await second.evaluate('window.__e2eTab === true'), true, 'the second tab was not reloaded');
-            assert.equal(await second.evaluate(`document.getElementById('flowTable').rows.length`), 10000);
+            assert.equal(await second.evaluate(listTotal), 10000);
         });
         assert.equal(await page.evaluate('window.__e2eTab === true'), true, 'the first tab was not reloaded');
-        assert.equal(await page.evaluate(`document.getElementById('flowTable').rows.length`), bigRun.rows, 'the first tab keeps its rows');
+        assert.equal(await page.evaluate(listTotal), bigRun.rows, 'the first tab keeps its rows');
+        await page.evaluate(`${HOST}.scrollToIndex(9000)`);
+        await page.waitFor(`${HOST}.querySelector('[aria-rowindex="9002"]')`, {
+            timeout: 15000,
+            label: 'the first tab still answers windows',
+        });
 
         const errors = page.realErrors();
         assert.deepEqual(errors, [], `expected no console errors during the Flows test, got:\n${errors.join('\n')}`);
     });
     await exportRightAway();
     await popoversOnPhone();
-    await tableCases();
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

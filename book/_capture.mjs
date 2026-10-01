@@ -588,11 +588,11 @@ async function setFilter(page, textarea, target, expr) {
 /** Flows with FILTER_EXPR, 20 rows and a result, unless the tab has one. */
 async function flowsResult(page) {
     await go(page, 'flows');
-    if (await page.evaluate(`document.querySelectorAll('#flowTable tbody tr').length > 0`)) return;
+    if (await page.evaluate(`!!document.querySelector('sb-virtual-scroll[id^="flowRows-"] [role="row"]:not([slot])')`)) return;
     await page.setSelectValue('#flowsLimit', '20');
     await setFilter(page, 'filterNfdumpTextarea', 'flows', FILTER_EXPR);
     await run(page, 'flows');
-    await page.waitFor(`document.querySelectorAll('#flowTable tbody tr').length > 0`, { timeout: 15000, label: 'flow rows' });
+    await page.waitFor(`!!document.querySelector('sb-virtual-scroll[id^="flowRows-"] [role="row"]:not([slot])')`, { timeout: 15000, label: 'flow rows' });
 }
 
 const TOPN_STATE = `document.querySelector('#ovTopnPanel[data-state]:not([data-state="loading"])')?.dataset.state`;

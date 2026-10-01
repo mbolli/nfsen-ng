@@ -97,7 +97,7 @@ const nextCopy = `new Promise(function(resolve){
  * sb-popover exception, K2, free text in data-* values and the naming rule checked on each. Attributes that
  * Rocket renamed into a component scope are reported inside data-ignore too, since the rewrite does not skip it.
  */
-const SCAN = `(function(){
+export const SCAN = `(function(){
     var PLUGIN = new RegExp('^data-(' + ${JSON.stringify(PLUGINS.join('|'))} + ')(:|__|$)');
     var ALLOWED = new RegExp(${JSON.stringify(POPOVER_ALLOWED)});
     // What Rocket's rewrite leaves in a data-* value: a $$ signal or an @action( of the component's scope.

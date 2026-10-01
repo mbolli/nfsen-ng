@@ -331,7 +331,7 @@ class Page {
                 var link = [...document.querySelectorAll('.sidebar-nav a, .tabbar a')].find(function(a){ return a.getAttribute('href') === href && visible(a); });
                 if (!link) {
                     var more = document.querySelector('.tabbar .menu-toggle');
-                    var item = [...document.querySelectorAll('.tabbar .menu-list a')].find(function(a){ return a.getAttribute('href') === href; });
+                    var item = [...document.querySelectorAll('#tabbarMore a')].find(function(a){ return a.getAttribute('href') === href; });
                     if (visible(more) && item) {
                         if (!visible(item)) more.click();
                         link = item;

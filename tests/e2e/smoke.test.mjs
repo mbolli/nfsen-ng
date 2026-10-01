@@ -1,5 +1,5 @@
 // Smoke test: every page from the sidebar and the tab bar without console errors, status in
-// words, the theme menu (D8), the IP modal across a sync, the collapsed sidebar across a reload.
+// words, the theme popover (D8), the IP modal across a sync, the collapsed sidebar across a reload.
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
 
@@ -16,13 +16,57 @@ const PAGES = Object.keys(TITLES);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const SHIFT = 8;
+const KEYS = {
+    Escape: { code: 'Escape', keyCode: 27 },
+    Enter: { code: 'Enter', keyCode: 13, text: '\r' },
+    ' ': { code: 'Space', keyCode: 32, text: ' ' },
+    Tab: { code: 'Tab', keyCode: 9 },
+    ArrowDown: { code: 'ArrowDown', keyCode: 40 },
+    ArrowUp: { code: 'ArrowUp', keyCode: 38 },
+    Home: { code: 'Home', keyCode: 36 },
+    End: { code: 'End', keyCode: 35 },
+};
 
 async function press(page, key, modifiers = 0) {
-    const codes = { Escape: 27, Enter: 13, Tab: 9, ArrowDown: 40 };
-    const base = { key, code: key, windowsVirtualKeyCode: codes[key], nativeVirtualKeyCode: codes[key], modifiers };
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, ...(key === 'Enter' ? { text: '\r' } : {}) });
+    const { code, keyCode, text } = KEYS[key];
+    const base = { key, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode, modifiers };
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, ...(text ? { text } : {}) });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
 }
+
+/** A mouse press and release at the middle of the first element matching `selector`. */
+async function pressOn(page, selector) {
+    const at = await page.evaluate(`(function(){
+        var r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+        return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+    })()`);
+    for (const type of ['mousePressed', 'mouseReleased']) {
+        await page.send('Input.dispatchMouseEvent', { type, ...at, button: 'left', clickCount: 1 });
+    }
+}
+
+const THEME = `document.getElementById('themeMenu')`;
+const THEME_TRIGGER = `document.querySelector('#themeMenu .menu-toggle')`;
+/** Once the sidebar and #page-content are parsed: the theme, whether sb-popover is defined, the theme
+    list's display; and a mark on #page-content that a sync morph would remove. */
+const AT_PARSE = `new MutationObserver(function(records, observer){
+    var list = document.getElementById('themeMenuList');
+    var content = document.getElementById('page-content');
+    if (!list || !content) return;
+    observer.disconnect();
+    window.__e2eAtParse = {
+        theme: document.documentElement.dataset.theme,
+        defined: !!customElements.get('sb-popover'),
+        list: getComputedStyle(list).display,
+    };
+    content.setAttribute('data-e2e-unsynced', '');
+}).observe(document, { childList: true, subtree: true });`;
+
+/** Whether the theme popover is open, and the focus: its trigger, a choice, or another element's tag. */
+const THEME_FOCUS = `({
+    open: ${THEME}.open,
+    focus: document.activeElement === ${THEME_TRIGGER} ? 'trigger' : document.activeElement?.dataset.themeChoice ?? document.activeElement?.tagName.toLowerCase(),
+})`;
 
 async function setOsTheme(page, scheme) {
     await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
@@ -164,22 +208,82 @@ export default async function smokeTest() {
         await page.chooseTheme('default');
         await setOsTheme(page, 'light');
 
-        // Keyboard only: Enter opens the theme menu, Tab reaches its items, Escape closes it and
-        // gives the focus back to its toggle.
-        await page.evaluate(`document.querySelector('#themeMenu .menu-toggle').focus()`);
-        await press(page, 'Enter');
-        await page.waitFor(`document.getElementById('themeMenuList').matches(':popover-open')`, { label: 'Enter to open the theme menu' });
-        assert.equal(await page.evaluate(`document.querySelector('#themeMenu .menu-toggle').getAttribute('aria-expanded')`), 'true');
-        await press(page, 'Tab');
-        assert.equal(await page.evaluate(`document.activeElement?.dataset.themeChoice`), 'light', 'Tab moves into the menu');
-        await press(page, 'Escape');
-        await page.waitFor(`!document.getElementById('themeMenuList').matches(':popover-open')`, {
-            label: 'Escape to close the theme menu',
-        });
-        assert.ok(
-            await page.evaluate(`document.activeElement === document.querySelector('#themeMenu .menu-toggle')`),
-            'the focus is back on the toggle'
+        // The theme popover by keyboard (POPOVER-SPEC 4.2): Enter, Space and ArrowUp open it, the
+        // arrows, Home and End wrap, Escape closes it onto its trigger.
+        assert.deepEqual(
+            await page.evaluate(`[
+                ${THEME}.shadowRoot.querySelector('slot[name="trigger"]').assignedElements().length,
+                ${THEME_TRIGGER}.getAttribute('aria-haspopup'),
+                ${THEME_TRIGGER}.getAttribute('aria-expanded'),
+                ${THEME_TRIGGER}.hasAttribute('aria-controls'),
+            ]`),
+            [1, 'dialog', 'false', false],
+            'the theme menu has its own trigger, which sb-popover marks as opening a dialog'
         );
+        await page.evaluate(`${THEME_TRIGGER}.focus()`);
+        for (const key of ['Enter', ' ']) {
+            await press(page, key);
+            await page.waitFor(`${THEME}.open === true && document.activeElement?.dataset.themeChoice === 'light'`, {
+                label: `${KEYS[key].code} to open the theme menu on Light`,
+            });
+            assert.equal(await page.evaluate(`${THEME_TRIGGER}.getAttribute('aria-expanded')`), 'true');
+            await press(page, 'Escape');
+            await page.waitFor(`${THEME}.open === false && document.activeElement === ${THEME_TRIGGER}`, {
+                label: `Escape after ${KEYS[key].code} to close the theme menu onto its trigger`,
+            });
+        }
+        await press(page, 'ArrowUp');
+        await page.waitFor(`${THEME}.open === true && document.activeElement?.dataset.themeChoice === 'default'`, {
+            label: 'ArrowUp to open the theme menu on its last choice',
+        });
+        for (const [key, to] of [
+            ['ArrowDown', 'light'],
+            ['ArrowDown', 'dark'],
+            ['End', 'default'],
+            ['ArrowUp', 'system'],
+            ['Home', 'light'],
+            ['ArrowUp', 'default'],
+        ]) {
+            await press(page, key);
+            assert.deepEqual(await page.evaluate(THEME_FOCUS), { open: true, focus: to }, `${KEYS[key].code} moves to ${to}`);
+        }
+
+        // A sync morph keeps it open with the focus on the same choice (POPOVER-SPEC 6, item 1).
+        await press(page, 'ArrowUp');
+        await page.syncNow('overview');
+        assert.deepEqual(await page.evaluate(THEME_FOCUS), { open: true, focus: 'system' }, 'a sync keeps the theme menu open and the focus');
+        assert.equal(await page.evaluate(`${THEME_TRIGGER}.getAttribute('aria-expanded')`), 'true', 'the sync keeps aria-expanded');
+
+        // Enter on a choice applies it, closes the menu onto its trigger, and the trigger names it.
+        await press(page, 'ArrowUp');
+        await press(page, 'Enter');
+        await page.waitFor(`document.documentElement.dataset.theme === 'dark'`, { label: 'Enter on Dark' });
+        assert.deepEqual(await page.evaluate(THEME_FOCUS), { open: false, focus: 'trigger' }, 'choosing closed the menu onto its trigger');
+        assert.deepEqual(await theme(page), { theme: 'dark', stored: 'dark', pressed: ['dark'] });
+        assert.equal(await page.signalValue('_themeChoice'), 'dark', '_themeChoice follows the choice');
+        assert.equal(
+            await page.evaluate(`document.querySelector('#themeMenu .nav-label').textContent.replace(/\\s+/g, ' ').trim()`),
+            'Theme: Dark'
+        );
+
+        // Tab past the last choice closes it, and the focus goes on to the sidebar toggle.
+        await press(page, 'ArrowUp');
+        await page.waitFor(`${THEME}.open === true && document.activeElement?.dataset.themeChoice === 'default'`, {
+            label: 'ArrowUp to open the theme menu again',
+        });
+        await press(page, 'Tab');
+        await page.waitFor(`${THEME}.open === false`, { label: 'Tab out of the theme menu to close it' });
+        assert.ok(await page.evaluate(`document.activeElement?.matches('.sidebar-toggle')`), 'Tab left the menu for the sidebar toggle');
+
+        // A press outside closes it, and the focus stays where the press put it.
+        await page.evaluate(`${THEME_TRIGGER}.click()`);
+        await page.waitFor(`${THEME}.open === true`, { label: 'a click to open the theme menu' });
+        await pressOn(page, '[data-page-heading="overview"] h1');
+        await page.waitFor(`${THEME}.open === false`, { label: 'a press outside to close the theme menu' });
+        assert.equal(await page.evaluate(`document.activeElement?.id`), 'pageTitle', 'the focus is on the pressed heading');
+        await page.chooseTheme('default');
+        await page.waitFor(`localStorage.getItem('nfsen-theme') === null`, { label: 'the choice to be dropped again' });
+        assert.equal(await page.evaluate(`${THEME}.open`), false, 'choosing through chooseTheme closed the menu');
 
         // Overview's partial is inserted again on the way back, and must not reset the graph settings.
         await page.setSelectValue('#filterDisplaySelect', 'protocols');
@@ -330,10 +434,42 @@ export default async function smokeTest() {
         assert.equal(await page.evaluate('location.hash'), '#/talkers', 'a persisted statistics view opens Top Talkers');
         assert.equal(await page.evaluate(`localStorage.getItem('nfsen-persist:_currentView')`), null, 'the old key is gone');
 
-        // Forced colors (2.2): the current page, the pressed theme and the status glyphs stay visible.
+        // Forced colors (2.2): the current page, the pressed theme and the status glyphs stay visible,
+        // and the open theme menu its panel edge and focus ring (POPOVER-SPEC 6, item 10).
         await page.withForcedColors(async () => {
             await sleep(300);
             await page.screenshot('/tmp/nfsen-smoke-forced-expanded.png');
+            await page.evaluate(`${THEME_TRIGGER}.focus()`);
+            await press(page, 'ArrowUp');
+            await press(page, 'ArrowDown');
+            await page.waitFor(`${THEME}.open === true && document.activeElement?.dataset.themeChoice === 'light'`, {
+                label: 'the theme menu open on Light in forced colors',
+            });
+            await sleep(300);
+            const forced = await page.evaluate(`(function(){
+                var panel = getComputedStyle(${THEME}.shadowRoot.querySelector('.panel'));
+                var ring = getComputedStyle(document.activeElement);
+                var pressed = document.querySelector('#themeMenuList [aria-pressed="true"]');
+                var mark = getComputedStyle(pressed, '::before');
+                return {
+                    edge: panel.outlineStyle + ' ' + panel.outlineWidth,
+                    ring: [ring.outlineStyle, parseFloat(ring.outlineWidth)],
+                    pressed: pressed.dataset.themeChoice,
+                    mark: { content: mark.content, mask: mark.maskImage !== 'none', adjust: mark.forcedColorAdjust, drawn: parseFloat(mark.width) > 0 },
+                };
+            })()`);
+            assert.equal(forced.edge, 'solid 1px', `the theme panel keeps its edge in forced colors: ${forced.edge}`);
+            assert.ok(forced.ring[0] !== 'none' && forced.ring[1] >= 2, `the focused choice shows a ring: ${forced.ring}`);
+            assert.deepEqual(
+                [forced.pressed, forced.mark],
+                ['default', { content: '""', mask: true, adjust: 'none', drawn: true }],
+                'the pressed choice keeps its check mark in forced colors'
+            );
+            await page.screenshot('/tmp/nfsen-smoke-forced-theme.png');
+            await press(page, 'Escape');
+            await page.waitFor(`${THEME}.open === false && document.activeElement === ${THEME_TRIGGER}`, {
+                label: 'Escape to close the theme menu in forced colors',
+            });
         });
 
         // Keyboard (V-A11Y): Tab from the theme menu reaches the sidebar toggle, Shift+Tab walks
@@ -433,6 +569,62 @@ export default async function smokeTest() {
 
         const errors = page.realErrors();
         assert.deepEqual(errors, [], `expected no console errors during smoke test, got:\n${errors.join('\n')}`);
+    });
+
+    // Before any sync, with the stream blocked (POPOVER-SPEC 6, items 4, 9 and 12): the stored theme is
+    // set and the list hidden at parse, and the popover still applies a choice.
+    await withPage(async (page) => {
+        await page.navigate(BASE + '/');
+        await page.waitForBoot();
+        await setOsTheme(page, 'light');
+        await page.evaluate(`localStorage.setItem('nfsen-theme', 'dark')`);
+        await page.send('Page.addScriptToEvaluateOnNewDocument', { source: AT_PARSE });
+        await page.send('Network.enable');
+        await page.send('Network.setBlockedURLs', { urls: ['*/_sse*'] });
+        await page.reload();
+        await page.waitForBoot();
+        await page.waitFor(`${THEME_TRIGGER}?.getAttribute('aria-haspopup') === 'dialog'`, { label: 'sb-popover to render the theme menu' });
+        assert.deepEqual(
+            await page.evaluate('window.__e2eAtParse'),
+            { theme: 'dark', defined: false, list: 'none' },
+            'the stored theme is set and the theme list hidden when the sidebar is parsed'
+        );
+        await page.evaluate(`${THEME_TRIGGER}.click()`);
+        await page.waitFor(`${THEME}.open === true && document.activeElement?.dataset.themeChoice === 'light'`, {
+            label: 'the theme menu to open before any sync',
+        });
+        await page.evaluate(`document.querySelector('#themeMenuList [data-theme-choice="system"]').click()`);
+        await page.waitFor(`document.documentElement.dataset.theme === 'light'`, { label: 'System to apply before any sync' });
+        assert.deepEqual(
+            await page.evaluate(`({
+                state: ${THEME_FOCUS},
+                pressed: [...document.querySelectorAll('#themeMenuList [aria-pressed="true"]')].map((b) => b.dataset.themeChoice),
+                label: document.querySelector('#themeMenu .nav-label').textContent.replace(/\\s+/g, ' ').trim(),
+                unsynced: document.getElementById('page-content').hasAttribute('data-e2e-unsynced'),
+            })`),
+            { state: { open: false, focus: 'trigger' }, pressed: ['system'], label: 'Theme: System (light)', unsynced: true },
+            'the theme popover works before any sync'
+        );
+
+        const boxes = `(function(){
+            var box = function(el){ var r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join(' '); };
+            return { trigger: box(${THEME_TRIGGER}), panel: box(${THEME}.shadowRoot.querySelector('.panel')) };
+        })()`;
+        const measure = async () => {
+            await page.evaluate(`${THEME}.show()`);
+            await page.waitFor(`${THEME}.open === true`, { label: 'the theme menu to open' });
+            await sleep(200);
+            const at = await page.evaluate(boxes);
+            await page.evaluate(`${THEME}.hide()`);
+            return at;
+        };
+        const density = await page.evaluate(`document.documentElement.getAttribute('data-density')`);
+        await page.evaluate(`document.documentElement.removeAttribute('data-density')`);
+        const comfortable = await measure();
+        await page.evaluate(`document.documentElement.setAttribute('data-density', 'compact')`);
+        assert.deepEqual(await measure(), comfortable, 'compact tables change nothing about the theme popover');
+        await page.evaluate(`(function(d){ d === null ? document.documentElement.removeAttribute('data-density') : document.documentElement.setAttribute('data-density', d); })(${JSON.stringify(density)})`);
+        await page.evaluate(`localStorage.removeItem('nfsen-theme')`);
     });
 
     // A phone: the tab bar and its More menu reach every page, including the switches between

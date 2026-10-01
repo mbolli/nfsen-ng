@@ -18,16 +18,15 @@
             {% endif %}
         </a>
     {% endfor %}
-    <div class="menu tabbar-more">
-        <button type="button" class="menu-toggle tabbar-item" aria-controls="tabbarMore"
-                aria-expanded="false" {% if moreCurrent %}data-current="page"{% endif %}
-                data-attr:data-current="{{ moreTitles }} ? 'page' : false" data-preserve-attr="aria-expanded data-current">
+    <sb-popover id="tabbarMoreMenu" class="tabbar-more" label="More pages and theme" placement="top-end">
+        <button type="button" slot="trigger" class="menu-toggle tabbar-item" {% if moreCurrent %}data-current="page"{% endif %}
+                data-attr:data-current="{{ moreTitles }} ? 'page' : false" data-preserve-attr="aria-expanded aria-haspopup data-current">
             {{ icons.icon('more') }}
             <span>More</span>
             {#- No space, so the name reads "More, current: Health". #}<span class="visually-hidden" data-ignore-morph
                   data-text="{{ moreTitles }} ? ', current: ' + {{ moreTitles }} : ''">{% if moreCurrent %}, current: {{ moreCurrent.title }}{% endif %}</span>
         </button>
-        <div class="menu-list" id="tabbarMore" popover data-preserve-attr="style">
+        <div class="popover-list" id="tabbarMore">
             {% for meta in morePages %}
                 <a class="menu-item" href="#/{{ meta.id }}"
                    data-attr:aria-current="${{ page.id() }} === '{{ meta.id }}' ? 'page' : false"
@@ -44,5 +43,5 @@
                 {{ nav.themeItems(shell.defaults.theme) }}
             </div>
         </div>
-    </div>
+    </sb-popover>
 </nav>

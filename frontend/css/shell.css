@@ -233,8 +233,15 @@ body.app::before {
 
 /* ── Theme menu (4.0.7) ─────────────────────────────────────────────────── */
 
-.theme-menu {
-    display: block;
+/* A grid host stretches the component's wrapper around the trigger, so the trigger fills the row. */
+sb-popover.theme-menu {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+/* Until sb-popover is defined, its panel content would show in place. */
+sb-popover:is(.theme-menu, .tabbar-more):not(:defined) > .popover-list {
+    display: none;
 }
 
 /* The toggle shows the theme in effect; the head script sets data-theme before paint. */
@@ -288,7 +295,7 @@ body.app[data-sidebar='collapsed'] .sidebar-nav {
     padding-block-start: var(--size-2);
 }
 
-body.app[data-sidebar='collapsed'] .theme-menu > .menu-toggle::after {
+body.app[data-sidebar='collapsed'] sb-popover.theme-menu > [slot='trigger']::after {
     content: none;
 }
 
@@ -687,15 +694,17 @@ nfsen-toast:is(:hover, :focus-within) .toast-progress {
         line-height: 1rem;
     }
 
-    .tabbar-more {
-        display: block;
+    /* As the theme menu: the trigger fills its fifth of the bar, in both axes. */
+    sb-popover.tabbar-more {
+        display: grid;
+        grid-template: minmax(0, 1fr) / minmax(0, 1fr);
     }
 
-    .tabbar-more > .menu-toggle::after {
+    sb-popover.tabbar-more > [slot='trigger']::after {
         content: none;
     }
 
-    .tabbar-more .menu-item .nav-dot {
+    sb-popover.tabbar-more .menu-item .nav-dot {
         margin-inline-start: auto;
     }
 }

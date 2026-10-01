@@ -24,18 +24,18 @@
 
     <div class="sidebar-footer">
         {# Theme (4.0.7, D8): a choice for this browser, or the instance default. #}
-        <div class="menu theme-menu" id="themeMenu">
-            <button type="button" class="menu-toggle sidebar-action" aria-controls="themeMenuList"
-                    aria-expanded="false" data-preserve-attr="aria-expanded" title="Theme">
+        <sb-popover id="themeMenu" class="theme-menu" label="Theme" placement="top-start">
+            <button type="button" slot="trigger" class="menu-toggle sidebar-action" title="Theme"
+                    data-preserve-attr="aria-expanded aria-haspopup">
                 <span class="theme-icon" data-theme-icon="light">{{ icons.icon('sun') }}</span>
                 <span class="theme-icon" data-theme-icon="dark">{{ icons.icon('moon') }}</span>
                 {# Client-derived text: ignore-morph keeps a sync from writing the server's back over it. #}
                 <span class="nav-label">Theme: <span data-ignore-morph data-text="{{ nav.choiceExpr() }}">Default</span></span>
             </button>
-            <div class="menu-list" id="themeMenuList" popover data-align="start" data-preserve-attr="style">
+            <div class="popover-list" id="themeMenuList">
                 {{ nav.themeItems(shell.defaults.theme) }}
             </div>
-        </div>
+        </sb-popover>
         <button type="button" class="sidebar-action sidebar-toggle" aria-controls="sidebarNav"
                 aria-expanded="true" data-attr:aria-expanded="$_sidebarCollapsed ? 'false' : 'true'"
                 title="Collapse sidebar" data-attr:title="$_sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"

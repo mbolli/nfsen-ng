@@ -9,11 +9,32 @@ const PAGES = ['overview', 'talkers', 'flows', 'conversations', 'alerts', 'healt
 const PHONE = { width: 390, height: 844, mobile: true };
 const GRAPH = "document.getElementById('trafficGraph')";
 
+const KEYS = {
+    Escape: { code: 'Escape', keyCode: 27 },
+    Enter: { code: 'Enter', keyCode: 13, text: '\r' },
+    ' ': { code: 'Space', keyCode: 32, text: ' ' },
+    Tab: { code: 'Tab', keyCode: 9 },
+    ArrowDown: { code: 'ArrowDown', keyCode: 40 },
+    ArrowUp: { code: 'ArrowUp', keyCode: 38 },
+    Home: { code: 'Home', keyCode: 36 },
+    End: { code: 'End', keyCode: 35 },
+};
+
 async function press(page, key) {
-    const codes = { Escape: 27, Enter: 13, Tab: 9 };
-    const base = { key, code: key, windowsVirtualKeyCode: codes[key], nativeVirtualKeyCode: codes[key] };
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, ...(key === 'Enter' ? { text: '\r' } : {}) });
+    const { code, keyCode, text } = KEYS[key];
+    const base = { key, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode };
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, ...(text ? { text } : {}) });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+}
+
+/** A one-finger tap at the middle of the first element matching `selector`. */
+async function tap(page, selector) {
+    const at = await page.evaluate(`(function(){
+        var r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+        return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+    })()`);
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
 /** A one-finger vertical swipe from `from`, `distance` px upwards, as real touch events. */
@@ -56,10 +77,25 @@ async function dragAcrossGraph(page) {
 const visible = (selector) =>
     `(function(){ var e = document.querySelector(${JSON.stringify(selector)}); return !!e && e.getClientRects().length > 0; })()`;
 
+const MORE = `document.getElementById('tabbarMoreMenu')`;
+const MORE_TRIGGER = `document.querySelector('#tabbarMoreMenu [slot="trigger"]')`;
+
 const MORE_STATE = `(function(){
-    var t = document.querySelector('.tabbar-more .menu-toggle');
+    var t = ${MORE_TRIGGER};
     return [t.dataset.current ?? null, t.textContent.replace(/\\s+/g, ' ').trim()];
 })()`;
+
+/** Whether More is open, and the focus: its trigger, a page link's href, a theme choice, or another element's tag. */
+const MORE_FOCUS = `(function(){
+    var a = document.activeElement;
+    return {
+        open: ${MORE}.open,
+        focus: a === ${MORE_TRIGGER} ? 'trigger' : a?.getAttribute('href') ?? a?.dataset.themeChoice ?? a?.tagName.toLowerCase(),
+    };
+})()`;
+
+/** An element's box, rounded. */
+const box = (expr) => `(function(){ var r = ${expr}.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom].map(Math.round); })()`;
 
 /** What is wider than the phone (which widens its layout viewport to fit): the document, a shell
     region, or a visible element no scroll container holds, which the shell's clip would hide. */
@@ -92,7 +128,7 @@ export default async function mobileTest() {
 
         // The tab bar replaces the sidebar; every tab says its page's name in full, and fits.
         const bar = await page.evaluate(`(function(){
-                var items = [...document.querySelectorAll('.tabbar > .tabbar-item, .tabbar > .menu > .tabbar-item')];
+                var items = [...document.querySelectorAll('.tabbar > .tabbar-item, .tabbar > sb-popover > .tabbar-item')];
                 return {
                     tabbar: ${visible('.tabbar')},
                     sidebar: ${visible('.sidebar')},
@@ -121,22 +157,29 @@ export default async function mobileTest() {
         assert.deepEqual(current, { current: 'page', fits: true }, 'the current Conversations tab fits');
         await page.gotoPage('flows');
 
-        // More: the remaining pages and the theme, no profile select; Escape closes it and
-        // gives the focus back to its toggle.
-        await page.evaluate(`document.querySelector('.tabbar-more .menu-toggle').focus()`);
+        // More (POPOVER-SPEC 4.2, 6 item 11): the other pages and the theme, no profile select, above
+        // the tab bar and inside the phone with its trigger in place; the arrows, Home and End wrap.
+        const triggerAt = await page.evaluate(box(MORE_TRIGGER));
+        await page.evaluate(`${MORE_TRIGGER}.focus()`);
         await press(page, 'Enter');
-        await page.waitFor(`document.getElementById('tabbarMore').matches(':popover-open')`, { label: 'the More menu to open' });
+        await page.waitFor(`${MORE}.open === true && document.activeElement?.getAttribute('href') === '#/talkers'`, {
+            label: 'Enter to open More on its first page',
+        });
+        await sleep(200);
         const more = await page.evaluate(`(function(){
                 var list = document.getElementById('tabbarMore');
-                var box = list.getBoundingClientRect();
+                var panel = ${MORE}.shadowRoot.querySelector('.panel').getBoundingClientRect();
                 return {
                     pages: [...list.querySelectorAll('a.menu-item')].map(function(a){
                         return [...a.childNodes].filter(function(n){ return n.nodeType === 3; }).map(function(n){ return n.textContent; }).join('').trim();
                     }),
                     themes: [...list.querySelectorAll('[data-theme-choice]')].map(function(b){ return b.dataset.themeChoice; }),
                     profile: !!list.querySelector('select, #profileSelect'),
-                    above: box.bottom <= document.querySelector('.tabbar').getBoundingClientRect().top + 1,
-                    expanded: document.querySelector('.tabbar-more .menu-toggle').getAttribute('aria-expanded'),
+                    above: panel.bottom <= document.querySelector('.tabbar').getBoundingClientRect().top + 1,
+                    inside: panel.left >= 0 && panel.top >= 0 && panel.right <= ${PHONE.width} && panel.bottom <= ${PHONE.height},
+                    expanded: ${MORE_TRIGGER}.getAttribute('aria-expanded'),
+                    popup: ${MORE_TRIGGER}.getAttribute('aria-haspopup'),
+                    slotted: ${MORE}.shadowRoot.querySelector('slot[name="trigger"]').assignedElements().length,
                 };
             })()`);
         assert.deepEqual(more, {
@@ -144,14 +187,66 @@ export default async function mobileTest() {
             themes: ['light', 'dark', 'system', 'default'],
             profile: false,
             above: true,
+            inside: true,
             expanded: 'true',
+            popup: 'dialog',
+            slotted: 1,
+        });
+        assert.deepEqual(await page.evaluate(box(MORE_TRIGGER)), triggerAt, 'opening More leaves its trigger where it was');
+        for (const [key, to] of [
+            ['ArrowDown', '#/health'],
+            ['End', 'default'],
+            ['ArrowDown', '#/talkers'],
+            ['ArrowUp', 'default'],
+            ['Home', '#/talkers'],
+        ]) {
+            await press(page, key);
+            assert.deepEqual(await page.evaluate(MORE_FOCUS), { open: true, focus: to }, `${key} moves to ${to}`);
+        }
+
+        // A sync morph keeps More open with the focus on the same page (6, item 1); Escape closes it
+        // onto its trigger.
+        await press(page, 'ArrowDown');
+        await page.syncNow('flows');
+        assert.deepEqual(await page.evaluate(MORE_FOCUS), { open: true, focus: '#/health' }, 'a sync keeps More open and the focus');
+        await press(page, 'Escape');
+        await page.waitFor(`${MORE}.open === false && document.activeElement === ${MORE_TRIGGER}`, {
+            label: 'Escape to close More onto its trigger',
+        });
+        assert.equal(await page.evaluate(`${MORE_TRIGGER}.getAttribute('aria-expanded')`), 'false');
+        await press(page, ' ');
+        await page.waitFor(`${MORE}.open === true && document.activeElement?.getAttribute('href') === '#/talkers'`, {
+            label: 'Space to open More on its first page',
         });
         await press(page, 'Escape');
-        await page.waitFor(`!document.getElementById('tabbarMore').matches(':popover-open')`, { label: 'Escape to close More' });
-        assert.ok(
-            await page.evaluate(`document.activeElement === document.querySelector('.tabbar-more .menu-toggle')`),
-            'the focus is back on the More toggle'
-        );
+        await page.waitFor(`${MORE}.open === false && document.activeElement === ${MORE_TRIGGER}`, {
+            label: 'Escape after Space to close More onto its trigger',
+        });
+
+        // A theme chosen from More by keyboard applies, is marked in both theme lists and closes More
+        // onto its trigger; a tap outside closes it too.
+        const pressed = `[...document.querySelectorAll('[data-theme-choice][aria-pressed="true"]')].map(function(b){ return b.closest('[id]').id + ':' + b.dataset.themeChoice; })`;
+        const chooseFromMore = async (choice) => {
+            await page.evaluate(`${MORE_TRIGGER}.focus()`);
+            await press(page, 'Enter');
+            await page.waitFor(`${MORE}.open === true && document.activeElement?.getAttribute('href') === '#/talkers'`, {
+                label: 'Enter to open More',
+            });
+            await page.evaluate(`document.querySelector('#tabbarMore [data-theme-choice="${choice}"]').focus()`);
+            await press(page, 'Enter');
+            await page.waitFor(`${MORE}.open === false`, { label: `Enter on ${choice} to close More` });
+            assert.equal(await page.evaluate(MORE_FOCUS + '.focus'), 'trigger', `choosing ${choice} put the focus back on More's trigger`);
+        };
+        await chooseFromMore('dark');
+        await page.waitFor(`document.documentElement.dataset.theme === 'dark'`, { label: 'Dark from More' });
+        assert.deepEqual(await page.evaluate(pressed), ['themeMenuList:dark', 'tabbarMore:dark'], 'both theme lists mark Dark');
+        await chooseFromMore('default');
+        await page.waitFor(`localStorage.getItem('nfsen-theme') === null`, { label: 'the instance default from More' });
+        assert.deepEqual(await page.evaluate(pressed), ['themeMenuList:default', 'tabbarMore:default']);
+        await page.evaluate(`${MORE_TRIGGER}.click()`);
+        await page.waitFor(`${MORE}.open === true`, { label: 'a tap to open More again' });
+        await tap(page, '[data-page-heading="flows"] h1');
+        await page.waitFor(`${MORE}.open === false`, { label: 'a tap outside to close More' });
 
         // Graph first: the page header, then the traffic graph, then the page content.
         const order = await page.evaluate(`(function(){
@@ -175,10 +270,56 @@ export default async function mobileTest() {
             [true, false],
             'only the Flows toggle changed'
         );
-        await page.gotoPage('talkers');
+        // Top Talkers from More by keyboard: Enter on the link opens the page and closes More, and
+        // the page heading takes the focus.
+        await page.evaluate(`${MORE_TRIGGER}.focus()`);
+        await press(page, 'ArrowDown');
+        await page.waitFor(`${MORE}.open === true && document.activeElement?.getAttribute('href') === '#/talkers'`, {
+            label: 'ArrowDown to open More on Top Talkers',
+        });
+        await press(page, 'Enter');
+        await page.waitForPage('talkers');
+        await page.waitFor(`document.activeElement?.id === 'pageTitle' && !!document.activeElement.closest('[data-page-heading="talkers"]')`, {
+            label: 'the focus on the Top Talkers heading',
+        });
+        assert.equal(await page.evaluate(`${MORE}.open`), false, 'choosing a page closed More');
         assert.equal(await page.evaluate(fields('talkers')), false, 'the Top Talkers fields stay folded');
-        // A page from More marks the More tab, in words too.
+        // A page from More marks the More tab, in words too, and its link in More.
         assert.deepEqual(await page.evaluate(MORE_STATE), ['page', 'More, current: Top Talkers']);
+        assert.deepEqual(
+            await page.evaluate(`[...document.querySelectorAll('#tabbarMore a[aria-current="page"]')].map(function(a){ return a.getAttribute('href'); })`),
+            ['#/talkers']
+        );
+        // Forced colors: More keeps its panel edge, the focused link its ring and the current page its
+        // check mark (6, item 10).
+        await page.withForcedColors(async () => {
+            await page.evaluate(`${MORE_TRIGGER}.focus()`);
+            await press(page, 'ArrowDown');
+            await page.waitFor(`${MORE}.open === true && document.activeElement?.getAttribute('href') === '#/talkers'`, {
+                label: 'More open on Top Talkers in forced colors',
+            });
+            await press(page, 'ArrowDown');
+            await sleep(300);
+            const forced = await page.evaluate(`(function(){
+                var panel = getComputedStyle(${MORE}.shadowRoot.querySelector('.panel'));
+                var ring = getComputedStyle(document.activeElement);
+                var mark = getComputedStyle(document.querySelector('#tabbarMore a[aria-current="page"]'), '::before');
+                return {
+                    edge: panel.outlineStyle + ' ' + panel.outlineWidth,
+                    focus: document.activeElement.getAttribute('href'),
+                    ring: ring.outlineStyle !== 'none' && parseFloat(ring.outlineWidth) >= 2,
+                    mark: { content: mark.content, mask: mark.maskImage !== 'none', adjust: mark.forcedColorAdjust, drawn: parseFloat(mark.width) > 0 },
+                };
+            })()`);
+            assert.deepEqual(
+                forced,
+                { edge: 'solid 1px', focus: '#/health', ring: true, mark: { content: '""', mask: true, adjust: 'none', drawn: true } },
+                'More keeps its edge, the focused link its ring and the current page its check mark in forced colors'
+            );
+            await page.screenshot('/tmp/nfsen-mobile-forced-more.png');
+            await press(page, 'Escape');
+            await page.waitFor(`${MORE}.open === false`, { label: 'Escape to close More in forced colors' });
+        });
         await page.gotoPage('flows');
         assert.deepEqual(await page.evaluate(MORE_STATE), [null, 'More']);
         await page.waitFor(fields('flows'), { label: 'the Flows fields to stay open across a page switch' });
@@ -279,6 +420,49 @@ export default async function mobileTest() {
 
         const errors = page.realErrors();
         assert.deepEqual(errors, [], `expected no console errors on a phone, got:\n${errors.join('\n')}`);
+    }, PHONE);
+
+    // Before any sync, with the stream blocked: More opens and its tab and links follow a page chosen
+    // from it (6, item 4); compact tables move neither its trigger nor its panel (6, item 12).
+    await withPage(async (page) => {
+        await page.navigate(BASE + '/#/flows');
+        await page.waitForBoot();
+        await page.send('Network.enable');
+        await page.send('Network.setBlockedURLs', { urls: ['*/_sse*'] });
+        await page.reload();
+        await page.waitForBoot();
+        await page.waitFor(`${MORE_TRIGGER}?.getAttribute('aria-haspopup') === 'dialog'`, { label: 'sb-popover to render More' });
+        await page.evaluate(`document.getElementById('page-content').setAttribute('data-e2e-unsynced', '')`);
+        assert.deepEqual(await page.evaluate(MORE_STATE), [null, 'More']);
+        await tap(page, '#tabbarMoreMenu [slot="trigger"]');
+        await page.waitFor(`${MORE}.open === true`, { label: 'a tap to open More before any sync' });
+        await tap(page, '#tabbarMore a[href="#/health"]');
+        await page.waitFor(`${MORE}.open === false && location.hash === '#/health'`, { label: 'a tap on Health to close More' });
+        await page.waitFor(`${MORE_TRIGGER}.dataset.current === 'page'`, { label: 'the More tab to follow Health before any sync' });
+        assert.deepEqual(
+            await page.evaluate(`({
+                state: ${MORE_STATE},
+                current: [...document.querySelectorAll('#tabbarMore a[aria-current="page"]')].map(function(a){ return a.getAttribute('href'); }),
+                unsynced: document.getElementById('page-content').hasAttribute('data-e2e-unsynced'),
+            })`),
+            { state: ['page', 'More, current: Health'], current: ['#/health'], unsynced: true },
+            'More marks Health, in words too, before any sync'
+        );
+
+        const boxes = `({ trigger: ${box(MORE_TRIGGER)}, panel: ${box(`${MORE}.shadowRoot.querySelector('.panel')`)} })`;
+        const measure = async () => {
+            await page.evaluate(`${MORE}.show()`);
+            await page.waitFor(`${MORE}.open === true`, { label: 'More to open' });
+            await sleep(200);
+            const at = await page.evaluate(boxes);
+            await page.evaluate(`${MORE}.hide()`);
+            await page.waitFor(`${MORE}.open === false`, { label: 'More to close' });
+            return at;
+        };
+        await page.evaluate(`document.documentElement.removeAttribute('data-density')`);
+        const comfortable = await measure();
+        await page.evaluate(`document.documentElement.setAttribute('data-density', 'compact')`);
+        assert.deepEqual(await measure(), comfortable, 'compact tables change nothing about More');
     }, PHONE);
 
     // Desktop: the fields show whatever the phone toggle says, and the phone chrome is gone.

@@ -41,10 +41,12 @@ missing, or the build differs (as right after a pin bump), it warns and keeps th
 `datastar.LICENSE.md`, `echarts.min.js`, `echarts.LICENSE` and `echarts.NOTICE` into `frontend/js/`. The source map
 embeds the TypeScript sources, so DevTools shows them.
 
-Until php-via 0.13.0 is published, `composer.json` takes `mbolli/php-via` from the local git repository at
-`/develop/php-via` (`dev-master as 0.13.0`), so Composer needs that path, also inside a container. Once it is
-out, require `"mbolli/php-via": "^0.13.0"`, drop the `repositories` entry, run `composer update mbolli/php-via`
-and build `deploy/Dockerfile` once. That build stops with *php-via is missing from vendor/* while `composer.lock`
+Until php-via publishes a release with the revival fix, `composer.json` takes `mbolli/php-via` from the local git
+repository at `/develop/php-via`, branch `fix/revive-seed-from-sse` (`dev-fix/revive-seed-from-sse as 0.13.0`): a
+context that a list request revived without signals takes them from its next SSE connect. Composer needs that path,
+also inside a container, and lists no branch that is checked out in a worktree, so that branch stays checked out
+nowhere. Once the release is out, require it (`"mbolli/php-via": "^0.13.0"` or the version that has the fix), drop
+the `repositories` entry, run `composer update mbolli/php-via` and build `deploy/Dockerfile` once. That build stops with *php-via is missing from vendor/* while `composer.lock`
 names no published release: `composer install --no-dev` exits 0 there but leaves php-via out.
 
 ## Architecture
@@ -98,7 +100,9 @@ while the page is active (the layout includes them only then). `viewData()` runs
 must stay cheap: read what actions stored, never run a query or a range-sized SQLite read in a render.
 
 Large results go through result hosts (`components/result-host.html.twig`): sent once per result id,
-empty `data-ignore-morph` placeholders afterwards.
+empty `data-ignore-morph` placeholders afterwards. The Flows list is such a host of its own (`FlowRows`), filled
+by windows: its requests (`flows-window`, `flows-sort`, `flows-columns`, `flows-export`) post only `via_ctx` and
+read everything else from `FlowsState`, so they never depend on the tab's signals.
 
 ### Expensive queries
 
@@ -345,7 +349,7 @@ Load order in `layout.html.twig`:
    year, so a module that another module imports goes through the import map, never a relative import.
 2. The inline module that sets `window.tzOptions`.
 3. Plain modules whose `window.*` helpers `data-init` and `data-effect` expressions read (K9): `nfsen-router`,
-   `alert-template-preview`, `filter-drawer`, `chunks`.
+   `alert-template-preview`, `filter-drawer`, `chunks`, `flows-list`.
 4. `datastar-rocket.js`, then `datastar-persist.js` (a Datastar plugin).
 5. The elements `nfsen-chart`, `nfsen-sankey`, `nfsen-matrix`, `nfsen-table`, `nfsen-toast`,
    `nfsen-filter-editor`, then the plain `nfsen-controls` (tabs and the popover layer that completes `sb-popover`,
@@ -361,9 +365,10 @@ script URL.
 Components from [Starbase](https://github.com/zweiundeins/starbase) (MIT) are vendored under
 `frontend/js/starbase/<slug>@<version>/`, unchanged, with `LICENSE` and `starbase.lock.json`. The version in the
 folder name is Starbase's content hash of the folder, so the URL changes with every byte. Never edit a vendored
-file: change Starbase first, then move the pin. Two are vendored: `sb-relative-time` (Alerts, Last triggered) and
+file: change Starbase first, then move the pin. Three are vendored: `sb-relative-time` (Alerts, Last triggered),
 `sb-popover` (every menu: the controls bar's range, start and end, and sources, the Live menu, the theme menu, the tab
-bar's More, the Export menus, the Columns picker and the saved-filter kebab; see Popovers below).
+bar's More, the Export menus, the Columns pickers and the saved-filter kebab; see Popovers below) and
+`sb-virtual-scroll` (the Flows list).
 
 ```bash
 node scripts/starbase-vendor.mjs check                        # offline: hashes, lock, licence, imports, Datastar banner
@@ -379,8 +384,9 @@ the lock. A vendored module may import only `'datastar'` or a file inside its ow
 reads the lock, and the layout loads every `"load": true` entry after the elements; no template names a component.
 A pin bump is a commit that touches only `frontend/js/starbase/**` and names the Starbase commit and every version.
 Until the owner merges Starbase's feature branches into main, nfsen-ng pins from the local integration branch
-`nfsen-pin` (worktree `/develop/starbase-wt-nfsen`: Starbase dab10a7 with the relative-time time-zone commits and
-the popover shadow token on top), so a `pull` takes `--from /develop/starbase-wt-nfsen --ref <nfsen-pin commit>`.
+`nfsen-pin` (worktree `/develop/starbase-wt-nfsen`: Starbase 44b7341 with the relative-time time-zone commits, the
+popover shadow token and the virtual-scroll focus commits on top), so a `pull` takes
+`--from /develop/starbase-wt-nfsen --ref <nfsen-pin commit>`.
 
 `frontend/css/starbase.css` maps every `--sb-*` token onto nfsen-ng's tokens (`--sb-notch: 0` for smooth corners), so
 one `:root` block serves light and dark. A package that adopts a component:

@@ -55,7 +55,11 @@ origin`, so a reverse proxy has to pass the original `Host` on.
 | Action | File | Input | Does |
 |---|---|---|---|
 | `flow-actions` | `FlowActions.php` | the `flows_*` signals | Runs the listing (query kind `flows`) and stores the result |
-| `flows-rows` | `FlowActions.php` | `?result=<id>&chunk=<n>` | Sends the next 1,000 table rows of a stored result as their own event |
+| `flows-window` | `FlowWindowActions.php` | `?result=<id>&offset=<n>&count=<n>`, body only `via_ctx` | Patches the list with rows offset to offset + count (at most 500) in the tab's order and columns |
+| `flows-sort` | `FlowWindowActions.php` | `?result=<id>&key=<column>&dir=asc\|desc`, body only `via_ctx` | Sorts the list, stable, empty values last, and answers from the top |
+| `flows-columns` | `FlowWindowActions.php` | `?result=<id>&hidden=<keys>`, body only `via_ctx` | Hides the named columns (the whole set) and answers with the window the list holds |
+| `flows-export` | `FlowExportActions.php` | `?result=<id>&format=csv\|json\|print&enhanced=0\|1`, body only `via_ctx` | Builds the file from the stored rows and appends an element that pulls it |
+| `flows-export-chunk` | `FlowExportActions.php` | `?export=<token>&chunk=<n>`, body only `via_ctx` | Sends the next 512 KiB of an export |
 | `flows-raw` | `FlowActions.php` | `?result=<id>&chunk=<n>` | Sends the next 512 KiB of the raw output |
 | `flows-summary-estimate` | `FlowActions.php` | the query's signals | The estimate for the filtered totals |
 | `flows-summary-run` | `FlowActions.php` | the query's signals | Computes the filtered totals of the Summary tab (query kind `flows-summary`) |

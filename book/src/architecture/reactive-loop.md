@@ -139,10 +139,12 @@ and a stop waited for the parked write. What a drop costs depends on the patch:
 
 - A render carries the whole page, so the tab's next render (an action, a live
   tick, a broadcast) replaces a dropped one.
-- A chunk of Flows rows or raw output is appended, so no render replaces it. If
-  a chunk has not arrived 8 seconds after the page asked for it, the page asks
-  again, three requests in all, and then says which rows or output are missing;
-  running the query again fetches them.
+- A chunk of raw output or of an export is appended, so no render replaces it.
+  If a chunk has not arrived 8 seconds after the page asked for it, the page asks
+  again, three requests in all, and then says which output is missing or that the
+  export failed; running the query or the export again fetches it.
+- A window of the Flows list patches the list by its id. A dropped one leaves the
+  list's placeholder rows in view until a scroll asks for another window.
 - A dialog opened in that state may stay closed: its markup comes with the next
   render, but the script that opens it has already run.
 
@@ -177,8 +179,8 @@ five-minute interval in live mode. Result fingerprints encode a live window as
 
 ## Result hosts
 
-Large blocks (the Flows table and raw output, the Top Talkers table, the
-Conversations payload and IP pairs table) are sent once per result. The
+Large blocks (the Flows raw output, the Top Talkers table, the Conversations
+payload and IP pairs table) are sent once per result. The
 macro in `components/result-host.html.twig` renders
 `<div class="result-host" id="<name>-<resultId>" data-ignore-morph>` with the
 content only when `PageState::sendResult()` says the client does not have that
@@ -186,7 +188,12 @@ result yet, and empty otherwise. Datastar skips a morph when both the old and th
 new element carry `data-ignore-morph`, and replaces an element whose id changed,
 so an unchanged result is neither re-sent nor morphed, and a new result (a new
 random `resultId`) replaces the old one. A tab that lacks part of a large result
-pulls it in chunks through its own action (`flows-rows`, `flows-raw`).
+pulls it in chunks through its own action (`flows-raw`). The Flows list follows
+the same rule with its own element: `#flowRows-<resultId>`, also `data-ignore-morph`,
+comes with its first 160 rows only when the client lacks the result and as an
+empty placeholder otherwise, and the windows that `flows-window` sends patch it by
+id. Those requests post only `via_ctx` (a filter on the request's signals): the
+rows, the order, the hidden columns and the zone come from the tab's `FlowsState`.
 
 ## Practical consequences
 

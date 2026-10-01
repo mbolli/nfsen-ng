@@ -57,11 +57,12 @@ The result has three tabs, and the line next to them says how many rows came bac
 and whether the limit was reached (or, for an aggregated query, how many flows
 were aggregated).
 
-**Flows** is the table. It shows 50 rows per page; the pager below it switches to
-25, 100 or 250 and says *Showing 1-50 of 1,234 returned (limit 10,000)*. nfdump
-cannot skip rows, so when the limit is reached the pager says so: raise the limit
-to see more. Click a column header to sort, use **Columns** to hide columns,
-and **Export** to save the rows as CSV or JSON or print them. With **Enhanced
+**Flows** is one list of every row that came back: scroll it, or walk it with
+Tab, and the server sends the rows as they come into view. nfdump cannot skip
+rows, so when the limit is reached the line next to the tabs says so: raise the
+limit to see more. Click a column header to sort (again for the other direction),
+use **Columns** to hide columns, and **Export** to save every row as CSV or JSON or
+print them; the next Run keeps the sort and the hidden columns. With **Enhanced
 data** on, the export has the values as shown; off, it has the raw numbers.
 Click an IP address to [look it up](ip-lookup.md).
 

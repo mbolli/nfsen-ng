@@ -2,7 +2,7 @@
 
 Raw flow-record search: `FlowsQuery` runs nfdump (see
 [Nfdump Integration](../architecture/nfdump-integration.md)) over the selected
-window and the page shows the records as a table, nfdump's raw output and a
+window and the page shows the records as a scrolling list, nfdump's raw output and a
 summary. Page: `FlowsPage` (`backend/pages/FlowsPage.php`), actions in
 `FlowActions.php` and `FlowGraphActions.php`, per-tab state in `FlowsState`.
 
@@ -37,26 +37,40 @@ says *stops early once the limit is reached*. Flows is not clamped by
 above 1,000 rows run one at a time per worker, after checking that the worker has
 the memory to parse them, so two 10,000-row runs cannot exhaust it together.
 
-## The table
+## The list
 
-The Flows tab is `nfsen-table` (`frontend/js/components/nfsen-table.js`), shared
-by every result table of the app. It is a Rocket element whose shadow root holds
-only a `<slot>`: the table markup stays in the light DOM, and its rows, page,
-sort and focus live in `nfsen/host-state`, so a morph that moves the table into
-a new result host keeps them. The server renders the first page (50 rows) in a
-result host; the rest arrives in chunks of 1,000 rows that `nfsen/chunks`
-(`chunks.js`) pulls with `flows-rows?result=<id>&chunk=<n>`, one event each, so
-no single SSE event carries a large result. `chunks.js` loads before the
-Datastar bundle, because a `data-effect` on first load reads its
-`window.nfsenPullChunks`. A new page empties the table body in one step and
-appends its rows 50 per animation frame, holding the table at its old height
-until the last batch, so the pager and a focused page button stay put. Paging is client-side, with page sizes 25, 50, 100 and 250.
-The pager says *Showing 1-50 of 1,234 returned (limit 10,000)*, and when the limit
-was reached, that nfdump cannot skip rows. Sorting, the Columns menu (hidden
-columns remembered per browser), CSV/JSON/Print export and the Enhanced data
-switch (formatted or raw values in the export) all work on the rows in the
-browser. An export waits for the chunks still on their way, and refuses with a
-message in the pager when some never arrived.
+The Flows tab is one list of every returned row: Starbase's `sb-virtual-scroll`
+(`#flowRows-<result>`, `role="table"`), which keeps only the rows around the view
+in the document. The server keeps the result's rows per result id in
+`FlowRowStore` (`backend/pages/state/FlowRowStore.php`): blocks of 64 rows of
+rendered cells, compressed, with each column's raw values and sort keys, under
+the same 12 MiB budget as the other stored results. The first 160 rows come with
+the page; scrolling asks for windows of at most 500 rows with `flows-window`, and
+each answer patches the list by its id. These requests post only `via_ctx`: the
+sort, the hidden columns, the zone and the rows all come from the tab's state on
+the server (`FlowsState`), so a window costs a few hundred bytes up and the rows
+it holds down. Rows are 38 px high, 30 px with compact tables, and the header
+stays on top while the rows scroll.
+
+A header button sorts by its column (`flows-sort`), stable against the order before
+and with empty values last, and the list starts again from the top. The Columns
+picker next to the list hides columns (`flows-columns`, the whole hidden set each
+time). Both choices live in the tab's state and are remembered per browser, so the
+next Run starts with them. Tab and Shift+Tab walk the rows one at a time across
+windows: the list puts the focus back on the same row when a window refills the
+element that had it.
+
+Export (CSV, JSON) and Print are built on the server from the stored rows, in the
+list's order and with its shown columns (`flows-export`), and the page pulls the
+file in 512 KiB pieces (`flows-export-chunk`) before it saves or prints it. The
+Enhanced data switch chooses the text the list shows or the raw values. Print
+renders every row in a frame on the page and opens the browser's print dialog.
+
+Times are written in the browser's time zone, which the Run sends, or in the
+capture's zone when Settings show server time; a zone saved in Settings applies to
+the next window. Compact tables saved in Settings apply from the next Run. When the
+server has dropped the rows to make room for other results, the tab says so and
+asks for a new Run.
 
 Clicking an IP address opens the [IP info](ip-info.md) dialog.
 

@@ -64,7 +64,8 @@ frontend/
   js/components/            Rocket elements: nfsen-chart, nfsen-table, nfsen-sankey,
                             nfsen-matrix, nfsen-toast, nfsen-filter-editor.
                             Plain modules loaded before the bundle: nfsen-router,
-                            alert-template-preview, filter-drawer, chunks (nfsen/chunks).
+                            alert-template-preview, filter-drawer, chunks (nfsen/chunks),
+                            flows-list (the Flows list's exports and Columns choice).
                             Plain modules after it: datastar-persist (a Datastar plugin),
                             nfsen-controls, clipboard (nfsen/clipboard).
                             Imported only: format, download, host-state, theme-colors, tz-utils

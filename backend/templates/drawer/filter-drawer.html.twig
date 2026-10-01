@@ -176,24 +176,25 @@
                                     <input type="text" id="savedRename{{ f.id }}" class="saved-rename" {{ bind(drawer_name) }} maxlength="80"
                                            aria-label="New name for {{ f.name }}"
                                            hidden data-attr:hidden="{{ rename }} !== {{ f.id }}" data-preserve-attr="hidden"
-                                           data-on:keydown="if (evt.key === 'Enter') { evt.preventDefault(); el.closest('li').querySelector('[aria-haspopup]')?.focus(); @post('{{ filterUpdate.url() }}?id={{ f.id }}&rename=1') } else if (evt.key === 'Escape') { evt.preventDefault(); {{ rename }} = 0; {{ name }} = ''; el.closest('li').querySelector('[aria-haspopup]')?.focus() }">
+                                           data-on:keydown="if (evt.key === 'Enter') { evt.preventDefault(); el.closest('li').querySelector('[slot=trigger]')?.focus(); @post('{{ filterUpdate.url() }}?id={{ f.id }}&rename=1') } else if (evt.key === 'Escape') { evt.preventDefault(); {{ rename }} = 0; {{ name }} = ''; el.closest('li').querySelector('[slot=trigger]')?.focus() }">
                                     <code>{{ f.expression }}</code>
                                 </div>
-                                <div class="menu" data-role="menu">
-                                    <button type="button" data-variant="ghost" data-size="sm" aria-haspopup="menu" aria-expanded="false"
-                                            aria-controls="savedMenu{{ f.id }}" aria-label="Actions for {{ f.name }}" title="Actions for {{ f.name }}"
-                                            data-preserve-attr="aria-expanded">{{ icons.icon('more') }}</button>
-                                    <ul role="menu" id="savedMenu{{ f.id }}" popover data-preserve-attr="style">
-                                        <li role="none"><button type="button" role="menuitem" tabindex="-1" data-action="apply"
-                                                data-on:click="{{ edit }} = 0; {{ rename }} = 0; @post('{{ filterUse.url() }}?id={{ f.id }}')">Apply</button></li>
-                                        <li role="none"><button type="button" role="menuitem" tabindex="-1" data-action="edit"
-                                                data-on:click="const li = el.closest('li[data-filter-id]'); ${{ drawer_filter.id() }} = li.dataset.expression; {{ name }} = li.dataset.name; {{ edit }} = {{ f.id }}; {{ rename }} = 0; $_drawer_tab = 'builder'; setTimeout(() => document.getElementById('drawerFilterTextarea')?.focus()); {{ validate }}">Edit</button></li>
-                                        <li role="none"><button type="button" role="menuitem" tabindex="-1" data-action="rename"
-                                                data-on:click="{{ name }} = el.closest('li[data-filter-id]').dataset.name; {{ rename }} = {{ f.id }}; {{ edit }} = 0; setTimeout(() => { const i = document.getElementById('savedRename{{ f.id }}'); i?.focus(); i?.select() })">Rename</button></li>
-                                        <li role="none"><button type="button" role="menuitem" tabindex="-1" data-action="delete"
-                                                data-on:click="confirm('Delete the saved filter ' + el.closest('li[data-filter-id]').dataset.name + '?') && (setTimeout(() => document.getElementById('drawerSearch')?.focus()), @post('{{ filterDelete.url() }}?id={{ f.id }}'))">Delete</button></li>
+                                {# Name and expression stay on the row: Rocket rewrites $$ and @name( in data-* values inside the popover (PC4). #}
+                                <sb-popover id="savedMenu{{ f.id }}" class="saved-menu" label="Actions for {{ f.name }}" placement="bottom-end">
+                                    <button type="button" slot="trigger" class="menu-toggle" data-variant="ghost" data-size="sm"
+                                            aria-label="Actions for {{ f.name }}" title="Actions for {{ f.name }}"
+                                            data-preserve-attr="aria-expanded aria-haspopup">{{ icons.icon('more') }}</button>
+                                    <ul class="popover-list">
+                                        <li><button type="button" class="menu-item" data-action="apply"
+                                                    data-on:click="{{ edit }} = 0; {{ rename }} = 0; @post('{{ filterUse.url() }}?id={{ f.id }}')">Apply</button></li>
+                                        <li><button type="button" class="menu-item" data-action="edit"
+                                                    data-on:click="const li = el.closest('li[data-filter-id]'); ${{ drawer_filter.id() }} = li.dataset.expression; {{ name }} = li.dataset.name; {{ edit }} = {{ f.id }}; {{ rename }} = 0; $_drawer_tab = 'builder'; setTimeout(() => document.getElementById('drawerFilterTextarea')?.focus()); {{ validate }}">Edit</button></li>
+                                        <li><button type="button" class="menu-item" data-action="rename"
+                                                    data-on:click="{{ name }} = el.closest('li[data-filter-id]').dataset.name; {{ rename }} = {{ f.id }}; {{ edit }} = 0; setTimeout(() => { const i = document.getElementById('savedRename{{ f.id }}'); i?.focus(); i?.select() })">Rename</button></li>
+                                        <li><button type="button" class="menu-item" data-action="delete"
+                                                    data-on:click="confirm('Delete the saved filter ' + el.closest('li[data-filter-id]').dataset.name + '?') && (setTimeout(() => document.getElementById('drawerSearch')?.focus()), @post('{{ filterDelete.url() }}?id={{ f.id }}'))">Delete</button></li>
                                     </ul>
-                                </div>
+                                </sb-popover>
                             </li>
                         {% endfor %}
                     </ul>

@@ -18,6 +18,9 @@ const KEYS = {
     ArrowUp: ['ArrowUp', 'ArrowUp', 38],
     ArrowLeft: ['ArrowLeft', 'ArrowLeft', 37],
     ArrowRight: ['ArrowRight', 'ArrowRight', 39],
+    Home: ['Home', 'Home', 36],
+    End: ['End', 'End', 35],
+    Space: [' ', 'Space', 32],
 };
 
 function sleep(ms) {
@@ -33,10 +36,11 @@ async function until(check, label, timeout = 8000) {
     }
 }
 
-/** A real key press; Enter carries its character, so it also activates a focused button. */
+/** A real key press; Enter and Space carry their character, so they also activate a focused button. */
 async function press(page, name) {
     const [key, code, keyCode] = KEYS[name];
-    const down = name === 'Enter' ? { type: 'keyDown', text: '\r' } : { type: 'rawKeyDown' };
+    const text = { Enter: '\r', Space: ' ' }[name];
+    const down = text ? { type: 'keyDown', text } : { type: 'rawKeyDown' };
     await page.send('Input.dispatchKeyEvent', { ...down, key, code, windowsVirtualKeyCode: keyCode });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode });
 }
@@ -54,6 +58,18 @@ async function pressOption(page, index) {
     for (const type of ['mousePressed', 'mouseReleased']) {
         await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
     }
+}
+
+/** A touch tap in the middle of the element. */
+async function tap(page, expr) {
+    const { x, y } = await page.evaluate(`(function(){
+        var r = (${expr}).getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    })()`);
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await sleep(80);
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await sleep(400);
 }
 
 /** Posts refresh-graphs as the Flows page and resolves once the sync it causes has morphed the page. */
@@ -121,7 +137,7 @@ async function waitForNotice(page, text) {
     await page.waitFor(`${q('#drawerNotice')}?.textContent === ${JSON.stringify(text)}`, { timeout: 8000, label: `notice "${text}"` });
 }
 
-/** Open the drawer from a field's Builder or Saved button and wait for the editor. */
+/** Open the drawer from a field's Builder or Saved button and wait for the editor and the drawer's own focus move. */
 async function openDrawer(page, target, tab = 'builder') {
     // Focus first, as a pointer click does: closing the dialog returns focus there.
     await page.evaluate(`(function(){ var b = ${q(`[data-filter-field="${target}"] [data-open-drawer="${tab}"]`)}; b.focus(); b.click(); })()`);
@@ -129,19 +145,80 @@ async function openDrawer(page, target, tab = 'builder') {
         timeout: 10000,
         label: `drawer open for ${target}`,
     });
+    // focusDrawer takes the focus a frame after showModal(), whatever has it then: a trigger focused before that loses its popover.
+    await page.evaluate(`new Promise(function(resolve){ requestAnimationFrame(function(){ requestAnimationFrame(resolve); }); })`);
+    const focus = tab === 'saved' ? 'drawerSearch' : 'drawerFilterTextarea';
+    await page.waitFor(`document.activeElement?.id === '${focus}'`, { label: `the drawer's focus on #${focus}` });
 }
 
 async function closedDrawer(page) {
     await page.waitFor(`!${q(DRAWER)}.open`, { label: 'drawer closed' });
 }
 
-/** Open a saved filter's action menu and choose an item (apply, edit, rename, delete). */
-async function menuAction(page, name, action) {
-    await page.evaluate(`${row(name)}.querySelector('[aria-haspopup="menu"]').click()`);
-    await page.waitFor(visible(`${row(name)}.querySelector('[role="menuitem"][data-action="${action}"]')`), {
-        label: `${action} in the menu of ${name}`,
+/** A saved filter's actions: an sb-popover in its row, so the row's name and expression stay outside it (PC4). */
+const actions = (name) => `${row(name)}?.querySelector('sb-popover.saved-menu')`;
+const actionsTrigger = (name) => `${actions(name)}?.querySelector('[slot="trigger"]')`;
+
+/** Where the actions popover and its trigger are, and whether it is open. */
+const actionsBoxes = (name) => `(function(){
+    var host = ${actions(name)}, pop = host.shadowRoot.querySelector('.pop');
+    var round = function(r){ return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right) }; };
+    return {
+        open: host.open === true && pop.matches(':popover-open'),
+        trigger: round(host.querySelector('[slot="trigger"]').getBoundingClientRect()),
+        panel: round(pop.getBoundingClientRect()),
+        view: { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight },
+    };
+})()`;
+
+/**
+ * K1 on the saved-filter popovers, as rocket.test.mjs's SCAN checks every Rocket host: no attribute Rocket renamed,
+ * no free text it rewrote in a plain data-* value (PC4), no $$ and only the plugin attributes a popover may carry (PC3).
+ */
+const SAVED_SCAN = `(function(){
+    var PLUGIN = /^data-(attr|bind|class|computed|effect|indicator|init|json-signals|on|on-intersect|on-interval|on-signal-patch|ref|show|signals|style|text|persist)(:|__|$)/;
+    var ALLOWED = /^data-((on|attr|class|style):|(effect|text|show|bind)(__|$))/;
+    var problems = [];
+    var hosts = [...document.querySelectorAll('#drawerSavedList sb-popover.saved-menu')];
+    hosts.forEach(function(host){
+        if (!host.matches(':defined') || host.rocketInstanceId === undefined) problems.push(host.id + ' is not a defined Rocket host');
+        [host, ...host.querySelectorAll('*')].forEach(function(el){
+            for (var a of el.attributes) {
+                var at = host.id + ' ' + el.localName + ' ' + a.name + '="' + a.value + '"';
+                if (a.name.includes('_rocket.') || a.name === 'data-rocket-ref') problems.push(at + ': renamed by Rocket');
+                else if (!a.name.startsWith('data-')) continue;
+                else if (!PLUGIN.test(a.name)) { if (/_rocket\\.|dispatchRocket/.test(a.value)) problems.push(at + ': free text Rocket rewrote'); }
+                else if (el === host) { if (/^data-init(:|__|$)/.test(a.name)) problems.push(at + ': data-init on the host (K2)'); }
+                else if (a.value.includes('_rocket.')) problems.push(at + ': reads a $$ signal');
+                else if (!ALLOWED.test(a.name)) problems.push(at + ': not a plugin attribute a popover may carry');
+            }
+        });
     });
-    await page.evaluate(`${row(name)}.querySelector('[role="menuitem"][data-action="${action}"]').click()`);
+    return { hosts: hosts.length, problems: problems };
+})()`;
+
+/** The scan finds the saved-filter popovers clean, and the one of `name` names it exactly, $$ and @word( included. */
+async function assertSavedScan(page, name, label) {
+    const { hosts, problems } = await page.evaluate(SAVED_SCAN);
+    assert.ok(hosts > 0, `${label}: the saved list holds popovers`);
+    assert.deepEqual(problems, [], `${label}: the saved-filter popovers break K1`);
+    assert.deepEqual(
+        await page.evaluate(`(function(){
+            var h = ${actions(name)}, t = h.querySelector('[slot="trigger"]');
+            return [h.getAttribute('label'), t.getAttribute('aria-label'), t.title, h.closest('li').dataset.name];
+        })()`),
+        [`Actions for ${name}`, `Actions for ${name}`, `Actions for ${name}`, name],
+        `${label}: the popover, its trigger and its row carry the name as typed`
+    );
+}
+
+/** Open a saved filter's actions and choose one (apply, edit, rename, delete); choosing closes the popover. */
+async function menuAction(page, name, action) {
+    const item = `${actions(name)}.querySelector('.popover-list [data-action="${action}"]')`;
+    await page.evaluate(`${actionsTrigger(name)}.click()`);
+    await page.waitFor(`${actions(name)}.open === true && ${visible(item)}`, { label: `${action} in the actions of ${name}` });
+    const open = await page.evaluate(`(function(){ var host = ${actions(name)}; ${item}.click(); return host.open; })()`);
+    assert.equal(open, false, `choosing ${action} closes the actions of ${name}`);
 }
 
 async function savedNames(page) {
@@ -175,8 +252,9 @@ async function removeSaved(page, match) {
 export default async function drawerTest() {
     const stamp = Date.now().toString(36);
     const name = `e2e drawer ${stamp}`;
-    const renamed = `e2e renamed ${stamp}`;
-    const expression = `dst port in [80 443] and not host 192.0.2.${(Date.now() % 200) + 20}`;
+    // $$ and @name( as Rocket would rewrite them in a data-* value inside the actions popover (PC4).
+    const renamed = `e2e renamed ${stamp} $$cost @docs(1)`;
+    const expression = `dst port in [80 443]\n# see @docs(1), $$cost\nand not host 192.0.2.${(Date.now() % 200) + 20}`;
     const edited = `${expression} and proto tcp`;
 
     await withPage(async (page) => {
@@ -349,7 +427,7 @@ export default async function drawerTest() {
             await waitForNotice(page, `Already saved as ${name}`);
             await page.setInputValue('#drawerSaveName', '');
 
-            // ── Rename through the kebab menu: Enter saves, the expression stays ──
+            // ── Rename through the actions popover: Enter saves and returns to its trigger, the expression stays ──
             await menuAction(page, name, 'rename');
             await page.waitFor(`document.activeElement?.classList.contains('saved-rename')`, { label: 'rename field focused' });
             await page.evaluate(`document.activeElement.select()`);
@@ -358,17 +436,30 @@ export default async function drawerTest() {
             await waitForNotice(page, `Renamed to ${renamed}`);
             await page.waitFor(`!!${row(renamed)}`, { label: 'renamed row' });
             assert.equal(await page.evaluate(`${row(renamed)}.dataset.expression`), expression);
+            await page.waitFor(`document.activeElement === ${actionsTrigger(renamed)}`, { label: 'focus back on the actions trigger after the rename' });
 
-            // ── Edit its expression: the editor loads it, the save row says Save changes ──
+            // Escape in the rename field drops the new name and returns to the trigger; the drawer stays open.
+            await menuAction(page, renamed, 'rename');
+            await page.waitFor(`document.activeElement?.classList.contains('saved-rename')`, { label: 'rename field focused again' });
+            await type(page, 'not this name');
+            await press(page, 'Escape');
+            await page.waitFor(`document.activeElement === ${actionsTrigger(renamed)} && !${visible(`${row(renamed)}?.querySelector('.saved-rename')`)}`, {
+                label: 'Escape in the rename field returns to the actions trigger',
+            });
+            assert.ok(await page.evaluate(`${q(DRAWER)}.open && !!${row(renamed)} && !${row('not this name')}`), 'Escape in the rename field leaves the drawer open and the name as it was');
+
+            // ── Edit its expression: the editor loads it and the name unchanged, the save row says Save changes ──
             await menuAction(page, renamed, 'edit');
             await page.waitFor(`${q(EDITOR)}.value === ${JSON.stringify(expression)} && ${q('#drawerSave')}.textContent === 'Save changes'`, {
                 label: 'edit mode',
             });
+            assert.equal(await value(page, '#drawerSaveName'), renamed, 'Edit loads the name as saved');
             await setEditor(page, edited);
             await page.evaluate(`${q('#drawerSave')}.click()`);
             await waitForNotice(page, `Saved changes to ${renamed}`);
             await page.waitFor(`${row(renamed)}?.dataset.expression === ${JSON.stringify(edited)}`, { label: 'edited expression' });
             await page.waitFor(`${q('#drawerSave')}.textContent === 'Save current filter'`, { label: 'edit mode left' });
+            await assertSavedScan(page, renamed, 'after the rename and the edit');
 
             // ── Star: it moves ahead of every unstarred filter ──
             await page.evaluate(`${row(renamed)}.querySelector('.saved-star').click()`);
@@ -440,10 +531,20 @@ export default async function drawerTest() {
                 label: 'Flows query done',
             });
 
-            // ── Keyboard: open with Enter, tabs by arrows, a kebab menu by ArrowDown, Escape twice ──
+            // ── Keyboard: open with Enter, tabs by arrows, the actions popover by ArrowDown, Escape twice ──
             await page.evaluate(`${q('[data-filter-field="flows"] [data-open-drawer="saved"]')}.focus()`);
             await press(page, 'Enter');
             await page.waitFor(`${q(DRAWER)}.open && document.activeElement?.id === 'drawerSearch'`, { timeout: 10000, label: 'Saved opens on the search' });
+            const hosts = await page.evaluate(`[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].map(function(li){
+                var h = li.querySelector('sb-popover.saved-menu');
+                return h ? [h.id === 'savedMenu' + li.dataset.filterId, h.matches(':defined'),
+                    h.shadowRoot?.querySelector('slot[name="trigger"]').assignedElements().length,
+                    h.querySelectorAll('[role], [tabindex], [aria-controls], [popover]').length] : null;
+            })`);
+            assert.ok(
+                hosts.length > 0 && hosts.every((h) => JSON.stringify(h) === '[true,true,1,0]'),
+                `every row has a defined popover savedMenu<id> with its own trigger and no menu roles: ${JSON.stringify(hosts)}`
+            );
             await page.evaluate(`${q('#drawerTabBuilder')}.focus()`);
             await press(page, 'ArrowRight');
             await page.waitFor(`document.activeElement?.id === 'drawerTabRaw' && ${visible(q(RAW))}`, { label: 'ArrowRight selects Raw filter' });
@@ -451,17 +552,94 @@ export default async function drawerTest() {
             await page.waitFor(`document.activeElement?.id === 'drawerTabBuilder' && ${visible(q(EDITOR))}`, { label: 'ArrowLeft selects Builder' });
             await press(page, 'Tab');
             assert.equal(await page.evaluate(`document.activeElement?.id`), 'drawerFilterTextarea', 'Tab from the tabs reaches the textarea');
-            await page.evaluate(`${row(renamed)}.querySelector('[aria-haspopup="menu"]').focus()`);
+            // A draft for the second Escape to keep: the editor no longer holds the Flows field's text.
+            const draft = `${edited} and bytes > 2000`;
+            await setEditor(page, draft);
+            await page.evaluate(`${actionsTrigger(renamed)}.focus()`);
             await press(page, 'ArrowDown');
-            await page.waitFor(`document.activeElement?.dataset.action === 'apply'`, { label: 'ArrowDown opens the menu on Apply' });
+            await page.waitFor(`document.activeElement?.dataset.action === 'apply'`, { label: 'ArrowDown opens the actions on Apply' });
+            assert.deepEqual(
+                await page.evaluate(`(function(){
+                    var h = ${actions(renamed)}, t = h.querySelector('[slot="trigger"]'), pop = h.shadowRoot.querySelector('.pop');
+                    return [h.open, t.getAttribute('aria-haspopup'), t.getAttribute('aria-expanded'), pop.getAttribute('role'), pop.getAttribute('aria-label')];
+                })()`),
+                [true, 'dialog', 'true', 'dialog', `Actions for ${renamed}`],
+                'the trigger opens a dialog named after the filter'
+            );
+            const focused = () => page.evaluate(`document.activeElement?.dataset.action`);
             await press(page, 'ArrowDown');
-            assert.equal(await page.evaluate(`document.activeElement?.dataset.action`), 'edit');
+            assert.equal(await focused(), 'edit');
+            await press(page, 'End');
+            assert.equal(await focused(), 'delete', 'End moves to the last action');
+            await press(page, 'ArrowDown');
+            assert.equal(await focused(), 'apply', 'ArrowDown wraps to the first action');
+            await press(page, 'ArrowUp');
+            assert.equal(await focused(), 'delete', 'ArrowUp wraps to the last action');
+            await press(page, 'Home');
+            assert.equal(await focused(), 'apply', 'Home moves to the first action');
+            // Forced colours: the panel keeps its edge and the focused action its ring.
+            const forced = await page.withForcedColors(() =>
+                page.evaluate(`(function(){
+                    var edge = getComputedStyle(${actions(renamed)}.shadowRoot.querySelector('.panel')), item = document.activeElement, ring = getComputedStyle(item);
+                    return { edge: [edge.outlineStyle, parseFloat(edge.outlineWidth)], ring: [ring.outlineStyle, parseFloat(ring.outlineWidth)], fv: item.matches(':focus-visible'), action: item.dataset.action };
+                })()`)
+            );
+            assert.ok(forced.fv && forced.action === 'apply', `Apply has the keyboard focus: ${JSON.stringify(forced)}`);
+            assert.ok(forced.edge[0] !== 'none' && forced.edge[1] >= 1, `the panel edge shows in forced colours: ${JSON.stringify(forced.edge)}`);
+            assert.ok(forced.ring[0] !== 'none' && forced.ring[1] >= 2, `the focused action shows a ring in forced colours: ${JSON.stringify(forced.ring)}`);
+            await press(page, 'ArrowDown');
+
+            // A sync morphs the drawer around the open popover: it stays open, the focus on Edit, the draft in the editor.
+            await page.syncNow('flows');
+            assert.deepEqual(
+                await page.evaluate(`[${actions(renamed)}.open, document.activeElement?.dataset.action, ${q(EDITOR)}.value]`),
+                [true, 'edit', draft],
+                'the actions stay open across a sync'
+            );
+            await assertSavedScan(page, renamed, 'after a sync with the actions open');
             await press(page, 'Escape');
-            await page.waitFor(`document.activeElement?.getAttribute('aria-haspopup') === 'menu'`, { label: 'Escape returns to the menu button' });
-            assert.ok(await page.evaluate(`${q(DRAWER)}.open`), 'the first Escape closes only the menu');
+            await page.waitFor(`document.activeElement === ${actionsTrigger(renamed)}`, { label: 'Escape returns to the actions trigger' });
+            assert.deepEqual(
+                await page.evaluate(`[${q(DRAWER)}.open, ${actions(renamed)}.open, ${actionsTrigger(renamed)}.getAttribute('aria-expanded')]`),
+                [true, false, 'false'],
+                'the first Escape closes only the actions'
+            );
             await press(page, 'Escape');
             await closedDrawer(page);
             await page.waitFor(`document.activeElement?.dataset.openDrawer === 'saved'`, { label: 'focus back on the Saved button' });
+            await openDrawer(page, 'flows');
+            assert.equal(await value(page, EDITOR), draft, 'the second Escape kept the draft');
+            await page.waitFor(visible(q('.drawer-draft')), { label: 'draft note' });
+            await page.evaluate(`${q('.drawer-draft button')}.click()`);
+            await page.waitFor(`${q(EDITOR)}.value === ${JSON.stringify(edited)} && !${visible(q('.drawer-draft'))}`, { label: 'draft discarded' });
+
+            // Space and Enter on the trigger open on Apply; Enter on an action chooses it, closes the popover and returns to its trigger.
+            await page.evaluate(`${actionsTrigger(renamed)}.focus()`);
+            for (const key of ['Space', 'Enter']) {
+                await press(page, key);
+                await page.waitFor(`${actions(renamed)}.open === true && document.activeElement?.dataset.action === 'apply'`, {
+                    label: `${key} on the trigger opens the actions on Apply`,
+                });
+                if (key === 'Enter') break;
+                await press(page, 'Escape');
+                await page.waitFor(`!${actions(renamed)}.open && document.activeElement === ${actionsTrigger(renamed)}`, { label: `Escape after ${key}` });
+            }
+            await press(page, 'Enter');
+            await page.waitFor(`!${actions(renamed)}.open && document.activeElement === ${actionsTrigger(renamed)}`, {
+                label: 'Enter on Apply closes the actions onto their trigger',
+            });
+
+            // A press elsewhere in the drawer closes the actions and leaves the drawer open.
+            await page.evaluate(`${actionsTrigger(renamed)}.click()`);
+            await page.waitFor(`${actions(renamed)}.open === true`, { label: 'the actions open by a click' });
+            const outside = await page.evaluate(`(function(){ var r = ${q('#drawerSavedTitle')}.getBoundingClientRect(); return { x: r.x + 4, y: r.y + r.height / 2 }; })()`);
+            for (const type of ['mousePressed', 'mouseReleased']) {
+                await page.send('Input.dispatchMouseEvent', { type, ...outside, button: 'left', clickCount: 1 });
+            }
+            await page.waitFor(`!${actions(renamed)}.open`, { label: 'an outside press closes the actions' });
+            assert.ok(await page.evaluate(`${q(DRAWER)}.open`), 'the outside press leaves the drawer open');
+            await press(page, 'Escape');
+            await closedDrawer(page);
 
             // ── Below 48em the grid stacks: the editor above the saved list ──
             await openDrawer(page, 'flows');
@@ -476,7 +654,32 @@ export default async function drawerTest() {
             assert.equal(stacked.width, 600, 'the drawer is full width on a phone');
             await page.withForcedColors(() => page.screenshot('/tmp/drawer-forced-colors.png'));
 
-            // ── Delete through the menu ──
+            // ── At 390 x 844 a tap opens the actions inside the viewport, and their trigger stays put ──
+            await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+            await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+            try {
+                await sleep(300);
+                await page.evaluate(`${actionsTrigger(renamed)}.scrollIntoView({ block: 'center' })`);
+                await sleep(300);
+                const before = await page.evaluate(actionsBoxes(renamed));
+                await tap(page, actionsTrigger(renamed));
+                const { open, trigger, panel, view } = await page.evaluate(actionsBoxes(renamed));
+                assert.equal(open, true, 'a tap opens the actions');
+                assert.equal(view.width, 390);
+                assert.deepEqual(trigger, before.trigger, 'the actions trigger stays where it was');
+                assert.ok(
+                    panel.left >= 0 && panel.top >= 0 && panel.right <= view.width && panel.bottom <= view.height && panel.bottom > panel.top,
+                    `the actions panel lies inside the viewport: ${JSON.stringify({ panel, view })}`
+                );
+                await page.withForcedColors(() => page.screenshot('/tmp/drawer-actions-forced-colors.png'));
+                await press(page, 'Escape');
+                await page.waitFor(`!${actions(renamed)}.open && ${q(DRAWER)}.open`, { label: 'Escape closes the actions on a phone' });
+            } finally {
+                await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+                await page.send('Emulation.clearDeviceMetricsOverride');
+            }
+
+            // ── Delete through the actions ──
             await deleteSaved(page, renamed);
             await waitForNotice(page, `Deleted ${renamed}`);
             await press(page, 'Escape');
@@ -494,33 +697,63 @@ export default async function drawerTest() {
             await page.waitFor(`${q('#alertNfdumpFilter')}.value === 'proto icmp'`, { label: 'alert filter written' });
             await page.setInputValue('#alertNfdumpFilter', '');
 
-            const errors = page.realErrors().filter((e) => /drawer|filter-editor|nfsenFilterEditor|filter-field/i.test(e));
+            const errors = page.realErrors().filter((e) => /drawer|filter-editor|nfsenFilterEditor|filter-field|popover|savedMenu/i.test(e));
             assert.deepEqual(errors, [], `no console errors from the drawer:\n${errors.join('\n')}`);
         } finally {
             await removeSaved(page, (li) => li.name === name || li.name === renamed);
         }
     });
 
-    // ── Datastar keeps every removed Rocket host (D3); a removed editor must not keep its drawer section with it ──
+    // ── A removed editor, saved list or actions popover must not keep its drawer section reachable ──
+    const heapName = `e2e heap ${stamp}`;
     await withPage(async (page) => {
+        page.autoAcceptDialogs();
         await page.navigate(`${BASE}/#/flows`);
         await page.waitForBoot();
         await page.gotoPage('flows');
-        const CYCLES = 3;
-        for (let i = 0; i < CYCLES; i++) {
+        await page.setInputValue(FLOWS_FIELD, '');
+        try {
+            // A filter of its own, so the saved list holds an actions popover however empty the store is.
             await openDrawer(page, 'flows');
-            await page.evaluate(`(window.__drawerSections ??= []).push(new WeakRef(document.querySelector('.drawer-editor')))`);
-            await press(page, 'Escape');
+            await setEditor(page, `proto udp and dst port ${(Date.now() % 900) + 1100}`);
+            await waitForState(page, 'valid');
+            await page.setInputValue('#drawerSaveName', heapName);
+            await page.evaluate(`${q('#drawerSave')}.click()`);
+            await waitForNotice(page, `Saved as ${heapName}`);
+            await setEditor(page, '');
+            await page.evaluate(`${q(`${DRAWER} .dialog-header [data-variant="close"]`)}.click()`);
             await closedDrawer(page);
-            // A sync renders the closed drawer without its editor.
+            // Datastar's fetch action keeps every element that posted in a Map, so the cycles start after a sync drops these.
             await page.gotoPage('talkers');
-            await page.waitFor(`!document.getElementById('drawerEditor')`, { label: 'the editor removed by a sync' });
+            await page.waitFor(`!document.getElementById('drawerEditor') && !document.getElementById('drawerSavedTitle')`, { label: 'the saving drawer removed by a sync' });
             await page.gotoPage('flows');
+
+            const CYCLES = 3;
+            const PARTS = ['.drawer-editor', '.drawer-saved', '#drawerSavedList sb-popover.saved-menu'];
+            for (let i = 0; i < CYCLES; i++) {
+                await openDrawer(page, 'flows');
+                const missing = await page.evaluate(`(function(){
+                    var parts = ${JSON.stringify(PARTS)}, refs = parts.map(function(s){ var el = document.querySelector(s); return el && new WeakRef(el); });
+                    (window.__drawerSections ??= []).push(refs);
+                    return parts.filter(function(s, j){ return !refs[j]; });
+                })()`);
+                assert.deepEqual(missing, [], `cycle ${i}: every drawer part is there to watch`);
+                await press(page, 'Escape');
+                await closedDrawer(page);
+                // A sync renders the closed drawer without its editor and saved list.
+                await page.gotoPage('talkers');
+                await page.waitFor(`!document.getElementById('drawerEditor') && !document.getElementById('drawerSavedTitle')`, { label: 'the drawer sections removed by a sync' });
+                await page.gotoPage('flows');
+            }
+            for (let i = 0; i < 3; i++) await page.send('HeapProfiler.collectGarbage');
+            const alive = await page.evaluate(
+                `window.__drawerSections.flatMap(function(refs, i){ return refs.map(function(r, j){ return r.deref() ? [i, ${JSON.stringify(PARTS)}[j]] : null; }).filter(Boolean); })`
+            );
+            // The last cycle's may still be held by the morph that removed them.
+            assert.deepEqual(alive.filter(([i]) => i < CYCLES - 1), [], `removed drawer parts still reachable: ${JSON.stringify(alive)}`);
+        } finally {
+            await removeSaved(page, (li) => li.name === heapName);
         }
-        for (let i = 0; i < 3; i++) await page.send('HeapProfiler.collectGarbage');
-        const alive = await page.evaluate(`window.__drawerSections.map((r, i) => (r.deref() ? i : -1)).filter((i) => i >= 0)`);
-        // The last one may still be held by the morph that removed it.
-        assert.deepEqual(alive.filter((i) => i < CYCLES - 1), [], `removed editor sections still reachable: ${alive.join(', ')}`);
     });
 
     // ── The browser's old saved list is imported once, as origin browser, and marked done only once imported ──

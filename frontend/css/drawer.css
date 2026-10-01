@@ -262,8 +262,13 @@ nfsen-filter-editor {
     color: var(--text-1);
 }
 
-.saved-filter .menu [aria-haspopup='menu'] {
+.saved-menu > [slot='trigger'] {
     padding: var(--size-1);
+}
+
+/* The kebab icon already says it opens something. */
+.saved-menu > .menu-toggle::after {
+    content: none;
 }
 
 .saved-save {

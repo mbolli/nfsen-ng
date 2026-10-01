@@ -316,38 +316,6 @@ describe('Table', function (): void {
             expect(Table::generate([], 't', ['emptyMessage' => 'No <rows>']))->toBe('<div id="t" class="empty-state"><h3>No rows</h3><p>No &lt;rows&gt;</p></div>');
         });
 
-        test('a chunked table holds its first page and yields the other rows in chunks', function (): void {
-            $rows = array_map(static fn (int $i): array => ['n' => $i], range(1, 2_600));
-
-            $table = Table::generateChunked($rows, 'flowTable', ['pageSize' => 50, 'limit' => 10_000, 'result' => 'ab12', 'rowsUrl' => "/_action/flows-rows-x'y"], 1_000);
-            $chunks = iterator_to_array($table['chunks']);
-
-            expect($table['html'])->toContain(
-                'data-result="ab12"',
-                'data-page-size="50"',
-                'data-total="2600"',
-                'data-chunks="3"',
-                'data-on:nfsen-table-more="@post(&apos;/_action/flows-rows-x\\&apos;y?result=&apos; + evt.detail.result + &apos;&amp;chunk=&apos; + evt.detail.chunk)"',
-                'Showing 1-50 of 2,600 returned (limit 10,000).',
-            )
-                ->and($table['html'])->not->toContain('<template')
-                ->and(substr_count($table['html'], '<tr>'))->toBe(51)
-                ->and(array_keys($chunks))->toBe([0, 1, 2])
-                ->and(array_map(static fn (string $c): int => substr_count($c, '<tr>'), $chunks))->toBe([1_000, 1_000, 550])
-                ->and($chunks[0])->toStartWith('<template class="table-rows" data-chunk="0">' . "\n<tr><td>51</td></tr>")
-                ->and($chunks[2])->toEndWith("\n<tr><td>2600</td></tr>\n</template>")
-            ;
-        });
-
-        test('a chunked table of one page has no chunks', function (): void {
-            $table = Table::generateChunked([['n' => 1]], 't', ['rowsUrl' => '/x']);
-
-            expect(iterator_to_array($table['chunks']))->toBe([])
-                ->and($table['html'])->not->toContain('data-chunks', 'nfsen-table-more')
-                ->and(iterator_to_array(Table::generateChunked([], 't', [])['chunks']))->toBe([])
-            ;
-        });
-
         test('the caller says whether the limit cut the result: aggregation merges the flows it counts', function (): void {
             $rows = array_map(static fn (int $i): array => ['flows' => 4], range(1, 25));
 
@@ -358,6 +326,44 @@ describe('Table', function (): void {
                 ->and($whole)->toContain('data-limit-reached="false"', 'Showing 1-50 of 100 returned (limit 100).</p>')
                 ->and(Table::pagerText(1, 25, 25, 100, true))->toEndWith('raise the limit to see more.')
                 ->and(Table::pagerText(1, 50, 100, 100, false))->toBe('Showing 1-50 of 100 returned (limit 100).')
+            ;
+        });
+    });
+
+    describe('columns', function (): void {
+        test('columnsOf() takes every row\'s keys less the hidden ones, the rank column first, with their kinds', function (): void {
+            $data = [
+                ['first' => 1, 'src_addr' => '10.0.0.1', 'cnt' => 1],
+                'a line',
+                ['first' => 2, 'icmp_type' => 8, 'rank' => 1, 'in_bytes' => 3],
+            ];
+
+            expect(Table::columnsOf($data, Table::HIDDEN_FIELDS))->toBe([
+                'keys' => ['first', 'icmp_type', 'rank', 'in_bytes', 'src_addr'],
+                'kinds' => ['first' => 'time', 'icmp_type' => '', 'rank' => '', 'in_bytes' => 'num', 'src_addr' => 'address'],
+            ])
+                ->and(Table::columnsOf($data, [], 'rank')['keys'])->toBe(['rank', 'first', 'icmp_type', 'in_bytes', 'src_addr', 'cnt'])
+                ->and(Table::columnsOf($data, [], 'rank')['kinds']['rank'])->toBe('rank')
+                ->and(Table::columnsOf([], []))->toBe(['keys' => [], 'kinds' => []])
+            ;
+        });
+
+        test('a column\'s title is the one the table\'s header shows', function (): void {
+            $row = [['srcAddr' => '10.0.0.1', 'in_bytes' => 1, 'tcp_flags' => 'x']];
+            preg_match_all('~<button type="button" class="sort-button">([^<]+)</button>~', Table::generate($row, 't'), $titles);
+
+            expect(array_map(Table::columnTitle(...), ['srcAddr', 'in_bytes', 'tcp_flags']))->toBe($titles[1])
+                ->and(Table::columnTitle('srcAddr'))->toBe('Source IP')
+                ->and(Table::columnTitle('in_bytes'))->toBe('In Bytes')
+            ;
+        });
+
+        test('raw values and JavaScript strings', function (): void {
+            expect(Table::scalar(5))->toBe('5')
+                ->and(Table::scalar(true))->toBe('1')
+                ->and(Table::scalar(['x']))->toBe('')
+                ->and(Table::scalar(null))->toBe('')
+                ->and(Table::jsString("a'b\\c\nd\re"))->toBe("a\\'b\\\\c\\nd\\re")
             ;
         });
     });

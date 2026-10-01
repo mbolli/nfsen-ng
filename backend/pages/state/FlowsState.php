@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\pages\state;
 
+use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\query\FlowsQuery;
 use Mbolli\PhpVia\Context;
 
 /**
- * Per-tab results of the Flows page (4.3.3). The table's first page stays here; the other rows
- * and nfdump's output wait compressed in a store every tab shares, under one byte budget.
+ * Per-tab results of the Flows page (4.3.3). A list's rows and nfdump's output wait compressed in
+ * stores every tab shares, under one byte budget; the tab keeps its sort, columns and first rows.
  *
  * @phpstan-import-type ReturnedSummary from FlowsQuery
  * @phpstan-import-type FilteredTotals from FlowsQuery
@@ -17,10 +18,10 @@ use Mbolli\PhpVia\Context;
  * @phpstan-type Totals array{flows: float, packets: float, bytes: float}
  * @phpstan-type RangeSummary array{available: bool, reason: string, totals: array<string, Totals>}
  * @phpstan-type FilteredSummary array{totals: FilteredTotals, command: string, elapsed: float, fingerprint: string, ranAt: int}
- * @phpstan-type Run array{resultId?: string, limit?: int, command?: string, notes?: list<string>, rowChunks?: iterable<string>,
+ * @phpstan-type Run array{resultId?: string, limit?: int, command?: string, notes?: list<string>,
  *                        rawOutput?: string, rawBytes?: int, elapsed?: float, returnedSummary?: ?ReturnedSummary,
  *                        rangeSummary?: ?RangeSummary, rangePending?: bool, fingerprint?: string, totalsFingerprint?: string,
- *                        ranAt?: int, start?: int, end?: int, live?: bool}
+ *                        ranAt?: int, start?: int, end?: int, live?: bool, mode?: 'html'|'list', itemSize?: int, browserTz?: string}
  */
 final class FlowsState extends PageState {
     /** The page keeps at most this much of nfdump's stdout (4.3.2). */
@@ -29,10 +30,16 @@ final class FlowsState extends PageState {
     /** The kept output goes out in pieces of about this size, one event each. */
     public const int RAW_CHUNK_BYTES = 512 * 1024;
 
-    /** Compressed rows and output that all tabs of a worker keep together. */
+    /** Compressed output and FlowRowStore's rows that all tabs of a worker keep together. */
     public const int PAYLOAD_BUDGET = 12 * 1024 * 1024;
 
-    /** The table as a render sends it: its first page, the rest is in the store. */
+    /** A column key as a request, a Run or a snapshot may name it: nfdump's json keys and its csv names. */
+    public const string KEY_PATTERN = '/^[A-Za-z0-9_]{1,64}$/';
+
+    /** The most hidden columns a tab keeps. */
+    public const int MAX_HIDDEN = 64;
+
+    /** An 'html' result as a render sends it: the empty state, or text nfdump printed that is no records. */
     public string $tableHtml = '';
 
     /** Rows the last run returned, mirrored into the flows_count signal. */
@@ -53,12 +60,10 @@ final class FlowsState extends PageState {
 
     public int $rawKept = 0;
 
-    /** Chunks of the rows past the first page, and of the kept output. */
-    public int $rowChunks = 0;
-
+    /** Chunks of the kept output. */
     public int $rawChunks = 0;
 
-    /** Set once the store dropped chunks the client still needed. */
+    /** Set once the stores dropped rows or chunks the client still needed. */
     public bool $rowsLost = false;
 
     public bool $rawLost = false;
@@ -91,8 +96,55 @@ final class FlowsState extends PageState {
 
     public bool $live = false;
 
+    /** 'list' when the rows are in FlowRowStore and show in sb-virtual-scroll, 'html' for tableHtml. */
+    public string $mode = 'html';
+
+    /** The tab's sort of the list: a column key and 'asc' or 'desc', '' for file order. */
+    public string $sortKey = '';
+
+    public string $sortDir = '';
+
     /**
-     * result id => its chunk counts, lengths and gzcompress()ed chunks in one string, least recently
+     * The sorts that made the order, each key once at its last use: an earlier sort by the same key
+     * no longer decides anything. A revival replays them.
+     *
+     * @var list<array{0: string, 1: 'asc'|'desc'}>
+     */
+    public array $sortChain = [];
+
+    /** The list's order as FlowRowStore::order() gives it, '' for file order, null until rebuilt. */
+    public ?string $order = '';
+
+    /** The window the list last received: its first row and how many rows were asked for. */
+    public int $lastOffset = 0;
+
+    public int $lastCount = 0;
+
+    /** The first FlowRows::INITIAL_ROWS rows in the tab's order and columns, for the render that sends the list. */
+    public string $firstRows = '';
+
+    /** Row height of the list in px, fixed per result. */
+    public int $itemSize = 0;
+
+    /** The browser's time zone at the Run, a zone name or ''. */
+    public string $browserTz = '';
+
+    /**
+     * Column keys the tab hides, also keys this result lacks.
+     *
+     * @var list<string>
+     */
+    public array $hiddenColumns = [];
+
+    /**
+     * Every column of the list in order, kept here so the Columns picker outlives the store's rows.
+     *
+     * @var list<array{key: string, title: string}>
+     */
+    public array $columns = [];
+
+    /**
+     * result id => its chunk count, lengths and gzcompress()ed chunks in one string, least recently
      * used first. One allocation per result pins fewer heap chunks than one per chunk.
      *
      * @var array<string, string>
@@ -101,12 +153,21 @@ final class FlowsState extends PageState {
 
     private static int $payloadBytes = 0;
 
+    /** @var array<string, int> result id => tick() of the payload's last use */
+    private static array $payloadUsed = [];
+
+    /** Orders the uses of payloads and row stores, which share one budget. */
+    private static int $clock = 0;
+
     /** tableHtml compressed once, for the revival snapshot. */
     private string $tableGz = '';
 
     /** @param Run $run */
     public function setResult(string $tableHtml, int $count, array $run = []): void {
         self::forget($this->resultId);
+        if (($run['resultId'] ?? '') !== $this->resultId) {
+            FlowRowStore::forget($this->resultId);
+        }
         $this->resultId = $run['resultId'] ?? self::newResultId();
         $this->tableHtml = $tableHtml;
         $this->tableGz = '';
@@ -127,23 +188,41 @@ final class FlowsState extends PageState {
         $this->live = $run['live'] ?? false;
         $this->rowsLost = false;
         $this->rawLost = false;
+        $this->mode = ($run['mode'] ?? 'html') === 'list' ? 'list' : 'html';
+        $this->itemSize = $run['itemSize'] ?? 0;
+        $this->browserTz = $run['browserTz'] ?? '';
+        $this->unsorted();
+        $this->firstRows = '';
+        $this->lastOffset = 0;
+        $this->lastCount = 0;
+        $this->columns = [];
 
-        $rows = [];
-        foreach ($run['rowChunks'] ?? [] as $html) {
-            $rows[] = self::compress($html);
-        }
         $raw = $run['rawOutput'] ?? '';
         $this->rawBytes = max($run['rawBytes'] ?? 0, \strlen($raw));
         [$pieces, $this->rawKept] = self::rawPieces($raw);
-        $this->rowChunks = \count($rows);
         $this->rawChunks = \count($pieces);
-        if ($rows !== [] || $pieces !== []) {
-            self::keep($this->resultId, $rows, $pieces);
+        if ($pieces !== []) {
+            self::keep($this->resultId, $pieces);
         }
     }
 
     public function clearResult(): void {
         $this->setResult('', 0);
+    }
+
+    /** Frees the tab's stored rows and output before a new result takes their room in the budget. */
+    public function releaseStored(): void {
+        self::forget($this->resultId);
+        FlowRowStore::forget($this->resultId);
+    }
+
+    /** Takes the list's columns from FlowRowStore while it holds the rows. */
+    public function keepColumns(): void {
+        $columns = FlowRowStore::columns($this->resultId);
+        $this->columns = [];
+        foreach ($columns['keys'] ?? [] as $key) {
+            $this->columns[] = ['key' => $key, 'title' => $columns['titles'][$key] ?? $key];
+        }
     }
 
     /** @param null|FilteredSummary $summary */
@@ -167,22 +246,98 @@ final class FlowsState extends PageState {
     }
 
     public function hasResult(): bool {
-        return $this->resultId !== '' && ($this->tableHtml !== '' || $this->command !== '');
+        return $this->resultId !== '' && ($this->tableHtml !== '' || $this->command !== '' || $this->mode === 'list');
     }
 
-    /** Whether the store still holds this result's chunks. */
+    /** Whether the store still holds this result's output. */
     public function hasPayload(): bool {
         return $this->resultId !== '' && isset(self::$payloads[$this->resultId]);
     }
 
-    /** Row chunk $index as nfsen-table takes it; null once it is out of range or dropped. */
-    public function rowChunk(int $index): ?string {
-        return self::piece($this->resultId, 'rows', $index);
+    /** Whether the rows the page shows are still there: FlowRowStore's for a list; an 'html' result keeps its own. */
+    public function hasRows(): bool {
+        return $this->mode !== 'list' || FlowRowStore::has($this->resultId);
+    }
+
+    /** The zone the list writes its times in: the capture zone for a 'server' display, else the Run's browser zone, else UTC. */
+    public function zone(): \DateTimeZone {
+        return FlowRowStore::zone(
+            isset(Config::$settings) ? Config::$settings->displayTimezone : 'browser',
+            Config::nfcapdTimezone()->getName(),
+            $this->browserTz,
+        );
+    }
+
+    /**
+     * The result's column keys less the hidden ones, in the result's order.
+     *
+     * @return list<string>
+     */
+    public function shownKeys(): array {
+        return array_values(array_diff(array_column($this->columns, 'key'), $this->hiddenColumns));
+    }
+
+    /**
+     * The keys of $value (a list or comma-separated) that KEY_PATTERN allows, each once; past
+     * MAX_HIDDEN, the keys in $prefer come first and the rest are dropped.
+     *
+     * @param list<string> $prefer
+     *
+     * @return list<string>
+     */
+    public static function hiddenFrom(mixed $value, array $prefer = []): array {
+        if (\is_string($value)) {
+            $value = $value === '' ? [] : explode(',', $value);
+        }
+        $keys = [];
+        foreach (\is_array($value) ? $value : [] as $key) {
+            if (\is_string($key) && preg_match(self::KEY_PATTERN, $key) === 1) {
+                $keys[] = $key;
+            }
+        }
+        $keys = array_values(array_unique($keys));
+        if (\count($keys) > self::MAX_HIDDEN) {
+            $keys = \array_slice([...array_intersect($keys, $prefer), ...array_diff($keys, $prefer)], 0, self::MAX_HIDDEN);
+        }
+
+        return $keys;
+    }
+
+    /** The list's order, rebuilt from the tab's sorts after a revival; null once the rows are gone. */
+    public function currentOrder(): ?string {
+        if ($this->order === null) {
+            $order = '';
+            foreach ($this->sortChain as [$key, $dir]) {
+                $order = FlowRowStore::order($this->resultId, $key, $dir, $order);
+                if ($order === null) {
+                    break;
+                }
+            }
+            $this->order = $order;
+        }
+
+        return $this->order;
+    }
+
+    /** The list sorted by $key in $dir, giving $order. */
+    public function sortBy(string $key, string $dir, string $order): void {
+        $dir = $dir === 'desc' ? 'desc' : 'asc';
+        $this->sortChain = [...array_values(array_filter($this->sortChain, static fn (array $sort): bool => $sort[0] !== $key)), [$key, $dir]];
+        $this->sortKey = $key;
+        $this->sortDir = $dir;
+        $this->order = $order;
+    }
+
+    /** File order: no sort. */
+    public function unsorted(): void {
+        $this->sortChain = [];
+        $this->sortKey = $this->sortDir = '';
+        $this->order = '';
     }
 
     /** Piece $index of the kept output, escaped, as the Raw output tab appends it. */
     public function rawChunk(int $index): ?string {
-        $text = self::piece($this->resultId, 'raw', $index);
+        $text = self::piece($this->resultId, $index);
 
         return $text === null
             ? null
@@ -195,24 +350,17 @@ final class FlowsState extends PageState {
      */
     public function settle(): void {
         $this->tableHtml = self::copy($this->tableHtml);
+        $this->firstRows = self::copy($this->firstRows);
         if (isset(self::$payloads[$this->resultId])) {
             self::$payloads[$this->resultId] = self::copy(self::$payloads[$this->resultId]);
         }
-    }
-
-    /** The table for a render that sends it: with the first chunk inside, which saves a round trip. */
-    public function tableForSend(): string {
-        $end = strrpos($this->tableHtml, '</nfsen-table>');
-        $first = $end === false ? null : $this->rowChunk(0);
-
-        return $first === null ? $this->tableHtml : substr_replace($this->tableHtml, $first . "\n", (int) $end, 0);
     }
 
     /** nfdump's output as the page keeps it; '' once the store dropped it. */
     public function rawOutput(): string {
         $text = '';
         for ($i = 0; $i < $this->rawChunks; ++$i) {
-            $piece = self::piece($this->resultId, 'raw', $i);
+            $piece = self::piece($this->resultId, $i);
             if ($piece === null) {
                 return '';
             }
@@ -238,7 +386,7 @@ final class FlowsState extends PageState {
         $c->getSignal('flows_count_label')?->setValue($this->countLabel(), broadcast: false);
     }
 
-    /** Small by design: the chunks stay in the store, under its budget, not in app-global state. */
+    /** Small by design: rows and chunks stay in their stores, under the budget, not in app-global state. */
     public function snapshot(): array {
         if ($this->isEmpty()) {
             return [];
@@ -257,7 +405,6 @@ final class FlowsState extends PageState {
             'notes' => $this->notes,
             'rawBytes' => $this->rawBytes,
             'rawKept' => $this->rawKept,
-            'rowChunks' => $this->rowChunks,
             'rawChunks' => $this->rawChunks,
             'rowsLost' => $this->rowsLost,
             'rawLost' => $this->rawLost,
@@ -271,6 +418,13 @@ final class FlowsState extends PageState {
             'windowStart' => $this->windowStart,
             'windowEnd' => $this->windowEnd,
             'live' => $this->live,
+            'mode' => $this->mode,
+            'sortKey' => $this->sortKey,
+            'sortDir' => $this->sortDir,
+            'sortChain' => $this->sortChain,
+            'itemSize' => $this->itemSize,
+            'browserTz' => $this->browserTz,
+            'hiddenColumns' => $this->hiddenColumns,
         ];
     }
 
@@ -287,7 +441,6 @@ final class FlowsState extends PageState {
         $this->notes = array_values(array_filter(\is_array($data['notes'] ?? null) ? $data['notes'] : [], \is_string(...)));
         $this->rawBytes = self::intFrom($data['rawBytes'] ?? null);
         $this->rawKept = self::intFrom($data['rawKept'] ?? null);
-        $this->rowChunks = self::intFrom($data['rowChunks'] ?? null);
         $this->rawChunks = self::intFrom($data['rawChunks'] ?? null);
         $this->rowsLost = ($data['rowsLost'] ?? false) === true;
         $this->rawLost = ($data['rawLost'] ?? false) === true;
@@ -311,78 +464,139 @@ final class FlowsState extends PageState {
         $this->windowStart = self::intFrom($data['windowStart'] ?? null);
         $this->windowEnd = self::intFrom($data['windowEnd'] ?? null);
         $this->live = ($data['live'] ?? false) === true;
+        $this->mode = ($data['mode'] ?? '') === 'list' ? 'list' : 'html';
+        $sortKey = self::stringFrom($data['sortKey'] ?? '');
+        $this->sortKey = preg_match(self::KEY_PATTERN, $sortKey) === 1 ? $sortKey : '';
+        $this->sortDir = ($data['sortDir'] ?? '') === 'desc' ? 'desc' : ($this->sortKey !== '' ? 'asc' : '');
+        $this->itemSize = self::intFrom($data['itemSize'] ?? null);
+        $browserTz = self::stringFrom($data['browserTz'] ?? '');
+        $this->browserTz = FlowRowStore::isZone($browserTz) ? $browserTz : '';
+        $this->hiddenColumns = self::hiddenFrom(\is_array($data['hiddenColumns'] ?? null) ? $data['hiddenColumns'] : []);
+        $this->sortChain = [];
+        foreach (\is_array($data['sortChain'] ?? null) ? $data['sortChain'] : [] as $sort) {
+            if (\is_array($sort) && \is_string($sort[0] ?? null) && preg_match(self::KEY_PATTERN, $sort[0]) === 1 && \in_array($sort[1] ?? null, ['asc', 'desc'], true)) {
+                $this->sortChain[] = [$sort[0], $sort[1]];
+            }
+        }
+        if ($this->sortKey === '') {
+            $this->sortChain = [];
+        } elseif (end($this->sortChain) !== [$this->sortKey, $this->sortDir]) {
+            $this->sortChain = [[$this->sortKey, $this->sortDir === 'desc' ? 'desc' : 'asc']];
+        }
+        // Rebuilt on demand: the next window sorts again, and a render without first rows lets the list ask.
+        $this->order = null;
+        $this->firstRows = '';
+        $this->lastOffset = 0;
+        $this->lastCount = 0;
+        $this->keepColumns();
     }
 
     public function isEmpty(): bool {
-        return $this->tableHtml === '' && $this->command === '';
+        return $this->tableHtml === '' && $this->command === '' && !($this->mode === 'list' && $this->resultId !== '');
     }
 
     /**
-     * Drops stored results, least recently used first, until $fits() holds.
+     * Drops stored results, payloads and row stores alike, least recently used first, until $fits() holds.
      *
      * @param \Closure(): bool $fits
      */
     public static function makeRoom(\Closure $fits): bool {
         while (!$fits()) {
-            if (self::$payloads === []) {
+            if (!self::evictOldest()) {
                 return false;
             }
-            self::forget((string) array_key_first(self::$payloads));
         }
 
         return true;
     }
 
-    /** Compressed bytes the store holds for every tab. */
+    /** Compressed bytes the stores hold for every tab: the output and FlowRowStore's rows. */
     public static function storedBytes(): int {
-        return self::$payloadBytes;
+        return self::$payloadBytes + FlowRowStore::bytes();
     }
 
-    /**
-     * @param list<string> $rows compressed
-     * @param list<string> $raw  compressed
-     */
-    private static function keep(string $id, array $rows, array $raw): void {
-        $pieces = [...$rows, ...$raw];
-        $payload = pack('N2', \count($rows), \count($raw)) . pack('N*', ...array_map(\strlen(...), $pieces)) . implode('', $pieces);
-        self::$payloads[$id] = $payload;
-        self::$payloadBytes += \strlen($payload);
-        while (self::$payloadBytes > self::PAYLOAD_BUDGET && \count(self::$payloads) > 1) {
-            self::forget((string) array_key_first(self::$payloads));
+    /** Compressed bytes the store holds for result $id's output. */
+    public static function payloadBytesOf(string $id): int {
+        return isset(self::$payloads[$id]) ? \strlen(self::$payloads[$id]) : 0;
+    }
+
+    /** The next use in the order the shared budget evicts by. */
+    public static function tick(): int {
+        return ++self::$clock;
+    }
+
+    /** Evicts the least recently used payloads and row stores, never result $keep's, until both fit the budget. */
+    public static function enforceBudget(string $keep): void {
+        while (self::storedBytes() > self::PAYLOAD_BUDGET) {
+            if (!self::evictOldest($keep)) {
+                return;
+            }
         }
+    }
+
+    /** @param list<string> $raw compressed */
+    private static function keep(string $id, array $raw): void {
+        $payload = pack('N', \count($raw)) . pack('N*', ...array_map(\strlen(...), $raw)) . implode('', $raw);
+        self::$payloads[$id] = $payload;
+        self::$payloadUsed[$id] = self::tick();
+        self::$payloadBytes += \strlen($payload);
+        self::enforceBudget($id);
     }
 
     private static function forget(string $id): void {
         if ($id !== '' && isset(self::$payloads[$id])) {
             self::$payloadBytes -= \strlen(self::$payloads[$id]);
-            unset(self::$payloads[$id]);
+            unset(self::$payloads[$id], self::$payloadUsed[$id]);
         }
     }
 
-    /** Piece $index of kind 'rows' or 'raw' of result $id, expanded; the result becomes the most recently used. */
-    private static function piece(string $id, string $kind, int $index): ?string {
+    /** Drops the least recently used payload or row store other than $keep's; false when there is none. */
+    private static function evictOldest(string $keep = ''): bool {
+        $payload = null;
+        foreach (self::$payloads as $id => $_) {
+            if ($id !== $keep) {
+                $payload = (string) $id;
+
+                break;
+            }
+        }
+        [$rows, $rowsUsed] = FlowRowStore::oldest($keep);
+        if ($payload === null && $rows === null) {
+            return false;
+        }
+        if ($rows === null || ($payload !== null && (self::$payloadUsed[$payload] ?? 0) <= $rowsUsed)) {
+            self::forget((string) $payload);
+        } else {
+            FlowRowStore::forget($rows);
+        }
+
+        return true;
+    }
+
+    /** Piece $index of result $id's output, expanded; the result becomes the most recently used. */
+    private static function piece(string $id, int $index): ?string {
         $payload = self::$payloads[$id] ?? null;
         if ($payload === null || $index < 0) {
             return null;
         }
         unset(self::$payloads[$id]);
         self::$payloads[$id] = $payload;
+        self::$payloadUsed[$id] = self::tick();
 
-        /** @var array{1: int, 2: int} $counts */
-        $counts = unpack('N2', $payload);
-        $position = $kind === 'rows' ? $index : $counts[1] + $index;
-        if ($index >= ($kind === 'rows' ? $counts[1] : $counts[2])) {
+        /** @var array{1: int} $count */
+        $count = unpack('N', $payload);
+        if ($index >= $count[1]) {
             return null;
         }
 
         /** @var array<int, int> $lengths 1-based */
-        $lengths = unpack('N*', substr($payload, 8, 4 * ($counts[1] + $counts[2])));
-        $offset = 8 + 4 * \count($lengths);
-        for ($i = 1; $i <= $position; ++$i) {
+        $lengths = unpack('N*', substr($payload, 4, 4 * $count[1]));
+        $offset = 4 + 4 * $count[1];
+        for ($i = 1; $i <= $index; ++$i) {
             $offset += $lengths[$i];
         }
 
-        return self::expand(substr($payload, $offset, $lengths[$position + 1]));
+        return self::expand(substr($payload, $offset, $lengths[$index + 1]));
     }
 
     /** A new allocation of $text; str_repeat() always allocates, even for one repeat. */

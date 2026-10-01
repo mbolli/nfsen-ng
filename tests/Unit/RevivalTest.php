@@ -2,8 +2,12 @@
 
 declare(strict_types=1);
 
+use mbolli\nfsen_ng\actions\FlowActions;
 use mbolli\nfsen_ng\pages\PageStates;
 use mbolli\nfsen_ng\pages\Revival;
+use mbolli\nfsen_ng\pages\state\FlowRowStore;
+use mbolli\nfsen_ng\query\QueryResult;
+use mbolli\nfsen_ng\query\TimeWindow;
 use Mbolli\PhpVia\Config as ViaConfig;
 use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
@@ -115,6 +119,28 @@ describe('restore and persist in app-global state', function (): void {
         Revival::restore($c, $this->app, $states);
 
         expect($states->flows->tableHtml)->toBe('');
+    });
+
+    test('a list comes back with its sort, columns and zone, and finds its rows in the worker\'s store', function (): void {
+        $c = new Context('ctx-list', '/', $this->app);
+        $states = new PageStates();
+        $rows = array_map(static fn (int $i): array => ['in_bytes' => $i % 3, 'src_port' => $i], range(0, 9));
+        FlowActions::storeResult($states->flows, new QueryResult($rows, 'nfdump', '', 0.1, TimeWindow::raw(0, 300)), 0.1, '', [
+            'list' => ['tz' => 'Asia/Tokyo', 'sortKey' => 'in_bytes', 'sortDir' => 'desc', 'hidden' => ['src_port']],
+        ]);
+        Revival::persist($c, $this->app, $states);
+
+        $revived = new PageStates();
+        Revival::restore(new Context('ctx-list', '/', $this->app), $this->app, $revived);
+        $flows = $revived->flows;
+
+        expect([$flows->resultId, $flows->mode, $flows->count])->toBe([$states->flows->resultId, 'list', 10])
+            ->and([$flows->sortKey, $flows->sortDir, $flows->hiddenColumns, $flows->browserTz])->toBe(['in_bytes', 'desc', ['src_port'], 'Asia/Tokyo'])
+            ->and($flows->firstRows)->toBe('')
+            ->and($flows->currentOrder())->toBe($states->flows->currentOrder())
+            ->and($flows->shownKeys())->toBe(['in_bytes'])
+            ->and(FlowRowStore::has($flows->resultId))->toBeTrue()
+        ;
     });
 
     test('persist keeps the entry in step with the states', function (): void {

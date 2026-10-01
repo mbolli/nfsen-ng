@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\pages;
 
 use mbolli\nfsen_ng\actions\FlowActions;
+use mbolli\nfsen_ng\actions\FlowExportActions;
 use mbolli\nfsen_ng\actions\FlowGraphActions;
+use mbolli\nfsen_ng\actions\FlowWindowActions;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\TableFormatter;
 use mbolli\nfsen_ng\pages\state\FlowsState;
@@ -22,6 +24,7 @@ use Mbolli\PhpVia\Via;
  * @phpstan-import-type FilteredSummary from FlowsState
  *
  * @phpstan-type Figure array{label: string, value: string, epoch: ?int}
+ * @phpstan-type ListColumn array{key: string, title: string, hidden: bool}
  * @phpstan-type ProtocolLine array{name: string, series: ?int, flows: string, packets: string, bytes: string}
  */
 final class FlowsPage implements Page {
@@ -80,11 +83,17 @@ final class FlowsPage implements Page {
         // "flows" for listed records, "rows" once aggregation merged them (the Run announcement).
         $c->signal('flows', 'flows_count_label', clientWritable: false);
         $c->signal(QueryKit::ESTIMATE_DEFAULT, FlowActions::SUMMARY_ESTIMATE, clientWritable: false);
+        // The Run copies the browser's zone, sort and hidden columns of the list; no query input.
+        $c->signal('', 'flows_tz', clientWritable: true);
+        $c->signal('', 'flows_sort', clientWritable: true);
+        $c->signal([], 'flows_hidden', clientWritable: true);
     }
 
     public static function register(Context $c, Via $app, PageStates $states): void {
         FlowActions::register($c, $states, $app);
         FlowGraphActions::register($c);
+        FlowWindowActions::register($c, $app, $states);
+        FlowExportActions::register($c, $app, $states);
     }
 
     public static function viewData(Context $c, Via $app, PageStates $states, bool $isUpdate): array {
@@ -100,9 +109,10 @@ final class FlowsPage implements Page {
         $returned = $flows->returnedSummary;
 
         // D26: a host goes out in full only when the client lacks it; by then the store may have
-        // dropped the chunks it needs, and the page says so instead.
+        // dropped the rows, and the page says so instead. A list the client holds learns it from a window.
         $tableSend = $flows->sendResult('table', $flows->resultId, $isUpdate);
-        if ($tableSend && $flows->rowChunks > 0 && !$flows->hasPayload()) {
+        $isList = $hasResult && $flows->mode === 'list';
+        if ($tableSend && !$flows->hasRows()) {
             $flows->rowsLost = true;
         }
         $rawSend = $flows->sendResult('raw', $flows->resultId, $isUpdate);
@@ -126,7 +136,12 @@ final class FlowsPage implements Page {
                 'lost' => $flows->rawLost,
                 'chunks' => $flows->rawChunks,
             ],
-            'tableHtml' => $tableSend && !$flows->rowsLost ? $flows->tableForSend() : '',
+            'tableHtml' => $tableSend && !$flows->rowsLost && !$isList ? $flows->tableHtml : '',
+            'list' => $isList && !$flows->rowsLost ? [
+                'id' => $flows->resultId,
+                'host' => FlowWindowActions::hostHtml($c, $flows, $tableSend),
+                'columns' => self::listColumns($flows),
+            ] : null,
             'limit' => $flows->limit,
             'limitReached' => $flows->limit > 0 && ($returned['flows'] ?? $flows->count) >= $flows->limit,
             'aggregated' => $returned['aggregated'] ?? false,
@@ -168,6 +183,20 @@ final class FlowsPage implements Page {
                 'stale' => !$fatal && FlowGraphActions::isStale($c),
             ],
         ];
+    }
+
+    /**
+     * Every column of the tab's list in order, for the Columns picker.
+     *
+     * @return list<ListColumn>
+     */
+    public static function listColumns(FlowsState $flows): array {
+        $list = [];
+        foreach ($flows->columns as $column) {
+            $list[] = [...$column, 'hidden' => \in_array($column['key'], $flows->hiddenColumns, true)];
+        }
+
+        return $list;
     }
 
     /**

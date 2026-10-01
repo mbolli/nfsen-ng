@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use mbolli\nfsen_ng\pages\state\ConversationsState;
+use mbolli\nfsen_ng\pages\state\FlowRowStore;
 use mbolli\nfsen_ng\pages\state\FlowsState;
 use mbolli\nfsen_ng\pages\state\OverviewState;
 use mbolli\nfsen_ng\pages\state\PageState;
@@ -113,6 +114,15 @@ describe('snapshot and restore', function (): void {
         'overview' => [new OverviewState(), static function (OverviewState $s): void {}],
         'talkers' => [new TalkersState(), static fn (TalkersState $s) => $s->setResult('<table></table>')],
         'flows' => [new FlowsState(), static fn (FlowsState $s) => $s->setResult('<table></table>', 12)],
+        'flows list' => [new FlowsState(), static function (FlowsState $s): void {
+            FlowRowStore::store('pagestate1', [['in_bytes' => 2, 'src_port' => 1], ['in_bytes' => 1, 'src_port' => 2]]);
+            $s->setResult('', 2, ['resultId' => 'pagestate1', 'mode' => 'list', 'itemSize' => 30, 'browserTz' => 'Asia/Tokyo']);
+            $s->sortBy('in_bytes', 'asc', FlowRowStore::order('pagestate1', 'in_bytes', 'asc') ?? '');
+            $s->hiddenColumns = ['src_port', 'not_in_this_result'];
+            $s->firstRows = '<div role="row"></div>';
+            $s->lastOffset = 5;
+            $s->lastCount = 9;
+        }],
         'conversations' => [new ConversationsState(), static fn (ConversationsState $s) => $s->setResult('{"nodes":[1],"links":[]}')],
         'shell' => [new ShellState(), static function (ShellState $s): void {
             $s->modalHtml = '<dialog></dialog>';
@@ -135,6 +145,59 @@ describe('snapshot and restore', function (): void {
             ->and($state->count)->toBe(0)
             ->and($state->notifications)->toBe([['id' => 'aa', 'type' => 'info', 'message' => 'ok', 'code' => '']])
         ;
+    });
+
+    test('a list comes back with its sort, columns, zone and row height; its order and first rows are rebuilt', function (): void {
+        $state = new FlowsState();
+        $state->restore([
+            'resultId' => 'r1',
+            'mode' => 'list',
+            'sortKey' => 'in_bytes',
+            'sortDir' => 'desc',
+            'sortChain' => [['src_port', 'asc'], ['in_bytes', 'desc']],
+            'itemSize' => 30,
+            'browserTz' => 'Asia/Tokyo',
+            'hiddenColumns' => ['src_port', 'src_port', 3],
+        ]);
+
+        expect([$state->mode, $state->sortKey, $state->sortDir, $state->sortChain])->toBe(['list', 'in_bytes', 'desc', [['src_port', 'asc'], ['in_bytes', 'desc']]])
+            ->and([$state->itemSize, $state->browserTz, $state->hiddenColumns])->toBe([30, 'Asia/Tokyo', ['src_port']])
+            ->and([$state->order, $state->firstRows, $state->lastOffset, $state->lastCount])->toBe([null, '', 0, 0])
+            ->and($state->isEmpty())->toBeFalse()
+            ->and($state->hasResult())->toBeTrue()
+        ;
+    });
+
+    test('a list snapshot that does not hold together comes back as file order or an html result', function (): void {
+        $state = new FlowsState();
+        $state->restore(['resultId' => 'r1', 'mode' => 'list', 'sortKey' => 'in_bytes', 'sortDir' => 'sideways', 'sortChain' => [['src_port', 'up'], 'x', ['in_bytes', 'desc']]]);
+        expect([$state->sortKey, $state->sortDir, $state->sortChain])->toBe(['in_bytes', 'asc', [['in_bytes', 'asc']]]);
+
+        $state->restore(['resultId' => 'r1', 'mode' => 'evil', 'sortChain' => [['in_bytes', 'asc']], 'hiddenColumns' => 'src_port']);
+        expect([$state->mode, $state->sortKey, $state->sortChain, $state->hiddenColumns])->toBe(['html', '', [], []])
+            ->and($state->isEmpty())->toBeTrue()
+            ->and($state->snapshot())->toBe([])
+        ;
+    });
+
+    test('a list snapshot keeps only the keys, zone and hidden columns a request or a Run would accept', function (): void {
+        $state = new FlowsState();
+        $others = array_map(static fn (int $i): string => "k{$i}", range(1, FlowsState::MAX_HIDDEN + 6));
+        $state->restore([
+            'resultId' => 'r1',
+            'mode' => 'list',
+            'sortKey' => 'in bytes',
+            'sortChain' => [['src_port', 'asc'], ['in bytes', 'asc']],
+            'browserTz' => 'Not/AZone',
+            'hiddenColumns' => ['src_port', 'bad key', str_repeat('x', 65), ...$others],
+        ]);
+
+        expect([$state->sortKey, $state->sortDir, $state->sortChain, $state->browserTz])->toBe(['', '', [], ''])
+            ->and($state->hiddenColumns)->toBe(['src_port', ...array_slice($others, 0, FlowsState::MAX_HIDDEN - 1)])
+        ;
+
+        $state->restore(['resultId' => 'r1', 'mode' => 'list', 'sortKey' => 'in_bytes', 'sortChain' => [['src_port', 'asc'], ['<b>', 'desc'], ['in_bytes', 'asc']]]);
+        expect($state->sortChain)->toBe([['src_port', 'asc'], ['in_bytes', 'asc']]);
     });
 
     test('a result with only notifications is not worth reviving', function (): void {

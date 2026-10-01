@@ -12,6 +12,7 @@ use mbolli\nfsen_ng\actions\QueryRunner;
 use mbolli\nfsen_ng\actions\ShellActions;
 use mbolli\nfsen_ng\actions\UtilityActions;
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\FlowRows;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\TotalsProvider;
 use mbolli\nfsen_ng\pages\FlowsPage;
@@ -19,6 +20,7 @@ use mbolli\nfsen_ng\pages\PageRegistry;
 use mbolli\nfsen_ng\pages\PageStates;
 use mbolli\nfsen_ng\pages\Revival;
 use mbolli\nfsen_ng\pages\Shell;
+use mbolli\nfsen_ng\pages\state\FlowRowStore;
 use mbolli\nfsen_ng\pages\state\FlowsState;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpException;
@@ -155,12 +157,15 @@ function flowActionsTestInputs(array $overrides = []): array {
 }
 
 describe('storing a flows run', function (): void {
-    test('a finished run stores the table, the row count and the command', function (): void {
+    test('a finished run stores the list, the row count and the command', function (): void {
         $state = new FlowsState();
         $state->notify('warning', 'nfdump process (PID 3) was killed.');
         FlowActions::storeResult($state, flowActionsTestResult([['sa' => '10.0.0.1', 'da' => '10.0.0.2', 'ibyt' => 42]]), 0.123, '/_action/ip-info-x');
 
-        expect($state->tableHtml)->toContain('id="flowTable"', '10.0.0.1')
+        expect($state->mode)->toBe('list')
+            ->and($state->tableHtml)->toBe('')
+            ->and(FlowRowStore::has($state->resultId))->toBeTrue()
+            ->and($state->firstRows)->toContain('10.0.0.1')
             ->and($state->count)->toBe(1)
             ->and($state->resultId)->toMatch('/^[0-9a-f]{8}$/')
             ->and($state->notifications)->toHaveCount(1)
@@ -191,9 +196,23 @@ describe('storing a flows run', function (): void {
             ->and([$state->fingerprint, $state->totalsFingerprint, $state->live, $state->ranAt])->toBe(['f1', 't1', true, 42])
             ->and([$state->windowStart, $state->windowEnd])->toBe([1_700_000_000, 1_700_086_400])
             // HIDDEN_FIELDS applies: FlowActions passes no hiddenFields any more.
-            ->and($state->tableHtml)->not->toContain('data-original-title="cnt"')
-            ->and($state->tableHtml)->toContain('data-page-size="50"', 'data-limit="2"', 'data-caption="Flows"', 'data-export-name="flows-')
-            ->and($state->tableHtml)->not->toContain('class="original"')
+            ->and(FlowRowStore::columns($state->resultId)['keys'] ?? [])->toBe(['first', 'last', 'in_packets', 'in_bytes', 'src_addr'])
+            ->and($state->tableHtml)->toBe('')
+        ;
+    });
+
+    test('a run without records shows the empty state as an html result, and leaves no list behind', function (): void {
+        $state = new FlowsState();
+        FlowActions::storeResult($state, flowActionsTestResult([['in_bytes' => 5]]), 0.1, '');
+        $list = $state->resultId;
+        FlowActions::storeResult($state, flowActionsTestResult(), 0.1, '');
+
+        expect($state->mode)->toBe('html')
+            ->and($state->hasResult())->toBeTrue()
+            ->and($state->tableHtml)->toBe('<div id="flowTable" class="empty-state"><h3>No flows</h3><p>No flows match this query in the selected range.</p></div>')
+            ->and(FlowRowStore::has($state->resultId))->toBeFalse()
+            ->and(FlowRowStore::has($list))->toBeFalse()
+            ->and([$state->firstRows, $state->sortKey, $state->hiddenColumns])->toBe(['', '', []])
         ;
     });
 
@@ -213,38 +232,37 @@ describe('storing a flows run', function (): void {
         ;
     });
 
-    test('a large run keeps its first page in the state and the other rows as chunks in the shared store', function (): void {
+    test('a large run keeps its rows in the shared store and only the first rows of the list in the state', function (): void {
         $state = new FlowsState();
         $rows = array_map(static fn (int $i): array => ['src_addr' => '10.0.' . intdiv($i, 250) . '.' . $i % 250, 'in_bytes' => $i], range(1, 2_600));
-        FlowActions::storeResult($state, flowActionsTestResult($rows), 0.5, '/_action/ip-info-x', ['limit' => 10_000, 'rowsUrl' => '/_action/flows-rows-x']);
+        FlowActions::storeResult($state, flowActionsTestResult($rows), 0.5, '/_action/ip-info-x', ['limit' => 10_000]);
 
-        $send = $state->tableForSend();
-
-        expect($state->rowChunks)->toBe(3)
-            ->and($state->hasPayload())->toBeTrue()
-            ->and(substr_count($state->tableHtml, '<tr>'))->toBe(51)
-            ->and($state->tableHtml)->toContain("data-result=\"{$state->resultId}\"", 'data-chunks="3"', 'data-total="2600"', '/_action/flows-rows-x?result=')
-            ->and(substr_count($state->rowChunk(2) ?? '', '<tr>'))->toBe(550)
-            ->and($state->rowChunk(3))->toBeNull()
-            // The render sends the first chunk inside the table, which saves a round trip.
-            ->and($send)->toContain('<template class="table-rows" data-chunk="0">')
-            ->and(strpos($send, 'data-chunk="0"'))->toBeLessThan(strrpos($send, '</nfsen-table>'))
-            ->and(substr_count($send, '<tr>'))->toBe(1_051)
+        expect(FlowRowStore::count($state->resultId))->toBe(2_600)
+            ->and($state->tableHtml)->toBe('')
+            ->and(substr_count($state->firstRows, '<div role="row" '))->toBe(FlowRows::INITIAL_ROWS)
+            ->and($state->firstRows)->toContain('<a href="#" class="ip-link">10.0.0.1</a>')
+            ->and($state->itemSize)->toBe(FlowRows::ITEM_SIZE)
+            ->and(FlowsState::storedBytes())->toBeLessThanOrEqual(FlowsState::PAYLOAD_BUDGET)
         ;
     });
 
-    test('the snapshot stays small: the chunks stay in the store, under its budget', function (): void {
+    test('the snapshot stays small: the rows and the output stay in their stores, under the budget', function (): void {
         $state = new FlowsState();
         $rows = array_map(static fn (int $i): array => ['src_addr' => '10.1.' . intdiv($i, 250) . '.' . $i % 250, 'in_bytes' => $i], range(1, 5_000));
-        FlowActions::storeResult($state, new QueryResult($rows, 'nfdump -M /data', '', 0.1, TimeWindow::raw(0, 300), str_repeat("{\"k\": 1}\n", 50_000)), 0.1, '');
+        FlowActions::storeResult($state, new QueryResult($rows, 'nfdump -M /data', '', 0.1, TimeWindow::raw(0, 300), str_repeat("{\"k\": 1}\n", 50_000)), 0.1, '', [
+            'list' => ['tz' => 'Europe/Zurich', 'sortKey' => 'in_bytes', 'sortDir' => 'desc', 'hidden' => ['src_addr']],
+        ]);
 
         $snapshot = $state->snapshot();
         $revived = new FlowsState();
         $revived->restore($snapshot);
 
         expect(strlen(serialize($snapshot)))->toBeLessThan(64 * 1024)
-            ->and($revived->tableHtml)->toBe($state->tableHtml)
-            ->and($revived->rowChunk(4))->toBe($state->rowChunk(4))
+            ->and([$revived->resultId, $revived->mode, $revived->itemSize, $revived->browserTz])->toBe([$state->resultId, 'list', $state->itemSize, 'Europe/Zurich'])
+            ->and([$revived->sortKey, $revived->sortDir, $revived->sortChain, $revived->hiddenColumns])->toBe(['in_bytes', 'desc', [['in_bytes', 'desc']], ['src_addr']])
+            ->and([$revived->order, $revived->firstRows])->toBe([null, ''])
+            ->and($revived->columns)->toBe([['key' => 'src_addr', 'title' => 'Source IP'], ['key' => 'in_bytes', 'title' => 'In Bytes']])
+            ->and($revived->currentOrder())->toBe($state->currentOrder())
             ->and($revived->rawOutput())->toBe($state->rawOutput())
             ->and(FlowsState::storedBytes())->toBeLessThanOrEqual(FlowsState::PAYLOAD_BUDGET)
         ;
@@ -267,6 +285,27 @@ describe('storing a flows run', function (): void {
         expect([$states[0]->hasPayload(), $states[1]->hasPayload(), $states[2]->hasPayload(), $fourth->hasPayload()])->toBe([true, false, true, true])
             ->and(FlowsState::storedBytes())->toBeLessThanOrEqual(FlowsState::PAYLOAD_BUDGET)
             ->and($states[1]->rawOutput())->toBe('')
+        ;
+    });
+
+    test('a rerun frees its previous result before it stores the new one, so another tab keeps its rows', function (): void {
+        FlowsState::makeRoom(static fn (): bool => false);
+        // Random text barely compresses: each result takes between a third and a half of the budget.
+        $result = static fn (): QueryResult => flowActionsTestResult(array_map(static fn (int $i): array => ['in_bytes' => $i, 'note' => base64_encode(random_bytes(1_536))], range(1, 1_100)));
+        $other = new FlowsState();
+        $tab = new FlowsState();
+        FlowActions::storeResult($other, $result(), 0.1, '');
+        FlowActions::storeResult($tab, $result(), 0.1, '');
+        $previous = $tab->resultId;
+
+        expect(FlowRowStore::bytesOf($previous))->toBeGreaterThan(intdiv(FlowsState::PAYLOAD_BUDGET, 3))->toBeLessThan(intdiv(FlowsState::PAYLOAD_BUDGET, 2));
+
+        FlowActions::storeResult($tab, $result(), 0.1, '');
+
+        expect($other->hasRows())->toBeTrue()
+            ->and($tab->hasRows())->toBeTrue()
+            ->and(FlowRowStore::has($previous))->toBeFalse()
+            ->and(FlowsState::storedBytes())->toBeLessThanOrEqual(FlowsState::PAYLOAD_BUDGET)
         ;
     });
 
@@ -306,11 +345,11 @@ describe('storing a flows run', function (): void {
         $state = new FlowsState();
         $rows = array_map(static fn (int $i): array => ['in_bytes' => $i], range(1, 1_200));
         FlowActions::storeResult($state, new QueryResult($rows, 'nfdump', '', 0.1, TimeWindow::raw(0, 300), "a\nb\n"), 0.1, '');
-        $before = [$state->tableHtml, $state->rowChunk(0), $state->rawOutput()];
+        $before = [$state->tableHtml, $state->firstRows, $state->rawOutput()];
 
         $state->settle();
 
-        expect([$state->tableHtml, $state->rowChunk(0), $state->rawOutput()])->toBe($before);
+        expect([$state->tableHtml, $state->firstRows, $state->rawOutput()])->toBe($before);
     });
 
     test('a snapshot restores every part of the result', function (): void {
@@ -570,10 +609,10 @@ describe('the Flows page', function (): void {
         ;
     });
 
-    test('after a run: the tabs, and the table and raw output hosts, sent once', function (): void {
+    test('after a run: the tabs, and the list and raw output hosts, sent once', function (): void {
         [$app, $c, $states] = flowActionsTestCompose();
-        FlowActions::storeResult($states->flows, flowActionsTestResult([['src_addr' => '10.0.0.1', 'in_bytes' => 5]]), 0.2, '/_action/ip-info-x', ['limit' => 20]);
-        $states->flows->setResult($states->flows->tableHtml, 1, ['resultId' => $states->flows->resultId, 'command' => 'nfdump -M x', 'rawOutput' => "[\n]\n"]);
+        $result = new QueryResult([['src_addr' => '10.0.0.1', 'in_bytes' => 5]], 'nfdump -M x', '', 0.2, TimeWindow::raw(1_000, 2_000), "[\n]\n");
+        FlowActions::storeResult($states->flows, $result, 0.2, '/_action/ip-info-x', ['limit' => 20]);
         $id = $states->flows->resultId;
 
         $first = flowActionsTestRender($c, $app, $states);
@@ -584,7 +623,8 @@ describe('the Flows page', function (): void {
             'id="flowsTab-raw"',
             'id="flowsTab-summary"',
             'Flows (1)',
-            "id=\"flowTableHost-{$id}\" data-ignore-morph><nfsen-table id=\"flowTable\"",
+            "<sb-virtual-scroll id=\"flowRows-{$id}\" role=\"table\"",
+            '@post(&apos;/_action/ip-info?ip=&apos; + encodeURIComponent(a.textContent.trim()))',
             "id=\"flowRawHost-{$id}\" data-ignore-morph>",
             "id=\"flowsRawOutput-{$id}\"",
             'data-chunks="1"',
@@ -598,17 +638,18 @@ describe('the Flows page', function (): void {
             'flows-summary-estimate?target=flows-summary',
         )
             // nfdump's output itself comes in chunks, once its tab is open.
-            ->and($first)->not->toContain("[\n]")
-            ->and(substr_count($first, 'id="flowTable"'))->toBe(1)
+            ->and($first)->not->toContain("[\n]", '<nfsen-table', 'flowTableHost-')
+            ->and(substr_count($first, "id=\"flowRows-{$id}\""))->toBe(1)
+            ->and(substr_count($first, '<div role="row" aria-rowindex="2"'))->toBe(1)
             ->and($second)->toContain(
-                "<div class=\"result-host\" id=\"flowTableHost-{$id}\" data-ignore-morph></div>",
+                "<sb-virtual-scroll id=\"flowRows-{$id}\" data-ignore-morph></sb-virtual-scroll>",
                 "<div class=\"result-host\" id=\"flowRawHost-{$id}\" data-ignore-morph></div>",
             )
-            ->and($second)->not->toContain('<nfsen-table', 'flowsRawOutput-')
+            ->and($second)->not->toContain('<div role="row"', 'flowsRawOutput-')
         ;
     });
 
-    test('a chunk goes out as its own append event, and a dropped result says so', function (): void {
+    test('an output chunk goes out as its own append event, and a dropped output says so', function (): void {
         putenv('VIA_TEST_MODE=1');
 
         try {
@@ -631,35 +672,32 @@ describe('the Flows page', function (): void {
             return $all;
         };
 
-        $c->setRequestInput(['result' => $id, 'chunk' => '1'], []);
-        FlowActions::sendChunk($c, $flows, 'rows');
         $c->setRequestInput(['result' => $id, 'chunk' => '0'], []);
-        FlowActions::sendChunk($c, $flows, 'raw');
+        FlowActions::sendChunk($c, $flows);
+        $c->setRequestInput(['result' => $id, 'chunk' => '1'], []);
+        FlowActions::sendChunk($c, $flows);
         $c->setRequestInput(['result' => 'older', 'chunk' => '0'], []);
-        FlowActions::sendChunk($c, $flows, 'rows');
+        FlowActions::sendChunk($c, $flows);
         $sent = $patches();
 
-        expect($sent)->toHaveCount(2)
-            ->and($sent[0])->toMatchArray(['type' => 'elements', 'selector' => "#flowTableHost-{$id} > nfsen-table", 'mode' => ElementPatchMode::Append])
-            ->and($sent[0]['content'])->toStartWith('<template class="table-rows" data-chunk="1">')
-            ->and(substr_count($sent[0]['content'], '<tr>'))->toBe(150)
-            ->and($sent[1])->toMatchArray(['selector' => "#flowsRawOutput-{$id}", 'content' => "<span data-chunk=\"0\">{\"a\": \"&lt;i&gt;&amp;\"}\n</span>"])
+        expect($sent)->toHaveCount(1)
+            ->and($sent[0])->toMatchArray(['type' => 'elements', 'selector' => "#flowsRawOutput-{$id}", 'mode' => ElementPatchMode::Append])
+            ->and($sent[0]['content'])->toBe("<span data-chunk=\"0\">{\"a\": \"&lt;i&gt;&amp;\"}\n</span>")
         ;
 
-        // The store dropped the result: the client asking for a chunk learns it from a sync.
+        // The store dropped the output: the client asking for a chunk learns it from a sync.
         FlowsState::makeRoom(static fn (): bool => false);
-        $c->setRequestInput(['result' => $id, 'chunk' => '1'], []);
-        FlowActions::sendChunk($c, $flows, 'rows');
+        $c->setRequestInput(['result' => $id, 'chunk' => '0'], []);
+        FlowActions::sendChunk($c, $flows);
         $synced = implode('', array_map(static fn (array $p): string => is_string($p['content']) ? $p['content'] : '', $patches()));
 
-        expect($flows->rowsLost)->toBeTrue()
-            ->and($flows->rawLost)->toBeFalse()
-            ->and($synced)->toContain('The server dropped these rows to free memory for other results. Run again to see them.')
-            ->and($synced)->not->toContain("flowTableHost-{$id}")
+        expect($flows->rawLost)->toBeTrue()
+            ->and($synced)->toContain("The server dropped nfdump's output")
+            ->and($synced)->not->toContain("flowsRawOutput-{$id}")
         ;
     });
 
-    test('a dropped result keeps the table the client has, and says so when it would have to go out again', function (): void {
+    test('a dropped result keeps the list the client has, and says so when it would have to go out again', function (): void {
         [$app, $c, $states] = flowActionsTestCompose();
         $rows = array_map(static fn (int $i): array => ['in_bytes' => $i], range(1, 1_200));
         FlowActions::storeResult($states->flows, new QueryResult($rows, 'nfdump', '', 0.1, TimeWindow::raw(0, 300), "x\n"), 0.1, '');
@@ -667,16 +705,17 @@ describe('the Flows page', function (): void {
         flowActionsTestRender($c, $app, $states);
         FlowsState::makeRoom(static fn (): bool => false);
 
+        // A render for something else leaves the list and its Columns picker; the next window finds out.
         $kept = flowActionsTestRender($c, $app, $states, true);
         $c->getSignal('page')?->setValue('health', broadcast: false);
         Shell::render($c, $app, $states, true);
         $c->getSignal('page')?->setValue('flows', broadcast: false);
         $back = flowActionsTestRender($c, $app, $states, true);
 
-        expect($kept)->toContain("<div class=\"result-host\" id=\"flowTableHost-{$id}\" data-ignore-morph></div>")
+        expect($kept)->toContain(FlowRows::placeholder($id), 'id="flowTable-col-in_bytes"')
             ->and($kept)->not->toContain('The server dropped')
             ->and($back)->toContain('The server dropped these rows', "The server dropped nfdump's output")
-            ->and($back)->not->toContain("flowTableHost-{$id}", "flowRawHost-{$id}")
+            ->and($back)->not->toContain("flowRows-{$id}", "flowRawHost-{$id}")
         ;
     });
 
@@ -691,9 +730,8 @@ describe('the Flows page', function (): void {
             ->and($html)->toContain(
                 '25 rows returned, aggregated from the first 100 flows (the limit)',
                 'Returned rows (limited to 100 by the row limit)',
-                'data-limit-reached="true"',
-                'nfdump cannot skip rows: raise the limit to see more.',
-                '<td data-kind="time" data-raw="2026-08-29 05:17:53.000"><time data-epoch=',
+                '<button type="button" data-sort-key="firstSeen">First Seen</button>',
+                '<div role="cell" data-kind="time"><time data-epoch=',
             )
         ;
     });

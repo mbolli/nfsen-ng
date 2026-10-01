@@ -12,9 +12,6 @@ class Table {
     /** Rows per page choices of a paginated table (D14). */
     public const array PAGE_SIZES = [25, 50, 100, 250];
 
-    /** Rows per chunk of generateChunked(): about 1 MB of markup, one event each. */
-    public const int CHUNK_ROWS = 1000;
-
     /**
      * Field name to human-readable title mapping.
      */
@@ -170,20 +167,7 @@ class Table {
      *                                      - 'result' => string, the result id nfsen-table tells results apart by
      */
     public static function generate(array $data, string $tableId, array $options = []): string {
-        return self::render($data, $tableId, $options, 0)['html'];
-    }
-
-    /**
-     * generate() with only the first page inline: the other rows are `<template>` chunks that
-     * nfsen-table asks $options['rowsUrl'] for one at a time, so no event holds them all (D26).
-     *
-     * @param list<mixed>          $data
-     * @param array<string, mixed> $options generate()'s options plus 'rowsUrl' => string
-     *
-     * @return array{html: string, chunks: \Generator<int, string, mixed, void>}
-     */
-    public static function generateChunked(array $data, string $tableId, array $options, int $chunkRows = self::CHUNK_ROWS): array {
-        return self::render($data, $tableId, [...$options, 'paginate' => true], max(1, $chunkRows));
+        return self::render($data, $tableId, $options);
     }
 
     /**
@@ -199,6 +183,43 @@ class Table {
         $text = \sprintf('%s returned (limit %s).', $shown, number_format($limit));
 
         return ($limitReached ?? $total >= $limit) ? $text . ' nfdump cannot skip rows: raise the limit to see more.' : $text;
+    }
+
+    /**
+     * The columns of $data: every row's keys less $hidden, $rankColumn first, and how each is set
+     * (TableFormatter::cellKind(), 'rank' for the rank column).
+     *
+     * @param list<mixed>  $data   non-array rows are skipped
+     * @param array<mixed> $hidden
+     *
+     * @return array{keys: list<string>, kinds: array<string, string>}
+     */
+    public static function columnsOf(array $data, array $hidden, string $rankColumn = ''): array {
+        $keys = array_values(array_filter(self::collectHeaders($data), static fn (string $key): bool => !\in_array($key, $hidden, true)));
+        if ($rankColumn !== '' && \in_array($rankColumn, $keys, true)) {
+            $keys = [$rankColumn, ...array_values(array_diff($keys, [$rankColumn]))];
+        }
+        $kinds = [];
+        foreach ($keys as $key) {
+            $kinds[$key] = $key === $rankColumn ? 'rank' : TableFormatter::cellKind($key);
+        }
+
+        return ['keys' => $keys, 'kinds' => $kinds];
+    }
+
+    /** A column's title: the field's name as people say it. */
+    public static function columnTitle(string $fieldName): string {
+        return self::FIELD_TITLES[$fieldName] ?? ucwords(str_replace('_', ' ', $fieldName));
+    }
+
+    /** A cell's raw value: what data-raw carries when the cell shows something else. */
+    public static function scalar(mixed $value): string {
+        return \is_scalar($value) ? (string) $value : '';
+    }
+
+    /** Inside a single-quoted JavaScript string. */
+    public static function jsString(string $value): string {
+        return addcslashes($value, "\\'\n\r");
     }
 
     /**
@@ -235,10 +256,8 @@ class Table {
     /**
      * @param list<mixed>          $data
      * @param array<string, mixed> $options
-     *
-     * @return array{html: string, chunks: \Generator<int, string, mixed, void>}
      */
-    private static function render(array $data, string $tableId, array $options, int $chunkRows): array {
+    private static function render(array $data, string $tableId, array $options): string {
         $options = array_merge([
             'hiddenFields' => self::HIDDEN_FIELDS,
             'linkIpAddresses' => true,
@@ -254,7 +273,6 @@ class Table {
             'caption' => '',
             'exportName' => '',
             'result' => '',
-            'rowsUrl' => '',
         ], $options);
 
         $id = self::attr($tableId);
@@ -263,33 +281,26 @@ class Table {
         if ($data === []) {
             if ($original !== '') {
                 // Output nfdump could not read into rows (an unparsed biflow table): the text is the result.
-                return ['html' => \sprintf('<div id="%s" class="table-raw"><pre>%s</pre></div>', $id, self::text($original)), 'chunks' => self::noChunks()];
+                return \sprintf('<div id="%s" class="table-raw"><pre>%s</pre></div>', $id, self::text($original));
             }
 
             // Result tables sit in a card under its h2 title (2.5).
-            return ['html' => \sprintf('<div id="%s" class="empty-state"><h3>%s</h3><p>%s</p></div>', $id, self::text(self::stringOption($options, 'emptyTitle')), self::text(self::stringOption($options, 'emptyMessage'))), 'chunks' => self::noChunks()];
+            return \sprintf('<div id="%s" class="empty-state"><h3>%s</h3><p>%s</p></div>', $id, self::text(self::stringOption($options, 'emptyTitle')), self::text(self::stringOption($options, 'emptyMessage')));
         }
 
         if (\is_string($data[0])) {
             // Only the first row is inspected, so anything that is not a line is dropped rather
             // than reaching implode() as an array.
-            return ['html' => \sprintf(
+            return \sprintf(
                 '<div id="%s" class="table-raw"><pre>%s</pre></div>',
                 $id,
                 self::text(implode("\n", array_filter($data, \is_string(...))))
-            ), 'chunks' => self::noChunks()];
+            );
         }
 
         $hidden = \is_array($options['hiddenFields']) ? $options['hiddenFields'] : self::HIDDEN_FIELDS;
         $rankColumn = self::stringOption($options, 'rankColumn');
-        $headers = array_values(array_filter(self::collectHeaders($data), static fn (string $key): bool => !\in_array($key, $hidden, true)));
-        if ($rankColumn !== '' && \in_array($rankColumn, $headers, true)) {
-            $headers = [$rankColumn, ...array_values(array_diff($headers, [$rankColumn]))];
-        }
-        $kinds = [];
-        foreach ($headers as $header) {
-            $kinds[$header] = $header === $rankColumn ? 'rank' : TableFormatter::cellKind($header);
-        }
+        ['keys' => $headers, 'kinds' => $kinds] = self::columnsOf($data, $hidden, $rankColumn);
 
         /** @var array<int, int> $rankSeries */
         $rankSeries = \is_array($options['rankSeries']) ? $options['rankSeries'] : [];
@@ -313,8 +324,6 @@ class Table {
         $pageSize = max(1, (int) $options['pageSize']);
         $limit = max(0, (int) $options['limit']);
         $reached = \is_bool($options['limitReached']) ? $options['limitReached'] : ($limit > 0 && $total >= $limit);
-        $chunked = $chunkRows > 0 && $total > $pageSize;
-        $inline = $chunked ? $pageSize : $total;
         $caption = self::stringOption($options, 'caption');
         $exportName = self::stringOption($options, 'exportName');
         $result = self::stringOption($options, 'result');
@@ -332,14 +341,6 @@ class Table {
             $attributes['data-page-size'] = (string) $pageSize;
             $attributes['data-limit'] = (string) $limit;
             $attributes['data-limit-reached'] = $reached ? 'true' : 'false';
-        }
-        if ($chunked) {
-            $attributes['data-total'] = (string) $total;
-            $attributes['data-chunks'] = (string) (int) ceil(($total - $pageSize) / $chunkRows);
-            $rowsUrl = self::stringOption($options, 'rowsUrl');
-            if ($rowsUrl !== '') {
-                $attributes['data-on:nfsen-table-more'] = "@post('" . self::jsString($rowsUrl) . "?result=' + evt.detail.result + '&chunk=' + evt.detail.chunk)";
-            }
         }
         $ipInfoUrl = self::stringOption($options, 'ipInfoActionUrl');
         if ($options['linkIpAddresses'] && $ipInfoUrl !== '') {
@@ -362,12 +363,12 @@ class Table {
                 '<th scope="col" data-original-title="%s"%s><button type="button" class="sort-button">%s</button></th>',
                 self::attr($header),
                 $kinds[$header] === 'num' ? ' data-num' : '',
-                self::text(self::humanizeFieldName($header))
+                self::text(self::columnTitle($header))
             );
         }
         $html .= "</tr>\n</thead>\n<tbody>";
 
-        for ($index = 0; $index < $inline; ++$index) {
+        for ($index = 0; $index < $total; ++$index) {
             if ($paginate && $index === $pageSize) {
                 // Rows past the first page wait in a template: Datastar never walks them, and
                 // nfsen-table.js keeps them in memory, attaching one page at a time.
@@ -375,7 +376,7 @@ class Table {
             }
             $html .= "\n" . $row($rows[$index]);
         }
-        $html .= $paginate && $inline > $pageSize ? "\n</template>\n" : "\n</tbody>\n</table>\n</div>\n";
+        $html .= $paginate && $total > $pageSize ? "\n</template>\n" : "\n</tbody>\n</table>\n</div>\n";
 
         if ($original !== '') {
             $html .= '<div class="original" hidden><pre>' . self::text($original) . "</pre></div>\n";
@@ -384,35 +385,7 @@ class Table {
             $html .= self::pager($tableId, $total, $pageSize, $limit, $reached);
         }
 
-        return [
-            'html' => $html . '</nfsen-table>',
-            'chunks' => $chunked ? self::chunks($rows, $pageSize, $chunkRows, $row) : self::noChunks(),
-        ];
-    }
-
-    /**
-     * The rows from $from on, as `<template data-chunk>` elements of $size rows each.
-     *
-     * @param list<array<mixed>>             $rows
-     * @param \Closure(array<mixed>): string $row
-     *
-     * @return \Generator<int, string, mixed, void>
-     */
-    private static function chunks(array $rows, int $from, int $size, \Closure $row): \Generator {
-        $total = \count($rows);
-        for ($chunk = 0, $start = $from; $start < $total; ++$chunk, $start += $size) {
-            $html = '<template class="table-rows" data-chunk="' . $chunk . '">';
-            for ($index = $start, $end = min($total, $start + $size); $index < $end; ++$index) {
-                $html .= "\n" . $row($rows[$index]);
-            }
-
-            yield $chunk => $html . "\n</template>";
-        }
-    }
-
-    /** @return \Generator<int, string, mixed, void> */
-    private static function noChunks(): \Generator {
-        yield from [];
+        return $html . '</nfsen-table>';
     }
 
     /**
@@ -549,32 +522,11 @@ class Table {
         return \is_string($options[$key] ?? null) ? $options[$key] : '';
     }
 
-    private static function scalar(mixed $value): string {
-        return \is_scalar($value) ? (string) $value : '';
-    }
-
-    /** Inside a single-quoted JavaScript string. */
-    private static function jsString(string $value): string {
-        return addcslashes($value, "\\'\n\r");
-    }
-
     private static function attr(string $value): string {
         return htmlspecialchars($value, ENT_QUOTES | ENT_HTML5);
     }
 
     private static function text(string $value): string {
         return htmlspecialchars($value, ENT_QUOTES | ENT_HTML5);
-    }
-
-    /**
-     * Convert a field name to a human-readable title.
-     *
-     * @param string $fieldName The field name
-     *
-     * @return string Human-readable title
-     */
-    private static function humanizeFieldName(string $fieldName): string {
-        // Otherwise, convert underscores to spaces and capitalize
-        return self::FIELD_TITLES[$fieldName] ?? ucwords(str_replace('_', ' ', $fieldName));
     }
 }

@@ -6,12 +6,14 @@ namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\FlowRows;
 use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\common\Table;
 use mbolli\nfsen_ng\datasources\TotalsProvider;
 use mbolli\nfsen_ng\pages\PageStates;
 use mbolli\nfsen_ng\pages\QueryKit;
 use mbolli\nfsen_ng\pages\RangeControls;
+use mbolli\nfsen_ng\pages\state\FlowRowStore;
 use mbolli\nfsen_ng\pages\state\FlowsState;
 use mbolli\nfsen_ng\processor\NfdumpException;
 use mbolli\nfsen_ng\query\Estimate;
@@ -25,10 +27,14 @@ use OpenSwoole\Coroutine;
 use starfederation\datastar\enums\ElementPatchMode;
 
 /**
- * The Flows page's actions (4.3.3): the run, its rows and output in chunks, and the filtered totals.
+ * The Flows page's actions (4.3.3): the run, its output in chunks, and the filtered totals. The
+ * list's own requests are FlowWindowActions'.
  *
  * @phpstan-import-type RangeSummary from FlowsState
  *
+ * @phpstan-type ListInputs array{tz: string, sortKey: string, sortDir: string, hidden: list<string>}
+ * @phpstan-type Run array{limit?: int, fingerprint?: string, totalsFingerprint?: string, live?: bool, ranAt?: int,
+ *                        rangeSummary?: ?RangeSummary, rangePending?: bool, list?: ListInputs}
  * @phpstan-type Inputs array{start: int, end: int, live: bool, profile: string, sources: list<string>, protocol: string,
  *                           filter: string, lower: string, upper: string, limit: int, aggregation: array<string, mixed>, orderByStart: bool}
  */
@@ -38,8 +44,6 @@ final class FlowActions {
 
     /** The largest row limit the Limit select offers. */
     public const int MAX_LIMIT = 10_000;
-
-    public const int PAGE_SIZE = 50;
 
     /** The filtered totals' estimate, named as QueryKit names estimates. */
     public const string SUMMARY_ESTIMATE = '_est_flows_summary';
@@ -74,7 +78,6 @@ final class FlowActions {
             $countLabel = $c->getSignal('flows_count_label');
             \assert($flowCount !== null && $countLabel !== null);
             $ipInfoUrl = $c->getAction('ip-info')?->url() ?? '';
-            $rowsUrl = $c->getAction('flows-rows')?->url() ?? '';
             $time = microtime(true);
             $contextId = $c->getId();
 
@@ -86,8 +89,8 @@ final class FlowActions {
                     'fingerprint' => self::fingerprintOf($inputs),
                     'totalsFingerprint' => self::fingerprintOf($inputs, totalsOnly: true),
                     'live' => $inputs['live'],
-                    'rowsUrl' => $rowsUrl,
                     'rangePending' => true,
+                    'list' => self::listInputs($c),
                 ];
 
                 // Sized inside the coroutine: the walk over the window belongs off the response path.
@@ -172,11 +175,7 @@ final class FlowActions {
         }, 'flows-summary-run');
 
         $c->action(static function (Context $c) use ($flows): void {
-            self::sendChunk($c, $flows, 'rows');
-        }, 'flows-rows');
-
-        $c->action(static function (Context $c) use ($flows): void {
-            self::sendChunk($c, $flows, 'raw');
+            self::sendChunk($c, $flows);
         }, 'flows-raw');
 
         $c->action(static function (Context $c) use ($app): void {
@@ -189,20 +188,19 @@ final class FlowActions {
     }
 
     /**
-     * The next chunk of rows or output for the client that asks, as its own event, so no event
+     * The next chunk of nfdump's output for the client that asks, as its own event, so no event
      * carries a whole large result. A dropped chunk makes the page say so.
      */
-    public static function sendChunk(Context $c, FlowsState $flows, string $kind): void {
+    public static function sendChunk(Context $c, FlowsState $flows): void {
         $result = $c->input('result');
         $index = $c->input('chunk');
         if (!\is_string($result) || $result !== $flows->resultId || !\is_string($index) || !ctype_digit($index)) {
             return;
         }
-        $rows = $kind === 'rows';
-        $html = $rows ? $flows->rowChunk((int) $index) : $flows->rawChunk((int) $index);
+        $html = $flows->rawChunk((int) $index);
         if ($html === null) {
             if (!$flows->hasPayload()) {
-                $rows ? $flows->rowsLost = true : $flows->rawLost = true;
+                $flows->rawLost = true;
                 $c->sync();
             }
 
@@ -212,7 +210,7 @@ final class FlowActions {
         $c->getPatchManager()->queuePatch([
             'type' => 'elements',
             'content' => $html,
-            'selector' => $rows ? "#flowTableHost-{$result} > nfsen-table" : "#flowsRawOutput-{$result}",
+            'selector' => "#flowsRawOutput-{$result}",
             'mode' => ElementPatchMode::Append,
         ]);
     }
@@ -309,6 +307,26 @@ final class FlowActions {
         ];
     }
 
+    /**
+     * What the Run copies from the browser for the list, none of it part of the query: the browser's
+     * time zone, the sort ('<key> <asc|desc>') and the hidden columns, which prepare() checks.
+     *
+     * @return ListInputs
+     */
+    public static function listInputs(Context $c): array {
+        $tz = $c->getSignal('flows_tz')?->string() ?? '';
+        $sort = $c->getSignal('flows_sort')?->string() ?? '';
+        $parts = explode(' ', $sort);
+        $sorted = \count($parts) === 2 && preg_match(FlowsState::KEY_PATTERN, $parts[0]) === 1 && \in_array($parts[1], ['asc', 'desc'], true);
+
+        return [
+            'tz' => FlowRowStore::isZone($tz) ? $tz : '',
+            'sortKey' => $sorted ? $parts[0] : '',
+            'sortDir' => $sorted ? $parts[1] : '',
+            'hidden' => array_values(array_filter($c->getSignal('flows_hidden')?->array() ?? [], \is_string(...))),
+        ];
+    }
+
     /** @param Inputs $inputs */
     public static function query(array $inputs, string $handle): FlowsQuery {
         return new FlowsQuery(
@@ -356,39 +374,38 @@ final class FlowActions {
     }
 
     /**
-     * Stores a finished run: the table with its first page, the other rows and the raw output in
-     * chunks, the returned rows' figures, and a notice with the command that ran.
+     * Stores a finished run: records as the list with the Run's sort and columns, else Table's empty
+     * state; then the raw output in chunks, the returned rows' figures and the command's notice.
      *
-     * @param array{limit?: int, fingerprint?: string, totalsFingerprint?: string, live?: bool, ranAt?: int, rangeSummary?: ?RangeSummary, rangePending?: bool, rowsUrl?: string} $run
+     * @param Run $run
      */
     public static function storeResult(FlowsState $state, QueryResult $result, float $elapsed, string $ipInfoUrl, array $run = []): void {
         $limit = $run['limit'] ?? 0;
         $resultId = FlowsState::newResultId();
-        $summary = FlowsQuery::returnedSummary($result->rows);
-        $table = Table::generateChunked($result->rows, 'flowTable', [
+        $list = $run['list'] ?? ['tz' => '', 'sortKey' => '', 'sortDir' => '', 'hidden' => []];
+        $state->releaseStored();
+        $isList = FlowRowStore::store($resultId, $result->rows, ['linkIpAddresses' => true, 'ipInfoActionUrl' => $ipInfoUrl]);
+        $html = $isList ? '' : Table::generate($result->rows, 'flowTable', [
             'linkIpAddresses' => true,
             'ipInfoActionUrl' => $ipInfoUrl,
-            'pageSize' => self::PAGE_SIZE,
-            'limit' => $limit,
-            // -c counts the flows nfdump reads, which aggregation merges into fewer rows.
-            'limitReached' => $limit > 0 && $summary['flows'] >= $limit,
             'caption' => 'Flows',
             'exportName' => self::exportName($result->window->start, $result->window->end),
             'emptyTitle' => 'No flows',
             'emptyMessage' => 'No flows match this query in the selected range.',
             'result' => $resultId,
-            'rowsUrl' => $run['rowsUrl'] ?? '',
         ]);
 
-        $state->setResult($table['html'], $result->count(), [
+        $state->setResult($html, $result->count(), [
             'resultId' => $resultId,
-            'rowChunks' => $table['chunks'],
+            'mode' => $isList ? 'list' : 'html',
+            'itemSize' => FlowRows::itemSize(isset(Config::$settings) && Config::$settings->compactTables),
+            'browserTz' => $list['tz'],
             'limit' => $limit,
             'command' => $result->command,
             'notes' => $result->notes,
             'rawOutput' => \is_string($result->rawOutput) ? $result->rawOutput : '',
             'elapsed' => $elapsed,
-            'returnedSummary' => $summary,
+            'returnedSummary' => FlowsQuery::returnedSummary($result->rows),
             'rangeSummary' => $run['rangeSummary'] ?? null,
             'rangePending' => $run['rangePending'] ?? false,
             'fingerprint' => $run['fingerprint'] ?? '',
@@ -398,6 +415,9 @@ final class FlowActions {
             'end' => $result->window->end,
             'live' => $run['live'] ?? false,
         ]);
+        if ($isList) {
+            FlowWindowActions::prepare($state, $list['sortKey'], $list['sortDir'], $list['hidden']);
+        }
 
         $state->notifyResult($result, $elapsed, 'Flows');
     }

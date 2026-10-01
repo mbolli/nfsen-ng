@@ -82,11 +82,11 @@
                     disabled data-attr:disabled="!$_prevRange" data-preserve-attr="disabled"
                     data-on:click="const query = window.nfsenTime.restoreQuery($_prevRange); {{ remember }}; query && @post('{{ setRange.url() }}' + query)">{{ icons.icon('undo') }} Previous range</button>
 
-            <div class="menu live-menu" id="liveMenu"
-                 data-on:graph-zoom__window__debounce.500ms="evt.target.id === 'trafficGraph' && $_autoSyncGraph && evt.target.isZoomed() && ({{ remember }}, $_zoom = false, @post('{{ setRange.url() }}?op=abs&from=' + Math.floor(evt.detail.from / 1000) + '&to=' + Math.ceil(evt.detail.to / 1000)))">
-                <button type="button" class="menu-toggle" data-size="sm" aria-controls="liveMenuList"
-                        aria-expanded="false" data-preserve-attr="aria-expanded">Live</button>
-                <div class="menu-list live-menu-list" id="liveMenuList" popover data-preserve-attr="style">
+            <sb-popover id="liveMenu" class="live-menu" label="Live" placement="bottom-end"
+                        data-on:graph-zoom__window__debounce.500ms="evt.target.id === 'trafficGraph' && $_autoSyncGraph && evt.target.isZoomed() && ({{ remember }}, $_zoom = false, @post('{{ setRange.url() }}?op=abs&from=' + Math.floor(evt.detail.from / 1000) + '&to=' + Math.ceil(evt.detail.to / 1000)))">
+                <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
+                        data-preserve-attr="aria-expanded aria-haspopup">Live</button>
+                <div class="popover-list live-menu-list" id="liveMenuList">
                     <label class="menu-item switch">
                         <input type="checkbox" id="followLive" role="switch" {% if range_live.bool() %}checked{% endif %}
                                data-effect="el.checked = {{ live }}"
@@ -104,7 +104,7 @@
                             disabled data-attr:disabled="!$_zoom" data-preserve-attr="disabled"
                             data-on:click="$_zoom && ({{ remember }}, @post('{{ setRange.url() }}?op=abs&from=' + Math.floor($_zoom.from / 1000) + '&to=' + Math.ceil($_zoom.to / 1000))); $_zoom = false">Sync zoom to range now</button>
                 </div>
-            </div>
+            </sb-popover>
 
             <button type="button" id="zoomOut" data-size="sm" title="Show twice the time around this range"
                     data-attr:disabled="{{ ds }} <= ${{ data_range_min.id() }} && {{ de }} >= ${{ data_range_max.id() }}" data-preserve-attr="disabled"

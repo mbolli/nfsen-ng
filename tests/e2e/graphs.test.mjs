@@ -1,11 +1,13 @@
 // Overview's traffic graph (spec 1.8, 4.1.3, 5.4): the chart mounts at the real container size,
 // a Ctrl + wheel zoom shows #zoomPreview whose Apply sets the global window, Sync now and Follow
-// graph zoom do the same from the Live menu, a plain wheel scrolls the page and leaves the zoom
+// graph zoom do the same from the Live popover, a plain wheel scrolls the page and leaves the zoom
 // alone, a zoomed preview survives the live tick and new data for the same window, a move keeps
 // hidden series and the zoom, a brush sets the range with one post and Previous range restores
 // the one before, the style toggles in #graphOptions apply and survive a sync, the picker's
 // legend keeps a hidden protocol across new data, the header controls work from the keyboard,
 // and dark mode re-themes. The Flows chart keeps its configuration and its name across a sync.
+// The Live popover (POPOVER-SPEC PB2) works before any sync, opens by keyboard on its first
+// switch, stays open with its focus through the live tick, and opens inside a phone's viewport.
 //
 // Data-dependent assertions only run if the widest range has data in some datatype: a fresh
 // environment has none, and the test fails on wrong behaviour, not on missing data.
@@ -13,10 +15,75 @@ import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
 
 const CHART = "document.getElementById('trafficGraph')";
+const LIVE = "document.getElementById('liveMenu')";
+const LIVE_TRIGGER = "document.querySelector('#liveMenu .menu-toggle')";
+// Overview's actions that run nfdump over capture files (no-auto-query.test.mjs's READS_CAPTURE_FILES).
+const READS_CAPTURE_FILES = ['run-filtered-graph', 'overview-topn-run', 'topn-fill'];
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The Live popover: open by its property and by its top-layer panel, where the focus is, the trigger's aria-expanded. */
+const LIVE_STATE = `(function(){
+    var host = ${LIVE}, trigger = ${LIVE_TRIGGER}, a = document.activeElement;
+    return {
+        open: host.open === true,
+        panel: host.shadowRoot.querySelector('.pop').matches(':popover-open'),
+        focus: a === trigger ? 'trigger' : host.contains(a) ? a.id : 'outside',
+        expanded: trigger.getAttribute('aria-expanded'),
+    };
+})()`;
+
+/**
+ * Runs as the document starts: notes any frame that shows the Live list before sb-popover is defined, then
+ * opens Live while the test holds the load's posts and uses its bindings before any morph touches them.
+ */
+const FIRST_LOAD_PROBE = `(function(){
+    new MutationObserver(function(records, observer){
+        var title = document.getElementById('trafficGraphTitle');
+        if (!title) return;
+        title.setAttribute('data-e2e-unsynced', '');
+        observer.disconnect();
+    }).observe(document, { childList: true, subtree: true });
+    var shown = 0;
+    var ready = function(){
+        var list = document.getElementById('liveMenuList');
+        if (list && !customElements.get('sb-popover') && list.getClientRects().length) shown++;
+        var host = document.getElementById('liveMenu');
+        var trigger = host && host.querySelector('[slot="trigger"]');
+        var upgraded = !!trigger && typeof host.show === 'function' && trigger.getAttribute('aria-haspopup') === 'dialog';
+        if (!upgraded) return requestAnimationFrame(ready);
+        import('datastar').then(function(m){
+            var root = m.root;
+            var title = document.getElementById('trafficGraphTitle');
+            var follow = document.getElementById('followZoom');
+            var sync = document.getElementById('syncZoom');
+            var out = { hiddenUntilDefined: shown === 0, unsynced: title.hasAttribute('data-e2e-unsynced') };
+            trigger.click();
+            out.open = host.open;
+            var was = root._autoSyncGraph;
+            follow.click();
+            out.follows = root._autoSyncGraph === !was;
+            follow.click();
+            out.restored = root._autoSyncGraph === was;
+            root._autoSyncGraph = !was;
+            out.effect = follow.checked === !was;
+            root._autoSyncGraph = was;
+            out.effectRestored = follow.checked === was;
+            root._zoom = { from: 1, to: 2 };
+            out.syncEnabled = !sync.disabled;
+            root._zoom = false;
+            out.syncDisabled = sync.disabled;
+            out.stillOpen = host.open;
+            host.hide();
+            out.closed = !host.open;
+            out.stillUnsynced = title.hasAttribute('data-e2e-unsynced');
+            window.__e2eFirstLoad = out;
+        });
+    };
+    requestAnimationFrame(ready);
+})()`;
+
 async function press(page, key) {
-    const codes = { Enter: 13, Tab: 9, Escape: 27, Space: 32 };
+    const codes = { Enter: 13, Tab: 9, Escape: 27, Space: 32, ArrowDown: 40, ArrowUp: 38, Home: 36, End: 35 };
     const name = key === 'Space' ? ' ' : key;
     const base = { key: name, code: key, windowsVirtualKeyCode: codes[key], nativeVirtualKeyCode: codes[key] };
     await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
@@ -54,7 +121,279 @@ async function currentWindow(page) {
     })()`);
 }
 
+/** The Live popover with no stored data (POPOVER-SPEC PB2 and section 6). */
+async function liveMenuTest() {
+    await withPage(async (page) => {
+        // The load's action posts (the leading live tick, the top-N) wait here until the probe is done.
+        const held = [];
+        const onPaused = (ev) => {
+            const msg = JSON.parse(ev.data);
+            if (msg.method === 'Fetch.requestPaused') held.push(msg.params.requestId);
+        };
+        page.ws.addEventListener('message', onPaused);
+        await page.send('Fetch.enable', { patterns: [{ urlPattern: '*/_action/*', requestStage: 'Request' }] });
+        const { identifier } = await page.send('Page.addScriptToEvaluateOnNewDocument', { source: FIRST_LOAD_PROBE });
+        let first;
+        try {
+            await page.navigate(`${BASE}/#/overview`);
+            await page.waitFor('!!window.__e2eFirstLoad', { timeout: 15000, label: 'the Live popover used before any sync' });
+            first = await page.evaluate('window.__e2eFirstLoad');
+        } finally {
+            await page.send('Fetch.disable').catch(() => {});
+            for (const requestId of held) await page.send('Fetch.continueRequest', { requestId }).catch(() => {});
+            page.ws.removeEventListener('message', onPaused);
+            await page.send('Page.removeScriptToEvaluateOnNewDocument', { identifier }).catch(() => {});
+        }
+        assert.ok(held.length > 0, 'the load posted actions, held until the probe was done');
+        assert.deepEqual(
+            first,
+            {
+                hiddenUntilDefined: true,
+                unsynced: true,
+                open: true,
+                follows: true,
+                restored: true,
+                effect: true,
+                effectRestored: true,
+                syncEnabled: true,
+                syncDisabled: true,
+                stillOpen: true,
+                closed: true,
+                stillUnsynced: true,
+            },
+            'before any sync the trigger opens Live and its data-on, data-effect and data-attr work (patch 0011)'
+        );
+
+        await page.waitForBoot();
+        await page.waitForPage('overview');
+        if (!(await page.signalValue('range_live'))) await page.setRangePreset('24h');
+        const log = await page.requestLog();
+
+        // The popover contract (POPOVER-SPEC 4.1): one slotted trigger that keeps its selector, sb-popover's
+        // ARIA on it, the old list id on a .popover-list, no .menu left, the panel named by label.
+        const shape = await page.evaluate(`(function(){
+            var host = ${LIVE}, trigger = ${LIVE_TRIGGER}, list = document.getElementById('liveMenuList');
+            var pop = host.shadowRoot.querySelector('.pop');
+            return {
+                tag: host.localName,
+                slotted: host.shadowRoot
+                    .querySelector('slot[name="trigger"]')
+                    .assignedElements()
+                    .map(function(el){ return el === trigger; }),
+                haspopup: trigger.getAttribute('aria-haspopup'),
+                controls: trigger.hasAttribute('aria-controls'),
+                list: list.parentElement === host && list.matches('.popover-list') && !list.hasAttribute('popover'),
+                menus: host.querySelectorAll('.menu, [role="menu"], [role="menuitem"]').length + (host.closest('.menu') ? 1 : 0),
+                dialog: pop.getAttribute('role') + ' ' + pop.getAttribute('aria-label'),
+            };
+        })()`);
+        assert.deepEqual(shape, {
+            tag: 'sb-popover',
+            slotted: [true],
+            haspopup: 'dialog',
+            controls: false,
+            list: true,
+            menus: 0,
+            dialog: 'dialog Live',
+        });
+        assert.equal(await page.evaluate(`document.getElementById('syncZoom').disabled`), true, 'Sync zoom waits for a zoom');
+
+        // Compact tables change nothing about Live (POPOVER-SPEC section 6, item 12).
+        const liveLook = `(function(){
+            var host = ${LIVE};
+            var size = function(el){ var r = el.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; };
+            return {
+                open: host.open === true,
+                slotted: host.shadowRoot.querySelector('slot[name="trigger"]').assignedElements().length,
+                fallback: host.shadowRoot.querySelector('button.trigger').getClientRects().length,
+                trigger: size(${LIVE_TRIGGER}),
+                panel: size(host.shadowRoot.querySelector('.panel')),
+                items: [...document.querySelectorAll('#liveMenuList .menu-item')].map(function(i){ return size(i)[1]; }),
+                focus: document.activeElement?.id,
+            };
+        })()`;
+        const density = await page.evaluate(`document.documentElement.getAttribute('data-density')`);
+        const looks = {};
+        const cellPads = {};
+        try {
+            for (const d of ['comfortable', 'compact']) {
+                await page.evaluate(`document.documentElement.dataset.density = '${d}'`);
+                cellPads[d] = await page.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--cell-pad-block')`);
+                await page.evaluate(`${LIVE_TRIGGER}.click()`);
+                await page.waitFor(`${LIVE}.open === true && document.activeElement?.id === 'followLive'`, {
+                    label: `Live open with ${d} tables`,
+                });
+                await sleep(200);
+                looks[d] = await page.evaluate(liveLook);
+                await press(page, 'Escape');
+                await page.waitFor(`${LIVE}.open === false && document.activeElement === ${LIVE_TRIGGER}`, {
+                    label: `Escape to close Live with ${d} tables`,
+                });
+            }
+        } finally {
+            await page.evaluate(`(function(d){
+                d === null ? document.documentElement.removeAttribute('data-density') : document.documentElement.setAttribute('data-density', d);
+            })(${JSON.stringify(density)})`);
+        }
+        assert.notEqual(cellPads.compact, cellPads.comfortable, `compact tightens the table cells: ${JSON.stringify(cellPads)}`);
+        assert.deepEqual(
+            [looks.compact.open, looks.compact.slotted, looks.compact.fallback, looks.compact.focus],
+            [true, 1, 0, 'followLive'],
+            'with compact tables Live opens on its first switch, and only the slotted trigger renders'
+        );
+        assert.deepEqual(looks.compact, looks.comfortable, 'compact tables leave the Live trigger, panel and items as they were');
+
+        // Enter and Space open on the first switch; the arrows, Home and End walk the enabled items and wrap.
+        await page.evaluate(`${LIVE_TRIGGER}.focus()`);
+        for (const key of ['Enter', 'Space']) {
+            await press(page, key);
+            await page.waitFor(`${LIVE}.open === true && document.activeElement?.id === 'followLive'`, {
+                label: `${key} to open Live on Follow live data`,
+            });
+            assert.deepEqual(await page.evaluate(LIVE_STATE), { open: true, panel: true, focus: 'followLive', expanded: 'true' });
+            await press(page, 'Escape');
+            await page.waitFor(`${LIVE}.open === false && document.activeElement === ${LIVE_TRIGGER}`, {
+                label: `Escape after ${key} to return the focus`,
+            });
+            assert.deepEqual(await page.evaluate(LIVE_STATE), { open: false, panel: false, focus: 'trigger', expanded: 'false' });
+        }
+        await press(page, 'ArrowUp');
+        await page.waitFor(`${LIVE}.open === true && document.activeElement?.id === 'followZoom'`, {
+            label: 'ArrowUp on the trigger to open Live on its last enabled item',
+        });
+        await press(page, 'Escape');
+        await page.waitFor(`${LIVE}.open === false && document.activeElement === ${LIVE_TRIGGER}`, { label: 'Escape after ArrowUp' });
+        await press(page, 'ArrowDown');
+        await page.waitFor(`${LIVE}.open === true && document.activeElement?.id === 'followLive'`, {
+            label: 'ArrowDown on the trigger to open Live on its first item',
+        });
+        const walk = [];
+        for (const key of ['ArrowDown', 'ArrowDown', 'End', 'Home', 'ArrowUp']) {
+            await press(page, key);
+            walk.push(await page.evaluate('document.activeElement?.id'));
+        }
+        assert.deepEqual(
+            walk,
+            ['followZoom', 'followLive', 'followZoom', 'followLive', 'followZoom'],
+            'the keys skip the disabled Sync zoom and wrap'
+        );
+
+        // The live tick (15 s on Overview) morphs the page; Live stays open with the focus on the same switch.
+        // A morph the server pushes on its own (the top-N filling in) passes the same checks and waits on.
+        await page.evaluate('window.__e2eLiveFocus = document.activeElement');
+        const tickBy = Date.now() + 25000;
+        for (let ticked = false; !ticked; ) {
+            await page.evaluate(`document.getElementById('trafficGraphTitle').setAttribute('data-e2e-tick', '')`);
+            log.clear();
+            await page.waitFor(`!document.getElementById('trafficGraphTitle').hasAttribute('data-e2e-tick')`, {
+                timeout: Math.max(0, tickBy - Date.now()),
+                label: 'the live tick',
+            });
+            ticked = log.count('refresh-graphs') >= 1;
+            const why = ticked ? 'the live tick' : 'a pushed sync';
+            assert.deepEqual(
+                await page.evaluate(LIVE_STATE),
+                { open: true, panel: true, focus: 'followZoom', expanded: 'true' },
+                `Live stays open through ${why}`
+            );
+            assert.equal(
+                await page.evaluate('document.activeElement === window.__e2eLiveFocus'),
+                true,
+                `the same switch keeps the focus through ${why}`
+            );
+        }
+
+        // Tab walks the panel; past its last enabled item the focus leaves the host, which closes it and lets the focus go on.
+        await press(page, 'Tab');
+        await page.waitFor(`${LIVE}.open === false`, { label: 'Tab out of Live to close it' });
+        const left = await page.evaluate(`(function(){
+            var host = ${LIVE}, a = document.activeElement;
+            var after = !!(host.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING);
+            return { inside: host.contains(a), trigger: a === ${LIVE_TRIGGER}, after: after };
+        })()`);
+        assert.deepEqual(left, { inside: false, trigger: false, after: true }, 'the focus goes on to the control after Live');
+
+        // An outside press closes it and leaves the focus where the press put it.
+        await page.evaluate(`${LIVE_TRIGGER}.click()`);
+        await page.waitFor(`${LIVE}.open === true && document.activeElement?.id === 'followLive'`, { label: 'a click to open Live' });
+        const at = await page.evaluate(`(function(){
+            var r = document.getElementById('trafficGraphTitle').getBoundingClientRect();
+            return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        })()`);
+        for (const type of ['mousePressed', 'mouseReleased']) {
+            await page.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 });
+        }
+        await page.waitFor(`${LIVE}.open === false`, { label: 'an outside press to close Live' });
+        assert.equal((await page.evaluate(LIVE_STATE)).focus, 'outside', 'an outside press does not pull the focus back');
+
+        assert.equal(log.count('set-range'), 0, `opening and walking Live set no range: ${log.names().join(', ')}`);
+        assert.deepEqual(
+            log.names().filter((name) => READS_CAPTURE_FILES.includes(name)),
+            [],
+            'opening and walking Live ran no capture-file query'
+        );
+        const errors = page.realErrors();
+        assert.deepEqual(errors, [], `expected no console errors with the Live popover, got:\n${errors.join('\n')}`);
+    });
+}
+
+/** POPOVER-SPEC section 6, item 11: at 390 x 844 a tap opens Live inside the viewport and its trigger stays put. */
+async function liveMenuOnPhone() {
+    await withPage(
+        async (page) => {
+            await page.navigate(`${BASE}/#/overview`);
+            await page.waitForBoot();
+            await page.waitForPage('overview');
+            await page.waitFor(`typeof ${LIVE}.show === 'function' && ${LIVE_TRIGGER}.getAttribute('aria-haspopup') === 'dialog'`, {
+                label: 'sb-popover to upgrade Live',
+            });
+            const log = await page.requestLog();
+            const boxes = `(function(){
+                var host = ${LIVE}, pop = host.shadowRoot.querySelector('.pop');
+                var round = function(r){
+                    return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right) };
+                };
+                return {
+                    open: host.open === true && pop.matches(':popover-open'),
+                    trigger: round(${LIVE_TRIGGER}.getBoundingClientRect()),
+                    panel: round(pop.getBoundingClientRect()),
+                    view: { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight },
+                };
+            })()`;
+            await page.evaluate(`${LIVE_TRIGGER}.scrollIntoView({ block: 'center' })`);
+            await sleep(300);
+            const before = await page.evaluate(boxes);
+            const tap = { x: (before.trigger.left + before.trigger.right) / 2, y: (before.trigger.top + before.trigger.bottom) / 2 };
+            await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [tap] });
+            await sleep(80);
+            await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            await page.waitFor(`${LIVE}.open === true`, { label: 'a tap to open Live' });
+            await sleep(300);
+            const { open, trigger, panel, view } = await page.evaluate(boxes);
+            assert.equal(open, true, 'a tap opens Live');
+            assert.equal(view.width, 390);
+            assert.deepEqual(trigger, before.trigger, 'the Live trigger stays where it was');
+            const inside = panel.left >= 0 && panel.top >= 0 && panel.right <= view.width && panel.bottom <= view.height;
+            assert.ok(inside && panel.bottom > panel.top, `the Live panel lies inside the viewport: ${JSON.stringify({ panel, view })}`);
+            await press(page, 'Escape');
+            await page.waitFor(`${LIVE}.open === false`, { label: 'Escape to close Live on a phone' });
+            assert.equal(log.count('set-range'), 0, 'opening Live on a phone set no range');
+            assert.deepEqual(
+                log.names().filter((name) => READS_CAPTURE_FILES.includes(name)),
+                [],
+                'opening Live on a phone ran no capture-file query'
+            );
+            const errors = page.realErrors();
+            assert.deepEqual(errors, [], `expected no console errors with Live on a phone, got:\n${errors.join('\n')}`);
+        },
+        { width: 390, height: 844, mobile: true }
+    );
+}
+
 export default async function graphsTest() {
+    await liveMenuTest();
+    await liveMenuOnPhone();
+
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
         await page.waitForBoot();
@@ -289,21 +628,31 @@ export default async function graphsTest() {
         await page.waitFor(`document.querySelector('#rangeMenu .menu-toggle').textContent.includes('Last year')`, { label: 'Previous range after a brush' });
         await page.waitFor(`!!${CHART}.chart`, { label: 'the chart to redraw' });
 
-        // Sync zoom to range now, from the Live menu.
+        // Sync zoom to range now, chosen from the Live popover by keyboard: ArrowUp on the trigger opens
+        // it on its last item, and Enter syncs, closes it and puts the focus back on the trigger.
         const synced = await zoomTo();
-        await page.evaluate(`document.querySelector('#liveMenu .menu-toggle').click()`);
         await page.waitFor(`!document.getElementById('syncZoom').disabled`, { label: '#syncZoom to enable' });
-        await page.evaluate(`document.getElementById('syncZoom').click()`);
+        await page.evaluate(`${LIVE_TRIGGER}.focus()`);
+        await press(page, 'ArrowUp');
+        await page.waitFor(`${LIVE}.open === true && document.activeElement?.id === 'syncZoom'`, {
+            label: 'ArrowUp to open Live on Sync zoom',
+        });
+        await press(page, 'Enter');
         await windowMatches(synced);
+        await page.waitFor(`${LIVE}.open === false && document.activeElement === ${LIVE_TRIGGER}`, {
+            label: 'choosing Sync zoom to close Live and return the focus',
+        });
+        assert.deepEqual(await page.evaluate(LIVE_STATE), { open: false, panel: false, focus: 'trigger', expanded: 'false' });
 
-        // Follow graph zoom applies a zoom by itself, and the preview stays away.
+        // Follow graph zoom applies a zoom by itself, and the preview stays away. The host's window
+        // graph-zoom listener posts it (host attributes stay in page scope).
         await page.setRangePreset('1y');
         await page.waitFor(`!!${CHART}.chart`, { label: 'the chart to redraw' });
         await page.evaluate(`(function(){
-            var toggle = document.querySelector('#liveMenu .menu-toggle');
-            if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+            if (!${LIVE}.open) ${LIVE_TRIGGER}.click();
             document.getElementById('followZoom').click();
         })()`);
+        assert.equal(await page.evaluate(`${LIVE}.open`), true, 'a switch keeps Live open');
         assert.equal(await page.signalValue('_autoSyncGraph'), true, 'Follow graph zoom is on');
         const { min } = await currentWindow(page);
         const followed = await page.evaluate(`(function(){
@@ -316,32 +665,48 @@ export default async function graphsTest() {
         assert.equal(await page.evaluate(`document.getElementById('zoomPreview').hidden`), true, 'no preview while following');
         await windowMatches(followed);
         await page.evaluate(`(function(){
-            var toggle = document.querySelector('#liveMenu .menu-toggle');
-            if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+            if (!${LIVE}.open) ${LIVE_TRIGGER}.click();
             document.getElementById('followZoom').click();
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         })()`);
         assert.equal(await page.signalValue('_autoSyncGraph'), false, 'Follow graph zoom is off again');
+        await press(page, 'Escape');
+        await page.waitFor(`${LIVE}.open === false`, { label: 'Escape to close Live' });
         await page.setRangePreset('1y');
         await page.waitFor(`!!${CHART}.chart`, { label: 'the chart to redraw' });
 
-        // V-A11Y: the Live menu by keyboard. Enter opens it, Tab reaches Follow live data, Space
-        // pins the window, Escape closes and returns focus, Tab leaves the closed menu behind.
-        await page.evaluate(`document.querySelector('#liveMenu .menu-toggle').focus()`);
+        // V-A11Y: the Live popover by keyboard. Enter opens it on Follow live data, Space pins the window
+        // through a sync that keeps it open, Escape returns the focus, Tab leaves the closed popover behind.
+        await page.evaluate(`${LIVE_TRIGGER}.focus()`);
         await press(page, 'Enter');
-        await page.waitFor(`document.querySelector('#liveMenu .menu-toggle').getAttribute('aria-expanded') === 'true'`, { label: 'Enter to open the Live menu' });
-        await press(page, 'Tab');
-        assert.equal(await page.evaluate(`document.activeElement?.id`), 'followLive', 'Tab moves into the Live menu');
+        await page.waitFor(`${LIVE}.open === true && document.activeElement?.id === 'followLive'`, {
+            label: 'Enter to open Live on Follow live data',
+        });
         await press(page, 'Space');
         await page.waitFor(`document.querySelector('#trafficGraphSection .badge')?.textContent.includes('HISTORICAL')`, { label: 'the HISTORICAL badge once pinned' });
         assert.equal(await page.signalValue('range_live'), false, 'Follow live data off pins the window');
+        assert.deepEqual(
+            await page.evaluate(LIVE_STATE),
+            { open: true, panel: true, focus: 'followLive', expanded: 'true' },
+            'the sync after pinning keeps Live open with the focus on its switch'
+        );
         await page.withForcedColors(async () => {
             await sleep(300);
+            // The open panel keeps its edge and the focused switch its ring (POPOVER-SPEC section 6, item 10).
+            const edges = await page.evaluate(`(function(){
+                var panel = getComputedStyle(${LIVE}.shadowRoot.querySelector('.panel'));
+                var item = getComputedStyle(document.activeElement);
+                return { panel: panel.outlineStyle + ' ' + panel.outlineWidth, ring: item.outlineStyle + ' ' + item.outlineWidth };
+            })()`);
+            assert.equal(edges.panel, 'solid 1px', `the Live panel keeps its edge in forced colors: ${edges.panel}`);
+            assert.ok(
+                !edges.ring.startsWith('none') && parseFloat(edges.ring.split(' ')[1]) >= 2,
+                `the focused switch shows a ring: ${edges.ring}`
+            );
             await page.screenshot('/tmp/nfsen-graph-header-forced-colors.png');
         });
         await press(page, 'Escape');
-        await page.waitFor(`document.activeElement === document.querySelector('#liveMenu .menu-toggle')`, { label: 'Escape to return focus to the Live toggle' });
-        assert.equal(await page.evaluate(`document.querySelector('#liveMenu .menu-toggle').getAttribute('aria-expanded')`), 'false');
+        await page.waitFor(`document.activeElement === ${LIVE_TRIGGER}`, { label: 'Escape to return focus to the Live trigger' });
+        assert.deepEqual(await page.evaluate(LIVE_STATE), { open: false, panel: false, focus: 'trigger', expanded: 'false' });
         // Zoom out is disabled while the window already holds all the data; then Tab goes on to the Options.
         const next = (await page.evaluate(`document.getElementById('zoomOut').disabled`)) ? 'filterDisplaySelect' : 'zoomOut';
         await press(page, 'Tab');

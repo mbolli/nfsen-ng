@@ -20,7 +20,7 @@ The dev state (preferences, alert rules, `nfsen-ng.sqlite`) lives in `backend/se
 ## Useful Commands
 
 ```bash
-composer install        # Install PHP deps (php-via comes from /develop/php-via for now, see below)
+composer install        # Install PHP deps
 composer test           # Run Pest tests (run them in the app image, see Testing)
 composer test-phpstan   # Static analysis (level 8, set in phpstan.neon)
 composer fix            # Auto-format PHP
@@ -41,13 +41,9 @@ missing, or the build differs (as right after a pin bump), it warns and keeps th
 `datastar.LICENSE.md`, `echarts.min.js`, `echarts.LICENSE` and `echarts.NOTICE` into `frontend/js/`. The source map
 embeds the TypeScript sources, so DevTools shows them.
 
-Until php-via publishes a release with the revival fix, `composer.json` takes `mbolli/php-via` from the local git
-repository at `/develop/php-via`, branch `fix/revive-seed-from-sse` (`dev-fix/revive-seed-from-sse as 0.13.0`): a
-context that a list request revived without signals takes them from its next SSE connect. Composer needs that path,
-also inside a container, and lists no branch that is checked out in a worktree, so that branch stays checked out
-nowhere. Once the release is out, require it (`"mbolli/php-via": "^0.13.0"` or the version that has the fix), drop
-the `repositories` entry, run `composer update mbolli/php-via` and build `deploy/Dockerfile` once. That build stops with *php-via is missing from vendor/* while `composer.lock`
-names no published release: `composer install --no-dev` exits 0 there but leaves php-via out.
+php-via comes from Packagist (`^0.13.0`, from 0.13.0 on with the revival fix: a context that a list request revived
+without signals takes them from its next SSE connect). The production image's build stops with *php-via is missing
+from vendor/* if Composer could not install it.
 
 ## Architecture
 

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "f0ad4dfa366d50c791296bb31ce1b5fe",
+    "content-hash": "6da08d52558480518a4b627ba87f32ee",
     "packages": [
         {
             "name": "doctrine/deprecations",
@@ -121,11 +121,17 @@
         },
         {
             "name": "mbolli/php-via",
-            "version": "dev-fix/revive-seed-from-sse",
+            "version": "v0.13.0",
             "source": {
                 "type": "git",
-                "url": "/develop/php-via",
-                "reference": "06397d86ed72e850322b2266b0bcf844dbccd5f7"
+                "url": "https://github.com/mbolli/php-via.git",
+                "reference": "dccddd6daaad8d2258beecf32e2db12d3c62d993"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/mbolli/php-via/zipball/dccddd6daaad8d2258beecf32e2db12d3c62d993",
+                "reference": "dccddd6daaad8d2258beecf32e2db12d3c62d993",
+                "shasum": ""
             },
             "require": {
                 "ext-openswoole": "^26.0",
@@ -154,31 +160,7 @@
                     "Mbolli\\PhpVia\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "dev": [
-                    "bash scripts/dev.sh"
-                ],
-                "test": [
-                    "vendor/bin/pest"
-                ],
-                "watch-test": [
-                    "find src tests -name '*.php' | entr -c vendor/bin/pest"
-                ],
-                "css": [
-                    "cd website && pnpm build"
-                ],
-                "phpstan": [
-                    "phpstan analyse --configuration=.phpstan.neon"
-                ],
-                "cs-fix": [
-                    "php-cs-fixer fix -v --config=.php-cs-fixer.php"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
@@ -189,7 +171,11 @@
                 }
             ],
             "description": "Real-time engine for building reactive web applications in PHP",
-            "time": "2026-10-01T08:38:12+00:00"
+            "support": {
+                "issues": "https://github.com/mbolli/php-via/issues",
+                "source": "https://github.com/mbolli/php-via/tree/v0.13.0"
+            },
+            "time": "2026-10-02T07:27:56+00:00"
         },
         {
             "name": "mcp/sdk",
@@ -1594,16 +1580,16 @@
         },
         {
             "name": "symfony/polyfill-mbstring",
-            "version": "v1.38.2",
+            "version": "v1.43.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-mbstring.git",
-                "reference": "d3d318bad5e7a1bfbd026009c8bfb8d8f99ae6b6"
+                "reference": "4d5d331bf731e0aedbc6b2f5e61135b7b7996a72"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/polyfill-mbstring/zipball/d3d318bad5e7a1bfbd026009c8bfb8d8f99ae6b6",
-                "reference": "d3d318bad5e7a1bfbd026009c8bfb8d8f99ae6b6",
+                "url": "https://api.github.com/repos/symfony/polyfill-mbstring/zipball/4d5d331bf731e0aedbc6b2f5e61135b7b7996a72",
+                "reference": "4d5d331bf731e0aedbc6b2f5e61135b7b7996a72",
                 "shasum": ""
             },
             "require": {
@@ -1655,7 +1641,7 @@
                 "shim"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-mbstring/tree/v1.38.2"
+                "source": "https://github.com/symfony/polyfill-mbstring/tree/v1.43.0"
             },
             "funding": [
                 {
@@ -1675,7 +1661,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-05-27T06:59:30+00:00"
+            "time": "2026-09-24T15:19:04+00:00"
         },
         {
             "name": "symfony/polyfill-uuid",
@@ -1840,16 +1826,16 @@
         },
         {
             "name": "twig/twig",
-            "version": "v3.28.0",
+            "version": "v3.30.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/twigphp/Twig.git",
-                "reference": "597c12ed286fb9d1701a36684ce6e0cbe28ebc8b"
+                "reference": "8c737079b726af72ff8ef3c595be9f6a810ea1ef"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/twigphp/Twig/zipball/597c12ed286fb9d1701a36684ce6e0cbe28ebc8b",
-                "reference": "597c12ed286fb9d1701a36684ce6e0cbe28ebc8b",
+                "url": "https://api.github.com/repos/twigphp/Twig/zipball/8c737079b726af72ff8ef3c595be9f6a810ea1ef",
+                "reference": "8c737079b726af72ff8ef3c595be9f6a810ea1ef",
                 "shasum": ""
             },
             "require": {
@@ -1904,7 +1890,7 @@
             ],
             "support": {
                 "issues": "https://github.com/twigphp/Twig/issues",
-                "source": "https://github.com/twigphp/Twig/tree/v3.28.0"
+                "source": "https://github.com/twigphp/Twig/tree/v3.30.0"
             },
             "funding": [
                 {
@@ -1916,7 +1902,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-07-03T20:44:34+00:00"
+            "time": "2026-09-25T13:20:01+00:00"
         },
         {
             "name": "webmozart/assert",
@@ -6611,16 +6597,16 @@
         },
         {
             "name": "symfony/polyfill-php80",
-            "version": "v1.37.0",
+            "version": "v1.43.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-php80.git",
-                "reference": "dfb55726c3a76ea3b6459fcfda1ec2d80a682411"
+                "reference": "9c6a5d6b01ca51d486c813e9a9c0ed55f208bb74"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/polyfill-php80/zipball/dfb55726c3a76ea3b6459fcfda1ec2d80a682411",
-                "reference": "dfb55726c3a76ea3b6459fcfda1ec2d80a682411",
+                "url": "https://api.github.com/repos/symfony/polyfill-php80/zipball/9c6a5d6b01ca51d486c813e9a9c0ed55f208bb74",
+                "reference": "9c6a5d6b01ca51d486c813e9a9c0ed55f208bb74",
                 "shasum": ""
             },
             "require": {
@@ -6671,7 +6657,7 @@
                 "shim"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-php80/tree/v1.37.0"
+                "source": "https://github.com/symfony/polyfill-php80/tree/v1.43.0"
             },
             "funding": [
                 {
@@ -6691,7 +6677,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-04-10T16:19:22+00:00"
+            "time": "2026-09-25T15:50:05+00:00"
         },
         {
             "name": "symfony/polyfill-php81",
@@ -7351,18 +7337,9 @@
             "time": "2025-12-08T11:19:18+00:00"
         }
     ],
-    "aliases": [
-        {
-            "package": "mbolli/php-via",
-            "version": "dev-fix/revive-seed-from-sse",
-            "alias": "0.13.0",
-            "alias_normalized": "0.13.0.0"
-        }
-    ],
+    "aliases": [],
     "minimum-stability": "dev",
-    "stability-flags": {
-        "mbolli/php-via": 20
-    },
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

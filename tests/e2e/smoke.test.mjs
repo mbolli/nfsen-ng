@@ -86,7 +86,7 @@ function syncAs(pageId) {
     return `(async function(){
         var html = document.documentElement.outerHTML;
         var ctx = (html.match(/via_ctx&quot;:&quot;([^&]+)&quot;/) || html.match(/via_ctx":"([^"]+)"/) || [])[1];
-        var pageSignal = (html.match(/\\bpage____[a-z0-9]+/) || [])[0];
+        var pageSignal = (html.match(/\\bpage(?:____[a-z0-9]+)+/) || [])[0];
         var url = (html.match(/[^'"\\s]*_action\\/refresh-graphs[A-Za-z0-9-]*/) || [])[0];
         if (!ctx || !pageSignal || !url) return 'missing';
         var probe = document.getElementById('page-content');
@@ -103,7 +103,7 @@ function syncAs(pageId) {
 const STALE_SYNC = `(async function(){
     var html = document.documentElement.outerHTML;
     var ctx = (html.match(/via_ctx&quot;:&quot;([^&]+)&quot;/) || html.match(/via_ctx":"([^"]+)"/) || [])[1];
-    var pageId = (html.match(/\\bpage____[a-z0-9]+/) || [])[0];
+    var pageId = (html.match(/\\bpage(?:____[a-z0-9]+)+/) || [])[0];
     var url = (html.match(/[^'"\\s]*_action\\/refresh-graphs[A-Za-z0-9-]*/) || [])[0];
     if (!ctx || !pageId || !url) return 'missing ' + JSON.stringify({ ctx: ctx, pageId: pageId, url: url });
     var body = { via_ctx: ctx };

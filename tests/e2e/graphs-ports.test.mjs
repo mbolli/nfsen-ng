@@ -23,7 +23,7 @@ const config = `JSON.parse(${CHART}.dataset.chartConfig || '{}')`;
 /** Merge a raw value into a context-scoped signal the way a stray client write would. */
 async function pokeSignal(page, name, value) {
     const ok = await page.evaluate(`(function(){
-        var m = document.documentElement.outerHTML.match(new RegExp(${JSON.stringify(name)} + '____[a-z0-9]+'));
+        var m = document.documentElement.outerHTML.match(new RegExp(${JSON.stringify(name)} + '(?:____[a-z0-9]+)+'));
         if (!m) return false;
         var d = document.createElement('div');
         var o = {}; o[m[0]] = ${JSON.stringify(value)};

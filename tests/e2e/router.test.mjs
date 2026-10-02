@@ -38,7 +38,7 @@ async function load(page, url) {
 
 /**
  * The signal keys of every datastar-patch-signals event in the first 2.5 s of a fresh tab's SSE
- * stream (the first sync), and the tab's signal suffix.
+ * stream (the first sync).
  */
 async function firstSyncSignals() {
     const res = await fetch(BASE + '/');
@@ -48,8 +48,7 @@ async function firstSyncSignals() {
         .map((c) => c.split(';')[0])
         .join('; ');
     const ctx = html.match(/via_ctx":"([^"]+)"/)?.[1];
-    const suffix = html.match(/\bpage(____[0-9a-f]+)/)?.[1];
-    assert.ok(ctx && suffix, 'the page carries its context and page signal ids');
+    assert.ok(ctx && /\bpage(?:____[0-9a-z]+)+/.test(html), 'the page carries its context and page signal ids');
 
     const abort = new AbortController();
     const stop = setTimeout(() => abort.abort(), 2500);
@@ -79,8 +78,11 @@ async function firstSyncSignals() {
                 .join('');
             return Object.keys(JSON.parse(json));
         });
-    return { keys, suffix, html };
+    return { keys, html };
 }
+
+/** The wire id of signal `name` among `keys` (php-via adds one or more `____` suffixes), or undefined. */
+const idOf = (keys, name) => keys.find((k) => k.startsWith(`${name}____`));
 
 /** php-via's seed: the signal values the first sync sends, in a <meta> ahead of the SSE bootstrap. */
 function headSeed(html) {
@@ -99,15 +101,15 @@ function headSeed(html) {
 export default async function routerTest() {
     // Appendix A: the first sync pushes the new signals but not page, which the client seeds
     // itself (1.2); an echo would send a tab back to the server's page.
-    const { keys, suffix, html } = await firstSyncSignals();
-    assert.ok(keys.includes(`query_running${suffix}`), `the first sync pushes the shell signals: ${keys.slice(0, 5).join(', ')}`);
-    assert.ok(!keys.includes(`page${suffix}`), 'the first sync does not contain page');
+    const { keys, html } = await firstSyncSignals();
+    assert.ok(!!idOf(keys, 'query_running'), `the first sync pushes the shell signals: ${keys.slice(0, 5).join(', ')}`);
+    assert.ok(!idOf(keys, 'page'), 'the first sync does not contain page');
 
     // The same values are in the page itself, ahead of the layout's one via_ctx seed and SSE bootstrap.
     const { seed, head } = headSeed(html);
-    assert.equal(seed[`query_running${suffix}`], false, 'the seed has the shell signals');
-    assert.equal(typeof seed[`nfcapdTz${suffix}`], 'string', 'the seed has the timezones');
-    assert.ok(!(`page${suffix}` in seed), 'the seed leaves page to the client');
+    assert.equal(seed[idOf(Object.keys(seed), 'query_running')], false, 'the seed has the shell signals');
+    assert.equal(typeof seed[idOf(Object.keys(seed), 'nfcapdTz')], 'string', 'the seed has the timezones');
+    assert.ok(!idOf(Object.keys(seed), 'page'), 'the seed leaves page to the client');
     assert.equal(head.match(/via_ctx/g)?.length, 1, "one via_ctx seed, the layout's");
     assert.ok(head.search(/<meta data-signals__ifmissing=/) < head.indexOf("_sse'"), 'the seed comes before the SSE bootstrap');
 

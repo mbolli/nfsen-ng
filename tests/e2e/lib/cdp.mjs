@@ -375,7 +375,7 @@ class Page {
         const result = await this.evaluate(`(async function(){
             var html = document.documentElement.outerHTML;
             var ctx = (html.match(/via_ctx&quot;:&quot;([^&]+)&quot;/) || html.match(/via_ctx":"([^"]+)"/) || [])[1];
-            var pageSignal = (html.match(/\\bpage____[a-z0-9]+/) || [])[0];
+            var pageSignal = (html.match(/\\bpage(?:____[a-z0-9]+)+/) || [])[0];
             var url = (html.match(/[^'"\\s]*_action\\/refresh-graphs[A-Za-z0-9-]*/) || [])[0];
             if (!ctx || !pageSignal || !url) return 'no context, page signal or refresh-graphs action in the page';
             var probe = document.getElementById('page-content');

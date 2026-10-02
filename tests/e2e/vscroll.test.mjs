@@ -24,6 +24,8 @@ const KEYS = { Tab: 9, PageDown: 34 };
 const SHIFT = 8;
 // The instance runs in UTC; the browser in another zone shows that the list writes times in the browser's zone.
 const ZONE = process.env.VSCROLL_TZ || 'America/New_York';
+// Past app.php's withContextConnectTimeout (90 s), so the window request finds the context gone.
+const REVIVE_WAIT_MS = Number(process.env.VSCROLL_REVIVE_WAIT_MS || 100000);
 // The container whose log V14 reads.
 const CONTAINER = process.env.VSCROLL_CONTAINER || 'nfsen-adopt';
 
@@ -323,7 +325,8 @@ export async function revival(page) {
         return r.status;
     })()`);
     assert.ok(status < 300, `V14: the navigate POST was taken (${status})`);
-    await L.sleep(8000);
+    // php-via frees a context whose stream dropped after app.php's connect timeout (90 s).
+    await L.sleep(REVIVE_WAIT_MS);
     // A scroll asks for a window with a body of only via_ctx; its answer waits for the stream.
     await page.evaluate(`${HOST}.scrollToIndex(6000, { block: 'start' })`);
     await L.sleep(2000);

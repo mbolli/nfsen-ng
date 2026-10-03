@@ -20,7 +20,7 @@ The dev state (preferences, alert rules, `nfsen-ng.sqlite`) lives in `backend/se
 ## Useful Commands
 
 ```bash
-composer install        # Install PHP deps
+composer install        # Install PHP deps (php-via comes from /develop/php-via for now, see below)
 composer test           # Run Pest tests (run them in the app image, see Testing)
 composer test-phpstan   # Static analysis (level 8, set in phpstan.neon)
 composer fix            # Auto-format PHP
@@ -41,9 +41,13 @@ missing, or the build differs (as right after a pin bump), it warns and keeps th
 `datastar.LICENSE.md`, `echarts.min.js`, `echarts.LICENSE` and `echarts.NOTICE` into `frontend/js/`. The source map
 embeds the TypeScript sources, so DevTools shows them.
 
-php-via comes from Packagist (`^0.13.0`, from 0.13.0 on with the revival fix: a context that a list request revived
-without signals takes them from its next SSE connect). The production image's build stops with *php-via is missing
-from vendor/* if Composer could not install it.
+Until php-via 0.14.0 is published, `composer.json` takes `mbolli/php-via` from the local git repository at
+`/develop/php-via`, branch `nfsen-ng/release-0.14` (`dev-nfsen-ng/release-0.14 as 0.14.0`), which points at
+`release/0.14`: that branch is checked out in a worktree, and Composer lists no such branch. Move the ref with
+`git -C /develop/php-via branch -f nfsen-ng/release-0.14 release/0.14` and run `composer update mbolli/php-via`.
+Once 0.14.0 is out, require `"mbolli/php-via": "^0.14.0"`, drop the `repositories` entry and delete the ref. Until
+then the production image's build stops with *php-via is missing from vendor/*: Composer cannot reach the local
+repository there.
 
 ## Architecture
 

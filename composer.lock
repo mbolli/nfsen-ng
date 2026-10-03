@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6da08d52558480518a4b627ba87f32ee",
+    "content-hash": "d3bda0f2bba8c8603b56222b8cc0cdef",
     "packages": [
         {
             "name": "doctrine/deprecations",
@@ -121,17 +121,11 @@
         },
         {
             "name": "mbolli/php-via",
-            "version": "v0.13.0",
+            "version": "dev-nfsen-ng/release-0.14",
             "source": {
                 "type": "git",
-                "url": "https://github.com/mbolli/php-via.git",
-                "reference": "dccddd6daaad8d2258beecf32e2db12d3c62d993"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/mbolli/php-via/zipball/dccddd6daaad8d2258beecf32e2db12d3c62d993",
-                "reference": "dccddd6daaad8d2258beecf32e2db12d3c62d993",
-                "shasum": ""
+                "url": "/develop/php-via",
+                "reference": "4db070d5bdf998a9be6aa6944400c97725fa1905"
             },
             "require": {
                 "ext-openswoole": "^26.0",
@@ -152,7 +146,7 @@
                 "tomasvotruba/type-coverage": "^2.3"
             },
             "suggest": {
-                "ext-brotli": "Required for Config::withBrotli(): Native Brotli compression for pages, static assets, and SSE streams"
+                "ext-brotli": "Brotli level 11 for static files as soon as it is loaded (compressed before the server listens), and for pages and SSE streams with Config::withBrotli()"
             },
             "type": "library",
             "autoload": {
@@ -160,7 +154,31 @@
                     "Mbolli\\PhpVia\\": "src/"
                 }
             },
-            "notification-url": "https://packagist.org/downloads/",
+            "autoload-dev": {
+                "psr-4": {
+                    "Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "dev": [
+                    "bash scripts/dev.sh"
+                ],
+                "test": [
+                    "vendor/bin/pest"
+                ],
+                "watch-test": [
+                    "find src tests -name '*.php' | entr -c vendor/bin/pest"
+                ],
+                "css": [
+                    "cd website && pnpm build"
+                ],
+                "phpstan": [
+                    "phpstan analyse --configuration=.phpstan.neon"
+                ],
+                "cs-fix": [
+                    "php-cs-fixer fix -v --config=.php-cs-fixer.php"
+                ]
+            },
             "license": [
                 "MIT"
             ],
@@ -171,11 +189,7 @@
                 }
             ],
             "description": "Real-time engine for building reactive web applications in PHP",
-            "support": {
-                "issues": "https://github.com/mbolli/php-via/issues",
-                "source": "https://github.com/mbolli/php-via/tree/v0.13.0"
-            },
-            "time": "2026-10-02T07:27:56+00:00"
+            "time": "2026-10-03T06:00:27+00:00"
         },
         {
             "name": "mcp/sdk",
@@ -7337,9 +7351,18 @@
             "time": "2025-12-08T11:19:18+00:00"
         }
     ],
-    "aliases": [],
+    "aliases": [
+        {
+            "package": "mbolli/php-via",
+            "version": "dev-nfsen-ng/release-0.14",
+            "alias": "0.14.0",
+            "alias_normalized": "0.14.0.0"
+        }
+    ],
     "minimum-stability": "dev",
-    "stability-flags": {},
+    "stability-flags": {
+        "mbolli/php-via": 20
+    },
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

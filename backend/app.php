@@ -57,13 +57,11 @@ $viaConfig = (new ViaConfig())
     ->withH2c()
     ->withBrotli()
     // php-via's default, on purpose: at 0, import broadcasts parked a slow tab's SSE write and held the stop.
-    // The next render replaces a dropped one; a dropped Flows chunk is asked for 3 times, then shown as missing.
+    // The next render replaces a dropped one; a dropped raw output or export chunk is asked for 3 times, then reported.
     ->withSseMaxQueuedBytes(1024 * 1024)
-    // Longer than Datastar's longest reconnect wait (30 s), so a context a list request revived keeps its answer.
-    ->withContextConnectTimeout(90_000)
+    // Keep at 1: nfdump slots, running queries and server-owned tab signals live in process memory.
+    ->withWorkerNum((int) EnvRegistry::value('SWOOLE_WORKER_NUM'))
     ->withSwooleSettings([
-        // Keep at 1: nfdump slots, running queries and server-owned tab signals live in process memory.
-        'worker_num' => (int) EnvRegistry::value('SWOOLE_WORKER_NUM'),
         'max_request' => (int) EnvRegistry::value('SWOOLE_MAX_REQUEST'), // 0 = unlimited, for long-lived SSE
         'max_coroutine' => (int) EnvRegistry::value('SWOOLE_MAX_COROUTINE'),
         // openswoole 26.2's native-curl hook segfaults on any name lookup with libcurl >= 8.20.0

@@ -57,6 +57,12 @@ bundle, the Starbase components under `frontend/js/starbase/` and the licence
 files are committed, so a checkout runs without `pnpm install`; see
 [Project Structure](structure.md) and `AGENTS.md` for updating them.
 
+Until php-via 0.14.0 is published, `composer.json` takes it from the local
+repository at `/develop/php-via`, so `composer install` needs that path (mount it
+into a Composer container too), and a build of `deploy/Dockerfile` stops with
+*php-via is missing from vendor/*. `AGENTS.md` says how to move the pin and what
+to change once 0.14.0 is out.
+
 See [Project Structure](structure.md) for where things live,
 [Testing](testing.md) for the test suite in more depth, and
 [Environment Notes](environment-notes.md) for sandbox-specific gotchas that

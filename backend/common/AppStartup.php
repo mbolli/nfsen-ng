@@ -12,7 +12,7 @@ use Mbolli\PhpVia\Via;
 use OpenSwoole\Coroutine;
 
 /**
- * Encapsulates the server-startup logic that runs once in the onStart coroutine: the
+ * Encapsulates the server-startup logic that runs once in the onWorkerStart coroutine: the
  * event-loop lag probe, Config/DB initialisation, the SQLite store, AlertManager,
  * ImportDaemon setup, gap-fill import, the inotify poll interval and the top-N collector.
  * shutdown() ends them again.
@@ -21,11 +21,163 @@ class AppStartup {
     /** How long shutdown() waits for the work it ended; php-via's whole stop budget is about 2 s. */
     public const float SHUTDOWN_WAIT_SECONDS = 1.0;
 
+    /** How long a request that arrives during boot() waits for it. */
+    public const float BOOT_WAIT_SECONDS = 10.0;
+
+    private static bool $booted = false;
+
     /**
      * Run everything that must happen once when the OpenSwoole worker starts.
      * Pass the Via application instance so global state and intervals can be registered.
      */
     public static function boot(Via $app): void {
+        try {
+            self::start($app);
+        } finally {
+            self::$booted = true;
+        }
+    }
+
+    /**
+     * Hold a request that arrived while boot() was still running (it yields on file IO) until boot() ends,
+     * so the page does not read settings that are not loaded yet. Returns at once outside a coroutine.
+     */
+    public static function awaitBoot(float $timeout = self::BOOT_WAIT_SECONDS): bool {
+        $deadline = microtime(true) + $timeout;
+        while (!self::$booted && Coroutine::getCid() > 0 && microtime(true) < $deadline) {
+            Coroutine::usleep(10_000);
+        }
+
+        return self::$booted;
+    }
+
+    /**
+     * The startup catch-up import of each profile that already has data, one after the other.
+     *
+     * @param array<string, ImportDaemon> $daemons
+     */
+    public static function catchUp(Via $app, array $daemons): void {
+        $debug = Debug::getInstance();
+        // New Debug WARNING+ entries go to the Import card's log.
+        $flushLog = static function () use ($app): void {
+            ImportDaemon::appendLog($app, Debug::drainBuffer());
+        };
+
+        foreach ($daemons as $profile => $daemon) {
+            if ($app->isShuttingDown()) {
+                return;
+            }
+            $app->setGlobalState('import_active_profile', $profile);
+            $app->setGlobalState('import_status_text', "[{$profile}] Catching up on missed files…");
+            ImportDaemon::broadcast($app, 'admin:import', now: true);
+
+            try {
+                $daemon->initialImport(
+                    static function (array $progress) use ($app, $flushLog, $profile): void {
+                        $app->setGlobalState('import_progress', $progress['pct']);
+                        $app->setGlobalState('import_current_file', $progress['file']);
+                        $app->setGlobalState('import_status_text', "[{$profile}] Catching up: " . $progress['processed'] . ' / ' . $progress['total'] . ' files');
+                        $app->setGlobalState('import_eta', $progress['eta']);
+                        $flushLog();
+                        ImportDaemon::broadcast($app, 'admin:import');
+                    },
+                    static fn (): bool => $app->isShuttingDown() || (bool) $app->globalState('import_cancel', false)
+                );
+                $flushLog();
+                $app->setGlobalState('import_status_text', "[{$profile}] Up to date");
+                $app->setGlobalState('import_progress', 100);
+                $app->setGlobalState('import_current_file', '');
+                $app->setGlobalState('import_eta', '');
+            } catch (\Throwable $e) {
+                $debug->log("ImportDaemon [{$profile}]: catch-up import failed: " . $e->getMessage(), LOG_ERR);
+                $flushLog();
+                $app->setGlobalState('import_status_text', "[{$profile}] Catch-up failed: " . $e->getMessage());
+                $app->setGlobalState(ImportDaemon::OUTCOME_STATE, 'failed');
+            }
+
+            ImportDaemon::broadcast($app, 'admin:import', now: true);
+        }
+    }
+
+    /**
+     * What the inotify poll runs after each capture file of $profile it imported.
+     *
+     * @return \Closure(string, int, bool): void
+     */
+    public static function onFileImported(Via $app, string $profile): \Closure {
+        $debug = Debug::getInstance();
+
+        return static function (string $source, int $fileTs, bool $isLastSource) use ($app, $debug, $profile): void {
+            $debug->log('ImportDaemon: file imported → broadcasting rrd:live', LOG_DEBUG);
+
+            // Surface any RRD write warnings from this inotify-triggered import
+            $new = Debug::drainBuffer();
+            if ($new !== []) {
+                ImportDaemon::appendLog($app, $new);
+                ImportDaemon::broadcast($app, 'admin:import');
+            }
+
+            ImportDaemon::broadcast($app, 'rrd:live');
+
+            // Rules run once per interval, when every source's file of it is in (D17).
+            /** @var null|AlertManager $alertMgr */
+            $alertMgr = $app->globalState('alertManager', null);
+            if ($alertMgr !== null && !$app->isShuttingDown()) {
+                $fired = $alertMgr->onFileImported(Config::$settings->alerts, $profile, $fileTs, $isLastSource, $source);
+                if (!empty($fired)) {
+                    $app->setGlobalState('alert_fired', ['names' => $fired, 'ts' => time()]);
+                    if (!empty($app->getClients())) {
+                        $app->broadcast('alerts:fired');
+                    }
+                }
+            }
+        };
+    }
+
+    /**
+     * From onWorkerStop: ends what boot() started so a stop takes a moment, not max_wait_time.
+     * Queries and file walks are cut short; an import finishes the capture file it is on.
+     */
+    public static function shutdown(Via $app): void {
+        $started = microtime(true);
+        LoopLag::stop();
+        ImportDaemon::resetBroadcasts();
+        TopNCollector::stop();
+        $alertMgr = $app->globalState('alertManager', null);
+        if ($alertMgr instanceof AlertManager) {
+            $alertMgr->stop();
+        }
+        $daemons = $app->globalState('daemons', []);
+        foreach (\is_array($daemons) ? $daemons : [] as $daemon) {
+            if ($daemon instanceof ImportDaemon) {
+                $daemon->stop();
+            }
+        }
+
+        NfdumpSlots::close();
+        NfcapdFiles::stop();
+        $killed = 0;
+        foreach (NfdumpSlots::running() as $handle => $pids) {
+            if ($handle !== NfdumpSlots::SHARED_HANDLE) {
+                // A filtered graph checks the flag between bins; the kill ends the bin in flight.
+                QueryCancel::request($handle);
+                NfdumpSlots::kill($handle);
+                $killed += \count($pids);
+            }
+        }
+
+        $left = self::awaitCoroutines(self::SHUTDOWN_WAIT_SECONDS);
+        $ms = (int) round((microtime(true) - $started) * 1000);
+        // php-via's log reaches stdout; Debug stops echoing once an import has run.
+        $app->log(
+            $left === 0 ? 'info' : 'warn',
+            "nfsen-ng shutdown: {$killed} nfdump process(es) stopped, " . ($left === 0
+                ? "background work ended in {$ms} ms"
+                : "{$left} coroutine(s) still running after {$ms} ms: " . implode('; ', self::parkedAt())),
+        );
+    }
+
+    private static function start(Via $app): void {
         LoopLag::start();
 
         try {
@@ -172,132 +324,6 @@ class AppStartup {
                 }
             }
         }, 1000);
-    }
-
-    /**
-     * The startup catch-up import of each profile that already has data, one after the other.
-     *
-     * @param array<string, ImportDaemon> $daemons
-     */
-    public static function catchUp(Via $app, array $daemons): void {
-        $debug = Debug::getInstance();
-        // New Debug WARNING+ entries go to the Import card's log.
-        $flushLog = static function () use ($app): void {
-            ImportDaemon::appendLog($app, Debug::drainBuffer());
-        };
-
-        foreach ($daemons as $profile => $daemon) {
-            if ($app->isShuttingDown()) {
-                return;
-            }
-            $app->setGlobalState('import_active_profile', $profile);
-            $app->setGlobalState('import_status_text', "[{$profile}] Catching up on missed files…");
-            ImportDaemon::broadcast($app, 'admin:import', now: true);
-
-            try {
-                $daemon->initialImport(
-                    static function (array $progress) use ($app, $flushLog, $profile): void {
-                        $app->setGlobalState('import_progress', $progress['pct']);
-                        $app->setGlobalState('import_current_file', $progress['file']);
-                        $app->setGlobalState('import_status_text', "[{$profile}] Catching up: " . $progress['processed'] . ' / ' . $progress['total'] . ' files');
-                        $app->setGlobalState('import_eta', $progress['eta']);
-                        $flushLog();
-                        ImportDaemon::broadcast($app, 'admin:import');
-                    },
-                    static fn (): bool => $app->isShuttingDown() || (bool) $app->globalState('import_cancel', false)
-                );
-                $flushLog();
-                $app->setGlobalState('import_status_text', "[{$profile}] Up to date");
-                $app->setGlobalState('import_progress', 100);
-                $app->setGlobalState('import_current_file', '');
-                $app->setGlobalState('import_eta', '');
-            } catch (\Throwable $e) {
-                $debug->log("ImportDaemon [{$profile}]: catch-up import failed: " . $e->getMessage(), LOG_ERR);
-                $flushLog();
-                $app->setGlobalState('import_status_text', "[{$profile}] Catch-up failed: " . $e->getMessage());
-                $app->setGlobalState(ImportDaemon::OUTCOME_STATE, 'failed');
-            }
-
-            ImportDaemon::broadcast($app, 'admin:import', now: true);
-        }
-    }
-
-    /**
-     * What the inotify poll runs after each capture file of $profile it imported.
-     *
-     * @return \Closure(string, int, bool): void
-     */
-    public static function onFileImported(Via $app, string $profile): \Closure {
-        $debug = Debug::getInstance();
-
-        return static function (string $source, int $fileTs, bool $isLastSource) use ($app, $debug, $profile): void {
-            $debug->log('ImportDaemon: file imported → broadcasting rrd:live', LOG_DEBUG);
-
-            // Surface any RRD write warnings from this inotify-triggered import
-            $new = Debug::drainBuffer();
-            if ($new !== []) {
-                ImportDaemon::appendLog($app, $new);
-                ImportDaemon::broadcast($app, 'admin:import');
-            }
-
-            ImportDaemon::broadcast($app, 'rrd:live');
-
-            // Rules run once per interval, when every source's file of it is in (D17).
-            /** @var null|AlertManager $alertMgr */
-            $alertMgr = $app->globalState('alertManager', null);
-            if ($alertMgr !== null && !$app->isShuttingDown()) {
-                $fired = $alertMgr->onFileImported(Config::$settings->alerts, $profile, $fileTs, $isLastSource, $source);
-                if (!empty($fired)) {
-                    $app->setGlobalState('alert_fired', ['names' => $fired, 'ts' => time()]);
-                    if (!empty($app->getClients())) {
-                        $app->broadcast('alerts:fired');
-                    }
-                }
-            }
-        };
-    }
-
-    /**
-     * From onShutdown: ends what boot() started so a stop takes a moment, not max_wait_time.
-     * Queries and file walks are cut short; an import finishes the capture file it is on.
-     */
-    public static function shutdown(Via $app): void {
-        $started = microtime(true);
-        LoopLag::stop();
-        ImportDaemon::resetBroadcasts();
-        TopNCollector::stop();
-        $alertMgr = $app->globalState('alertManager', null);
-        if ($alertMgr instanceof AlertManager) {
-            $alertMgr->stop();
-        }
-        $daemons = $app->globalState('daemons', []);
-        foreach (\is_array($daemons) ? $daemons : [] as $daemon) {
-            if ($daemon instanceof ImportDaemon) {
-                $daemon->stop();
-            }
-        }
-
-        NfdumpSlots::close();
-        NfcapdFiles::stop();
-        $killed = 0;
-        foreach (NfdumpSlots::running() as $handle => $pids) {
-            if ($handle !== NfdumpSlots::SHARED_HANDLE) {
-                // A filtered graph checks the flag between bins; the kill ends the bin in flight.
-                QueryCancel::request($handle);
-                NfdumpSlots::kill($handle);
-                $killed += \count($pids);
-            }
-        }
-
-        $left = self::awaitCoroutines(self::SHUTDOWN_WAIT_SECONDS);
-        $ms = (int) round((microtime(true) - $started) * 1000);
-        // php-via's log reaches stdout; Debug stops echoing once an import has run.
-        $app->log(
-            $left === 0 ? 'info' : 'warn',
-            "nfsen-ng shutdown: {$killed} nfdump process(es) stopped, " . ($left === 0
-                ? "background work ended in {$ms} ms"
-                : "{$left} coroutine(s) still running after {$ms} ms: " . implode('; ', self::parkedAt())),
-        );
     }
 
     /** @return list<string> where each other coroutine waits, as `function (file:line)` */

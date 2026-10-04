@@ -92,6 +92,7 @@ $app->page(
 )->middleware(new HttpEndpoint(Config::VERSION));
 
 $app->page('/', static function (Context $c) use ($app): void {
+    AppStartup::awaitBoot();
     $states = new PageStates();
 
     // Signals and actions all exist before the first render, which freezes Twig's auto-data.

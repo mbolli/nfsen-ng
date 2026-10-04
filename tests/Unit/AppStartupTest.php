@@ -308,3 +308,42 @@ describe('AppStartup::onFileImported()', function (): void {
         }
     });
 });
+
+describe('awaitBoot', function (): void {
+    $setBooted = static function (bool $booted): void {
+        (new ReflectionProperty(AppStartup::class, 'booted'))->setValue(null, $booted);
+    };
+    afterEach(fn () => $setBooted(true));
+
+    // A page load during boot() read Config::$settings before it was set and answered 500.
+    test('a request that arrives during boot waits for it to end', function () use ($setBooted): void {
+        $setBooted(false);
+        $ready = null;
+        $waited = 0.0;
+        Coroutine::run(static function () use ($setBooted, &$ready, &$waited): void {
+            Coroutine::create(static function () use ($setBooted): void {
+                Coroutine::usleep(50_000);
+                $setBooted(true);
+            });
+            $start = microtime(true);
+            $ready = AppStartup::awaitBoot();
+            $waited = microtime(true) - $start;
+        });
+
+        expect($ready)->toBeTrue()->and($waited)->toBeGreaterThanOrEqual(0.04)->toBeLessThan(1.0);
+    });
+
+    test('it gives up after the timeout and outside a coroutine returns at once', function () use ($setBooted): void {
+        $setBooted(false);
+        $ready = null;
+        Coroutine::run(static function () use (&$ready): void {
+            $ready = AppStartup::awaitBoot(0.05);
+        });
+
+        $start = microtime(true);
+        expect($ready)->toBeFalse()
+            ->and(AppStartup::awaitBoot())->toBeFalse()
+            ->and(microtime(true) - $start)->toBeLessThan(0.01)
+        ;
+    });
+});

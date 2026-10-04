@@ -5,12 +5,6 @@
   "license": "Apache-2.0",
   "minimum-stability": "dev",
   "prefer-stable": true,
-  "repositories": [
-    {
-      "type": "vcs",
-      "url": "/develop/php-via"
-    }
-  ],
   "require": {
     "ext-inotify": "*",
     "ext-mbstring": "*",
@@ -18,7 +12,7 @@
     "ext-rrd": "*",
     "php": "^8.4",
     "maxmind-db/reader": "^1.12",
-    "mbolli/php-via": "dev-nfsen-ng/release-0.14 as 0.14.0",
+    "mbolli/php-via": "^0.14.0",
     "mcp/sdk": "^0.8.1",
     "twig/twig": "^3.10"
   },

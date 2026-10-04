@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "a2da9880b1e0f599c71c2628127b5e3c",
+    "content-hash": "46f0f7ca2b253975b49a0e4be863d348",
     "packages": [
         {
             "name": "doctrine/deprecations",
@@ -121,11 +121,17 @@
         },
         {
             "name": "mbolli/php-via",
-            "version": "dev-nfsen-ng/release-0.14",
+            "version": "v0.14.0",
             "source": {
                 "type": "git",
-                "url": "/develop/php-via",
-                "reference": "7388732e732129551d4a60cf3b1baa6013e17d2f"
+                "url": "https://github.com/mbolli/php-via.git",
+                "reference": "3e576d61c18ace40311057df1774d3b8b00707aa"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/mbolli/php-via/zipball/3e576d61c18ace40311057df1774d3b8b00707aa",
+                "reference": "3e576d61c18ace40311057df1774d3b8b00707aa",
+                "shasum": ""
             },
             "require": {
                 "ext-openswoole": "^26.0",
@@ -158,31 +164,7 @@
                     "Mbolli\\PhpVia\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "dev": [
-                    "bash scripts/dev.sh"
-                ],
-                "test": [
-                    "vendor/bin/pest"
-                ],
-                "watch-test": [
-                    "find src tests -name '*.php' | entr -c vendor/bin/pest"
-                ],
-                "css": [
-                    "cd website && pnpm build"
-                ],
-                "phpstan": [
-                    "phpstan analyse --configuration=.phpstan.neon"
-                ],
-                "cs-fix": [
-                    "php-cs-fixer fix -v --config=.php-cs-fixer.php"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
@@ -193,7 +175,11 @@
                 }
             ],
             "description": "Real-time engine for building reactive web applications in PHP",
-            "time": "2026-10-04T09:53:00+00:00"
+            "support": {
+                "issues": "https://github.com/mbolli/php-via/issues",
+                "source": "https://github.com/mbolli/php-via/tree/v0.14.0"
+            },
+            "time": "2026-10-04T12:43:03+00:00"
         },
         {
             "name": "mcp/sdk",
@@ -7355,18 +7341,9 @@
             "time": "2025-12-08T11:19:18+00:00"
         }
     ],
-    "aliases": [
-        {
-            "package": "mbolli/php-via",
-            "version": "dev-nfsen-ng/release-0.14",
-            "alias": "0.14.0",
-            "alias_normalized": "0.14.0.0"
-        }
-    ],
+    "aliases": [],
     "minimum-stability": "dev",
-    "stability-flags": {
-        "mbolli/php-via": 20
-    },
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

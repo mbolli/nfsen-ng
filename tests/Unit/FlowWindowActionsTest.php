@@ -77,8 +77,8 @@ function flowWindowTestCompose(): array {
     foreach (PageRegistry::PAGES as $page) {
         $page::register($c, $app, $states);
     }
-    $c->getSignal('page')?->setValue('flows', broadcast: false);
-    $c->view(static fn (bool $isUpdate): string => flowWindowTestRender($c, $app, $states, $isUpdate), cacheUpdates: false);
+    $c->getSignal('page')?->setValue('flows');
+    $c->view(static fn (bool $isUpdate): string => flowWindowTestRender($c, $app, $states, $isUpdate));
 
     return [$app, $c, $states];
 }
@@ -106,7 +106,7 @@ function flowWindowTestPatches(Context $c): array {
  */
 function flowWindowTestRun(Context $c, string $name, array $input): array {
     flowWindowTestPatches($c);
-    $c->setRequestInput($input, []);
+    $c->setPageInput($input);
     $c->executeAction((string) $c->getAction($name)?->id());
 
     return flowWindowTestPatches($c);
@@ -533,12 +533,12 @@ describe('the Run', function (): void {
         expect(FlowActions::listInputs($c))->toBe(['tz' => 'Asia/Tokyo', 'sortKey' => 'src_port', 'sortDir' => 'desc', 'hidden' => ['srcAddr', 'first']]);
 
         // The hidden keys are checked against the result once it is stored.
-        $tz->setValue('Not/AZone', broadcast: false);
-        $sort->setValue('src_port sideways', broadcast: false);
-        $hidden->setValue(['ok', ['nested'], 'bad key'], broadcast: false);
+        $tz->setValue('Not/AZone');
+        $sort->setValue('src_port sideways');
+        $hidden->setValue(['ok', ['nested'], 'bad key']);
         expect(FlowActions::listInputs($c))->toBe(['tz' => '', 'sortKey' => '', 'sortDir' => '', 'hidden' => ['ok', 'bad key']]);
 
-        $sort->setValue('', broadcast: false);
+        $sort->setValue('');
         expect(FlowActions::listInputs($c)['sortKey'])->toBe('');
     });
 
@@ -556,9 +556,9 @@ describe('the Run', function (): void {
     test('none of them is part of the query\'s fingerprint', function (): void {
         [, $c, $states] = flowWindowTestCompose();
         $before = FlowActions::fingerprintOf(FlowActions::inputs($c));
-        $c->getSignal('flows_tz')?->setValue('Asia/Tokyo', broadcast: false);
-        $c->getSignal('flows_sort')?->setValue('in_bytes desc', broadcast: false);
-        $c->getSignal('flows_hidden')?->setValue(['first'], broadcast: false);
+        $c->getSignal('flows_tz')?->setValue('Asia/Tokyo');
+        $c->getSignal('flows_sort')?->setValue('in_bytes desc');
+        $c->getSignal('flows_hidden')?->setValue(['first']);
 
         expect(FlowActions::fingerprintOf(FlowActions::inputs($c)))->toBe($before)
             ->and($states->flows->isEmpty())->toBeTrue()

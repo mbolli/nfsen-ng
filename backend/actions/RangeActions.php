@@ -55,13 +55,13 @@ final class RangeActions {
                 self::apply($c, $next);
                 $states->shell->graphFetchedAt = 0;
                 if (str_starts_with($error?->string() ?? '', self::ERROR_PREFIX)) {
-                    $error?->setValue('', broadcast: false);
+                    $error?->setValue('');
                 }
             } catch (\InvalidArgumentException $e) {
-                $error?->setValue(self::ERROR_PREFIX . $e->getMessage(), broadcast: false);
+                $error?->setValue(self::ERROR_PREFIX . $e->getMessage());
             } catch (\Throwable $e) {
                 Debug::getInstance()->log('set-range failed: ' . $e->getMessage(), LOG_ERR);
-                $error?->setValue(self::ERROR_PREFIX . 'the change failed: ' . $e->getMessage(), broadcast: false);
+                $error?->setValue(self::ERROR_PREFIX . 'the change failed: ' . $e->getMessage());
             }
             $c->sync();
         }, 'set-range');
@@ -72,7 +72,7 @@ final class RangeActions {
                 $states->shell->graphFetchedAt = 0;
             } catch (\Throwable $e) {
                 Debug::getInstance()->log('apply-globals failed: ' . $e->getMessage(), LOG_ERR);
-                $c->getSignal('_error')?->setValue('Could not apply the selection: ' . $e->getMessage(), broadcast: false);
+                $c->getSignal('_error')?->setValue('Could not apply the selection: ' . $e->getMessage());
             }
             $c->sync();
         }, 'apply-globals');
@@ -87,7 +87,7 @@ final class RangeActions {
                 $states->shell->graphFetchedAt = 0;
             } catch (\Throwable $e) {
                 Debug::getInstance()->log('change-profile failed: ' . $e->getMessage(), LOG_ERR);
-                $c->getSignal('_error')?->setValue('Could not switch the profile: ' . $e->getMessage(), broadcast: false);
+                $c->getSignal('_error')?->setValue('Could not switch the profile: ' . $e->getMessage());
             }
             $c->sync();
         }, 'change-profile');
@@ -191,7 +191,7 @@ final class RangeActions {
         if ($sources !== null) {
             $normalized = self::normalizeSources($sources->getValue(), Config::$settings->sources);
             if ($sources->getValue() !== $normalized) {
-                $sources->setValue($normalized, broadcast: false);
+                $sources->setValue($normalized);
             }
         }
 
@@ -199,7 +199,7 @@ final class RangeActions {
         if ($protocol !== null) {
             $normalized = RangeControls::normalizeProtocol($protocol->getValue());
             if ($protocol->getValue() !== $normalized) {
-                $protocol->setValue($normalized, broadcast: false);
+                $protocol->setValue($normalized);
             }
         }
 
@@ -207,7 +207,7 @@ final class RangeActions {
         if ($unit !== null) {
             $normalized = Settings::normalizeUnit($unit->getValue());
             if ($unit->getValue() !== $normalized) {
-                $unit->setValue($normalized, broadcast: false);
+                $unit->setValue($normalized);
             }
         }
     }
@@ -241,9 +241,9 @@ final class RangeActions {
         $last = $dataRangeMax->int();
         $live = $now - $last < self::FRESH_DATA;
         $end = $live ? $now : $last;
-        $dateend->setValue($end, broadcast: false);
-        $datestart->setValue($end - $width, broadcast: false);
-        $rangeLive?->setValue($live, broadcast: false);
+        $dateend->setValue($end);
+        $datestart->setValue($end - $width);
+        $rangeLive?->setValue($live);
 
         return true;
     }
@@ -322,7 +322,7 @@ final class RangeActions {
         foreach ($next as $name => $value) {
             $signal = $c->getSignal($name);
             if ($signal !== null && $signal->getValue() !== $value) {
-                $signal->setValue($value, broadcast: false);
+                $signal->setValue($value);
             }
         }
     }

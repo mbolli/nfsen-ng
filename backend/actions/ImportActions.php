@@ -110,7 +110,7 @@ final class ImportActions {
 
         $noun = self::PASSES[$pass]['noun'];
         $targetDaemon->lock();
-        $importRunning->setValue(true, broadcast: false);
+        $importRunning->setValue(true);
         $app->setGlobalState('import_active_profile', $targetProfile);
         $app->setGlobalState('import_progress', 0);
         $app->setGlobalState('import_current_file', '');

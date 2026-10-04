@@ -78,14 +78,16 @@ export default async function graphsPortsTest() {
             assert.equal(slots[i], ports.indexOf(Number(name)) + 1, `port ${name} keeps its configured slot`);
         }
 
-        // 1. A scalar port must not take the view down.
+        // 1. A scalar port must not take the view down: php-via refuses it, so every port stays drawn.
         const port = ports[0];
         await pokeSignal(page, 'graph_ports', String(port));
         await page.setSelectValue('#filterDisplaySelect', 'ports'); // re-fire the refresh
-        await page.waitFor(`${config}.seriesNames?.length === 1`, { timeout: 10000, label: 'one series for one port' });
-
+        await page.waitFor(`${config}.seriesNames?.length === ${drawn.length}`, { timeout: 10000, label: 'every series after a scalar port' });
         assert.ok(await page.evaluate(`!!${CHART}.chart`), 'chart should survive a scalar graph_ports');
-        assert.deepEqual(await page.signalValue('graph_ports'), [port], `the server normalizes graph_ports back to [${port}]`);
+
+        await pokeSignal(page, 'graph_ports', [port]);
+        await page.setSelectValue('#filterDisplaySelect', 'ports');
+        await page.waitFor(`${config}.seriesNames?.length === 1`, { timeout: 10000, label: 'one series for one port' });
         assert.deepEqual(await page.evaluate(`${config}.seriesNames`), [String(port)], 'the one series is named after the port');
 
         // 2. After an error wipes the chart, the next update must rebuild it. showMessage() is part of

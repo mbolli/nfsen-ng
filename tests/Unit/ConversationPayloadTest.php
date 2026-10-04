@@ -65,7 +65,7 @@ function conversationsTestCompose(): array {
     foreach ([...PageRegistry::MODULES, ...PageRegistry::PAGES] as $part) {
         $part::register($c, $app, $states);
     }
-    $c->getSignal('page')?->setValue(ConversationsPage::id(), broadcast: false);
+    $c->getSignal('page')?->setValue(ConversationsPage::id());
 
     return [$app, $c, $states];
 }
@@ -305,15 +305,15 @@ describe('ConversationActions', function (): void {
 
     test('reads the signals, falling back from both directions for the port grouping', function (): void {
         [, $c] = conversationsTestCompose();
-        $c->getSignal('conv_group')?->setValue('port', broadcast: false);
-        $c->getSignal('sankey_topN')?->setValue('9999', broadcast: false);
-        $c->getSignal('sankey_metric')?->setValue('nonsense', broadcast: false);
+        $c->getSignal('conv_group')?->setValue('port');
+        $c->getSignal('sankey_topN')?->setValue('9999');
+        $c->getSignal('sankey_metric')?->setValue('nonsense');
 
         expect(ConversationActions::params($c))->toMatchArray([
             'group' => 'port', 'direction' => 'forward', 'fallback' => true, 'topN' => MatrixQuery::MAX_TOP_N, 'metric' => 'bytes',
         ]);
 
-        $c->getSignal('conv_group')?->setValue('bogus', broadcast: false);
+        $c->getSignal('conv_group')?->setValue('bogus');
         expect(ConversationActions::params($c))->toMatchArray(['group' => 'ip', 'direction' => 'both', 'fallback' => false]);
     });
 
@@ -481,7 +481,7 @@ describe('ConversationActions', function (): void {
             ->and($c->getSignal('_conv_stale')?->bool())->toBeFalse()
         ;
 
-        $c->getSignal('conv_group')?->setValue('net16', broadcast: false);
+        $c->getSignal('conv_group')?->setValue('net16');
         expect(ConversationActions::markStale($c, $state))->toBeTrue()
             ->and($c->getSignal('_conv_stale')?->bool())->toBeTrue()
         ;

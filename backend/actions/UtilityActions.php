@@ -37,7 +37,7 @@ final class UtilityActions {
             try {
                 Shell::openModal($c, $states->shell, $c->render('partials/ip-info-modal.html.twig', self::ipInfoView($ip)), 'ip-modal-inner');
             } catch (\Throwable $e) {
-                $c->getSignal('_error')?->setValue('IP info for ' . $ip . ' failed: ' . $e->getMessage(), broadcast: false);
+                $c->getSignal('_error')?->setValue('IP info for ' . $ip . ' failed: ' . $e->getMessage());
                 $c->syncSignals();
             }
         }, 'ip-info');

@@ -73,7 +73,7 @@ final class QueryKitActions {
         }
         // A request that overtook this one has answered newer text; this answer would undo it.
         if (self::isNewest($c, $key, $ticket)) {
-            $result->setValue(self::filterPayload($text, $answer), broadcast: false);
+            $result->setValue(self::filterPayload($text, $answer));
         }
         if ($error !== null) {
             throw $error;
@@ -114,13 +114,13 @@ final class QueryKitActions {
         $plan = self::plan($c, $target);
         if ($plan === null) {
             // Nothing to estimate (a drawer opened for an alert rule): no window, so the component hides.
-            $signal->setValue([...QueryKit::ESTIMATE_DEFAULT, 'pending' => false], broadcast: false);
+            $signal->setValue([...QueryKit::ESTIMATE_DEFAULT, 'pending' => false]);
             self::push($c, $app);
 
             return;
         }
 
-        $signal->setValue([...self::current($signal), 'pending' => true], broadcast: false);
+        $signal->setValue([...self::current($signal), 'pending' => true]);
         self::push($c, $app);
 
         Coroutine::create(static function () use ($c, $app, $key, $plan, $signal, $ticket): void {
@@ -129,11 +129,11 @@ final class QueryKitActions {
                 if (!self::isNewest($c, $key, $ticket)) {
                     return;
                 }
-                $signal->setValue(self::estimatePayload($estimate), broadcast: false);
+                $signal->setValue(self::estimatePayload($estimate));
                 self::push($c, $app);
             } catch (\Throwable $e) {
                 if (self::isNewest($c, $key, $ticket)) {
-                    $signal->setValue([...self::current($signal), 'pending' => false], broadcast: false);
+                    $signal->setValue([...self::current($signal), 'pending' => false]);
                     self::fail($c, 'Could not estimate the query', $e);
                     self::push($c, $app);
                 }
@@ -287,7 +287,7 @@ final class QueryKitActions {
      * drop the patch; the changed signals then go out with the connect sync instead.
      */
     private static function push(Context $c, ?Via $app): void {
-        if ($app !== null && ($app->activeSseCount[$c->getId()] ?? 0) === 0) {
+        if ($app !== null && !$c->isConnected()) {
             return;
         }
         $c->syncSignals();
@@ -295,6 +295,6 @@ final class QueryKitActions {
 
     private static function fail(Context $c, string $what, \Throwable $e): void {
         Debug::getInstance()->log($what . ': ' . $e->getMessage(), LOG_ERR);
-        $c->getSignal('_error')?->setValue($what . ': ' . $e->getMessage(), broadcast: false);
+        $c->getSignal('_error')?->setValue($what . ': ' . $e->getMessage());
     }
 }

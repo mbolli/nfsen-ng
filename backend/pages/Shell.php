@@ -205,7 +205,7 @@ final class Shell {
         /** @var array<string, ImportDaemon> $daemons */
         $daemons = $app->globalState('daemons', []);
         $importing = array_any($daemons, static fn (ImportDaemon $d): bool => $d->isLocked());
-        $c->getSignal('import_running')?->setValue($importing, broadcast: false);
+        $c->getSignal('import_running')?->setValue($importing);
 
         return $importing;
     }

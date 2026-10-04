@@ -129,7 +129,7 @@ function flowActionsTestCompose(): array {
     foreach (PageRegistry::PAGES as $page) {
         $page::register($c, $app, $states);
     }
-    $c->getSignal('page')?->setValue('flows', broadcast: false);
+    $c->getSignal('page')?->setValue('flows');
 
     return [$app, $c, $states];
 }
@@ -657,7 +657,7 @@ describe('the Flows page', function (): void {
         } finally {
             putenv('VIA_TEST_MODE');
         }
-        $c->view(static fn (bool $isUpdate): string => flowActionsTestRender($c, $app, $states, $isUpdate), cacheUpdates: false);
+        $c->view(static fn (bool $isUpdate): string => flowActionsTestRender($c, $app, $states, $isUpdate));
         $flows = $states->flows;
         $rows = array_map(static fn (int $i): array => ['in_bytes' => $i], range(1, 1_200));
         FlowActions::storeResult($flows, new QueryResult($rows, 'nfdump', '', 0.1, TimeWindow::raw(0, 300), "{\"a\": \"<i>&\"}\n"), 0.1, '');
@@ -672,11 +672,11 @@ describe('the Flows page', function (): void {
             return $all;
         };
 
-        $c->setRequestInput(['result' => $id, 'chunk' => '0'], []);
+        $c->setPageInput(['result' => $id, 'chunk' => '0']);
         FlowActions::sendChunk($c, $flows);
-        $c->setRequestInput(['result' => $id, 'chunk' => '1'], []);
+        $c->setPageInput(['result' => $id, 'chunk' => '1']);
         FlowActions::sendChunk($c, $flows);
-        $c->setRequestInput(['result' => 'older', 'chunk' => '0'], []);
+        $c->setPageInput(['result' => 'older', 'chunk' => '0']);
         FlowActions::sendChunk($c, $flows);
         $sent = $patches();
 
@@ -687,7 +687,7 @@ describe('the Flows page', function (): void {
 
         // The store dropped the output: the client asking for a chunk learns it from a sync.
         FlowsState::makeRoom(static fn (): bool => false);
-        $c->setRequestInput(['result' => $id, 'chunk' => '0'], []);
+        $c->setPageInput(['result' => $id, 'chunk' => '0']);
         FlowActions::sendChunk($c, $flows);
         $synced = implode('', array_map(static fn (array $p): string => is_string($p['content']) ? $p['content'] : '', $patches()));
 
@@ -707,9 +707,9 @@ describe('the Flows page', function (): void {
 
         // A render for something else leaves the list and its Columns picker; the next window finds out.
         $kept = flowActionsTestRender($c, $app, $states, true);
-        $c->getSignal('page')?->setValue('health', broadcast: false);
+        $c->getSignal('page')?->setValue('health');
         Shell::render($c, $app, $states, true);
-        $c->getSignal('page')?->setValue('flows', broadcast: false);
+        $c->getSignal('page')?->setValue('flows');
         $back = flowActionsTestRender($c, $app, $states, true);
 
         expect($kept)->toContain(FlowRows::placeholder($id), 'id="flowTable-col-in_bytes"')
@@ -795,7 +795,7 @@ describe('the Flows page', function (): void {
         ]);
 
         $moved = flowActionsTestRender($c, $app, $states);
-        $c->getSignal('flows_filter')?->setValue('proto udp', broadcast: false);
+        $c->getSignal('flows_filter')?->setValue('proto udp');
         $stale = flowActionsTestRender($c, $app, $states, true);
 
         expect($moved)->toContain('The live window has moved on; Run again to include newer data.')
@@ -807,12 +807,12 @@ describe('the Flows page', function (): void {
 
     test('the Limit select offers the preference\'s own value, and a posted limit is clamped', function (): void {
         [, $c] = flowActionsTestCompose();
-        $c->getSignal('flows_limit')?->setValue(250, broadcast: false);
+        $c->getSignal('flows_limit')?->setValue(250);
         expect(FlowsPage::limits(250))->toBe([20, 50, 100, 250, 500, 1000, 10_000])
             ->and(FlowActions::inputs($c)['limit'])->toBe(250)
         ;
 
-        $c->getSignal('flows_limit')?->setValue(10_000_000, broadcast: false);
+        $c->getSignal('flows_limit')?->setValue(10_000_000);
         expect(FlowActions::inputs($c)['limit'])->toBe(FlowActions::MAX_LIMIT);
     });
 

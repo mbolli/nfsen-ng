@@ -117,7 +117,7 @@ final class OverviewPage implements Page {
                 self::startTopN($c, $app, $overview);
             } catch (\Throwable $e) {
                 Debug::getInstance()->log('overview-topn failed: ' . $e->getMessage(), LOG_ERR);
-                $c->getSignal('_error')?->setValue('Top of the range: ' . $e->getMessage(), broadcast: false);
+                $c->getSignal('_error')?->setValue('Top of the range: ' . $e->getMessage());
                 $c->sync();
             }
         }, 'overview-topn');
@@ -548,7 +548,7 @@ final class OverviewPage implements Page {
         $overview->topnRunning = $fingerprint;
         $ticket = ++$overview->topnTicket;
         $pending = $c->getSignal('_ov_topn_pending');
-        $pending?->setValue(true, broadcast: false);
+        $pending?->setValue(true);
         self::push($c, $app, full: false);
 
         Coroutine::create(static function () use ($c, $app, $overview, $in, $ticket, $pending): void {
@@ -565,7 +565,7 @@ final class OverviewPage implements Page {
                 // Only the newest request settles the tab, so a superseded one cannot clear the guard.
                 if ($ticket === $overview->topnTicket) {
                     $overview->topn = $answer;
-                    $pending?->setValue(false, broadcast: false);
+                    $pending?->setValue(false);
                     $overview->topnRunning = '';
                 }
                 self::push($c, $app, full: true);
@@ -594,7 +594,7 @@ final class OverviewPage implements Page {
             try {
                 $result = $query->runPartitioned('overview-topn', null, $onSplit, static fn (): bool => QueryCancel::isRequested($contextId));
                 $rows = self::exactRows($query->statRows($result));
-                $count?->setValue(\count($rows), broadcast: false);
+                $count?->setValue(\count($rows));
                 $overview->exact = [
                     'fingerprint' => $fingerprint,
                     'computedAt' => time(),
@@ -716,7 +716,7 @@ final class OverviewPage implements Page {
      * stored answer instead.
      */
     private static function push(Context $c, Via $app, bool $full): void {
-        if (($app->activeSseCount[$c->getId()] ?? 0) === 0) {
+        if (!$c->isConnected()) {
             return;
         }
         $full ? $c->sync() : $c->syncSignals();

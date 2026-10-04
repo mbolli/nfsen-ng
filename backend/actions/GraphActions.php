@@ -74,7 +74,7 @@ final class GraphActions {
         $ds = $datestart->int();
         $de = $dateend->int();
 
-        $graphIsLive->setValue($c->getSignal('range_live')?->bool() ?? false, broadcast: false);
+        $graphIsLive->setValue($c->getSignal('range_live')?->bool() ?? false);
 
         $display = self::display($graphDisplay->string());
         $sources = self::normalizeSources($graphSources->array(), $display);
@@ -83,29 +83,29 @@ final class GraphActions {
         // Both signals are client-writable and reach the datasource, where a port outside a
         // plain array takes the ports view down (#160).
         if ($graphPorts->getValue() !== $ports) {
-            $graphPorts->setValue($ports, broadcast: false);
+            $graphPorts->setValue($ports);
         }
         if ($graphDisplay->getValue() !== $display) {
-            $graphDisplay->setValue($display, broadcast: false);
+            $graphDisplay->setValue($display);
         }
 
         // Filtered mode (#166): only run-filtered-graph builds; a render would fork hundreds of
         // nfdump processes per SSE push. A cache miss renders the "press Apply" state.
         if ($graphMode->string() === 'filtered') {
-            $graphIsLive->setValue(false, broadcast: false);
+            $graphIsLive->setValue(false);
 
             $cached = FilteredGraphCache::get(self::filteredKey($c));
 
             if ($cached === null) {
                 // 0 points is what the "press Apply" hint keys off.
-                $graphActualRes->setValue(0, broadcast: false);
+                $graphActualRes->setValue(0);
                 self::setStep($c, 0);
 
                 return [];
             }
 
-            $graphActualRes->setValue(\count($cached['data']), broadcast: false);
-            $graphLastUpdate->setValue($cached['end'], broadcast: false);
+            $graphActualRes->setValue(\count($cached['data']));
+            $graphLastUpdate->setValue($cached['end']);
             self::setStep($c, $cached['step']);
             self::clearOwnError($error);
 
@@ -128,18 +128,18 @@ final class GraphActions {
             // the query turns that into an exception so both failures arrive the same way.
             $data = $query->run();
         } catch (\Throwable $e) {
-            $error->setValue('Graph error: ' . $e->getMessage(), broadcast: false);
+            $error->setValue('Graph error: ' . $e->getMessage());
             self::setStep($c, 0);
 
             return [];
         }
 
-        $graphActualRes->setValue(\count($data['data']), broadcast: false);
+        $graphActualRes->setValue(\count($data['data']));
         self::setStep($c, $data['data'] === [] ? 0 : $data['step']);
 
         // Use the actual datasource last-write time rather than wall-clock "now"
         $lastWrite = $query->lastWrite();
-        $graphLastUpdate->setValue($lastWrite > 0 ? $lastWrite : time(), broadcast: false);
+        $graphLastUpdate->setValue($lastWrite > 0 ? $lastWrite : time());
         self::clearOwnError($error);
 
         return $data;
@@ -350,8 +350,8 @@ final class GraphActions {
         // last_update() is an HTTP request on VictoriaMetrics.
         $coverage = (new CoverageQuery($sources, $selectedProfile->string(), withLastUpdate: false))->run();
 
-        $dataRangeMin->setValue($coverage['first'] > 0 ? $coverage['first'] : CoverageQuery::fallbackFirst(), broadcast: false);
-        $dataRangeMax->setValue($coverage['last'] > 0 ? $coverage['last'] : time(), broadcast: false);
+        $dataRangeMin->setValue($coverage['first'] > 0 ? $coverage['first'] : CoverageQuery::fallbackFirst());
+        $dataRangeMax->setValue($coverage['last'] > 0 ? $coverage['last'] : time());
     }
 
     /** Register the run-filtered-graph and refresh-graphs actions. */
@@ -409,15 +409,15 @@ final class GraphActions {
             $contextId = $c->getId();
             QueryCancel::clear($contextId);
 
-            $queryKind->setValue('graph', broadcast: false);
-            $queryRunning->setValue(true, broadcast: false);
-            $queryPermille->setValue(0, broadcast: false);
-            $queryEta->setValue('', broadcast: false);
+            $queryKind->setValue('graph');
+            $queryRunning->setValue(true);
+            $queryPermille->setValue(0);
+            $queryEta->setValue('');
             // Exact, unlike the byte-sampled estimate the single-shot Flows/Statistics
             // queries report: here the bin count is known up front.
-            $queryExact->setValue(true, broadcast: false);
-            $queryStatus->setValue('Reading capture files…', broadcast: false);
-            $error->setValue('', broadcast: false);
+            $queryExact->setValue(true);
+            $queryStatus->setValue('Reading capture files…');
+            $error->setValue('');
             $c->sync();
 
             Coroutine::create(static function () use (
@@ -439,11 +439,10 @@ final class GraphActions {
                     $queryStatus,
                     $queryEta
                 ): void {
-                    $queryPermille->setValue($permille, broadcast: false);
-                    $queryEta->setValue($eta, broadcast: false);
+                    $queryPermille->setValue($permille);
+                    $queryEta->setValue($eta);
                     $queryStatus->setValue(
-                        $total > 0 ? "Scanning {$done} / {$total} intervals" : 'Reading capture files…',
-                        broadcast: false
+                        $total > 0 ? "Scanning {$done} / {$total} intervals" : 'Reading capture files…'
                     );
                     // Signals only: a full sync() here would re-render the whole page once per bin.
                     $c->syncSignals();
@@ -478,7 +477,7 @@ final class GraphActions {
                     // Catching Throwable is not defensive padding: an uncaught error inside a
                     // coroutine takes the whole OpenSwoole worker down, not just this request.
                     Debug::getInstance()->log('Filtered graph failed: ' . $e->getMessage(), LOG_ERR);
-                    $error->setValue('Filtered graph: ' . $e->getMessage(), broadcast: false);
+                    $error->setValue('Filtered graph: ' . $e->getMessage());
                     // Carry the reason, not just the fact. The status line sits right next to
                     // the button, and a bare "Failed." next to a Flows panel that says exactly
                     // why it found nothing is the wrong half of the story to show.
@@ -488,8 +487,8 @@ final class GraphActions {
                     // rewrites query_status from the counts, which would otherwise overwrite
                     // whatever outcome we just set with a bare "Scanning N / N intervals".
                     $progress->finish($binCount);
-                    $queryStatus->setValue($finalStatus ?? '', broadcast: false);
-                    $queryRunning->setValue(false, broadcast: false);
+                    $queryStatus->setValue($finalStatus ?? '');
+                    $queryRunning->setValue(false);
                     QueryCancel::clear($contextId);
                     $c->sync();
                 }
@@ -507,7 +506,7 @@ final class GraphActions {
     public static function clearOwnError(?Signal $error): void {
         $text = $error?->string() ?? '';
         if ($error !== null && $text !== '' && array_any(self::ERROR_PREFIXES, static fn (string $p): bool => str_starts_with($text, $p))) {
-            $error->setValue('', broadcast: false);
+            $error->setValue('');
         }
     }
 
@@ -515,7 +514,7 @@ final class GraphActions {
     private static function setStep(Context $c, int $step): void {
         $signal = $c->getSignal('graph_step');
         if ($signal !== null && $signal->getValue() !== $step) {
-            $signal->setValue($step, broadcast: false);
+            $signal->setValue($step);
         }
     }
 }

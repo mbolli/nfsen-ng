@@ -551,9 +551,9 @@ CHROME=/usr/bin/chromium BASE=http://localhost:8080 node book/_capture.mjs   # O
   unbounded nfdump output whole: let nfdump aggregate (`-s ... -n`, `-c`), as the alert checks' `-s proto` does
 - **Config**: `Config::$cfg` is empty until `Config::initialize()` runs; don't read config at module load
 - **nfcapd path structure**: `<profile>/<source>/YYYY/MM/DD/nfcapd.YYYYMMDDHHII`
-- **Import daemon**: embedded in `app.php`; `AppStartup::boot()` (from `onStart()`) runs the catch-up in a coroutine
+- **Import daemon**: embedded in `app.php`; `AppStartup::boot()` (from `onWorkerStart()`) runs the catch-up in a coroutine
   and polls inotify every second with `setInterval` (`ImportDaemon::pollOnce()`)
-- **Shutdown**: `AppStartup::shutdown()` (from `onShutdown()`, on every stop) stops the event-loop lag probe, the
+- **Shutdown**: `AppStartup::shutdown()` (from `onWorkerStop()`, on every stop) stops the event-loop lag probe, the
   deferred import broadcasts, the daemons, the top-N collector and the alert checks, refuses new interactive nfdump
   slots and kills the runs of tabs and MCP calls.
   A new loop or coroutine that can run for more than a moment ends there or checks `$app->isShuttingDown()`, or it

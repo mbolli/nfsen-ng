@@ -287,8 +287,8 @@ describe('composition', function (): void {
         Config::$settings = Config::$settings->withSources([]);
         $now = time();
         $renderWith = static function (string $page) use ($app, $c, $states, $now): int {
-            $c->getSignal('datestart')?->setValue($now - 3_720, broadcast: false);
-            $c->getSignal('dateend')?->setValue($now - 120, broadcast: false);
+            $c->getSignal('datestart')?->setValue($now - 3_720);
+            $c->getSignal('dateend')?->setValue($now - 120);
             RangeControls::viewData($c, $app, $states, true, $page);
 
             return (int) $c->getSignal('dateend')?->int();
@@ -300,7 +300,7 @@ describe('composition', function (): void {
         $graphFetchedAt = $states->shell->graphFetchedAt;
         // A graph fetched just now is not due again during an import, so the window waits for it.
         $states->shell->graphFetchedAt = $now;
-        $c->getSignal('import_running')?->setValue(true, broadcast: false);
+        $c->getSignal('import_running')?->setValue(true);
         $importing = $renderWith('overview');
 
         expect($onHealth >= $now)->toBe(!PageRegistry::lazy())
@@ -326,7 +326,7 @@ describe('composition', function (): void {
             Shell::render($c, $app, $states, $isUpdate);
 
             return '<main id="app"></main>';
-        }, cacheUpdates: false);
+        });
 
         $c->renderView();
         $c->sync();
@@ -398,7 +398,7 @@ describe('composition', function (): void {
 
     test('an inactive page renders no data, and a non-analysis page no graph (1.2)', function (): void {
         [$app, $c, $states] = pageRegistryTestCompose();
-        $c->getSignal('page')?->setValue('health', broadcast: false);
+        $c->getSignal('page')?->setValue('health');
         $data = Shell::render($c, $app, $states, true);
 
         expect($data['shell']['activePage'])->toBe('health')
@@ -413,7 +413,7 @@ describe('composition', function (): void {
 
     test('the page templates render from it, escaping nfdump\'s messages (D21)', function (string $page): void {
         [$app, $c, $states] = pageRegistryTestCompose();
-        $c->getSignal('page')?->setValue($page, broadcast: false);
+        $c->getSignal('page')?->setValue($page);
         $state = $states->for($page);
         $state?->notifyFailure(new NfdumpException("Unknown protocol: <b>x</b> at '\"<b>x</b>\"'", "nfdump -M /data -- 'proto \"<b>x</b>\"'"));
 
@@ -430,7 +430,7 @@ describe('composition', function (): void {
     // strict_variables is on, so a template reading a key outside 1.5 fails the render.
     test('the whole layout renders from the 1.5 contract with each page active', function (string $page): void {
         [$app, $c, $states] = pageRegistryTestCompose();
-        $c->getSignal('page')?->setValue($page, broadcast: false);
+        $c->getSignal('page')?->setValue($page);
 
         $html = $c->render('layout.html.twig', Shell::render($c, $app, $states, false));
 
@@ -442,18 +442,18 @@ describe('composition', function (): void {
     test('a page render marks every state rendered, so unchanged results are not re-sent', function (): void {
         [$app, $c, $states] = pageRegistryTestCompose();
         $page = $c->getSignal('page');
-        $page?->setValue('flows', broadcast: false);
+        $page?->setValue('flows');
         $states->flows->setResult('<table></table>', 1);
 
         $first = Shell::render($c, $app, $states, false);
         $second = Shell::render($c, $app, $states, true);
         $states->flows->setResult('<table></table>', 1);
         $third = Shell::render($c, $app, $states, true);
-        $page?->setValue('health', broadcast: false);
+        $page?->setValue('health');
         Shell::render($c, $app, $states, true);
-        $page?->setValue('flows', broadcast: false);
+        $page?->setValue('flows');
         $back = Shell::render($c, $app, $states, true);
-        $page?->setValue('conversations', broadcast: false);
+        $page?->setValue('conversations');
         $conversations = Shell::render($c, $app, $states, true);
 
         expect($first['pages']['flows']['result']['send'])->toBeTrue()

@@ -122,13 +122,13 @@ final class FlowActions {
                                 self::releaseMemory();
                             }
                         }
-                        $flowCount->setValue($flows->count, broadcast: false);
-                        $countLabel->setValue($flows->countLabel(), broadcast: false);
+                        $flowCount->setValue($flows->count);
+                        $countLabel->setValue($flows->countLabel());
                         self::readRangeTotals($c, $flows, $query);
                     } catch (\Throwable $e) {
                         // The cancel flag is read here because QueryRunner clears it after the work.
                         self::storeFailure($flows, $e, QueryRunner::wasCancelled($e, QueryCancel::isRequested($contextId)));
-                        $flowCount->setValue(0, broadcast: false);
+                        $flowCount->setValue(0);
 
                         // QueryRunner owns the status line ("Failed: ...").
                         throw $e;
@@ -137,7 +137,7 @@ final class FlowActions {
             } catch (\Throwable $e) {
                 // Failure while building the command: nothing started, report synchronously.
                 self::storeFailure($flows, $e, false);
-                $flowCount->setValue(0, broadcast: false);
+                $flowCount->setValue(0);
                 $c->sync();
             }
         }, 'flow-actions');
@@ -513,26 +513,26 @@ final class FlowActions {
 
         $plan = QueryKitActions::plan($c, 'flows');
         if ($plan === null) {
-            $signal->setValue([...QueryKit::ESTIMATE_DEFAULT, 'pending' => false], broadcast: false);
+            $signal->setValue([...QueryKit::ESTIMATE_DEFAULT, 'pending' => false]);
             self::push($c, $app);
 
             return;
         }
 
-        $signal->setValue([...QueryKit::ESTIMATE_DEFAULT, ...$current, 'pending' => true], broadcast: false);
+        $signal->setValue([...QueryKit::ESTIMATE_DEFAULT, ...$current, 'pending' => true]);
         self::push($c, $app);
 
         Coroutine::create(static function () use ($c, $app, $signal, $plan, $ticket, $current): void {
             try {
                 $estimate = self::summaryEstimate($plan['window'], $plan['sources'], $plan['profile']);
                 if ((self::$tickets[$c] ?? 0) === $ticket) {
-                    $signal->setValue(QueryKitActions::estimatePayload($estimate), broadcast: false);
+                    $signal->setValue(QueryKitActions::estimatePayload($estimate));
                     self::push($c, $app);
                 }
             } catch (\Throwable $e) {
                 Debug::getInstance()->log('Could not estimate the filtered totals: ' . $e->getMessage(), LOG_ERR);
                 if ((self::$tickets[$c] ?? 0) === $ticket) {
-                    $signal->setValue([...QueryKit::ESTIMATE_DEFAULT, ...$current, 'pending' => false], broadcast: false);
+                    $signal->setValue([...QueryKit::ESTIMATE_DEFAULT, ...$current, 'pending' => false]);
                     self::push($c, $app);
                 }
             }
@@ -575,7 +575,7 @@ final class FlowActions {
 
     /** Before the tab's SSE stream is up a patch would be dropped; the connect sync carries it. */
     private static function push(Context $c, ?Via $app): void {
-        if ($app !== null && ($app->activeSseCount[$c->getId()] ?? 0) === 0) {
+        if ($app !== null && !$c->isConnected()) {
             return;
         }
         $c->syncSignals();

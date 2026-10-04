@@ -79,15 +79,16 @@ $viaConfig = (new ViaConfig())
 
 $app = new Via($viaConfig);
 
-$app->onStart(static fn () => AppStartup::boot($app));
+// nfsen-ng runs one worker (see withWorkerNum above), so worker 0 is the whole server.
+$app->onWorkerStart(static fn (int $workerId) => AppStartup::boot($app));
 // Runs once per worker on SIGTERM or SIGINT (docker stop, systemctl stop, Ctrl-C).
-$app->onShutdown(static fn () => AppStartup::shutdown($app));
+$app->onWorkerStop(static fn (int $workerId) => AppStartup::shutdown($app));
 
 // MCP over HTTP. Registered unconditionally because routes are built before settings load;
 // the middleware answers 404 while NFSEN_MCP_HTTP is off and every request otherwise.
 $app->page(
     HttpEndpoint::PATH,
-    static fn (Context $c) => $c->renderString('MCP endpoint')
+    static fn (Context $c) => $c->view(static fn (): string => 'MCP endpoint')
 )->middleware(new HttpEndpoint(Config::VERSION));
 
 $app->page('/', static function (Context $c) use ($app): void {
@@ -118,7 +119,7 @@ $app->page('/', static function (Context $c) use ($app): void {
     $c->view(static fn (bool $isUpdate): string => $c->render(
         'layout.html.twig',
         Shell::render($c, $app, $states, $isUpdate),
-    ), cacheUpdates: false);
+    ));
 });
 
 $app->start();

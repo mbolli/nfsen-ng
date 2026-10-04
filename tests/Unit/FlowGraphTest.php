@@ -198,12 +198,11 @@ describe('build-flows-graph', function (): void {
         RangeControls::signals($c);
         FlowsPage::signals($c);
         FlowGraphActions::register($c);
-        $c->getSignal('datestart')?->setValue($this->base, broadcast: false);
-        $c->getSignal('dateend')?->setValue($this->base + 12 * 300 - 1, broadcast: false);
-        $c->getSignal('graph_sources')?->setValue(['gateway'], broadcast: false);
-        $c->getSignal('selected_profile')?->setValue('live', broadcast: false);
-        $c->getSignal('flows_filter')?->setValue('port 443', broadcast: false);
-        $c->setRequestInput([], []);
+        $c->getSignal('datestart')?->setValue($this->base);
+        $c->getSignal('dateend')?->setValue($this->base + 12 * 300 - 1);
+        $c->getSignal('graph_sources')?->setValue(['gateway']);
+        $c->getSignal('selected_profile')?->setValue('live');
+        $c->getSignal('flows_filter')?->setValue('port 443');
         $this->c = $c;
         $this->build = (string) $c->getAction('build-flows-graph')?->id();
     });

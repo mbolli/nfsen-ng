@@ -142,7 +142,7 @@ final class AlertsPage implements Page {
             $saved = self::templateSetting($preference);
             $current = $signal->string();
             if ($current !== $saved && ($given[$preference] ?? null) === $current) {
-                $signal->setValue($saved, broadcast: false);
+                $signal->setValue($saved);
                 $current = $saved;
             }
             if ($current === $saved) {

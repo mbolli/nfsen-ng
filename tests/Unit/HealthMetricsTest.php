@@ -15,7 +15,6 @@ use mbolli\nfsen_ng\datasources\Datasource;
 use mbolli\nfsen_ng\datasources\Rrd;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
 use Mbolli\PhpVia\Config as ViaConfig;
-use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
 
 /**
@@ -449,8 +448,9 @@ describe('HealthMetrics::loopLag', function (): void {
             LoopLag::record($p95, $now);
         }
         $app = new Via((new ViaConfig())->withTemplateDir(dirname(__DIR__, 2) . '/backend/templates'));
-        $html = (new Context('ctx-lag', '/', $app))
-            ->renderString("{% import 'pages/health.html.twig' as health %}{{ health.lag(lag) }}", ['lag' => HealthMetrics::loopLag($now)])
+        $html = $app->getTwig()
+            ->createTemplate("{% import 'pages/health.html.twig' as health %}{{ health.lag(lag) }}")
+            ->render(['lag' => HealthMetrics::loopLag($now)])
         ;
         $row = HTMLDocument::createFromString('<dl>' . $html . '</dl>', LIBXML_NOERROR)
             ->querySelector('dd.health-lag')

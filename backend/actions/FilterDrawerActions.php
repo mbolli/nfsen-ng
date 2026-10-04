@@ -51,7 +51,7 @@ final class FilterDrawerActions {
     /** `drawer-open`: validates the text the drawer opened with; the sync renders the editor and the list. */
     public static function open(Context $c, ?string $binary = null): void {
         if (FilterDrawer::target($c) === '') {
-            $c->getSignal('drawer_target')?->setValue('', broadcast: false);
+            $c->getSignal('drawer_target')?->setValue('');
         }
         self::notice($c, '', '');
         self::check($c, $binary);
@@ -111,7 +111,7 @@ final class FilterDrawerActions {
         $repository = self::repository();
         $filter = $repository->find($id) ?? throw new \InvalidArgumentException('The saved filter no longer exists.');
         $repository->touch($id, time());
-        $c->getSignal('drawer_filter')?->setValue($filter['expression'], broadcast: false);
+        $c->getSignal('drawer_filter')?->setValue($filter['expression']);
         self::reset($c);
         self::notice($c, '', "Loaded {$filter['name']} into the editor");
         self::check($c, $binary);
@@ -144,9 +144,9 @@ final class FilterDrawerActions {
                     self::notice($c, 'success', 'Imported ' . $count . ' saved filter' . ($count === 1 ? '' : 's') . ' from this browser');
                 }
             }
-            $c->getSignal('_drawer_imported')?->setValue(bin2hex(random_bytes(8)), broadcast: false);
+            $c->getSignal('_drawer_imported')?->setValue(bin2hex(random_bytes(8)));
         } finally {
-            $c->getSignal('drawer_import')?->setValue('', broadcast: false);
+            $c->getSignal('drawer_import')?->setValue('');
         }
     }
 
@@ -193,16 +193,15 @@ final class FilterDrawerActions {
 
     /** Leaves edit and rename mode and empties the name field. */
     private static function reset(Context $c): void {
-        $c->getSignal('drawer_edit')?->setValue(0, broadcast: false);
-        $c->getSignal('drawer_rename')?->setValue(0, broadcast: false);
-        $c->getSignal('drawer_name')?->setValue('', broadcast: false);
+        $c->getSignal('drawer_edit')?->setValue(0);
+        $c->getSignal('drawer_rename')?->setValue(0);
+        $c->getSignal('drawer_name')?->setValue('');
     }
 
     /** @param ''|'error'|'success'|'warning' $level */
     private static function notice(Context $c, string $level, string $text): void {
         $c->getSignal('_drawer_notice')?->setValue(
-            ['id' => $text === '' ? '' : bin2hex(random_bytes(4)), 'level' => $level, 'text' => $text],
-            broadcast: false,
+            ['id' => $text === '' ? '' : bin2hex(random_bytes(4)), 'level' => $level, 'text' => $text]
         );
     }
 
@@ -242,7 +241,7 @@ final class FilterDrawerActions {
      * SSE stream is up the changed signals go out with the connect sync instead.
      */
     private static function push(Context $c, Via $app): void {
-        if (($app->activeSseCount[$c->getId()] ?? 0) === 0) {
+        if (!$c->isConnected()) {
             return;
         }
         $c->getSignal('drawer_open')?->bool() ? $c->sync() : $c->syncSignals();

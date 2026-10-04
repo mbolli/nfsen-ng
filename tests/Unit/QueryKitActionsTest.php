@@ -127,8 +127,8 @@ beforeEach(function (): void {
     (new ReflectionProperty(FilterValidator::class, 'cache'))->setValue(null, []);
 
     [$this->app, $this->c] = queryKitCompose();
-    $this->c->getSignal('selected_profile')?->setValue('live', broadcast: false);
-    $this->c->getSignal('available_profiles')?->setValue(['live'], broadcast: false);
+    $this->c->getSignal('selected_profile')?->setValue('live');
+    $this->c->getSignal('available_profiles')?->setValue(['live']);
 });
 
 afterEach(function (): void {
@@ -193,8 +193,8 @@ describe('clamping per target', function (): void {
     test('only Flows reads the raw window; the rest are shortened to NFSEN_MAX_STATS_WINDOW', function (): void {
         $start = QUERY_KIT_BASE;
         $end = QUERY_KIT_BASE + 86_400;
-        $this->c->getSignal('datestart')?->setValue($start, broadcast: false);
-        $this->c->getSignal('dateend')?->setValue($end, broadcast: false);
+        $this->c->getSignal('datestart')?->setValue($start);
+        $this->c->getSignal('dateend')?->setValue($end);
 
         foreach (['overview', 'overview-topn', 'talkers', 'flows', 'conversations'] as $target) {
             $plan = QueryKitActions::plan($this->c, $target);
@@ -210,8 +210,8 @@ describe('clamping per target', function (): void {
     });
 
     test('the drawer takes its target\'s kind and clamping', function (): void {
-        $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE, broadcast: false);
-        $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 86_400, broadcast: false);
+        $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE);
+        $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 86_400);
         $drawerTarget = $this->c->getSignal('drawer_target') ?? throw new LogicException('drawer_target is not declared');
         $drawerTarget->setValue('flows');
 
@@ -223,33 +223,33 @@ describe('clamping per target', function (): void {
     });
 
     test('the Talkers estimate splits only a query StatsQuery would split', function (): void {
-        $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE, broadcast: false);
-        $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 3600, broadcast: false);
-        $this->c->getSignal('stats_for')?->setValue('srcip', broadcast: false);
-        $this->c->getSignal('stats_orderBy')?->setValue('bytes', broadcast: false);
+        $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE);
+        $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 3600);
+        $this->c->getSignal('stats_for')?->setValue('srcip');
+        $this->c->getSignal('stats_orderBy')?->setValue('bytes');
         expect(QueryKitActions::plan($this->c, 'talkers')['splittable'] ?? null)->toBeTrue();
 
-        $this->c->getSignal('stats_orderBy')?->setValue('bps', broadcast: false);
+        $this->c->getSignal('stats_orderBy')?->setValue('bps');
         expect(QueryKitActions::plan($this->c, 'talkers')['splittable'] ?? null)->toBeFalse()
             ->and(QueryKitActions::plan($this->c, 'conversations'))->toHaveKey('splittable', null)
         ;
 
-        $this->c->getSignal('stats_for')?->setValue('no such statistic', broadcast: false);
+        $this->c->getSignal('stats_for')?->setValue('no such statistic');
         expect(QueryKitActions::plan($this->c, 'talkers'))->toHaveKey('splittable', null);
     });
 
     test('the filtered graph plans one run per bin and source, sources only from the configured list', function (): void {
-        $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE, broadcast: false);
-        $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 3600, broadcast: false);
-        $this->c->getSignal('graph_sources')?->setValue(['gw', '../../etc', 'edge'], broadcast: false);
-        $this->c->getSignal('graph_display')?->setValue('sources', broadcast: false);
-        $this->c->getSignal('graph_resolution')?->setValue(12, broadcast: false);
-        $this->c->getSignal('selected_profile')?->setValue('../other', broadcast: false);
+        $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE);
+        $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 3600);
+        $this->c->getSignal('graph_sources')?->setValue(['gw', '../../etc', 'edge']);
+        $this->c->getSignal('graph_display')?->setValue('sources');
+        $this->c->getSignal('graph_resolution')?->setValue(12);
+        $this->c->getSignal('selected_profile')?->setValue('../other');
 
         $plan = QueryKitActions::plan($this->c, 'overview');
         expect($plan)->toMatchArray(['sources' => ['gw', 'edge'], 'groups' => 2, 'points' => 12, 'profile' => 'live']);
 
-        $this->c->getSignal('graph_display')?->setValue('protocols', broadcast: false);
+        $this->c->getSignal('graph_display')?->setValue('protocols');
         expect(QueryKitActions::plan($this->c, 'overview')['groups'] ?? null)->toBe(1);
     });
 });
@@ -278,7 +278,7 @@ describe('payload shapes equal the seeded defaults', function (): void {
 
     test('the document seeds exactly the defaults, under the signals\' wire ids, and the components nothing', function (): void {
         $states = new PageStates();
-        $this->c->view(fn (bool $isUpdate): string => $this->c->render('layout.html.twig', Shell::render($this->c, $this->app, $states, $isUpdate)), cacheUpdates: false);
+        $this->c->view(fn (bool $isUpdate): string => $this->c->render('layout.html.twig', Shell::render($this->c, $this->app, $states, $isUpdate)));
         $document = $this->app->buildHtmlDocument($this->c);
         $seed = queryKitSeed(substr($document, 0, (int) strpos($document, '</head>')));
         $data = [
@@ -409,20 +409,20 @@ describe('validate-filter', function (): void {
     $bin = static fn (string $name): string => dirname(__DIR__) . '/Support/bin/' . $name;
 
     test('writes nfdump\'s answer for the text it checked', function () use ($bin): void {
-        $this->c->getSignal('flows_filter')?->setValue('src ip x', broadcast: false);
+        $this->c->getSignal('flows_filter')?->setValue('src ip x');
         queryKitRun(fn () => QueryKitActions::validate($this->c, 'flows', $bin('nfdump-z-syntax-error')));
 
         expect($this->c->getSignal('_flt_flows')?->getValue())
             ->toBe(['status' => 'invalid', 'message' => "syntax error at 'x'", 'checked' => 'src ip x'])
         ;
 
-        $this->c->getSignal('stats_filter')?->setValue('proto tcp', broadcast: false);
+        $this->c->getSignal('stats_filter')?->setValue('proto tcp');
         queryKitRun(fn () => QueryKitActions::validate($this->c, 'talkers', $bin('nfdump-z-valid')));
         expect($this->c->getSignal('_flt_talkers')?->getValue())->toBe(['status' => 'valid', 'message' => '', 'checked' => 'proto tcp']);
     });
 
     test('an empty filter has no status, and a posted non-string reads as empty', function () use ($bin): void {
-        $this->c->getSignal('graph_filter')?->setValue(['proto tcp'], broadcast: false);
+        $this->c->getSignal('graph_filter')?->setValue(['proto tcp']);
         queryKitRun(fn () => QueryKitActions::validate($this->c, 'overview', $bin('nfdump-z-syntax-error')));
 
         expect($this->c->getSignal('_flt_overview')?->getValue())->toBe(['status' => '', 'message' => '', 'checked' => '']);
@@ -445,13 +445,13 @@ describe('validate-filter', function (): void {
         $finished = [];
 
         queryKitRun(function () use ($bin, $late, &$finished): void {
-            $this->c->getSignal('flows_filter')?->setValue('host slow.example', broadcast: false);
+            $this->c->getSignal('flows_filter')?->setValue('host slow.example');
             Coroutine::create(function () use ($late, &$finished): void {
                 QueryKitActions::validate($this->c, 'flows', $late);
                 $finished[] = 'older';
             });
             // The next request's signals are injected while the first check still runs.
-            $this->c->getSignal('flows_filter')?->setValue('proto tcp', broadcast: false);
+            $this->c->getSignal('flows_filter')?->setValue('proto tcp');
             QueryKitActions::validate($this->c, 'flows', $bin('nfdump-z-valid'));
             $finished[] = 'newer';
         });
@@ -462,7 +462,7 @@ describe('validate-filter', function (): void {
     });
 
     test('a check that throws answers "could not be checked" for its text, and rethrows', function () use ($bin): void {
-        $this->c->getSignal('flows_filter')?->setValue('proto tcp', broadcast: false);
+        $this->c->getSignal('flows_filter')?->setValue('proto tcp');
         // A cached answer that is not an array breaks validate()'s return type.
         (new ReflectionProperty(FilterValidator::class, 'cache'))->setValue(null, [$bin('nfdump-z-valid') . "\0proto tcp" => 'broken']);
         $thrown = null;
@@ -481,16 +481,17 @@ describe('validate-filter', function (): void {
     });
 
     test('the action answers with a signal patch once the stream is up', function (): void {
-        $this->c->getSignal('flows_filter')?->setValue('', broadcast: false);
+        $this->c->getSignal('flows_filter')?->setValue('');
         queryKitSettle($this->c);
-        $this->c->setRequestInput(['target' => 'flows'], []);
+        $this->c->setPageInput(['target' => 'flows']);
 
         queryKitRun(fn () => $this->c->executeAction('validate-filter'));
         expect(queryKitSignalPatches($this->c))->toBe([]);
 
         $this->app->activeSseCount[$this->c->getId()] = 1;
         // As a posted client value: injected without being marked for the next push.
-        $this->c->getSignal('flows_filter')?->setValue(' ', markChanged: false, broadcast: false);
+        $this->c->getSignal('flows_filter')?->setValue(' ');
+        $this->c->getSignal('flows_filter')?->markSynced();
         queryKitRun(fn () => $this->c->executeAction('validate-filter'));
         $fltId = (string) $this->c->getSignal('_flt_flows')?->id();
 
@@ -502,15 +503,15 @@ describe('estimate-query', function (): void {
     beforeEach(function (): void {
         queryKitCaptures($this->root, 'gw', QUERY_KIT_BASE, QUERY_KIT_BASE + 7200, 1024);
         queryKitCaptures($this->root, 'edge', QUERY_KIT_BASE, QUERY_KIT_BASE + 7200, 2048);
-        $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE, broadcast: false);
-        $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 7200 - 1, broadcast: false);
-        $this->c->getSignal('graph_sources')?->setValue(['gw', 'edge'], broadcast: false);
+        $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE);
+        $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 7200 - 1);
+        $this->c->getSignal('graph_sources')?->setValue(['gw', 'edge']);
     });
 
     test('pushes pending, then the estimate, as signal patches', function (): void {
         $this->app->activeSseCount[$this->c->getId()] = 1;
         queryKitSettle($this->c);
-        $this->c->setRequestInput(['target' => 'flows'], []);
+        $this->c->setPageInput(['target' => 'flows']);
 
         queryKitRun(fn () => $this->c->executeAction('estimate-query'));
         $patches = queryKitSignalPatches($this->c);
@@ -551,8 +552,8 @@ describe('estimate-query', function (): void {
     });
 
     test('the filtered graph counts its nfdump runs', function (): void {
-        $this->c->getSignal('graph_display')?->setValue('sources', broadcast: false);
-        $this->c->getSignal('graph_resolution')?->setValue(12, broadcast: false);
+        $this->c->getSignal('graph_display')?->setValue('sources');
+        $this->c->getSignal('graph_resolution')?->setValue(12);
         queryKitRun(fn () => QueryKitActions::estimate($this->c, 'overview'));
 
         // As the build lays them out: the clamped hour from its start floored to 5 minutes is 3,899 s, so 7 bins of 600 s per source.
@@ -560,8 +561,8 @@ describe('estimate-query', function (): void {
     });
 
     test('nothing to read says so with a window and no seconds', function (): void {
-        $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE + 86_400, broadcast: false);
-        $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 90_000, broadcast: false);
+        $this->c->getSignal('datestart')?->setValue(QUERY_KIT_BASE + 86_400);
+        $this->c->getSignal('dateend')?->setValue(QUERY_KIT_BASE + 90_000);
         queryKitRun(fn () => QueryKitActions::estimate($this->c, 'flows'));
 
         expect($this->c->getSignal('_est_flows')?->getValue())->toMatchArray(['files' => 0, 'seconds' => null, 'secondsHuman' => '', 'pending' => false, 'window' => '1 hour']);

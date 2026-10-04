@@ -382,8 +382,8 @@ final class FlowsState extends PageState {
     }
 
     public function restoreSignals(Context $c): void {
-        $c->getSignal('flows_count')?->setValue($this->count, broadcast: false);
-        $c->getSignal('flows_count_label')?->setValue($this->countLabel(), broadcast: false);
+        $c->getSignal('flows_count')?->setValue($this->count);
+        $c->getSignal('flows_count_label')?->setValue($this->countLabel());
     }
 
     /** Small by design: rows and chunks stay in their stores, under the budget, not in app-global state. */

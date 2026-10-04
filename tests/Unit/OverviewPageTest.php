@@ -57,7 +57,7 @@ function overviewTestCompose(): array {
     foreach (PageRegistry::PAGES as $page) {
         $page::register($c, $app, $states);
     }
-    $c->getSignal('page')?->setValue('overview', broadcast: false);
+    $c->getSignal('page')?->setValue('overview');
 
     return [$app, $c, $states];
 }
@@ -151,9 +151,9 @@ function overviewTestComposeLive(Datasource $db): array {
     // Fresh health checks, so the sidebar dot runs none of its own.
     $app->setGlobalState(HealthPage::CACHE, ['ts' => time(), 'checks' => [], 'level' => 'ok']);
     Config::$db = $db;
-    $c->getSignal('datestart')?->setValue(OVT_T0, broadcast: false);
-    $c->getSignal('dateend')?->setValue(OVT_T0 + 3600, broadcast: false);
-    $c->getSignal('range_live')?->setValue(false, broadcast: false);
+    $c->getSignal('datestart')?->setValue(OVT_T0);
+    $c->getSignal('dateend')?->setValue(OVT_T0 + 3600);
+    $c->getSignal('range_live')?->setValue(false);
 
     return [$app, $c, $states];
 }
@@ -245,12 +245,12 @@ describe('signals and inputs', function (): void {
 
     test('every client-written input is brought back to a known value', function (): void {
         [, $c] = overviewTestCompose();
-        $c->getSignal('ov_tab')?->setValue('bogus', broadcast: false);
-        $c->getSignal('ov_dir')?->setValue('sideways', broadcast: false);
-        $c->getSignal('ov_limit')?->setValue(7, broadcast: false);
-        $c->getSignal('ov_order')?->setValue('bpp', broadcast: false);
-        $c->getSignal('graph_sources')?->setValue(['core', '../etc', 'gw'], broadcast: false);
-        $c->getSignal('selected_profile')?->setValue('not-listed', broadcast: false);
+        $c->getSignal('ov_tab')?->setValue('bogus');
+        $c->getSignal('ov_dir')?->setValue('sideways');
+        $c->getSignal('ov_limit')?->setValue(7);
+        $c->getSignal('ov_order')?->setValue('bpp');
+        $c->getSignal('graph_sources')?->setValue(['core', '../etc', 'gw']);
+        $c->getSignal('selected_profile')?->setValue('not-listed');
 
         $in = OverviewPage::inputs($c);
 
@@ -261,8 +261,8 @@ describe('signals and inputs', function (): void {
 
     test('protocols have no direction, so it cannot change their answer', function (): void {
         [, $c] = overviewTestCompose();
-        $c->getSignal('ov_tab')?->setValue('protocols', broadcast: false);
-        $c->getSignal('ov_dir')?->setValue('dst', broadcast: false);
+        $c->getSignal('ov_tab')?->setValue('protocols');
+        $c->getSignal('ov_dir')?->setValue('dst');
 
         expect(OverviewPage::inputs($c)['dir'])->toBe('src');
     });
@@ -408,16 +408,16 @@ describe('keys and rank chips', function (): void {
         $db = overviewTestDatasource();
         $db->legend = ['tcp_bits', 'udp_bits', 'icmp_bits', 'other_bits'];
         [$app, $c, $states] = overviewTestComposeLive($db);
-        $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
-        $c->getSignal('graph_display')?->setValue('protocols', broadcast: false);
-        $c->getSignal('ov_tab')?->setValue('protocols', broadcast: false);
+        $c->getSignal('graph_sources')?->setValue(['gw']);
+        $c->getSignal('graph_display')?->setValue('protocols');
+        $c->getSignal('ov_tab')?->setValue('protocols');
         $states->overview->topn = OverviewPage::computeTopN(OverviewPage::inputs($c), $this->now, null, $this->repo);
         $slots = static fn (): array => array_column(Shell::render($c, $app, $states, true)['pages']['overview']['topn']['rows'], 'slot');
 
         $drawn = $slots();
-        $c->getSignal('graph_mode')?->setValue('filtered', broadcast: false);
+        $c->getSignal('graph_mode')?->setValue('filtered');
         $beforeApply = $slots();
-        $c->getSignal('graph_mode')?->setValue('stored', broadcast: false);
+        $c->getSignal('graph_mode')?->setValue('stored');
         $db->graphError = 'rrd_xport failed';
         $failed = $slots();
 
@@ -644,13 +644,12 @@ describe('the exact run over a large read', function (): void {
         };
         Database::useShared($this->store);
         [, $c, $states] = overviewTestCompose();
-        $c->getSignal('datestart')?->setValue(OVT_T0, broadcast: false);
-        $c->getSignal('dateend')?->setValue(OVT_T0 + 48 * 300, broadcast: false);
-        $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
+        $c->getSignal('datestart')?->setValue(OVT_T0);
+        $c->getSignal('dateend')?->setValue(OVT_T0 + 48 * 300);
+        $c->getSignal('graph_sources')?->setValue(['gw']);
 
         try {
             Coroutine::run(static function () use ($c): void {
-                $c->setRequestInput([], []);
                 $c->executeAction((string) $c->getAction('overview-topn-run')?->id());
             });
         } finally {
@@ -682,13 +681,12 @@ describe('the overview-topn action', function (): void {
         Database::useShared($this->store);
         [, $c, $states] = overviewTestCompose();
         // Three days are read in chunks with a yield between them, so the action returns first.
-        $c->getSignal('datestart')?->setValue(OVT_T0, broadcast: false);
-        $c->getSignal('dateend')?->setValue(OVT_T0 + 3 * 86400, broadcast: false);
-        $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
+        $c->getSignal('datestart')?->setValue(OVT_T0);
+        $c->getSignal('dateend')?->setValue(OVT_T0 + 3 * 86400);
+        $c->getSignal('graph_sources')?->setValue(['gw']);
         $pendingDuring = null;
 
         Coroutine::run(static function () use ($c, &$pendingDuring): void {
-            $c->setRequestInput([], []);
             $c->executeAction((string) $c->getAction('overview-topn')?->id());
             $pendingDuring = $c->getSignal('_ov_topn_pending')?->bool();
         });
@@ -707,7 +705,6 @@ describe('the overview-topn action', function (): void {
         $states->overview->topnRunning = OverviewPage::fingerprint(OverviewPage::inputs($c));
         $states->overview->topnTicket = 4;
 
-        $c->setRequestInput([], []);
         $c->executeAction((string) $c->getAction('overview-topn')?->id());
 
         expect($states->overview->topnTicket)->toBe(4)
@@ -719,13 +716,12 @@ describe('the overview-topn action', function (): void {
         overviewTestStore($this->repo, 'gw', OVT_T0, ['10.0.0.1' => 600]);
         Database::useShared($this->store);
         [, $c, $states] = overviewTestCompose();
-        $c->getSignal('datestart')?->setValue(OVT_T0, broadcast: false);
-        $c->getSignal('dateend')?->setValue(OVT_T0 + 3 * 86400, broadcast: false);
-        $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
+        $c->getSignal('datestart')?->setValue(OVT_T0);
+        $c->getSignal('dateend')?->setValue(OVT_T0 + 3 * 86400);
+        $c->getSignal('graph_sources')?->setValue(['gw']);
         $fingerprint = OverviewPage::fingerprint(OverviewPage::inputs($c));
 
         Coroutine::run(static function () use ($c, $states): void {
-            $c->setRequestInput([], []);
             $c->executeAction((string) $c->getAction('overview-topn')?->id());
             // Meanwhile another range was asked for, then this one again: that newer run owns the guard.
             $states->overview->topnTicket += 2;
@@ -817,11 +813,11 @@ describe('TrafficGraph', function (): void {
         $db = overviewTestDatasource();
         $db->legend = ['tcp_bits', 'udp_bits', 'icmp_bits', 'other_bits'];
         [$app, $c, $states] = overviewTestComposeLive($db);
-        $c->getSignal('graph_sources')?->setValue(['core', 'gw'], broadcast: false);
+        $c->getSignal('graph_sources')?->setValue(['core', 'gw']);
 
         $all = TrafficGraph::viewData($c, $app, $states, true, 'talkers');
         $allConfig = json_decode($all['config'], true);
-        $c->getSignal('protocol')?->setValue('udp', broadcast: false);
+        $c->getSignal('protocol')?->setValue('udp');
         $db->legend = ['udp_bits'];
         $udp = json_decode(TrafficGraph::viewData($c, $app, $states, true, 'flows')['config'], true);
 
@@ -843,12 +839,12 @@ describe('TrafficGraph', function (): void {
         $db = overviewTestDatasource();
         $db->legend = ['any_bits'];
         [$app, $c, $states] = overviewTestComposeLive($db);
-        $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
-        $c->getSignal('graph_trafficUnit')?->setValue('bytes', broadcast: false);
+        $c->getSignal('graph_sources')?->setValue(['gw']);
+        $c->getSignal('graph_trafficUnit')?->setValue('bytes');
 
         $total = TrafficGraph::viewData($c, $app, $states, true, 'conversations');
         $config = json_decode($total['config'], true);
-        $c->getSignal('protocol')?->setValue('icmp', broadcast: false);
+        $c->getSignal('protocol')?->setValue('icmp');
         $db->legend = ['icmp_bytes'];
         $icmp = json_decode(TrafficGraph::viewData($c, $app, $states, true, 'conversations')['config'], true);
 
@@ -866,10 +862,10 @@ describe('TrafficGraph', function (): void {
     test('the chart config names the window, a live one by its width', function (): void {
         [$app, $c, $states] = overviewTestComposeLive(overviewTestDatasource());
         $fixed = json_decode(TrafficGraph::viewData($c, $app, $states, true, 'overview')['config'], true)['window'];
-        $c->getSignal('range_live')?->setValue(true, broadcast: false);
+        $c->getSignal('range_live')?->setValue(true);
         $live = json_decode(TrafficGraph::viewData($c, $app, $states, true, 'overview')['config'], true)['window'];
-        $c->getSignal('datestart')?->setValue(OVT_T0 + 15, broadcast: false);
-        $c->getSignal('dateend')?->setValue(OVT_T0 + 3615, broadcast: false);
+        $c->getSignal('datestart')?->setValue(OVT_T0 + 15);
+        $c->getSignal('dateend')?->setValue(OVT_T0 + 3615);
         $later = json_decode(TrafficGraph::viewData($c, $app, $states, true, 'overview')['config'], true)['window'];
 
         expect($fixed)->toBe(OVT_T0 . ':' . (OVT_T0 + 3600))
@@ -882,7 +878,7 @@ describe('TrafficGraph', function (): void {
         $db = overviewTestDatasource();
         $db->lastWrite = OVT_T0 + 3300;
         [$app, $c, $states] = overviewTestComposeLive($db);
-        $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
+        $c->getSignal('graph_sources')?->setValue(['gw']);
         $render = static fn (): array => TrafficGraph::viewData($c, $app, $states, true, 'overview');
 
         $first = $render();
@@ -894,12 +890,12 @@ describe('TrafficGraph', function (): void {
         $db->graphError = 'rrd_xport failed';
         $failed = $render();
         // An import throttles the next fetch, so this render reuses the failed one.
-        $c->getSignal('import_running')?->setValue(true, broadcast: false);
+        $c->getSignal('import_running')?->setValue(true);
         $fetches = count($db->graphCalls);
         $throttled = $render();
         $fetchedWhileThrottled = count($db->graphCalls) - $fetches;
         $readsWhileFailed = $db->totalsReads;
-        $c->getSignal('import_running')?->setValue(false, broadcast: false);
+        $c->getSignal('import_running')?->setValue(false);
         $db->graphError = '';
         $recovered = $render();
 
@@ -923,10 +919,10 @@ describe('TrafficGraph', function (): void {
 
     test('a filtered build that lands during an import is drawn at the next render', function (): void {
         [$app, $c, $states] = overviewTestComposeLive(overviewTestDatasource());
-        $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
-        $c->getSignal('graph_mode')?->setValue('filtered', broadcast: false);
-        $c->getSignal('graph_filter')?->setValue('proto tcp', broadcast: false);
-        $c->getSignal('import_running')?->setValue(true, broadcast: false);
+        $c->getSignal('graph_sources')?->setValue(['gw']);
+        $c->getSignal('graph_mode')?->setValue('filtered');
+        $c->getSignal('graph_filter')?->setValue('proto tcp');
+        $c->getSignal('import_running')?->setValue(true);
         $points = static fn (): int => $c->getSignal('graph_actualResolution')?->int() ?? -1;
 
         TrafficGraph::viewData($c, $app, $states, true, 'overview');
@@ -951,7 +947,7 @@ describe('TrafficGraph', function (): void {
         $db->graphError = '';
         $render();
         $cleared = $error?->string();
-        $error?->setValue('Range: the start is after the end', broadcast: false);
+        $error?->setValue('Range: the start is after the end');
         $render();
 
         expect($banner)->toBe('Graph error: rrd_xport failed')
@@ -969,9 +965,9 @@ describe('the templates', function (): void {
         $db = overviewTestDatasource();
         $db->legend = ['tcp_bits', 'udp_bits', 'icmp_bits', 'other_bits'];
         [$app, $c, $states] = overviewTestComposeLive($db);
-        $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
-        $c->getSignal('graph_display')?->setValue('protocols', broadcast: false);
-        $c->getSignal('ov_tab')?->setValue('protocols', broadcast: false);
+        $c->getSignal('graph_sources')?->setValue(['gw']);
+        $c->getSignal('graph_display')?->setValue('protocols');
+        $c->getSignal('ov_tab')?->setValue('protocols');
         $states->overview->topn = OverviewPage::computeTopN(OverviewPage::inputs($c), $this->now, null, $this->repo);
 
         $html = $c->render('pages/overview.html.twig', Shell::render($c, $app, $states, false));
@@ -985,8 +981,8 @@ describe('the templates', function (): void {
 
     test('out of retention the card holds the estimate and the Run exact query control', function (): void {
         [$app, $c, $states] = overviewTestCompose();
-        $c->getSignal('datestart')?->setValue(time() - 40 * 86400, broadcast: false);
-        $c->getSignal('dateend')?->setValue(time() - 39 * 86400, broadcast: false);
+        $c->getSignal('datestart')?->setValue(time() - 40 * 86400);
+        $c->getSignal('dateend')?->setValue(time() - 39 * 86400);
 
         $html = $c->render('pages/overview.html.twig', Shell::render($c, $app, $states, false));
         $rows = $c->getSignal('_ov_exact_rows')?->id();
@@ -1015,7 +1011,7 @@ describe('the templates', function (): void {
         }
         Database::useShared($this->store);
         [$app, $c, $states] = overviewTestComposeLive(overviewTestDatasource());
-        $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
+        $c->getSignal('graph_sources')?->setValue(['gw']);
 
         $data = Shell::render($c, $app, $states, true);
         $html = $c->render('pages/overview.html.twig', $data);
@@ -1038,7 +1034,7 @@ describe('the templates', function (): void {
     test('the graph section carries the Overview controls on Overview only', function (): void {
         [$app, $c, $states] = overviewTestCompose();
         $overview = $c->render('shell/traffic-graph.html.twig', Shell::render($c, $app, $states, false));
-        $c->getSignal('page')?->setValue('flows', broadcast: false);
+        $c->getSignal('page')?->setValue('flows');
         $picker = $c->render('shell/traffic-graph.html.twig', Shell::render($c, $app, $states, true));
 
         expect($overview)->toContain('id="graphOptions"', 'id="graphOptionsToggle"', 'id="graphModeRrd"', 'id="brushToggle"', 'id="trafficGraph-series"', 'data-mode="overview"')

@@ -144,7 +144,6 @@ describe('the Overview graph and the explicit live window', function (): void {
         });
         Config::$db = $stub;
 
-        $c->setRequestInput([], []);
         $c->executeAction((string) $c->getAction('refresh-graphs')?->id());
         // Apply in stored mode is a refresh as well.
         $c->executeAction((string) $c->getAction('run-filtered-graph')?->id());
@@ -154,13 +153,12 @@ describe('the Overview graph and the explicit live window', function (): void {
 
     test('refresh-graphs leaves a live window to the render, which advances it', function (string $mode): void {
         $c = $this->c;
-        $c->getSignal('graph_mode')?->setValue($mode, broadcast: false);
-        $c->getSignal('range_live')?->setValue(true, broadcast: false);
-        $c->getSignal('datestart')?->setValue(time() - 3_720, broadcast: false);
-        $c->getSignal('dateend')?->setValue(time() - 120, broadcast: false);
+        $c->getSignal('graph_mode')?->setValue($mode);
+        $c->getSignal('range_live')?->setValue(true);
+        $c->getSignal('datestart')?->setValue(time() - 3_720);
+        $c->getSignal('dateend')?->setValue(time() - 120);
         $window = [$c->getSignal('datestart')?->int(), $c->getSignal('dateend')?->int()];
 
-        $c->setRequestInput([], []);
         $c->executeAction((string) $c->getAction('refresh-graphs')?->id());
 
         expect([$c->getSignal('datestart')?->int(), $c->getSignal('dateend')?->int()])->toBe($window);
@@ -168,8 +166,8 @@ describe('the Overview graph and the explicit live window', function (): void {
 
     test('a stored series is live exactly while the window is', function (bool $live): void {
         $c = $this->c;
-        $c->getSignal('range_live')?->setValue($live, broadcast: false);
-        $c->getSignal('graph_isLive')?->setValue(!$live, broadcast: false);
+        $c->getSignal('range_live')?->setValue($live);
+        $c->getSignal('graph_isLive')?->setValue(!$live);
 
         expect(GraphActions::fetchGraphData($c))->toBe($this->series)
             ->and($c->getSignal('graph_isLive')?->bool())->toBe($live)
@@ -178,18 +176,18 @@ describe('the Overview graph and the explicit live window', function (): void {
 
     test('a filtered series is never live, and a fetch clears only the graph\'s own banner', function (): void {
         $c = $this->c;
-        $c->getSignal('graph_mode')?->setValue('filtered', broadcast: false);
-        $c->getSignal('range_live')?->setValue(true, broadcast: false);
+        $c->getSignal('graph_mode')?->setValue('filtered');
+        $c->getSignal('range_live')?->setValue(true);
         $series = ['start' => 1_000, 'end' => 1_600, 'step' => 300, 'legend' => ['all'], 'data' => [1_000 => [1.0], 1_300 => [2.0]]];
         FilteredGraphCache::put(GraphActions::filteredKey($c), $series);
 
-        $c->getSignal('_error')?->setValue('Filtered graph: nfdump failed', broadcast: false);
+        $c->getSignal('_error')?->setValue('Filtered graph: nfdump failed');
         expect(GraphActions::fetchGraphData($c))->toBe($series)
             ->and($c->getSignal('graph_isLive')?->bool())->toBeFalse()
             ->and($c->getSignal('_error')?->string())->toBe('')
         ;
 
-        $c->getSignal('_error')?->setValue('Range: Enter a duration between 1 and 9999.', broadcast: false);
+        $c->getSignal('_error')?->setValue('Range: Enter a duration between 1 and 9999.');
         GraphActions::fetchGraphData($c);
         expect($c->getSignal('_error')?->string())->toBe('Range: Enter a duration between 1 and 9999.');
     });
@@ -219,9 +217,9 @@ describe('the Overview graph and the explicit live window', function (): void {
             return $this->series;
         });
         Config::$db = $stub;
-        $c->getSignal('graph_display')?->setValue($display, broadcast: false);
-        $c->getSignal('protocol')?->setValue($protocol, broadcast: false);
-        $c->getSignal('graph_sources')?->setValue(['swi6', 'core'], broadcast: false);
+        $c->getSignal('graph_display')?->setValue($display);
+        $c->getSignal('protocol')?->setValue($protocol);
+        $c->getSignal('graph_sources')?->setValue(['swi6', 'core']);
 
         GraphActions::fetchGraphData($c);
 
@@ -249,7 +247,7 @@ describe('the Overview graph and the explicit live window', function (): void {
 
     test('a client-written display or resolution is brought back into range', function (): void {
         $c = $this->c;
-        $c->getSignal('graph_display')?->setValue('bogus', broadcast: false);
+        $c->getSignal('graph_display')?->setValue('bogus');
         GraphActions::fetchGraphData($c);
 
         expect($c->getSignal('graph_display')?->string())->toBe('sources')

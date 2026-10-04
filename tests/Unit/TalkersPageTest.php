@@ -59,7 +59,7 @@ function talkersPageTestCompose(): array {
     foreach (PageRegistry::PAGES as $page) {
         $page::register($c, $app, $states);
     }
-    $c->getSignal('page')?->setValue('talkers', broadcast: false);
+    $c->getSignal('page')?->setValue('talkers');
 
     return [$app, $c, $states];
 }
@@ -355,9 +355,8 @@ describe('the run action', function (): void {
     test('a Run posted while a query of the tab runs keeps the page notices', function (): void {
         [, $c, $states] = talkersPageTestCompose();
         $states->talkers->notify('warning', 'Query cancelled.');
-        $c->getSignal('query_running')?->setValue(true, broadcast: false);
+        $c->getSignal('query_running')?->setValue(true);
 
-        $c->setRequestInput([], []);
         $c->executeAction((string) $c->getAction('stats-actions')?->id());
 
         expect(array_column($states->talkers->notifications, 'message'))->toBe(['Query cancelled.']);
@@ -485,7 +484,7 @@ describe('the picker', function (): void {
 describe('the page template', function (): void {
     test('renders the picker, the panels and a stored result, escaping nfdump\'s messages (D21)', function (): void {
         [$app, $c, $states] = talkersPageTestCompose();
-        $c->getSignal('stats_for')?->setValue('srcip', broadcast: false);
+        $c->getSignal('stats_for')?->setValue('srcip');
         StatsActions::storePanel($states->talkers, 'proto', [
             ['key' => '6', 'proto' => 'TCP', 'flows' => 1, 'packets' => 1, 'bytes' => 780, 'bytesPct' => 78.0],
             ['key' => '47', 'proto' => 'GRE', 'flows' => 1, 'packets' => 1, 'bytes' => 6, 'bytesPct' => 0.6],

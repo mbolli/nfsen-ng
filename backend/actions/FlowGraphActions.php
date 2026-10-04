@@ -231,7 +231,7 @@ final class FlowGraphActions {
             );
 
             // Asking for the panel is what reveals it; the build below fills it.
-            $shown->setValue(true, broadcast: false);
+            $shown->setValue(true);
 
             // One build per tab: a second would race the first's cache write.
             if ($queryRunning->bool()) {
@@ -242,9 +242,9 @@ final class FlowGraphActions {
 
             $params = self::params($c);
             if ($params['invalid'] !== '') {
-                $queryKind->setValue('flowsgraph', broadcast: false);
-                $queryStatus->setValue('Failed: ' . $params['invalid'], broadcast: false);
-                $error->setValue('Traffic graph: ' . $params['invalid'], broadcast: false);
+                $queryKind->setValue('flowsgraph');
+                $queryStatus->setValue('Failed: ' . $params['invalid']);
+                $error->setValue('Traffic graph: ' . $params['invalid']);
                 $c->sync();
 
                 return;
@@ -257,8 +257,8 @@ final class FlowGraphActions {
 
             // Already built for exactly this query: point the panel at it and re-render.
             if (FilteredGraphCache::has($key)) {
-                $builtKey->setValue($key, broadcast: false);
-                $builtPrint->setValue(self::fingerprintOf($params), broadcast: false);
+                $builtKey->setValue($key);
+                $builtPrint->setValue(self::fingerprintOf($params));
                 $c->sync();
 
                 return;
@@ -267,14 +267,14 @@ final class FlowGraphActions {
             $contextId = $c->getId();
             QueryCancel::clear($contextId);
 
-            $queryKind->setValue('flowsgraph', broadcast: false);
-            $queryRunning->setValue(true, broadcast: false);
-            $queryPermille->setValue(0, broadcast: false);
-            $queryEta->setValue('', broadcast: false);
+            $queryKind->setValue('flowsgraph');
+            $queryRunning->setValue(true);
+            $queryPermille->setValue(0);
+            $queryEta->setValue('');
             // Exact: the bin count is known before the first nfdump runs.
-            $queryExact->setValue(true, broadcast: false);
-            $queryStatus->setValue('Reading capture files…', broadcast: false);
-            $error->setValue('', broadcast: false);
+            $queryExact->setValue(true);
+            $queryStatus->setValue('Reading capture files…');
+            $error->setValue('');
             $c->sync();
 
             Coroutine::create(static function () use (
@@ -296,11 +296,10 @@ final class FlowGraphActions {
                     $queryStatus,
                     $queryEta
                 ): void {
-                    $queryPermille->setValue($permille, broadcast: false);
-                    $queryEta->setValue($eta, broadcast: false);
+                    $queryPermille->setValue($permille);
+                    $queryEta->setValue($eta);
                     $queryStatus->setValue(
-                        $total > 0 ? "Scanning {$done} / {$total} intervals" : 'Reading capture files…',
-                        broadcast: false
+                        $total > 0 ? "Scanning {$done} / {$total} intervals" : 'Reading capture files…'
                     );
                     $c->syncSignals();
                 });
@@ -325,8 +324,8 @@ final class FlowGraphActions {
 
                     $cancelled = QueryCancel::isRequested($contextId);
                     FilteredGraphCache::put($key, $data, partial: $cancelled);
-                    $builtKey->setValue($key, broadcast: false);
-                    $builtPrint->setValue(self::fingerprintOf($params), broadcast: false);
+                    $builtKey->setValue($key);
+                    $builtPrint->setValue(self::fingerprintOf($params));
                     $finalStatus = $cancelled
                         ? 'Cancelled: showing partial results. Build again to finish.'
                         : 'Done in ' . round($progress->elapsed(), 1) . 's.';
@@ -334,12 +333,12 @@ final class FlowGraphActions {
                     // An uncaught error inside a coroutine takes the whole worker down, not
                     // just this request.
                     Debug::getInstance()->log('Flows graph failed: ' . $e->getMessage(), LOG_ERR);
-                    $error->setValue('Traffic graph: ' . $e->getMessage(), broadcast: false);
+                    $error->setValue('Traffic graph: ' . $e->getMessage());
                     $finalStatus = 'Failed: ' . $e->getMessage();
                 } finally {
                     $progress->finish();
-                    $queryStatus->setValue($finalStatus ?? 'Done.', broadcast: false);
-                    $queryRunning->setValue(false, broadcast: false);
+                    $queryStatus->setValue($finalStatus ?? 'Done.');
+                    $queryRunning->setValue(false);
                     QueryCancel::clear($contextId);
                     $c->sync();
                 }

@@ -118,8 +118,8 @@ describe('GraphActions::filteredParams', function (): void {
         Shell::signals($this->c);
         RangeControls::signals($this->c);
         OverviewPage::signals($this->c);
-        $this->c->getSignal('graph_mode')?->setValue('filtered', broadcast: false);
-        $this->c->getSignal('graph_filter')?->setValue('dst port 443', broadcast: false);
+        $this->c->getSignal('graph_mode')?->setValue('filtered');
+        $this->c->getSignal('graph_filter')?->setValue('dst port 443');
     });
 
     afterEach(function (): void {
@@ -130,8 +130,8 @@ describe('GraphActions::filteredParams', function (): void {
 
     // 4.1.2: the global protocol narrows the Sources display, stored or filtered alike.
     test('the Sources display composes the global protocol into the filter', function (): void {
-        $this->c->getSignal('graph_display')?->setValue('sources', broadcast: false);
-        $this->c->getSignal('protocol')?->setValue('udp', broadcast: false);
+        $this->c->getSignal('graph_display')?->setValue('sources');
+        $this->c->getSignal('protocol')?->setValue('udp');
 
         $p = GraphActions::filteredParams($this->c);
 
@@ -142,8 +142,8 @@ describe('GraphActions::filteredParams', function (): void {
     });
 
     test('the Protocols display splits by protocol, so the global one does not apply', function (): void {
-        $this->c->getSignal('graph_display')?->setValue('protocols', broadcast: false);
-        $this->c->getSignal('protocol')?->setValue('udp', broadcast: false);
+        $this->c->getSignal('graph_display')?->setValue('protocols');
+        $this->c->getSignal('protocol')?->setValue('udp');
 
         $p = GraphActions::filteredParams($this->c);
 
@@ -153,15 +153,15 @@ describe('GraphActions::filteredParams', function (): void {
     });
 
     test('the Ports display falls back to the protocol split: the filter is the port selection', function (): void {
-        $this->c->getSignal('graph_display')?->setValue('ports', broadcast: false);
+        $this->c->getSignal('graph_display')?->setValue('ports');
 
         expect(GraphActions::filteredParams($this->c)['display'])->toBe('protocols');
     });
 
     test('a different protocol is a different cache key, so a build never answers for another', function (): void {
-        $this->c->getSignal('protocol')?->setValue('tcp', broadcast: false);
+        $this->c->getSignal('protocol')?->setValue('tcp');
         $tcp = GraphActions::filteredKey($this->c);
-        $this->c->getSignal('protocol')?->setValue('udp', broadcast: false);
+        $this->c->getSignal('protocol')?->setValue('udp');
 
         expect(GraphActions::filteredKey($this->c))->not->toBe($tcp);
     });
@@ -237,14 +237,13 @@ describe('run-filtered-graph', function (): void {
         RangeControls::signals($c);
         OverviewPage::signals($c);
         GraphActions::register($c);
-        $c->getSignal('graph_mode')?->setValue('filtered', broadcast: false);
-        $c->getSignal('graph_filter')?->setValue('dst port 443', broadcast: false);
-        $c->getSignal('graph_display')?->setValue('protocols', broadcast: false);
-        $c->getSignal('graph_sources')?->setValue(['gateway'], broadcast: false);
-        $c->getSignal('selected_profile')?->setValue('live', broadcast: false);
-        $c->getSignal('datestart')?->setValue($base, broadcast: false);
-        $c->getSignal('dateend')?->setValue($base + 12 * 300 - 1, broadcast: false);
-        $c->setRequestInput([], []);
+        $c->getSignal('graph_mode')?->setValue('filtered');
+        $c->getSignal('graph_filter')?->setValue('dst port 443');
+        $c->getSignal('graph_display')?->setValue('protocols');
+        $c->getSignal('graph_sources')?->setValue(['gateway']);
+        $c->getSignal('selected_profile')?->setValue('live');
+        $c->getSignal('datestart')?->setValue($base);
+        $c->getSignal('dateend')?->setValue($base + 12 * 300 - 1);
         $this->c = $c;
         $this->apply = (string) $c->getAction('run-filtered-graph')?->id();
     });

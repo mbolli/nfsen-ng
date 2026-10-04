@@ -292,7 +292,7 @@ describe('the range actions never read capture files', function (): void {
     test('set-range, apply-globals and change-profile run without a single nfdump call', function (): void {
         $c = $this->c;
         $run = static function (string $action, array $query = []) use ($c): void {
-            $c->setRequestInput($query, []);
+            $c->setPageInput($query);
             $c->executeAction((string) $c->getAction($action)?->id());
         };
 
@@ -306,14 +306,14 @@ describe('the range actions never read capture files', function (): void {
             ->and($this->states->shell->graphFetchedAt)->toBe(0)
         ;
 
-        $c->getSignal('protocol')?->setValue('TCP ', broadcast: false);
-        $c->getSignal('graph_trafficUnit')?->setValue('nibbles', broadcast: false);
+        $c->getSignal('protocol')?->setValue('TCP ');
+        $c->getSignal('graph_trafficUnit')?->setValue('nibbles');
         $run('apply-globals');
         expect($c->getSignal('protocol')?->string())->toBe('tcp')
             ->and($c->getSignal('graph_trafficUnit')?->string())->toBe('bits')
         ;
 
-        $c->getSignal('selected_profile')?->setValue('live', broadcast: false);
+        $c->getSignal('selected_profile')?->setValue('live');
         $run('change-profile');
 
         expect(FakeProcessor::$calls)->toBe([]);
@@ -322,7 +322,7 @@ describe('the range actions never read capture files', function (): void {
     test('set-range with invalid input keeps the window and says why, until an op works', function (): void {
         $c = $this->c;
         $before = [$c->getSignal('datestart')?->int(), $c->getSignal('dateend')?->int()];
-        $c->setRequestInput(['op' => 'duration', 'n' => '0', 'u' => 'h'], []);
+        $c->setPageInput(['op' => 'duration', 'n' => '0', 'u' => 'h']);
         $c->executeAction((string) $c->getAction('set-range')?->id());
 
         expect([$c->getSignal('datestart')?->int(), $c->getSignal('dateend')?->int()])->toBe($before)
@@ -330,11 +330,11 @@ describe('the range actions never read capture files', function (): void {
         ;
 
         // The next op that works takes its own banner away, and leaves anyone else's.
-        $c->setRequestInput(['op' => 'preset', 'v' => '1h'], []);
+        $c->setPageInput(['op' => 'preset', 'v' => '1h']);
         $c->executeAction((string) $c->getAction('set-range')?->id());
         expect($c->getSignal('_error')?->string())->toBe('');
 
-        $c->getSignal('_error')?->setValue('Graph error: no RRD', broadcast: false);
+        $c->getSignal('_error')?->setValue('Graph error: no RRD');
         $c->executeAction((string) $c->getAction('set-range')?->id());
         expect($c->getSignal('_error')?->string())->toBe('Graph error: no RRD');
     });
@@ -343,12 +343,12 @@ describe('the range actions never read capture files', function (): void {
         $c = $this->c;
         $now = time();
         $switch = static function (int $last, bool $wasLive) use ($c, $now): bool {
-            $c->getSignal('datestart')?->setValue(1_000_000, broadcast: false);
-            $c->getSignal('dateend')?->setValue(1_007_200, broadcast: false);
-            $c->getSignal('range_live')?->setValue($wasLive, broadcast: false);
+            $c->getSignal('datestart')?->setValue(1_000_000);
+            $c->getSignal('dateend')?->setValue(1_007_200);
+            $c->getSignal('range_live')?->setValue($wasLive);
             // Without sources the data range read keeps this as the newest sample.
-            $c->getSignal('data_range_max')?->setValue($last, broadcast: false);
-            $c->getSignal('selected_profile')?->setValue('live', broadcast: false);
+            $c->getSignal('data_range_max')?->setValue($last);
+            $c->getSignal('selected_profile')?->setValue('live');
 
             return RangeActions::changeProfile($c, $now);
         };
@@ -369,7 +369,7 @@ describe('the range actions never read capture files', function (): void {
             ->and($window())->toBe([$now - 86400 - 7200, $now - 86400, false])
         ;
 
-        $c->getSignal('selected_profile')?->setValue('nope', broadcast: false);
+        $c->getSignal('selected_profile')?->setValue('nope');
         expect(RangeActions::changeProfile($c, $now))->toBeFalse();
     });
 
@@ -391,10 +391,10 @@ describe('the range actions never read capture files', function (): void {
 
         $c = $this->c;
         OverviewPage::signals($c);
-        $c->getSignal('graph_mode')?->setValue('filtered', broadcast: false);
-        $c->getSignal('graph_sources')?->setValue(['gw'], broadcast: false);
+        $c->getSignal('graph_mode')?->setValue('filtered');
+        $c->getSignal('graph_sources')?->setValue(['gw']);
         $width = static function (string $action, array $query) use ($c): int {
-            $c->setRequestInput($query, []);
+            $c->setPageInput($query);
             $c->executeAction((string) $c->getAction($action)?->id());
 
             return (int) $c->getSignal('dateend')?->int() - (int) $c->getSignal('datestart')?->int();
@@ -405,8 +405,8 @@ describe('the range actions never read capture files', function (): void {
                 ->and($width('set-range', ['op' => 'preset', 'v' => '24h']))->toBe(86400)
                 ->and($width('set-range', ['op' => 'back']))->toBe(86400)
             ;
-            $c->getSignal('graph_sources')?->setValue(['gw', 'nope'], broadcast: false);
-            $c->getSignal('protocol')?->setValue('udp', broadcast: false);
+            $c->getSignal('graph_sources')?->setValue(['gw', 'nope']);
+            $c->getSignal('protocol')?->setValue('udp');
             expect($width('apply-globals', []))->toBe(86400)
                 ->and($c->getSignal('graph_sources')?->array())->toBe(['gw'])
                 ->and($c->getSignal('_error')?->string())->toBe('')

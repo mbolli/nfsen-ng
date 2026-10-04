@@ -46,7 +46,7 @@ final class ShellActions {
     public static function navigate(Context $c): void {
         $page = $c->getSignal('page');
         if ($page !== null && PageRegistry::find($page->string()) === null) {
-            $page->setValue(Shell::defaultPage(), broadcast: false);
+            $page->setValue(Shell::defaultPage());
         }
     }
 
@@ -66,6 +66,6 @@ final class ShellActions {
 
     private static function fail(Context $c, string $what, \Throwable $e): void {
         Debug::getInstance()->log($what . ': ' . $e->getMessage(), LOG_ERR);
-        $c->getSignal('_error')?->setValue($what . ': ' . $e->getMessage(), broadcast: false);
+        $c->getSignal('_error')?->setValue($what . ': ' . $e->getMessage());
     }
 }

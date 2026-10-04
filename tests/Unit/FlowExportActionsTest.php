@@ -48,7 +48,7 @@ function flowExportTestBare(): array {
  */
 function flowExportTestRun(Context $c, string $name, array $input): array {
     while ($c->getPatch() !== null);
-    $c->setRequestInput($input, []);
+    $c->setPageInput($input);
     $c->executeAction((string) $c->getAction($name)?->id());
     $all = [];
     while (($patch = $c->getPatch()) !== null) {

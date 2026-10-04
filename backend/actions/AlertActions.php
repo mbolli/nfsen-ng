@@ -144,7 +144,7 @@ final class AlertActions {
                     self::manager($app)?->forget($id, $rule);
                     // Otherwise Update rule would put the old state back.
                     if ($c->getSignal('alert_form_id')?->string() === $id) {
-                        $c->getSignal('alert_form_enabled')?->setValue(!$rule->enabled, broadcast: false);
+                        $c->getSignal('alert_form_enabled')?->setValue(!$rule->enabled);
                     }
                 }
             } catch (\Throwable $e) {
@@ -370,9 +370,9 @@ final class AlertActions {
 
     private static function resetForm(Context $c): void {
         foreach (AlertsPage::formDefaults() as $field => $default) {
-            $c->getSignal('alert_form_' . $field)?->setValue($default, broadcast: false);
+            $c->getSignal('alert_form_' . $field)?->setValue($default);
         }
-        $c->getSignal(QueryKit::filterSignal('alert'))?->setValue(QueryKit::FILTER_DEFAULT, broadcast: false);
+        $c->getSignal(QueryKit::filterSignal('alert'))?->setValue(QueryKit::FILTER_DEFAULT);
     }
 
     private static function inputId(Context $c): string {

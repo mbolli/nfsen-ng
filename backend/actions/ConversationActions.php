@@ -110,7 +110,7 @@ final class ConversationActions {
     /** Sets `_conv_stale`: a result is stored and the inputs no longer match its fingerprint. */
     public static function markStale(Context $c, ConversationsState $state): bool {
         $stale = !$state->isEmpty() && self::fingerprint(self::params($c)) !== $state->info['fingerprint'];
-        $c->getSignal('_conv_stale')?->setValue($stale, broadcast: false);
+        $c->getSignal('_conv_stale')?->setValue($stale);
 
         return $stale;
     }
@@ -278,7 +278,7 @@ final class ConversationActions {
         $ipInfoUrl = $c->getAction('ip-info')?->url() ?? '';
         $pairsSignal = $c->getSignal('_conv_pairs');
         if ($p['fallback']) {
-            $c->getSignal('conv_direction')?->setValue('forward', broadcast: false);
+            $c->getSignal('conv_direction')?->setValue('forward');
         }
         $time = microtime(true);
         $notices = $state->notifications;
@@ -324,11 +324,11 @@ final class ConversationActions {
                         return;
                     }
                     self::storeResult($state, $query, $result, $p, round(microtime(true) - $time, 3), $ipInfoUrl, $clampNotice);
-                    $pairsSignal?->setValue($state->info['pairs'], broadcast: false);
+                    $pairsSignal?->setValue($state->info['pairs']);
                 } catch (\Throwable $e) {
                     // Read here: QueryRunner clears the cancel flag after the work.
                     self::storeFailure($state, $e, QueryRunner::wasCancelled($e, QueryCancel::isRequested($contextId)), $notices);
-                    $pairsSignal?->setValue($state->info['pairs'], broadcast: false);
+                    $pairsSignal?->setValue($state->info['pairs']);
 
                     // QueryRunner owns the status line ("Failed: ..." or "Query cancelled.").
                     throw $e;
@@ -337,7 +337,7 @@ final class ConversationActions {
         } catch (\Throwable $e) {
             // Nothing was started (bad window, filter, profile), so the failure is reported here.
             self::storeFailure($state, $e, false);
-            $pairsSignal?->setValue(0, broadcast: false);
+            $pairsSignal?->setValue(0);
             $c->sync();
         }
     }

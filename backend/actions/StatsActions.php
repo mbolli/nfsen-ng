@@ -87,7 +87,7 @@ final class StatsActions {
                     try {
                         $result = $query->runPartitioned('stats', $processor, $onSplit, static fn (): bool => QueryCancel::isRequested($contextId));
                         self::storeResult($talkers, $result, round(microtime(true) - $time, 3), $ipInfoUrl, $clampNotice, $params);
-                        $rows?->setValue($result->count(), broadcast: false);
+                        $rows?->setValue($result->count());
                     } catch (\Throwable $e) {
                         // Read here: QueryRunner clears the cancel flag after the work.
                         self::storeFailure($talkers, $e, QueryRunner::wasCancelled($e, QueryCancel::isRequested($contextId)), $params['element']);

@@ -61,7 +61,7 @@ final class ConversationsState extends PageState {
     }
 
     public function restoreSignals(Context $c): void {
-        $c->getSignal('_conv_pairs')?->setValue($this->info['pairs'], broadcast: false);
+        $c->getSignal('_conv_pairs')?->setValue($this->info['pairs']);
     }
 
     public function snapshot(): array {

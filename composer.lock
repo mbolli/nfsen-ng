@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d3bda0f2bba8c8603b56222b8cc0cdef",
+    "content-hash": "a2da9880b1e0f599c71c2628127b5e3c",
     "packages": [
         {
             "name": "doctrine/deprecations",
@@ -125,7 +125,7 @@
             "source": {
                 "type": "git",
                 "url": "/develop/php-via",
-                "reference": "4db070d5bdf998a9be6aa6944400c97725fa1905"
+                "reference": "7388732e732129551d4a60cf3b1baa6013e17d2f"
             },
             "require": {
                 "ext-openswoole": "^26.0",
@@ -133,8 +133,10 @@
                 "openswoole/core": "^26.2",
                 "php": "^8.4",
                 "psr/http-server-middleware": "^1.0",
-                "starfederation/datastar-php": "^1.0",
-                "twig/twig": "^3.0"
+                "starfederation/datastar-php": "^1.0"
+            },
+            "conflict": {
+                "twig/twig": "<3.10"
             },
             "require-dev": {
                 "friendsofphp/php-cs-fixer": "^3.90.0",
@@ -143,10 +145,12 @@
                 "phpstan/extension-installer": "^1.4",
                 "phpstan/phpstan": "^2.1.0",
                 "phpstan/phpstan-deprecation-rules": "^2.0",
-                "tomasvotruba/type-coverage": "^2.3"
+                "tomasvotruba/type-coverage": "^2.3",
+                "twig/twig": "^3.10"
             },
             "suggest": {
-                "ext-brotli": "Brotli level 11 for static files as soon as it is loaded (compressed before the server listens), and for pages and SSE streams with Config::withBrotli()"
+                "ext-brotli": "Brotli level 11 for static files as soon as it is loaded (compressed before the server listens), and for pages and SSE streams with Config::withBrotli()",
+                "twig/twig": "Twig templates for views, with Config::withTemplateDir() or withTemplateEngine(new Mbolli\\PhpVia\\Twig\\TwigEngine(...))"
             },
             "type": "library",
             "autoload": {
@@ -189,7 +193,7 @@
                 }
             ],
             "description": "Real-time engine for building reactive web applications in PHP",
-            "time": "2026-10-03T06:00:27+00:00"
+            "time": "2026-10-04T09:53:00+00:00"
         },
         {
             "name": "mcp/sdk",
@@ -7366,11 +7370,11 @@
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
-        "php": "^8.4",
         "ext-inotify": "*",
         "ext-mbstring": "*",
         "ext-openswoole": "*",
-        "ext-rrd": "*"
+        "ext-rrd": "*",
+        "php": "^8.4"
     },
     "platform-dev": {},
     "plugin-api-version": "2.9.0"

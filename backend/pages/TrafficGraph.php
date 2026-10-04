@@ -297,7 +297,7 @@ final class TrafficGraph implements ShellModule {
                 GraphActions::clearOwnError($c->getSignal('_error'));
             }
         } catch (\Throwable $e) {
-            $c->getSignal('_error')?->setValue('Graph error: ' . $e->getMessage(), broadcast: false);
+            $c->getSignal('_error')?->setValue('Graph error: ' . $e->getMessage());
             $shell->graphJson = '[]';
             $shell->graphLegend = [];
             $shell->graphStep = 0;
@@ -335,11 +335,11 @@ final class TrafficGraph implements ShellModule {
         );
         $data = $query->run();
 
-        $c->getSignal('graph_isLive')?->setValue($c->getSignal('range_live')?->bool() ?? false, broadcast: false);
-        $c->getSignal('graph_actualResolution')?->setValue(\count($data['data']), broadcast: false);
-        $c->getSignal('graph_step')?->setValue($data['data'] === [] ? 0 : $data['step'], broadcast: false);
+        $c->getSignal('graph_isLive')?->setValue($c->getSignal('range_live')?->bool() ?? false);
+        $c->getSignal('graph_actualResolution')?->setValue(\count($data['data']));
+        $c->getSignal('graph_step')?->setValue($data['data'] === [] ? 0 : $data['step']);
         $lastWrite = $query->lastWrite();
-        $c->getSignal('graph_lastUpdate')?->setValue($lastWrite > 0 ? $lastWrite : time(), broadcast: false);
+        $c->getSignal('graph_lastUpdate')?->setValue($lastWrite > 0 ? $lastWrite : time());
 
         return $data;
     }

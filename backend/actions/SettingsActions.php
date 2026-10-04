@@ -153,7 +153,7 @@ final class SettingsActions {
         // The saved fields show what was written, normalised; the other form keeps its edits.
         $values = SettingsPage::formValues(Config::$settings, $prefs->theme);
         foreach ($fields as $signal) {
-            $c->getSignal($signal)?->setValue($values[$signal], broadcast: false);
+            $c->getSignal($signal)?->setValue($values[$signal]);
         }
         SettingsPage::publish($c, $app, $values);
 

@@ -70,12 +70,12 @@ final class QueryRunner {
         $contextId = $c->getId();
         QueryCancel::clear($contextId);
 
-        $kindSignal->setValue($kind, broadcast: false);
-        $running->setValue(true, broadcast: false);
-        $permille->setValue(0, broadcast: false);
-        $eta->setValue('', broadcast: false);
-        $status->setValue($startStatus, broadcast: false);
-        $exact->setValue(false, broadcast: false);
+        $kindSignal->setValue($kind);
+        $running->setValue(true);
+        $permille->setValue(0);
+        $eta->setValue('');
+        $status->setValue($startStatus);
+        $exact->setValue(false);
         $c->sync();
 
         Coroutine::create(static function () use (
@@ -118,11 +118,11 @@ final class QueryRunner {
                 $eta,
                 $split
             ): void {
-                $permille->setValue($pm, broadcast: false);
-                $eta->setValue($etaText, broadcast: false);
+                $permille->setValue($pm);
+                $eta->setValue($etaText);
                 $status->setValue($split->sample === null
                     ? 'Read ' . self::formatBytes($done) . ' of ' . self::formatBytes($total)
-                    : self::splitStatus($done, $total, $split->parts, $split->again), broadcast: false);
+                    : self::splitStatus($done, $total, $split->parts, $split->again));
                 $c->syncSignals();
             });
             $onSplit = static function (int $parts, \Closure $sample, bool $again, bool $single = false) use ($split): void {
@@ -226,8 +226,8 @@ final class QueryRunner {
                 }
                 $resultParts = $split->singleFrom === null ? $split->width : 1;
                 $finalStatus = self::finish($kind, $read['bytes'], $read['seconds'], $progress->elapsed(), $error, QueryCancel::isRequested($contextId), $resultParts, $split->files, $split->again);
-                $status->setValue($finalStatus, broadcast: false);
-                $running->setValue(false, broadcast: false);
+                $status->setValue($finalStatus);
+                $running->setValue(false);
                 QueryCancel::clear($contextId);
                 $c->sync();
             }

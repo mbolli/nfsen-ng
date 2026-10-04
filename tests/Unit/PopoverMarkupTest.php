@@ -205,7 +205,7 @@ describe('sb-popover markup in backend/templates', function (): void {
             foreach ([...PageRegistry::MODULES, ...PageRegistry::PAGES] as $module) {
                 $module::register($c, $app, $states);
             }
-            $c->getSignal('page')?->setValue('flows', broadcast: false);
+            $c->getSignal('page')?->setValue('flows');
             $rows = [['src_addr' => '10.0.0.1', 'in_bytes' => 5], ['src_addr' => '10.0.0.2', 'in_bytes' => 7]];
             FlowActions::storeResult($states->flows, new QueryResult($rows, 'nfdump -M x', '', 0.2, TimeWindow::raw(1_000, 2_000)), 0.2, '/_action/ip-info-x', [
                 'limit' => 20,

@@ -82,7 +82,7 @@ function settingsActionsTab(Via $app, PageStates $states, string $id): Context {
 
 /** Runs save-settings in a tab and returns the scripts it sent (the toast). */
 function settingsActionsSave(Context $c, string $scope): string {
-    $c->setRequestInput(['scope' => $scope], []);
+    $c->setPageInput(['scope' => $scope]);
     $c->executeAction((string) $c->getAction('save-settings')?->id());
     $scripts = '';
     while (($patch = $c->getPatch()) !== null) {
@@ -329,8 +329,8 @@ describe('the save-settings action', function (): void {
 
     test('the reverse DNS Save writes the switch only, and the General edits stay unsaved in the form', function (): void {
         $c = settingsActionsTab($this->app, $this->states, 'ctx-rdns');
-        $c->getSignal('settings_defaultRange')?->setValue('1h', broadcast: false);
-        $c->getSignal('settings_rdnsEnabled')?->setValue(true, broadcast: false);
+        $c->getSignal('settings_defaultRange')?->setValue('1h');
+        $c->getSignal('settings_rdnsEnabled')?->setValue(true);
 
         $scripts = settingsActionsSave($c, 'rdns');
         $saved = UserPreferences::load(Config::$prefsFile);
@@ -346,9 +346,9 @@ describe('the save-settings action', function (): void {
 
     test('the General Save leaves reverse DNS as saved, and its switch edit stays unsaved', function (): void {
         $c = settingsActionsTab($this->app, $this->states, 'ctx-general');
-        $c->getSignal('settings_defaultRange')?->setValue('1h', broadcast: false);
-        $c->getSignal('settings_rdnsEnabled')?->setValue(true, broadcast: false);
-        $c->getSignal('settings_flowLimit')?->setValue('5', broadcast: false);
+        $c->getSignal('settings_defaultRange')?->setValue('1h');
+        $c->getSignal('settings_rdnsEnabled')?->setValue(true);
+        $c->getSignal('settings_flowLimit')?->setValue('5');
 
         settingsActionsSave($c, 'general');
         $saved = UserPreferences::load(Config::$prefsFile);
@@ -365,9 +365,9 @@ describe('the save-settings action', function (): void {
     test('a save reaches the other open tabs: the fields it changed, not the edits they hold', function (): void {
         $saver = settingsActionsTab($this->app, $this->states, 'ctx-saver');
         $other = settingsActionsTab($this->app, $this->states, 'ctx-other');
-        $other->getSignal('settings_flowLimit')?->setValue(1000, broadcast: false);
-        $saver->getSignal('settings_defaultRange')?->setValue('7d', broadcast: false);
-        $saver->getSignal('displayTz')?->setValue('browser', broadcast: false);
+        $other->getSignal('settings_flowLimit')?->setValue(1000);
+        $saver->getSignal('settings_defaultRange')?->setValue('7d');
+        $saver->getSignal('displayTz')?->setValue('browser');
 
         settingsActionsSave($saver, 'general');
         SettingsPage::viewData($other, $this->app, $this->states, true);
@@ -377,7 +377,7 @@ describe('the save-settings action', function (): void {
             'limit' => $other->getSignal('settings_flowLimit')?->int(),
             'view' => $other->getSignal('settings_defaultView')?->string(),
         ];
-        $other->getSignal('settings_defaultRange')?->setValue('1h', broadcast: false);
+        $other->getSignal('settings_defaultRange')?->setValue('1h');
         SettingsPage::viewData($other, $this->app, $this->states, true);
 
         expect($afterSave)->toBe(['range' => '7d', 'tz' => 'browser', 'limit' => 1000, 'view' => 'flows'])
@@ -388,7 +388,7 @@ describe('the save-settings action', function (): void {
     test('a preferences file that cannot be read is not replaced', function (): void {
         file_put_contents(Config::$prefsFile, '{"alerts": [');
         $c = settingsActionsTab($this->app, $this->states, 'ctx-broken');
-        $c->getSignal('settings_defaultRange')?->setValue('1h', broadcast: false);
+        $c->getSignal('settings_defaultRange')?->setValue('1h');
 
         $scripts = settingsActionsSave($c, 'general');
 
@@ -430,7 +430,7 @@ describe('the save-settings action', function (): void {
         file_put_contents(Config::$prefsFile, json_encode(['theme' => 'light', ...array_diff_key(settingsActionsSaved(), ['theme' => true])], JSON_THROW_ON_ERROR));
         $second = settingsActionsTab($this->app, $this->states, 'ctx-theme-2');
         $seeded = $second->getSignal('settings_theme')?->string();
-        $second->getSignal('settings_theme')?->setValue('system', broadcast: false);
+        $second->getSignal('settings_theme')?->setValue('system');
 
         settingsActionsSave($second, 'general');
         $third = settingsActionsTab($this->app, $this->states, 'ctx-theme-3');
@@ -448,8 +448,8 @@ describe('the save-settings action', function (): void {
         }
         $general = settingsActionsTab($this->app, $this->states, 'ctx-race-general');
         $rdns = settingsActionsTab($this->app, $this->states, 'ctx-race-rdns');
-        $general->getSignal('settings_defaultRange')?->setValue('1h', broadcast: false);
-        $rdns->getSignal('settings_rdnsEnabled')?->setValue(true, broadcast: false);
+        $general->getSignal('settings_defaultRange')?->setValue('1h');
+        $rdns->getSignal('settings_rdnsEnabled')?->setValue(true);
 
         // Coroutine::run() turns on the file hook, so each save yields on its read and write.
         $scripts = [];

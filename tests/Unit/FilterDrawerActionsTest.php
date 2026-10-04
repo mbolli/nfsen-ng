@@ -53,7 +53,7 @@ function filterDrawerCompose(): array {
 
 /** Runs a drawer action as a POST would: `?query` input, then the handler, inside a coroutine. */
 function filterDrawerPost(Context $c, string $action, array $query = []): void {
-    $c->setRequestInput(array_map('strval', $query), []);
+    $c->setPageInput(array_map('strval', $query));
     $id = (string) $c->getAction($action)?->id();
     Coroutine::run(static fn () => $c->executeAction($id));
 }
@@ -133,7 +133,7 @@ describe('filter-migrate-local', function (): void {
     });
 
     test('imports with origin browser, clears drawer_import, acknowledges and says how many', function (): void {
-        $this->c->getSignal('drawer_import')?->setValue(json_encode(['proto tcp', 'dst port 53', 'proto tcp']), broadcast: false);
+        $this->c->getSignal('drawer_import')?->setValue(json_encode(['proto tcp', 'dst port 53', 'proto tcp']));
 
         filterDrawerPost($this->c, 'filter-migrate-local');
 
@@ -146,12 +146,12 @@ describe('filter-migrate-local', function (): void {
 
     test('a second post imports nothing and says nothing, but acknowledges again with a new id', function (): void {
         $payload = json_encode(['proto tcp']);
-        $this->c->getSignal('drawer_import')?->setValue($payload, broadcast: false);
+        $this->c->getSignal('drawer_import')?->setValue($payload);
         filterDrawerPost($this->c, 'filter-migrate-local');
         $first = filterDrawerAck($this->c);
-        $this->c->getSignal('_drawer_notice')?->setValue(FilterDrawer::NOTICE_DEFAULT, broadcast: false);
+        $this->c->getSignal('_drawer_notice')?->setValue(FilterDrawer::NOTICE_DEFAULT);
 
-        $this->c->getSignal('drawer_import')?->setValue($payload, broadcast: false);
+        $this->c->getSignal('drawer_import')?->setValue($payload);
         filterDrawerPost($this->c, 'filter-migrate-local');
 
         expect($this->filters->list())->toHaveCount(1)
@@ -163,7 +163,7 @@ describe('filter-migrate-local', function (): void {
     });
 
     test('a non-list payload is cleared without importing', function (): void {
-        $this->c->getSignal('drawer_import')?->setValue('{"proto tcp": 1}', broadcast: false);
+        $this->c->getSignal('drawer_import')?->setValue('{"proto tcp": 1}');
 
         filterDrawerPost($this->c, 'filter-migrate-local');
 
@@ -182,7 +182,7 @@ describe('filter-migrate-local', function (): void {
 
     test('an unavailable store is not acknowledged, so the client does not mark the browser done', function (): void {
         Database::resetShared();
-        $this->c->getSignal('drawer_import')?->setValue(json_encode(['proto tcp']), broadcast: false);
+        $this->c->getSignal('drawer_import')?->setValue(json_encode(['proto tcp']));
 
         filterDrawerPost($this->c, 'filter-migrate-local');
 
@@ -201,7 +201,7 @@ describe('filter-migrate-local', function (): void {
         Config::$deploymentFilters = ['proto tcp'];
         $preset = $this->filters->list()[0];
         $this->filters->delete($preset['id']);
-        $this->c->getSignal('drawer_import')?->setValue(json_encode(['proto tcp', 'port 53']), broadcast: false);
+        $this->c->getSignal('drawer_import')?->setValue(json_encode(['proto tcp', 'port 53']));
 
         filterDrawerPost($this->c, 'filter-migrate-local');
 
@@ -211,9 +211,9 @@ describe('filter-migrate-local', function (): void {
 
 describe('saved filter actions', function (): void {
     test('filter-save stores the editor text under the name, and leaves edit mode', function (): void {
-        $this->c->getSignal('drawer_filter')?->setValue('dst port 443', broadcast: false);
-        $this->c->getSignal('drawer_name')?->setValue('Web', broadcast: false);
-        $this->c->getSignal('drawer_edit')?->setValue(7, broadcast: false);
+        $this->c->getSignal('drawer_filter')?->setValue('dst port 443');
+        $this->c->getSignal('drawer_name')?->setValue('Web');
+        $this->c->getSignal('drawer_edit')?->setValue(7);
 
         filterDrawerPost($this->c, 'filter-save');
 
@@ -227,7 +227,7 @@ describe('saved filter actions', function (): void {
     });
 
     test('filter-save without a name names the filter after its text', function (): void {
-        $this->c->getSignal('drawer_filter')?->setValue('proto udp', broadcast: false);
+        $this->c->getSignal('drawer_filter')?->setValue('proto udp');
 
         filterDrawerPost($this->c, 'filter-save');
 
@@ -238,8 +238,8 @@ describe('saved filter actions', function (): void {
 
     test('a duplicate expression answers with the name it is saved under', function (): void {
         $this->filters->create('DNS', 'port 53');
-        $this->c->getSignal('drawer_filter')?->setValue("  port\n53 ", broadcast: false);
-        $this->c->getSignal('drawer_name')?->setValue('Other', broadcast: false);
+        $this->c->getSignal('drawer_filter')?->setValue("  port\n53 ");
+        $this->c->getSignal('drawer_name')?->setValue('Other');
 
         filterDrawerPost($this->c, 'filter-save');
 
@@ -259,9 +259,9 @@ describe('saved filter actions', function (): void {
 
     test('filter-update saves a new name and expression', function (): void {
         $id = $this->filters->create('Web', 'dst port 443');
-        $this->c->getSignal('drawer_edit')?->setValue($id, broadcast: false);
-        $this->c->getSignal('drawer_filter')?->setValue('dst port in [80 443]', broadcast: false);
-        $this->c->getSignal('drawer_name')?->setValue('Web (both)', broadcast: false);
+        $this->c->getSignal('drawer_edit')?->setValue($id);
+        $this->c->getSignal('drawer_filter')?->setValue('dst port in [80 443]');
+        $this->c->getSignal('drawer_name')?->setValue('Web (both)');
 
         filterDrawerPost($this->c, 'filter-update', ['id' => $id]);
 
@@ -273,9 +273,9 @@ describe('saved filter actions', function (): void {
 
     test('filter-update with rename=1 keeps the expression', function (): void {
         $id = $this->filters->create('Web', 'dst port 443');
-        $this->c->getSignal('drawer_rename')?->setValue($id, broadcast: false);
-        $this->c->getSignal('drawer_filter')?->setValue('proto icmp', broadcast: false);
-        $this->c->getSignal('drawer_name')?->setValue('HTTPS', broadcast: false);
+        $this->c->getSignal('drawer_rename')?->setValue($id);
+        $this->c->getSignal('drawer_filter')?->setValue('proto icmp');
+        $this->c->getSignal('drawer_name')?->setValue('HTTPS');
 
         filterDrawerPost($this->c, 'filter-update', ['id' => $id, 'rename' => '1']);
 
@@ -289,8 +289,8 @@ describe('saved filter actions', function (): void {
     test('filter-update onto another filter\'s expression is refused and keeps edit mode', function (): void {
         $this->filters->create('DNS', 'port 53');
         $id = $this->filters->create('Web', 'dst port 443');
-        $this->c->getSignal('drawer_edit')?->setValue($id, broadcast: false);
-        $this->c->getSignal('drawer_filter')?->setValue('port 53', broadcast: false);
+        $this->c->getSignal('drawer_edit')?->setValue($id);
+        $this->c->getSignal('drawer_filter')?->setValue('port 53');
 
         filterDrawerPost($this->c, 'filter-update', ['id' => $id]);
 
@@ -323,7 +323,7 @@ describe('saved filter actions', function (): void {
 
     test('filter-delete removes the filter and leaves an edit of it', function (): void {
         $id = $this->filters->create('Web', 'dst port 443');
-        $this->c->getSignal('drawer_edit')?->setValue($id, broadcast: false);
+        $this->c->getSignal('drawer_edit')?->setValue($id);
 
         filterDrawerPost($this->c, 'filter-delete', ['id' => $id]);
 
@@ -362,7 +362,7 @@ describe('saved filter actions', function (): void {
     });
 
     test('filter-use of a filter deleted meanwhile says so and keeps the editor', function (): void {
-        $this->c->getSignal('drawer_filter')?->setValue('proto tcp', broadcast: false);
+        $this->c->getSignal('drawer_filter')?->setValue('proto tcp');
 
         filterDrawerPost($this->c, 'filter-use', ['id' => 99]);
 
@@ -373,7 +373,7 @@ describe('saved filter actions', function (): void {
 
     test('an unavailable store is named in the status line', function (): void {
         Database::resetShared();
-        $this->c->getSignal('drawer_filter')?->setValue('proto tcp', broadcast: false);
+        $this->c->getSignal('drawer_filter')?->setValue('proto tcp');
 
         filterDrawerPost($this->c, 'filter-save');
 
@@ -383,9 +383,9 @@ describe('saved filter actions', function (): void {
 
 describe('drawer-open', function (): void {
     test('checks the text the drawer opened with into _flt_drawer and clears the last notice', function (): void {
-        $this->c->getSignal('drawer_target')?->setValue('flows', broadcast: false);
-        $this->c->getSignal('drawer_filter')?->setValue('proto tcp', broadcast: false);
-        $this->c->getSignal('_drawer_notice')?->setValue(['id' => 'x', 'level' => 'success', 'text' => 'Saved as Web'], broadcast: false);
+        $this->c->getSignal('drawer_target')?->setValue('flows');
+        $this->c->getSignal('drawer_filter')?->setValue('proto tcp');
+        $this->c->getSignal('_drawer_notice')?->setValue(['id' => 'x', 'level' => 'success', 'text' => 'Saved as Web']);
 
         filterDrawerPost($this->c, 'drawer-open');
 
@@ -396,8 +396,8 @@ describe('drawer-open', function (): void {
     });
 
     test('drawer-close only records the posted state, so later renders leave the list out', function (): void {
-        $this->c->getSignal('drawer_open')?->setValue(false, broadcast: false);
-        $this->c->getSignal('drawer_filter')?->setValue('proto tcp', broadcast: false);
+        $this->c->getSignal('drawer_open')?->setValue(false);
+        $this->c->getSignal('drawer_filter')?->setValue('proto tcp');
 
         filterDrawerPost($this->c, 'drawer-close');
 
@@ -408,7 +408,7 @@ describe('drawer-open', function (): void {
     });
 
     test('a filter that cannot be checked leaves the saved-filter line empty', function (): void {
-        $this->c->getSignal('drawer_filter')?->setValue('proto tcp', broadcast: false);
+        $this->c->getSignal('drawer_filter')?->setValue('proto tcp');
         Config::$settings = Config::$settings->withNfdumpBinary("/nonexistent/nf\0dump");
 
         filterDrawerPost($this->c, 'drawer-open');
@@ -419,7 +419,7 @@ describe('drawer-open', function (): void {
     });
 
     test('an unknown target is dropped', function (): void {
-        $this->c->getSignal('drawer_target')?->setValue('drawer', broadcast: false);
+        $this->c->getSignal('drawer_target')?->setValue('drawer');
 
         filterDrawerPost($this->c, 'drawer-open');
 
@@ -454,8 +454,8 @@ describe('FilterDrawer view', function (): void {
     test('an open drawer renders the editor, the grammar and the saved list, starred first', function (): void {
         $this->filters->create('Web', 'dst port 443');
         $this->filters->create('DNS', 'port 53', 'deployment', starred: true);
-        $this->c->getSignal('drawer_open')?->setValue(true, broadcast: false);
-        $this->c->getSignal('drawer_target')?->setValue('flows', broadcast: false);
+        $this->c->getSignal('drawer_open')?->setValue(true);
+        $this->c->getSignal('drawer_target')?->setValue('flows');
 
         $html = filterDrawerRender($this->app, $this->c);
 
@@ -487,8 +487,8 @@ describe('FilterDrawer view', function (): void {
     });
 
     test('an alert rule has no estimate and no Apply and run target', function (): void {
-        $this->c->getSignal('drawer_open')?->setValue(true, broadcast: false);
-        $this->c->getSignal('drawer_target')?->setValue('alert', broadcast: false);
+        $this->c->getSignal('drawer_open')?->setValue(true);
+        $this->c->getSignal('drawer_target')?->setValue('alert');
 
         $html = filterDrawerRender($this->app, $this->c);
 
@@ -499,7 +499,7 @@ describe('FilterDrawer view', function (): void {
 
     test('an unavailable store is named instead of the list', function (): void {
         Database::resetShared();
-        $this->c->getSignal('drawer_open')?->setValue(true, broadcast: false);
+        $this->c->getSignal('drawer_open')?->setValue(true);
 
         $data = FilterDrawer::viewData($this->c, $this->app, new PageStates(), true, 'flows');
 

@@ -124,7 +124,7 @@ function alertsPageTestRender(array $rules): array {
     foreach (PageRegistry::PAGES as $page) {
         $page::register($c, $app, $states);
     }
-    $c->getSignal('page')?->setValue('alerts', broadcast: false);
+    $c->getSignal('page')?->setValue('alerts');
 
     $data = Shell::render($c, $app, $states, false);
 
@@ -498,7 +498,7 @@ describe('default templates in other tabs', function (): void {
         $c = new Context('ctx-alert-tpl-edit', '/', $this->app);
         AlertsPage::signals($c);
         $title = $c->getSignal('settings_defaultWebhookTitleTemplate');
-        $title?->setValue('My edit', broadcast: false);
+        $title?->setValue('My edit');
 
         Config::$settings = Config::$settings->withDefaultWebhookTitleTemplate('Other tab');
         AlertsPage::refreshTemplates($c);
@@ -708,7 +708,7 @@ describe('templates', function (): void {
         try {
             [$c, $data, $html] = alertsPageTestRender([]);
             $help = static fn (string $page): string => trim(HTMLDocument::createFromString($page, LIBXML_NOERROR)->getElementById('alertFormAvgWindowHelp')?->textContent ?? '');
-            $c->getSignal('alert_form_nfdumpFilter')?->setValue('dst port 443', broadcast: false);
+            $c->getSignal('alert_form_nfdumpFilter')?->setValue('dst port 443');
             $filtered = $c->render('pages/alerts.html.twig', $data);
             $select = HTMLDocument::createFromString($filtered, LIBXML_NOERROR)->getElementById('alertFormAvgWindow');
 

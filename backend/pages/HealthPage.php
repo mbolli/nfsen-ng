@@ -93,7 +93,7 @@ final class HealthPage implements Page {
     public static function register(Context $c, Via $app, PageStates $states): void {
         $first = array_key_first(self::daemons($app));
         if ($first !== null) {
-            $c->getSignal('admin_target_profile')?->setValue($first, markChanged: false);
+            $c->getSignal('admin_target_profile')?->setValue($first);
         }
 
         ImportActions::register($c, $app);

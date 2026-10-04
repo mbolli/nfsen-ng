@@ -229,7 +229,7 @@ final class SettingsPage implements Page {
         $values = $saved['values'];
         foreach ($values as $name => $value) {
             if ($seen !== null && ($seen['values'][$name] ?? null) !== $value) {
-                $c->getSignal($name)?->setValue($value, broadcast: false);
+                $c->getSignal($name)?->setValue($value);
             }
         }
         self::remember($c, $saved['version'], $values);

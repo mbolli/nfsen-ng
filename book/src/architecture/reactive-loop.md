@@ -204,9 +204,9 @@ rows, the order, the hidden columns and the zone come from the tab's `FlowsState
   typed props from attributes, a `setup` and a `cleanup`. The server markup
   stays in their light DOM, where the page CSS and a morph reach it; a
   chart or table host holds only a `<slot>` in its shadow root. The router, the
-  menus and the copy buttons are plain modules. The engine,
-  `frontend/js/datastar-rocket.js`, is committed, and nothing is bundled at
-  runtime. `AGENTS.md` has the rules for Rocket elements and the load order.
+  menus and the copy buttons are plain modules. The engine is
+  the Datastar + Rocket bundle php-via serves at `/datastar.js`, and nothing is
+  bundled at runtime. `AGENTS.md` has the rules for Rocket elements and the load order.
 - **Signal names are not wire keys.** A signal's rendered id is its name plus a
   per-context hash; the human name is only a server-side lookup key
   (`$c->getSignal('name')`).

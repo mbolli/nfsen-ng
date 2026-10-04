@@ -44,17 +44,15 @@ composer test-phpstan    # static analysis, level 8
 composer fix              # auto-format PHP (php-cs-fixer)
 composer before-commit   # fix + phpstan; run this before every PHP commit
 
-pnpm install              # JS deps; rebuilds frontend/js/datastar-rocket.js, copies ECharts
+pnpm install              # JS deps; copies ECharts
 pnpm run lint             # Biome lint of frontend/js/components and frontend/css
 pnpm run format           # Biome format --write
 pnpm run test-e2e         # the browser suite against a running instance (BASE, CHROME)
 ```
 
-`pnpm install` builds the Datastar bundle from `node_modules/datastar` and the
-patches in `patches/rocket/` with `scripts/vendor-rocket.sh`, offline, and keeps
-the committed bundle with a warning when esbuild or patch(1) is missing. The
-bundle, the Starbase components under `frontend/js/starbase/` and the licence
-files are committed, so a checkout runs without `pnpm install`; see
+php-via serves the Datastar bundle, so it is no npm dependency. ECharts, the
+Starbase components under `frontend/js/starbase/` and the licence files are
+committed, so a checkout runs without `pnpm install`; see
 [Project Structure](structure.md) and `AGENTS.md` for updating them.
 
 See [Project Structure](structure.md) for where things live,

@@ -54,6 +54,8 @@ $viaConfig = (new ViaConfig())
         return 'public, max-age=31536000, immutable';
     })
     ->withLogLevel($logLevel)
+    // php-via serves Starbase's patched Datastar + Rocket bundle; via_head maps 'datastar' to it.
+    ->withDatastarRocket()
     ->withH2c()
     ->withBrotli()
     // php-via's default, on purpose: at 0, import broadcasts parked a slow tab's SSE write and held the stop.
@@ -76,6 +78,19 @@ $viaConfig = (new ViaConfig())
         'max_wait_time' => 3,
     ])
 ;
+// Versioned, so a bare import resolves to the instance the layout's script tags load.
+$viaConfig->withImportMap(array_map(
+    static fn (string $file): string => $viaConfig->getBasePath() . 'js/components/' . $file . '?v=' . Config::assetVersion(),
+    [
+        'nfsen/theme-colors' => 'theme-colors.js',
+        'nfsen/tz-utils' => 'tz-utils.js',
+        'nfsen/format' => 'format.js',
+        'nfsen/clipboard' => 'clipboard.js',
+        'nfsen/download' => 'download.js',
+        'nfsen/host-state' => 'host-state.js',
+        'nfsen/chunks' => 'chunks.js',
+    ],
+));
 
 $app = new Via($viaConfig);
 

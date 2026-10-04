@@ -35,7 +35,7 @@ const RESULT_LISTS = {
     talkers: ['statsExportMenu', 'statsTable-columns'],
     conversations: ['convExportMenu'],
 };
-const ENGINE = /\/js\/datastar(-rocket)?\.js(\?|$)/;
+const ENGINE = /\/(js\/)?datastar(-rocket)?\.js(\?|$)/;
 // Markup, a Rocket signal and a Rocket action: all of it must stay text.
 const TRICKY = `<b>bold</b> $$count @post('/nope') \${1}`;
 const HEAP_TOASTS = 100;
@@ -583,11 +583,13 @@ async function pageCases(page, requests, consoleText) {
         })()`);
         assert.equal(engine.loaded.length, 1, `exactly one engine resource, got ${JSON.stringify(engine.loaded)}`);
         assert.equal(engine.loaded[0], engine.mapped, 'the engine is loaded from the import map URL');
-        assert.ok(/\/js\/datastar-rocket\.js\?v=/.test(engine.loaded[0]), `the Rocket bundle, versioned: ${engine.loaded[0]}`);
+        assert.ok(/\/datastar\.js\?v=/.test(engine.loaded[0]), `php-via's bundle, versioned: ${engine.loaded[0]}`);
+        const banner = await page.evaluate(`fetch(${JSON.stringify(engine.loaded[0])}).then(function(r){ return r.text(); }).then(function(t){ return t.split('\\n')[0]; })`);
+        assert.match(banner, /^\/\/ Datastar v[\d.]+ \+ Rocket /, `php-via serves the Rocket bundle: ${banner}`);
         assert.deepEqual(
-            requests.filter((r) => new URL(r.url).pathname.endsWith('/js/datastar.js')).map((r) => r.url),
+            requests.filter((r) => new URL(r.url).pathname.startsWith('/js/datastar')).map((r) => r.url),
             [],
-            'no request for the old datastar.js'
+            'no request for a self-hosted engine'
         );
 
         // ── The shell stack; its pause on hover, and a move that is not atomic ──

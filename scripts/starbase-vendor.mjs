@@ -11,8 +11,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = join(ROOT, 'frontend', 'js', 'starbase');
 const LOCK = join(DIR, 'starbase.lock.json');
-const BUNDLE = join(ROOT, 'frontend', 'js', 'datastar-rocket.js');
-const PATCHES = join(ROOT, 'patches', 'rocket');
+// The engine php-via serves at /datastar.js (Config::withDatastarRocket()); Composer installs it.
+const BUNDLE = join(ROOT, 'vendor', 'mbolli', 'php-via', 'public', 'datastar-rocket.js');
 const STAGE_PREFIX = '.starbase-stage-';
 const MIN_FORMAT = 'min2';
 const DEFAULT_REPOSITORY = 'https://github.com/zweiundeins/starbase.git';
@@ -172,7 +172,7 @@ export function bundleBanner(file = BUNDLE) {
 }
 
 /** Name to sha384 of every .patch file in a folder; an absent folder is an empty set. */
-export function patchSet(dir = PATCHES) {
+export function patchSet(dir) {
     const set = {};
     if (!existsSync(dir)) return set;
     for (const e of sortedEntries(dir)) {
@@ -181,20 +181,7 @@ export function patchSet(dir = PATCHES) {
     return set;
 }
 
-/** How a recorded patch set (name to sha384) differs from the .patch files in a folder. */
-export function patchDifferences(locked, { patches = PATCHES, label = 'lock' } = {}) {
-    const out = [];
-    const ours = patchSet(patches);
-    const where = relative(ROOT, patches);
-    for (const name of [...new Set([...Object.keys(locked), ...Object.keys(ours)])].sort(byName)) {
-        if (!Object.hasOwn(ours, name)) out.push(`${label}: has patch ${name}, ${where} does not`);
-        else if (!Object.hasOwn(locked, name)) out.push(`${where}/${name}: ${label} has no such patch`);
-        else if (ours[name] !== locked[name]) out.push(`${where}/${name}: differs from ${label}`);
-    }
-    return out;
-}
-
-/** Where the engine the lock expects, by banner and bytes, differs from frontend/js/datastar-rocket.js. */
+/** Where the engine the lock expects, by banner and bytes, differs from the one php-via serves. */
 export function engineProblems(lock, { bundle = BUNDLE, label = 'lock' } = {}) {
     const problems = [];
     const where = relative(ROOT, bundle);
@@ -402,18 +389,16 @@ function pull(args) {
         const datastar = bundleBanner(theirs);
         const datastarSha256 = sha256(readFileSync(theirs));
         const datastarPatches = patchSet(join(tmp, 'patches/rocket'));
-        // Step 2 of ROCKET-SPEC 3.6: the components must expect the engine nfsen-ng ships, byte for byte.
+        // Step 2 of ROCKET-SPEC 3.6: the components must expect the engine php-via serves, byte for byte.
         const label = `Starbase ${describe}`;
         const engine = engineProblems({ datastar, datastarSha256, datastarPatches }, { label });
-        const patchNotes = patchDifferences(datastarPatches, { label });
         if (engine.length > 0) {
             for (const p of engine) console.error(`FAIL ${p}`);
-            for (const p of patchNotes) console.error(`  ${p}`);
             const ours = existsSync(BUNDLE) ? sha256(readFileSync(BUNDLE)).slice(0, 12) : 'none';
             console.error(`${label}: ${datastar}, sha256 ${datastarSha256.slice(0, 12)}`);
-            console.error(`nfsen-ng: ${bundleBanner() ?? 'no bundle'}, sha256 ${ours}`);
+            console.error(`php-via: ${bundleBanner() ?? 'no bundle'}, sha256 ${ours}`);
             console.error(
-                `pull aborted, ${relative(ROOT, DIR)} is unchanged: bump Datastar first (scripts/vendor-rocket.sh --from), or pin a Starbase commit with this engine`
+                `pull aborted, ${relative(ROOT, DIR)} is unchanged: move to a php-via release that ships this engine, or pin a Starbase commit with php-via's`
             );
             return 1;
         }

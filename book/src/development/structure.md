@@ -69,9 +69,6 @@ frontend/
                             Plain modules after it: datastar-persist (a Datastar plugin),
                             nfsen-controls, clipboard (nfsen/clipboard).
                             Imported only: format, download, host-state, theme-colors, tz-utils
-  js/datastar-rocket.js(.map)
-                            Datastar 1.0.4 with Rocket and the patches of patches/rocket/,
-                            rebuilt by `pnpm install` (scripts/vendor-rocket.sh)
   js/echarts.min.js         copied in by `pnpm install`'s postinstall (see package.json)
   js/starbase/              vendored Starbase components, one <slug>@<version>/ folder each,
                             starbase.lock.json and Starbase's LICENSE
@@ -87,10 +84,8 @@ tests/
                             them against a live instance (BASE=, CHROME=)
 deploy/
   Dockerfile, Dockerfile.dev, docker-compose*.yml, Caddyfile*, systemd/, unraid/
-patches/rocket/            the Rocket patches the bundle is built with, taken from Starbase,
-                            and rocket.lock.json (Starbase commit, banner, sha256 of each)
-scripts/                   vendor-rocket.sh (builds the Datastar bundle), starbase-vendor.mjs
-                            (vendors and checks Starbase components), seed and triage helpers
+scripts/                   starbase-vendor.mjs (vendors and checks Starbase components),
+                            seed and triage helpers
 .github/workflows/
   release.yml              version bump + tag, manually triggered
   docker-publish.yml       builds/pushes the app image to GHCR (bundled Caddy uses the stock image)
@@ -127,8 +122,8 @@ it before your first template edit.
 ## Third-party notices
 
 The files nfsen-ng ships from other projects keep their licence next to them:
-`frontend/js/datastar.LICENSE.md` (Datastar, MIT), `frontend/js/echarts.LICENSE`
-and `frontend/js/echarts.NOTICE` (Apache ECharts, Apache-2.0) and
-`frontend/js/starbase/LICENSE` (Starbase, MIT). `pnpm install` copies the first
-three, `scripts/starbase-vendor.mjs pull` the last; the Docker image ships them
-with `frontend/`.
+`frontend/js/echarts.LICENSE` and `frontend/js/echarts.NOTICE` (Apache ECharts,
+Apache-2.0) and `frontend/js/starbase/LICENSE` (Starbase, MIT). `pnpm install`
+copies the first two, `scripts/starbase-vendor.mjs pull` the last; the Docker
+image ships them with `frontend/`. The Datastar bundle and its notices (Datastar
+and Starbase, MIT) come with php-via, in `vendor/mbolli/php-via/public/DATASTAR.md`.

@@ -9,7 +9,7 @@ final class StarbaseVendorTest {
     public const string MIN_FORMAT = 'min2';
     public const string DIR = __DIR__ . '/../../frontend/js/starbase';
     public const string WALK = __DIR__ . '/../Support/starbase-walk';
-    public const string BUNDLE = __DIR__ . '/../../frontend/js/datastar-rocket.js';
+    public const string BUNDLE = __DIR__ . '/../../vendor/mbolli/php-via/public/datastar-rocket.js';
 
     /** Starbase's slugRe and tagRe (internal/catalog/catalog.go). */
     public const string SLUG_RE = '/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/';
@@ -136,7 +136,7 @@ final class StarbaseVendorTest {
     }
 
     /**
-     * Where the engine the lock expects, by banner and bytes, differs from the bundle nfsen-ng ships. Objects stay
+     * Where the engine the lock expects, by banner and bytes, differs from the bundle php-via serves. Objects stay
      * objects, so a `"datastarPatches": []` fails here as it does in the script.
      *
      * @return list<string>
@@ -150,9 +150,9 @@ final class StarbaseVendorTest {
         $shipped = self::banner($bundle);
         $datastar = $lock->datastar ?? null;
         if ($shipped === null) {
-            $problems[] = 'frontend/js/datastar-rocket.js is missing';
+            $problems[] = 'vendor/mbolli/php-via/public/datastar-rocket.js is missing';
         } elseif (is_string($datastar) && $datastar !== $shipped) {
-            $problems[] = "lock: datastar is '{$datastar}', frontend/js/datastar-rocket.js is '{$shipped}'";
+            $problems[] = "lock: datastar is '{$datastar}', vendor/mbolli/php-via/public/datastar-rocket.js is '{$shipped}'";
         }
         if (!($lock->datastarPatches ?? null) instanceof stdClass) {
             $problems[] = 'lock: datastarPatches is missing';
@@ -163,7 +163,7 @@ final class StarbaseVendorTest {
         } elseif (!is_string($sha) || preg_match('/^[0-9a-f]{64}$/', $sha) !== 1) {
             $problems[] = 'lock: datastarSha256 is not 64 hex characters';
         } elseif ($shipped !== null && ($ours = (string) hash_file('sha256', $bundle)) !== $sha) {
-            $problems[] = 'lock: datastarSha256 is ' . substr($sha, 0, 12) . ', frontend/js/datastar-rocket.js hashes to ' . substr($ours, 0, 12);
+            $problems[] = 'lock: datastarSha256 is ' . substr($sha, 0, 12) . ', vendor/mbolli/php-via/public/datastar-rocket.js hashes to ' . substr($ours, 0, 12);
         }
 
         return $problems;
@@ -369,7 +369,7 @@ describe('Starbase vendoring', function (): void {
         }
     });
 
-    test('the lock names the engine nfsen-ng ships, by banner and bytes, and records its patch set', function (): void {
+    test('the lock names the engine php-via serves, by banner and bytes, and records its patch set', function (): void {
         $lock = StarbaseVendorTest::lock();
 
         expect($lock['datastar'])->toBe(StarbaseVendorTest::banner())
@@ -512,7 +512,7 @@ describe('Starbase vendoring', function (): void {
         file_put_contents($this->tmp . '/starbase.lock.json', json_encode($lock));
 
         expect(StarbaseVendorTest::problems($this->tmp))
-            ->toContain("lock: datastar is 'Datastar v1.0.4 + Rocket beta.2', frontend/js/datastar-rocket.js is '{$shipped}'")
+            ->toContain("lock: datastar is 'Datastar v1.0.4 + Rocket beta.2', vendor/mbolli/php-via/public/datastar-rocket.js is '{$shipped}'")
         ;
     });
 
@@ -524,9 +524,9 @@ describe('Starbase vendoring', function (): void {
         $locked = StarbaseVendorTest::lock($this->tmp)['datastar'];
 
         expect(StarbaseVendorTest::problems($this->tmp, $this->engine . '/datastar-rocket.js'))
-            ->toContain("lock: datastar is '{$locked}', frontend/js/datastar-rocket.js is 'Datastar v1.0.5 + Rocket beta.3'")
+            ->toContain("lock: datastar is '{$locked}', vendor/mbolli/php-via/public/datastar-rocket.js is 'Datastar v1.0.5 + Rocket beta.3'")
             ->and(StarbaseVendorTest::problems($this->tmp, $this->engine . '/missing.js'))
-            ->toContain('frontend/js/datastar-rocket.js is missing')
+            ->toContain('vendor/mbolli/php-via/public/datastar-rocket.js is missing')
         ;
     });
 
@@ -562,7 +562,7 @@ describe('Starbase vendoring', function (): void {
         $bundle = $this->engine . '/datastar-rocket.js';
         file_put_contents($bundle, (string) file_get_contents(StarbaseVendorTest::BUNDLE) . "\n");
         expect(StarbaseVendorTest::problems($this->tmp, $bundle))
-            ->toBe(['lock: datastarSha256 is ' . substr($sha, 0, 12) . ', frontend/js/datastar-rocket.js hashes to ' . substr((string) hash_file('sha256', $bundle), 0, 12)])
+            ->toBe(['lock: datastarSha256 is ' . substr($sha, 0, 12) . ', vendor/mbolli/php-via/public/datastar-rocket.js hashes to ' . substr((string) hash_file('sha256', $bundle), 0, 12)])
         ;
 
         $lock['datastarSha256'] = strtoupper($sha);

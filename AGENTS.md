@@ -26,7 +26,7 @@ composer test-phpstan   # Static analysis (level 8, set in phpstan.neon)
 composer fix            # Auto-format PHP
 composer before-commit  # fix + phpstan
 
-pnpm install            # Install JS deps; rebuilds frontend/js/datastar-rocket.js, copies ECharts and the licences
+pnpm install            # Install JS deps; copies ECharts and its licence files
 pnpm run lint           # Biome lint of frontend/js/components and frontend/css
 pnpm run format         # Biome format (write), same paths
 pnpm run test-e2e       # Browser suite against a running instance (BASE, CHROME)
@@ -34,12 +34,8 @@ pnpm run test-e2e       # Browser suite against a running instance (BASE, CHROME
 
 **Always run `composer before-commit` after a set of PHP changes and fix any reported errors before committing.**
 
-`pnpm install`'s postinstall runs `sh scripts/vendor-rocket.sh --if-tools`: it rebuilds
-`frontend/js/datastar-rocket.js` from `node_modules/datastar` and the patches in `patches/rocket/`, offline, and
-checks the result byte for byte against the sha256 in `patches/rocket/rocket.lock.json`. When esbuild or patch(1) is
-missing, or the build differs (as right after a pin bump), it warns and keeps the committed bundle. Then it copies
-`datastar.LICENSE.md`, `echarts.min.js`, `echarts.LICENSE` and `echarts.NOTICE` into `frontend/js/`. The source map
-embeds the TypeScript sources, so DevTools shows them.
+`pnpm install`'s postinstall copies `echarts.min.js`, `echarts.LICENSE` and `echarts.NOTICE` into `frontend/js/`.
+Datastar is no npm dependency: php-via serves it (see Front-end elements).
 
 ## Architecture
 
@@ -277,10 +273,11 @@ const items = parse(config.sources); // config from data-chart-config attr (stri
 
 ## Front-end elements (Rocket)
 
-The page loads `frontend/js/datastar-rocket.js`: Datastar 1.0.4 with its Rocket component system (beta.2) and the
-patches in `patches/rocket/` (see Bumping Datastar and Rocket). It is the only engine on the page; its URL in the
-`<script>` tag and in the import map is the same string, `?v=` included, since a second URL would load a second
-engine. nfsen-ng's own elements are Rocket elements of three shapes, none with `render`:
+The page loads the Datastar bundle php-via serves at `/datastar.js` (`withDatastarRocket()` in `app.php`): Datastar
+1.0.4 with its Rocket component system (beta.2) and Starbase's Rocket patches, listed in
+`vendor/mbolli/php-via/public/DATASTAR.md` (see Bumping Datastar and Rocket). It is the only engine on the page:
+`{{ via_head() }}` maps `datastar` to its URL in the import map and `{{ via_foot() }}` loads it from the same string,
+`?v=` included, since a second URL would load a second engine. nfsen-ng's own elements are Rocket elements of three shapes, none with `render`:
 
 | Shape | Definition | Elements |
 |---|---|---|
@@ -336,13 +333,14 @@ Rules, checked in part by `tests/e2e/rocket.test.mjs` (and K1 in the templates' 
 
 Load order in `layout.html.twig`:
 
-1. The import map: `datastar`, `nfsen/theme-colors`, `nfsen/tz-utils`, `nfsen/format`, `nfsen/clipboard`,
+1. `{{ via_head() }}`: php-via's SSE bootstrap and the import map, `datastar` and the entries `app.php` adds with
+   `withImportMap()`: `nfsen/theme-colors`, `nfsen/tz-utils`, `nfsen/format`, `nfsen/clipboard`,
    `nfsen/download`, `nfsen/host-state`, `nfsen/chunks`, each with `?v=`. Production caches static files for a
    year, so a module that another module imports goes through the import map, never a relative import.
 2. The inline module that sets `window.tzOptions`.
 3. Plain modules whose `window.*` helpers `data-init` and `data-effect` expressions read (K9): `nfsen-router`,
    `alert-template-preview`, `filter-drawer`, `chunks`, `flows-list`.
-4. `datastar-rocket.js`, then `datastar-persist.js` (a Datastar plugin).
+4. `{{ via_foot() }}` (php-via's Datastar), then `datastar-persist.js` (a Datastar plugin).
 5. The elements `nfsen-chart`, `nfsen-sankey`, `nfsen-matrix`, `nfsen-table`, `nfsen-toast`,
    `nfsen-filter-editor`, then the plain `nfsen-controls` (tabs and the popover layer that completes `sb-popover`,
    both delegated on `document`) and `clipboard`.
@@ -371,7 +369,7 @@ node scripts/starbase-vendor.mjs verify-remote --base https://starbase.zweiundei
 ```
 
 `pull` copies the committed bytes at the ref (`git archive`), refuses a Starbase whose
-`static/vendor/datastar-rocket.js` has another banner than ours, and records that bundle's sha256 and patch set in
+`static/vendor/datastar-rocket.js` is not, by banner and bytes, the bundle php-via serves, and records that bundle's sha256 and patch set in
 the lock. A vendored module may import only `'datastar'` or a file inside its own folder. `StarbaseAssets::modules()`
 reads the lock, and the layout loads every `"load": true` entry after the elements; no template names a component.
 A pin bump is a commit that touches only `frontend/js/starbase/**` and names the Starbase commit and every version.
@@ -442,22 +440,17 @@ defined, `starbase.css` shows only a host's trigger.
 
 ## Bumping Datastar and Rocket
 
-In this order:
+A new Datastar or Rocket comes with a php-via release, whose `public/DATASTAR.md` names the release and Starbase's
+patch set. In this order:
 
-1. Set the pin in `package.json` (`"datastar": "github:starfederation/datastar#v1.0.x"`), run `pnpm install` (it
-   warns that the build differs and keeps the committed bundle) and commit what it writes.
-2. Take the patch set that matches the release from Starbase, which drops a patch once a release contains it:
-   `sh scripts/vendor-rocket.sh --from ../starbase --ref <commit>`. It rebuilds the bundle and rewrites
-   `patches/rocket/`. With no patch left, load the release's `bundles/datastar-rocket.js` directly and delete the
-   folder.
-3. Update the banner line in `tests/Unit/FrontendAssetsTest.php`.
-4. Read `git diff <old> <new> -- library/src/rocket library/src/engine library/src/plugins/watchers/patchElements.ts`
+1. `composer update mbolli/php-via`. `node scripts/starbase-vendor.mjs check` fails from here until step 7.
+2. Read `git diff <old> <new> -- library/src/rocket library/src/engine library/src/plugins/watchers/patchElements.ts`
    in a Datastar clone and note what changed.
-5. Rerun the pantry repro against the new bundle: one morph parks `<section><span id="z">stale z</span></section>`
+3. Rerun the pantry repro against the new bundle: one morph parks `<section><span id="z">stale z</span></section>`
    in Datastar's pantry `<div hidden>` and takes only part of it back, then a full-document morph follows. With
    1.0.2 to 1.0.4 the detached pantry still holds the section and the second morph reuses the stale `#z`. While it
    does, keep the observer in `nfsen-router.js` that empties the pantry after each morph.
-6. Rerun the Rocket repro pages against the new bundle, in Starbase's `docs/repro/`: `rocket-morph-reentrancy` and
+4. Rerun the Rocket repro pages against the new bundle, in Starbase's `docs/repro/`: `rocket-morph-reentrancy` and
    `rocket-morph-ids` (#1209, patch 0008), `rocket-render-ignore-morph` (light `render`, 0009),
    `rocket-removed-elements` (K14, 0010), `rocket-queued-definition-children` (K1, 0011) and
    `rocket-observer-rescan` (0012, the reorder cost that `nfsen-table` avoids by emptying its body first). A move
@@ -468,13 +461,14 @@ In this order:
    handlers on the host that act on `evt.target.closest('[data-...]')`, and a host `data-effect` that writes into
    the children. That effect runs twice at load, so it is idempotent and never posts; an attribute it writes is in
    the child's `data-preserve-attr`, and text it writes goes into a `data-ignore-morph` span.
-7. Update the plugin list of K1 in `tests/e2e/rocket.test.mjs` and `tests/Unit/PopoverMarkupTest.php` if
+5. Update the plugin list of K1 in `tests/e2e/rocket.test.mjs` and `tests/Unit/PopoverMarkupTest.php` if
    `library/src/plugins/attributes` changed. The heap cases of `rocket.test.mjs` assert that every removed host is
    collected, so a bundle without patch 0010's fix fails them.
-8. Move the Starbase pin to a commit whose `static/vendor/datastar-rocket.js` has the same banner (`pull` refuses
+6. Read php-via's changelog for the shell and bootstrap (`via_head`, `via_foot`).
+7. Move the Starbase pin to a commit whose `static/vendor/datastar-rocket.js` is php-via's bundle (`pull` refuses
    otherwise).
-9. Run `node scripts/starbase-vendor.mjs check`, `sh scripts/vendor-rocket.sh --check`,
-   `node tests/e2e/run.mjs rocket starbase-bridge` and then the whole suite.
+8. Run `node scripts/starbase-vendor.mjs check`, `node tests/e2e/run.mjs rocket starbase-bridge` and then the whole
+   suite.
 
 ## Dates and Timezones
 

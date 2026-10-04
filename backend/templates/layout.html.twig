@@ -19,6 +19,8 @@
     data-preserve-attr="data-theme">
 <head>
     <meta charset="utf-8">
+    {# php-via's SSE bootstrap and the import map ('datastar' and the nfsen/* entries of app.php). #}
+    {{ via_head() }}
     {#
         Runs once, before anything reads the hash: a view persisted by the old tab layout
         becomes the page it maps to (D2), and both keys go, so a bare / opens the default view.
@@ -112,14 +114,6 @@
     <link rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href="{{ basePath }}favicon.ico?v={{ shell.assetVersion }}">
     <link rel="apple-touch-icon" href="{{ basePath }}apple-touch-icon.png?v={{ shell.assetVersion }}">
 
-    {# php-via SSE bootstrap, as in php-via's shell.html. _disconnected is client-local. #}
-    <meta data-signals='{"via_ctx":"{{ contextId }}","_disconnected":false}'>
-    <meta data-indicator="_connecting"
-          data-on-interval__duration.15s.leading="!$_connecting && @get('{{ basePath }}_sse')"
-          data-on:datastar-fetch="el === evt.detail.el &&
-                             ((evt.detail.type.startsWith('datastar') && ($_disconnected = false)) ||
-                             (['retrying', 'error', 'finished'].includes(evt.detail.type) && ($_disconnected = true)))">
-    <meta data-init="window.addEventListener('beforeunload', () => { navigator.sendBeacon('{{ basePath }}_session/close', '{{ contextId }}'); });">
     {% for sheet in ['tokens', 'starbase', 'ui', 'shell', 'controls-bar', 'traffic-graph', 'query-kit', 'drawer', 'nfsen-ng', 'pages/overview', 'pages/talkers', 'pages/flows', 'pages/conversations', 'pages/alerts', 'pages/health', 'pages/settings'] %}
         <link rel="stylesheet" type="text/css" href="{{ basePath }}css/{{ sheet }}.css?v={{ shell.assetVersion }}">
     {% endfor %}
@@ -220,19 +214,6 @@
 
     <script src="{{ basePath }}js/echarts.min.js" defer></script>
 
-    {# Before any module script (a later import map is ignored). Versioned, so a bare import
-       resolves to the instance the script tags below load. #}
-    <script type="importmap">{"imports": {
-        "datastar": "{{ basePath }}js/datastar-rocket.js?v={{ shell.assetVersion }}",
-        "nfsen/theme-colors": "{{ basePath }}js/components/theme-colors.js?v={{ shell.assetVersion }}",
-        "nfsen/tz-utils": "{{ basePath }}js/components/tz-utils.js?v={{ shell.assetVersion }}",
-        "nfsen/format": "{{ basePath }}js/components/format.js?v={{ shell.assetVersion }}",
-        "nfsen/clipboard": "{{ basePath }}js/components/clipboard.js?v={{ shell.assetVersion }}",
-        "nfsen/download": "{{ basePath }}js/components/download.js?v={{ shell.assetVersion }}",
-        "nfsen/host-state": "{{ basePath }}js/components/host-state.js?v={{ shell.assetVersion }}",
-        "nfsen/chunks": "{{ basePath }}js/components/chunks.js?v={{ shell.assetVersion }}"
-    }}</script>
-
     <script type="module">
         import { tzOptions } from 'nfsen/tz-utils';
         window.tzOptions = tzOptions;
@@ -245,7 +226,7 @@
     <script type="module" src="{{ basePath }}js/components/filter-drawer.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/chunks.js?v={{ shell.assetVersion }}"></script>
     <script type="module" src="{{ basePath }}js/components/flows-list.js?v={{ shell.assetVersion }}"></script>
-    <script type="module" src="{{ basePath }}js/datastar-rocket.js?v={{ shell.assetVersion }}"></script>
+    {{ via_foot() }}
     <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ shell.assetVersion }}"></script>
     {# clipboard is also an import-map target, so its tag uses the identical URL: one module instance. #}
     {% for component in ['nfsen-chart', 'nfsen-sankey', 'nfsen-matrix', 'nfsen-table', 'nfsen-toast', 'nfsen-filter-editor', 'nfsen-controls', 'clipboard'] %}

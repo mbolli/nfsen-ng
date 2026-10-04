@@ -71,11 +71,9 @@ for example) and `tests/Arch/` (namespace and dependency rules).
 
 Five Pest files check things that are not PHP code:
 
-- `FrontendAssetsTest`: `frontend/js/datastar-rocket.js` starts with the banner
-  of Datastar 1.0.4, Rocket beta.2 and `patches/rocket`, the patch files match
-  `patches/rocket/rocket.lock.json`, `package.json` pins that Datastar release,
-  the import map's `datastar` URL is the bundle's script URL, the old
-  `datastar.js` is gone, the licence files are there, and
+- `FrontendAssetsTest`: no Datastar bundle ships in `frontend/js/` (php-via
+  serves it), the layout loads it only through `{{ via_head() }}` and
+  `{{ via_foot() }}`, the ECharts licence files are there, and
   `StarbaseAssets::modules()` reads the Starbase lock (on, off, missing file,
   bad JSON, bad slug).
 - `StarbaseVendorTest`: the offline checks of `scripts/starbase-vendor.mjs check`
@@ -242,9 +240,9 @@ frontend, `pnpm run lint` and `pnpm run format` run Biome over
 `frontend/js/components` and `frontend/css`; Biome leaves the vendored
 `frontend/js/starbase/` alone.
 
-Two scripts check the vendored JavaScript offline:
+One script checks the vendored JavaScript offline, including that the Starbase
+pin expects the Datastar bundle php-via serves:
 
 ```bash
-sh scripts/vendor-rocket.sh --check          # datastar-rocket.js is the build of Datastar + patches/rocket
 node scripts/starbase-vendor.mjs check       # frontend/js/starbase/ matches its lock
 ```

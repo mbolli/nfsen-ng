@@ -6,7 +6,6 @@ use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\StarbaseAssets;
 
 const FA_ROOT = __DIR__ . '/../..';
-const FA_BANNER = '// Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)';
 
 /** A frontend directory holding only a Starbase lock (raw text) and the given files. */
 function starbaseFixture(string $lock, array $files = []): string {
@@ -31,61 +30,25 @@ function starbaseWarnings(): array {
 }
 
 describe('the Datastar bundle', function (): void {
-    test('only the Rocket bundle ships, never the plain engine', function (): void {
-        expect(file_exists(FA_ROOT . '/frontend/js/datastar.js'))->toBeFalse()
-            ->and(file_exists(FA_ROOT . '/frontend/js/datastar.js.map'))->toBeFalse()
-            ->and(file_exists(FA_ROOT . '/frontend/js/datastar-rocket.js.map'))->toBeTrue()
+    test('comes from php-via, so the front end ships no engine of its own', function (): void {
+        expect(glob(FA_ROOT . '/frontend/js/datastar*'))->toBe([])
+            ->and((string) file_get_contents(FA_ROOT . '/backend/app.php'))->toContain('->withDatastarRocket()')
         ;
     });
 
-    test('is Datastar 1.0.4 with Rocket beta.2 and the patches of patches/rocket', function (): void {
-        $first = strtok((string) file_get_contents(FA_ROOT . '/frontend/js/datastar-rocket.js'), "\n");
-
-        expect($first)->toBe(FA_BANNER);
-    });
-
-    test('package.json pins the release the patches apply to', function (): void {
-        $package = json_decode((string) file_get_contents(FA_ROOT . '/package.json'), true, flags: JSON_THROW_ON_ERROR);
-
-        expect($package['dependencies']['datastar'])->toBe('github:starfederation/datastar#v1.0.4')
-            ->and($package['scripts']['postinstall'])->toContain('sh scripts/vendor-rocket.sh --if-tools')
-        ;
-    });
-
-    test('rocket.lock.json names the bundle bytes and every patch', function (): void {
-        $lock = json_decode((string) file_get_contents(FA_ROOT . '/patches/rocket/rocket.lock.json'), true, flags: JSON_THROW_ON_ERROR);
-        $bundle = (string) file_get_contents(FA_ROOT . '/frontend/js/datastar-rocket.js');
-        $onDisk = array_map('basename', glob(FA_ROOT . '/patches/rocket/*.patch') ?: []);
-        sort($onDisk);
-        $recorded = [];
-        foreach ($lock['patches'] as $patch) {
-            $recorded[] = $patch['file'];
-            expect(hash_file('sha256', FA_ROOT . '/patches/rocket/' . $patch['file']))->toBe($patch['sha256']);
-        }
-
-        expect('// ' . $lock['banner'])->toBe(FA_BANNER)
-            ->and(hash('sha256', $bundle))->toBe($lock['sha256'])
-            ->and($lock['starbase']['commit'])->toMatch('/^[0-9a-f]{40}$/')
-            ->and($onDisk)->not->toBeEmpty()
-            ->and($recorded)->toBe($onDisk)
-        ;
-    });
-
-    test('the import map and the script tag load the same URL', function (): void {
+    test('the layout loads it through via_head and via_foot only', function (): void {
         $layout = (string) file_get_contents(FA_ROOT . '/backend/templates/layout.html.twig');
-        preg_match('/"datastar":\s*"([^"]+)"/', $layout, $map);
-        preg_match_all('/<script type="module" src="([^"]*datastar[^"]*)"/', $layout, $tags);
-        $engine = array_values(array_filter($tags[1], static fn (string $src): bool => !str_contains($src, 'components/')));
 
-        expect($map[1] ?? null)->toBe('{{ basePath }}js/datastar-rocket.js?v={{ shell.assetVersion }}')
-            ->and($engine)->toBe([$map[1]])
+        expect($layout)->toMatch('/<meta charset="utf-8">\s*(\{#.*?#\}\s*)?\{\{ via_head\(\) \}\}/s')
+            ->and(substr_count($layout, '{{ via_foot() }}'))->toBe(1)
+            ->and($layout)->not->toContain('type="importmap"')
+            ->and(preg_match('/<script type="module" src="(?![^"]*components\/)[^"]*datastar[^"]*"/', $layout))->toBe(0)
         ;
     });
 
-    test('ECharts ships its licence and NOTICE, Datastar its licence', function (): void {
+    test('ECharts ships its licence and NOTICE', function (): void {
         expect(file_get_contents(FA_ROOT . '/frontend/js/echarts.LICENSE'))->toContain('Apache License')
             ->and(file_get_contents(FA_ROOT . '/frontend/js/echarts.NOTICE'))->toContain('Apache ECharts')
-            ->and(file_get_contents(FA_ROOT . '/frontend/js/datastar.LICENSE.md'))->toContain('MIT')
         ;
     });
 });

@@ -624,12 +624,13 @@ export default async function starbaseBridgeTest() {
         await boot(page);
         await tokens(page);
 
-        const bundle = await page.evaluate(`JSON.parse(document.querySelector('script[type=importmap]').textContent).imports.datastar`);
+        // js/, whatever the base path: nfsen/format maps to js/components/format.js.
+        const jsDir = await page.evaluate(
+            `new URL('../', new URL(JSON.parse(document.querySelector('script[type=importmap]').textContent).imports['nfsen/format'], location.href)).href`
+        );
         for (const c of components) {
-            // Resolved like the layout's script tags: next to the bundle, whatever the base path.
-            await page.evaluate(
-                `import(new URL(${JSON.stringify(c.path)}, new URL(${JSON.stringify(bundle)}, location.href)).href).then(() => true)`
-            );
+            // Resolved like the layout's script tags, under js/.
+            await page.evaluate(`import(new URL(${JSON.stringify(c.path)}, ${JSON.stringify(jsDir)}).href).then(() => true)`);
         }
         const tags = await mount(page, 'sb-vendored', components);
         found.push(...(await auditAll(page, tags, 'vendored', { catalog: false })));

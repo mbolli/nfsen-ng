@@ -209,7 +209,8 @@ final class Settings {
             defaultEmailBodyTemplate: '',
             defaultWebhookTitleTemplate: '',
             defaultWebhookMessageTemplate: '',
-            datasourceConfigs: (array) ($raw['db'] ?? []),
+            // The image sets NFSEN_RRD_PATH to its volume: a settings.php without a data_path keeps it.
+            datasourceConfigs: array_replace_recursive(self::envDatasourceConfigs(), (array) ($raw['db'] ?? [])),
             defaultRange: '24h',
             defaultUnit: self::legacyUnit($datatype),
             compactTables: false,
@@ -225,21 +226,7 @@ final class Settings {
      * source of truth for env-var names, defaults, and validation.
      */
     public static function fromEnv(): self {
-        // Datasource configs: import_years is a shared top-level setting; only store
-        // datasource-specific connection details here.
-        $rrdConfig = [];
-        $rrdPath = (string) EnvRegistry::value('NFSEN_RRD_PATH');
-        if ($rrdPath !== '') {
-            $rrdConfig['data_path'] = $rrdPath;
-        }
-
-        $datasourceConfigs = [
-            'RRD' => $rrdConfig,
-            'VictoriaMetrics' => [
-                'host' => (string) EnvRegistry::value('NFSEN_VM_HOST'),
-                'port' => (int) EnvRegistry::value('NFSEN_VM_PORT'),
-            ],
-        ];
+        $datasourceConfigs = self::envDatasourceConfigs();
         [$maxProcesses, $maxProcessesAuto] = self::resolveMaxProcesses(EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'));
 
         return new self(
@@ -683,6 +670,28 @@ final class Settings {
         ]);
 
         return $flip[$priority] ?? 'info';
+    }
+
+    /**
+     * The datasources' connection details from the environment. import_years is a shared top-level
+     * setting, so only datasource-specific details go here.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private static function envDatasourceConfigs(): array {
+        $rrdConfig = [];
+        $rrdPath = (string) EnvRegistry::value('NFSEN_RRD_PATH');
+        if ($rrdPath !== '') {
+            $rrdConfig['data_path'] = $rrdPath;
+        }
+
+        return [
+            'RRD' => $rrdConfig,
+            'VictoriaMetrics' => [
+                'host' => (string) EnvRegistry::value('NFSEN_VM_HOST'),
+                'port' => (int) EnvRegistry::value('NFSEN_VM_PORT'),
+            ],
+        ];
     }
 
     // ── Factories ─────────────────────────────────────────────────────────────

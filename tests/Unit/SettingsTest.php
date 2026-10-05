@@ -137,6 +137,20 @@ describe('Settings::fromArray()', function (): void {
             ->and(Settings::fromArray(['nfdump' => ['workers' => -1]])->nfdumpWorkers)->toBe(0)
         ;
     });
+
+    // The image sets NFSEN_RRD_PATH to its volume; a settings.php without a data_path wrote the RRDs into the container.
+    test('a settings.php without a data_path keeps NFSEN_RRD_PATH, and its own data_path wins', function (): void {
+        putenv('NFSEN_RRD_PATH=/var/lib/nfsen-ng/rrd');
+
+        expect(Settings::fromArray([])->datasourceConfig('RRD'))->toBe(['data_path' => '/var/lib/nfsen-ng/rrd'])
+            ->and(Settings::fromArray(['db' => ['RRD' => ['import_years' => 2]]])->datasourceConfig('RRD'))
+            ->toBe(['data_path' => '/var/lib/nfsen-ng/rrd', 'import_years' => 2])
+            ->and(Settings::fromArray(['db' => ['RRD' => ['data_path' => '/srv/rrd']]])->datasourceConfig('RRD'))->toBe(['data_path' => '/srv/rrd'])
+        ;
+
+        putenv('NFSEN_RRD_PATH');
+        expect(Settings::fromArray([])->datasourceConfig('RRD'))->toBe([]);
+    });
 });
 
 describe('nfdump process budget from the environment', function (): void {

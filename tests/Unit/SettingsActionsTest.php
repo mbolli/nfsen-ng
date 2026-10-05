@@ -630,7 +630,7 @@ describe('SettingsPage', function (): void {
         expect([$opened, $synced, $other])->toBe([false, false, true]);
     });
 
-    test('Storage: the RRD directory settings.php does not set is the default, even with its variable set', function (): void {
+    test('Storage: the RRD directory settings.php does not set comes from its variable', function (): void {
         putenv('NFSEN_RRD_PATH=/elsewhere/rrd');
         Config::$settingsFileLoaded = '/etc/nfsen-ng/settings.php';
         $GLOBALS['nfsen_config'] = ['general' => ['db' => 'RRD'], 'db' => ['RRD' => ['import_years' => 2]]];
@@ -645,8 +645,7 @@ describe('SettingsPage', function (): void {
         Config::$settings = Settings::fromEnv();
         $envOnly = SettingsPage::storage();
 
-        expect($fileOnly['location']['origin'])->toBe('default')
-            ->and($fileOnly['location']['value'])->not->toBe('/elsewhere/rrd')
+        expect($fileOnly['location'])->toMatchArray(['value' => '/elsewhere/rrd', 'origin' => 'NFSEN_RRD_PATH'])
             ->and($fileOnly['importYearsOrigin'])->toBe('settings.php')
             ->and($fileSets['location'])->toMatchArray(['value' => $this->stateDir, 'exists' => true, 'origin' => 'settings.php'])
             ->and($envOnly['location'])->toMatchArray(['value' => '/elsewhere/rrd', 'exists' => false, 'origin' => 'NFSEN_RRD_PATH'])

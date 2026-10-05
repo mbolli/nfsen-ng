@@ -541,9 +541,9 @@ final class SettingsPage implements Page {
             $host = \is_scalar($config['host'] ?? null) ? (string) $config['host'] : 'victoriametrics';
             $port = \is_scalar($config['port'] ?? null) ? (int) $config['port'] : 8428;
 
-            $origin = self::origin('NFSEN_VM_HOST', ['db', 'VictoriaMetrics', 'host'], envFallback: false);
+            $origin = self::origin('NFSEN_VM_HOST', ['db', 'VictoriaMetrics', 'host']);
             if ($origin === 'default') {
-                $origin = self::origin('NFSEN_VM_PORT', ['db', 'VictoriaMetrics', 'port'], envFallback: false);
+                $origin = self::origin('NFSEN_VM_PORT', ['db', 'VictoriaMetrics', 'port']);
             }
 
             return ['label' => 'VictoriaMetrics', 'value' => "{$host}:{$port}", 'exists' => null, 'origin' => $origin];
@@ -554,17 +554,16 @@ final class SettingsPage implements Page {
             ? $path
             : (isset(Config::$path) ? Config::$path : '') . \DIRECTORY_SEPARATOR . 'datasources' . \DIRECTORY_SEPARATOR . 'data';
 
-        return ['label' => 'RRD directory', 'value' => $path, 'exists' => is_dir($path), 'origin' => self::origin('NFSEN_RRD_PATH', ['db', 'RRD', 'data_path'], envFallback: false)];
+        return ['label' => 'RRD directory', 'value' => $path, 'exists' => is_dir($path), 'origin' => self::origin('NFSEN_RRD_PATH', ['db', 'RRD', 'data_path'])];
     }
 
     /**
      * Where a deployment value comes from: settings.php where it sets the key (it wins over the
      * environment), else the variable, else the built-in default.
      *
-     * @param list<string> $path        the key in settings.php's $nfsen_config
-     * @param bool         $envFallback false for the keys Settings::fromArray() takes from settings.php only
+     * @param list<string> $path the key in settings.php's $nfsen_config
      */
-    private static function origin(string $env, array $path = [], bool $envFallback = true): string {
+    private static function origin(string $env, array $path = []): string {
         if (Config::$settingsFileLoaded !== null && $path !== []) {
             // Config::initialize() includes settings.php into this global.
             $node = $GLOBALS['nfsen_config'] ?? null;
@@ -573,9 +572,6 @@ final class SettingsPage implements Page {
             }
             if ($node !== null) {
                 return 'settings.php';
-            }
-            if (!$envFallback) {
-                return 'default';
             }
         }
 

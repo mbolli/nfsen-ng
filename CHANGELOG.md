@@ -81,6 +81,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A `settings.php` without an RRD `data_path` ignored `NFSEN_RRD_PATH`**, so a Docker install that mounts one wrote its RRD files into the container instead of the volume, where an image upgrade lost them. The variable now applies unless `settings.php` sets the path, and the same holds for the VictoriaMetrics host and port. The template `settings.php.dist` already read the variable.
+
 - **Min/max bytes could be bypassed by an `or` in the filter**, and a `)` in the filter could close the wrapper and drop the byte limits and the protocol. Every part of a composed filter is now parenthesised, and an unbalanced filter is rejected before nfdump runs.
 
 - **Filter syntax errors were reported as success** in some runs, and a failed query showed an empty result. A non-zero exit of nfdump is now an error with nfdump's message.

@@ -112,4 +112,9 @@
     .overview .kpi-value {
         font-size: var(--font-size-3);
     }
+
+    /* An IPv4 address fits one line of a half-width card only at this size. */
+    .overview .kpi-value[data-kind='address'] {
+        font-size: var(--font-size-1);
+    }
 }

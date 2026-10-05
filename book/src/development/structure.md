@@ -94,6 +94,7 @@ scripts/                   starbase-vendor.mjs (vendors and checks Starbase comp
 book/
   book.toml, src/          this book
   _capture.mjs             screenshot pipeline for the images in src/images (see Testing)
+  _seed-captures.php       the generated traffic those images show
 ```
 
 ## Adding a feature end to end

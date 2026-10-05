@@ -219,6 +219,18 @@ touches the book), `ONLY` limits it to some images; the comment at the top of th
 script lists the other variables. An image is replaced only when it changed by
 more than antialiasing noise, so a rerun leaves an unchanged book untouched.
 
+The images show an instance of their own, not a real network: two gateways
+(`NFSEN_SOURCES=gw1,gw2`) fed by `book/_seed-captures.php`, which writes 48
+hours of capture files through a real nfcapd. Office hours, an evening of
+streaming and a nightly backup give the graphs their shape; outside hosts are
+in the documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
+with private-use AS numbers. The alert rules and saved filters on that instance
+were made in its UI, and the capture ran with `FROM` and `TO` on one day:
+
+```bash
+php book/_seed-captures.php /path/to/profiles-data   # [--from=<unix>] [--to=<unix>] before the path
+```
+
 ## Static analysis
 
 ```bash

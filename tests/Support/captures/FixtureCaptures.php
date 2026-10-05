@@ -48,13 +48,16 @@ final class FixtureCaptures {
     /**
      * Writes $files consecutive 5-minute files per source from $start (a multiple of 300, file
      * names in UTC) with about $flowsPerFile flows each, $outPercent of them as v9 with out
-     * counters. Returns the flows nfcapd stored.
+     * counters. Returns the flows nfcapd stored. $flowsPerFile and $record may instead come from
+     * closures of the source index and the file's start, as book/_seed-captures.php does.
      *
-     * @param list<string> $sources at most 255
+     * @param list<string>                                 $sources      at most 255
+     * @param \Closure(int, int): int|int                  $flowsPerFile
+     * @param null|\Closure(int, int, int, int): list<int> $record       source index, file start, export time, flow: a v5 record's fields
      *
      * @throws \RuntimeException when nfcapd or nfdump fails
      */
-    public static function build(string $root, string $profile, array $sources, int $start, int $files, int $flowsPerFile, int $seed = 1, string $bin = self::BIN, int $outPercent = 0): int {
+    public static function build(string $root, string $profile, array $sources, int $start, int $files, \Closure|int $flowsPerFile, int $seed = 1, string $bin = self::BIN, int $outPercent = 0, ?\Closure $record = null): int {
         if ($files < 1 || $files > 255 || \count($sources) > 255 || $start % 300 !== 0) {
             throw new \InvalidArgumentException('1 to 255 files and sources, from a multiple of 300.');
         }
@@ -62,11 +65,16 @@ final class FixtureCaptures {
         mkdir($spool, 0o777, true);
 
         try {
-            self::collect($spool, $bin, static function ($socket) use ($sources, $start, $files, $flowsPerFile, $seed, $outPercent): void {
+            self::collect($spool, $bin, static function ($socket) use ($sources, $start, $files, $flowsPerFile, $seed, $outPercent, $record): void {
                 foreach ($sources as $sourceIndex => $source) {
                     for ($file = 0; $file < $files; ++$file) {
+                        $slot = $start + $file * 300;
                         srand($seed * 1_000_003 + $sourceIndex * 257 + $file);
-                        self::sendFile($socket, $sourceIndex, $file, $start + $file * 300, $flowsPerFile, $outPercent);
+                        $flows = \is_int($flowsPerFile) ? $flowsPerFile : $flowsPerFile($sourceIndex, $slot);
+                        $fields = $record === null
+                            ? static fn (int $exportSecs): array => self::record($slot, $exportSecs)
+                            : static fn (int $exportSecs, int $i): array => $record($sourceIndex, $slot, $exportSecs, $i);
+                        self::sendFile($socket, $sourceIndex, $file, $slot, $flows, $outPercent, $fields);
                     }
                 }
             });
@@ -171,14 +179,17 @@ final class FixtureCaptures {
         unlink($log);
     }
 
-    /** @param resource $socket */
-    private static function sendFile($socket, int $engineType, int $engineId, int $slot, int $flows, int $outPercent): void {
+    /**
+     * @param resource                      $socket
+     * @param \Closure(int, int): list<int> $record export time and flow index to a v5 record's fields
+     */
+    private static function sendFile($socket, int $engineType, int $engineId, int $slot, int $flows, int $outPercent, \Closure $record): void {
         $exportSecs = $slot + 400;
         $v5 = ['sequence' => 0, 'records' => '', 'count' => 0];
         $v9 = ['sequence' => 0, 'records' => '', 'count' => 0];
         $sent = 0;
         for ($i = 0; $i < $flows; ++$i) {
-            $fields = self::record($slot, $exportSecs);
+            $fields = $record($exportSecs, $i);
             if ($outPercent > 0 && random_int(0, 99) < $outPercent) {
                 $outPackets = intdiv($fields[5] * random_int(0, 300), 100);
                 $fields[] = $outPackets;

@@ -523,6 +523,9 @@ The book's screenshots come from `book/_capture.mjs` (same driver, needs ImageMa
 CHROME=/usr/bin/chromium BASE=http://localhost:8080 node book/_capture.mjs   # OUT=/tmp/shots to check first
 ```
 
+Take them on an instance of their own fed by `book/_seed-captures.php` (generated office traffic, documentation
+addresses only), not on the shared dev stack; [Testing](book/src/development/testing.md) has the setup.
+
 ## Common Pitfalls
 
 - **Signal arrays**: use `->array()` helper, not `->getValue()`

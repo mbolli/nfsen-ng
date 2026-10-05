@@ -35,6 +35,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **One logo**: flows fanning out, in the interface's neutral greys, for the sidebar, the favicon, the home-screen icon and the Unraid app icon. The favicon kept the Unraid icon's teal bands until now.
+
 - **SQLite is now required.** The Docker image already has it; bare-metal installs need `php8.4-sqlite3` and `phpenmod pdo_sqlite`. Saved filters, the alert history, recorded query timings and the Overview top-N live in `<state dir>/nfsen-ng.sqlite`; without the driver, or with a read-only state directory, the app still starts and says what is unavailable. A new composer dependency, `maxmind-db/reader`, comes with `composer install`, and the Docker image now installs from `composer.lock`.
 
 - **Graphs, Statistics and Sankey are now Overview, Top Talkers and Conversations**, and Alerts and Health left Settings for pages of their own. A browser that last had a tab open under the old layout opens the page that replaced it, and the old names work in the address (`#/graphs` opens Overview).

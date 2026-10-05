@@ -1,9 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="nfsen-ng">
-  <rect width="64" height="64" fill="#212529"/>
-  <path d="M0 8 C 26 8, 30 4, 64 4 L64 25 C 30 25, 26 30, 0 30 Z" fill="#2F7F72"/>
-  <path d="M0 36 C 26 36, 30 29, 64 29 L64 35 C 30 35, 26 44, 0 44 Z" fill="#6EA394"/>
-  <path d="M0 50 C 26 50, 34 41, 64 41 L64 47 C 34 47, 26 57, 0 57 Z" fill="#5E7EC3"/>
-  <rect y="8" width="3" height="22" fill="#3EBD94"/>
-  <rect y="36" width="3" height="8" fill="#8EAE74"/>
-  <rect y="50" width="3" height="7" fill="#5E7EC3"/>
+  <!-- Flows fanning out, in the neutral greys of the interface. -->
+  <defs><clipPath id="r"><rect width="64" height="64" rx="14"/></clipPath></defs>
+  <g clip-path="url(#r)">
+    <rect width="64" height="64" fill="#18181b"/>
+    <path d="M-1 15C32 15 32 6 65 6L65 25C32 25 32 30 -1 30Z" fill="#f4f4f5"/>
+    <path d="M-1 32C32 32 32 31 65 31L65 39C32 39 32 38 -1 38Z" fill="#b4b4bb"/>
+    <path d="M-1 40C32 40 32 45 65 45L65 50C32 50 32 44 -1 44Z" fill="#8b8b94"/>
+    <path d="M-1 46C32 46 32 55 65 55L65 59C32 59 32 49 -1 49Z" fill="#686871"/>
+  </g>
 </svg>

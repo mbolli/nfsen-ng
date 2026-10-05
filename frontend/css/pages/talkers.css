@@ -1,0 +1,227 @@
+/* Top Talkers (spec 4.2, 2.7.4): the statistic picker, the query card beside the protocol and
+   ASN panels from 64em, and the result of the chosen statistic. */
+
+.talkers .card > header h2 {
+    font-size: var(--font-size-1);
+}
+
+.talkers fieldset {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+}
+
+.talkers legend {
+    padding: 0;
+}
+
+/* ── Statistic picker ───────────────────────────────────────────────────── */
+
+.stat-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--size-3) var(--size-5);
+}
+
+.stat-picker {
+    flex: 1 1 28rem;
+}
+
+.stat-picker > legend,
+.talkers-options legend,
+.talkers-bytes > legend,
+.talkers-aggregation > legend {
+    margin-block-end: var(--size-1);
+}
+
+.stat-picker > legend {
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* Radios that change a query parameter, drawn like tabs: the checked one is underlined. */
+.stat-picker-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--size-2);
+    box-shadow: inset 0 -1px 0 var(--border);
+}
+
+.stat-picker-options input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.stat-picker-options label {
+    padding: var(--size-2) var(--size-3);
+    border-block-end: 2px solid transparent;
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+}
+
+.stat-picker-options label:hover {
+    border-block-end-color: var(--border-strong);
+    color: var(--text-1);
+}
+
+.stat-picker-options input:checked + label {
+    border-block-end-color: var(--text-1);
+    color: var(--text-1);
+    font-weight: var(--font-weight-semibold);
+}
+
+.stat-picker-options input:focus-visible + label {
+    outline: 2px solid var(--focus-color);
+    outline-offset: -2px;
+}
+
+.stat-more {
+    flex: 1 1 14rem;
+    max-inline-size: 22rem;
+    min-inline-size: 0;
+}
+
+/* ── Query card and side panels ─────────────────────────────────────────── */
+
+.talkers-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--size-4);
+    align-items: start;
+}
+
+@media (min-width: 64em) {
+    .talkers-layout {
+        grid-template-columns: minmax(0, 1fr) minmax(17rem, 24rem);
+    }
+}
+
+.talkers-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: var(--size-3);
+    align-items: end;
+}
+
+.talkers-bytes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 10rem));
+    gap: var(--size-1) var(--size-3);
+}
+
+.talkers-bytes > :is(legend, .help) {
+    grid-column: 1 / -1;
+}
+
+.talkers-run {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2) var(--size-4);
+    padding-block-start: var(--size-3);
+    border-block-start: 1px solid var(--border);
+}
+
+.talkers-run > .query-control {
+    flex: 1 1 16rem;
+    justify-content: flex-end;
+}
+
+.talkers-side {
+    display: grid;
+    gap: var(--size-4);
+}
+
+/* The control's parts join the cost row, so its status line wraps below it and Run stays put. */
+.talkers-panel-run {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2) var(--size-3);
+}
+
+.talkers-panel-run > .query-control {
+    display: contents;
+}
+
+.talkers-panel-run button[data-variant='primary'] {
+    margin-inline-start: auto;
+}
+
+.talkers-panel-run .query-progress {
+    flex-basis: 100%;
+    min-inline-size: 0;
+}
+
+.talkers-panel > .card-body {
+    padding: var(--size-4);
+}
+
+.talkers-panel-cost {
+    flex: 1 1 0;
+    min-inline-size: 0;
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Results ────────────────────────────────────────────────────────────── */
+
+.talkers-export {
+    margin-inline-start: auto;
+}
+
+.talkers-command {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--size-1) var(--size-2);
+    font-size: var(--font-size-0);
+}
+
+.talkers-command-label,
+.talkers-command small {
+    color: var(--text-2);
+}
+
+.talkers-command code {
+    flex: 1 1 20rem;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+}
+
+.talkers-notes {
+    flex-basis: 100%;
+    margin: 0;
+    padding: 0;
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    list-style: none;
+}
+
+/* Folded on a phone, the Run row is all the card shows, so it needs no divider. */
+@media (max-width: 47.98em) {
+    .query-card[data-collapsed] .talkers-run {
+        padding-block-start: 0;
+        border-block-start: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .stat-picker-options input:checked + label {
+        border-block-end-color: Highlight;
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+
+    /* A transparent border is forced visible; paint the unchecked labels' bars as Canvas. */
+    .stat-picker-options input:not(:checked) + label {
+        border-block-end-color: Canvas;
+    }
+}

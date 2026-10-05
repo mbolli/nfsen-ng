@@ -58,14 +58,14 @@ describe('NfdumpProgressWatcher', function (): void {
     test('keeps polling while nfdump has not started yet', function (): void {
         $h = watcherHarness(1000, [null, 42], [250]);
 
-        expect($h->watcher->tick())->toBeTrue()   // no pid — nothing sampled
+        expect($h->watcher->tick())->toBeTrue()   // no pid: nothing sampled
             ->and($h->ticks)->toBeEmpty()
             ->and($h->watcher->tick())->toBeTrue()
             ->and($h->ticks)->toHaveCount(1)
         ;
     });
 
-    // No procfs (FreeBSD, macOS — cf. #143): stop polling, caller falls back to a spinner.
+    // No procfs (FreeBSD, macOS, cf. #143): stop polling, caller falls back to a spinner.
     test('stops permanently when the platform cannot report bytes', function (): void {
         $h = watcherHarness(1000, [42, 42], [null, 500]);
 
@@ -100,7 +100,7 @@ describe('NfdumpProgressWatcher', function (): void {
             4096
         );
 
-        // No nfdump running, so nothing is sampled — but it stays trackable.
+        // No nfdump running, so nothing is sampled, but it stays trackable.
         expect($watcher->tick())->toBeTrue()
             ->and($watcher->isTrackable())->toBeTrue()
         ;

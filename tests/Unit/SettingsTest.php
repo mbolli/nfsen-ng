@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use mbolli\nfsen_ng\common\CpuBudget;
 use mbolli\nfsen_ng\common\EnvRegistry;
 use mbolli\nfsen_ng\common\Settings;
 
@@ -70,6 +71,7 @@ describe('Settings::fromArray()', function (): void {
             ->and($s->nfdumpProfilesData)->toBe('/data/profiles')
             ->and($s->nfdumpProfile)->toBe('prod')
             ->and($s->nfdumpMaxProcesses)->toBe(2)
+            ->and($s->nfdumpMaxProcessesAuto)->toBeFalse()
             ->and($s->logPriority)->toBe(LOG_DEBUG)
         ;
     });
@@ -82,7 +84,7 @@ describe('Settings::fromArray()', function (): void {
             ->and($s->filters)->toBe([])
             ->and($s->datasourceName)->toBe('RRD')
             ->and($s->processorName)->toBe('NfDump')
-            ->and($s->defaultView)->toBe('graphs')
+            ->and($s->defaultView)->toBe('overview')
             ->and($s->defaultGraphDisplay)->toBe('sources')
             ->and($s->defaultGraphDatatype)->toBe('traffic')
             ->and($s->defaultGraphProtocols)->toBe(['any'])
@@ -91,20 +93,93 @@ describe('Settings::fromArray()', function (): void {
             ->and($s->nfdumpBinary)->toBe('/usr/local/nfdump/bin/nfdump')
             ->and($s->nfdumpProfilesData)->toBe('/var/nfdump/profiles-data')
             ->and($s->nfdumpProfile)->toBe('live')
-            // Two, not one: the import daemon takes a slot per nfdump run, so a cap of one
-            // makes browsing queue behind an import in progress.
-            ->and($s->nfdumpMaxProcesses)->toBe(2)
+            // Auto: a third of the cores, never below two, since the import daemon takes a slot
+            // per nfdump run and a cap of one makes browsing queue behind an import.
+            ->and($s->nfdumpMaxProcesses)->toBe(CpuBudget::autoProcesses(CpuBudget::cores()))
+            ->and($s->nfdumpMaxProcesses)->toBeGreaterThanOrEqual(2)
+            ->and($s->nfdumpMaxProcessesAuto)->toBeTrue()
+            ->and($s->nfdumpWorkers)->toBe(2)
             ->and($s->logPriority)->toBe(LOG_INFO)
             ->and($s->defaultEmailSubjectTemplate)->toBe('')
             ->and($s->defaultEmailBodyTemplate)->toBe('')
             ->and($s->defaultWebhookTitleTemplate)->toBe('')
             ->and($s->defaultWebhookMessageTemplate)->toBe('')
+            ->and($s->defaultRange)->toBe('24h')
+            ->and($s->defaultUnit)->toBe('bits')
+            ->and($s->compactTables)->toBeFalse()
+            ->and($s->rdnsEnabled)->toBeTrue()
+            ->and($s->topnRetentionDays)->toBe(31)
+            ->and($s->geoipDb)->toBe('')
         ;
     });
 
-    test('clamps nfdumpMaxProcesses to minimum 1', function (): void {
-        $s = Settings::fromArray(['nfdump' => ['max-processes' => 0]]);
-        expect($s->nfdumpMaxProcesses)->toBe(1);
+    test('a max-processes of 0 or auto derives the limit from the CPU cores', function (mixed $configured): void {
+        $s = Settings::fromArray(['nfdump' => ['max-processes' => $configured]]);
+
+        expect($s->nfdumpMaxProcesses)->toBe(CpuBudget::autoProcesses(CpuBudget::cores()))
+            ->and($s->nfdumpMaxProcessesAuto)->toBeTrue()
+        ;
+    })->with([0, 'auto', 'AUTO', -3, 'many']);
+
+    test('an explicit max-processes is kept, also as a string', function (): void {
+        expect(Settings::fromArray(['nfdump' => ['max-processes' => 1]])->nfdumpMaxProcesses)->toBe(1)
+            ->and(Settings::fromArray(['nfdump' => ['max-processes' => '12']])->nfdumpMaxProcesses)->toBe(12)
+            ->and(Settings::fromArray(['nfdump' => ['max-processes' => '12']])->nfdumpMaxProcessesAuto)->toBeFalse()
+        ;
+    });
+
+    test('settings.php workers wins over NFSEN_NFDUMP_WORKERS and is clamped to 0 to 16', function (): void {
+        putenv('NFSEN_NFDUMP_WORKERS=4');
+
+        expect(Settings::fromArray([])->nfdumpWorkers)->toBe(4)
+            ->and(Settings::fromArray(['nfdump' => ['workers' => 1]])->nfdumpWorkers)->toBe(1)
+            ->and(Settings::fromArray(['nfdump' => ['workers' => 64]])->nfdumpWorkers)->toBe(16)
+            ->and(Settings::fromArray(['nfdump' => ['workers' => -1]])->nfdumpWorkers)->toBe(0)
+        ;
+    });
+
+    // The image sets NFSEN_RRD_PATH to its volume; a settings.php without a data_path wrote the RRDs into the container.
+    test('a settings.php without a data_path keeps NFSEN_RRD_PATH, and its own data_path wins', function (): void {
+        putenv('NFSEN_RRD_PATH=/var/lib/nfsen-ng/rrd');
+
+        expect(Settings::fromArray([])->datasourceConfig('RRD'))->toBe(['data_path' => '/var/lib/nfsen-ng/rrd'])
+            ->and(Settings::fromArray(['db' => ['RRD' => ['import_years' => 2]]])->datasourceConfig('RRD'))
+            ->toBe(['data_path' => '/var/lib/nfsen-ng/rrd', 'import_years' => 2])
+            ->and(Settings::fromArray(['db' => ['RRD' => ['data_path' => '/srv/rrd']]])->datasourceConfig('RRD'))->toBe(['data_path' => '/srv/rrd'])
+        ;
+
+        putenv('NFSEN_RRD_PATH');
+        expect(Settings::fromArray([])->datasourceConfig('RRD'))->toBe([]);
+    });
+});
+
+describe('nfdump process budget from the environment', function (): void {
+    test('NFSEN_NFDUMP_MAX_PROCESSES=auto derives the limit', function (): void {
+        putenv('NFSEN_NFDUMP_MAX_PROCESSES=auto');
+        $s = Settings::fromEnv();
+
+        expect($s->nfdumpMaxProcesses)->toBe(CpuBudget::autoProcesses(CpuBudget::cores()))
+            ->and($s->nfdumpMaxProcessesAuto)->toBeTrue()
+        ;
+    });
+
+    // Existing explicit values keep working.
+    test('an explicit NFSEN_NFDUMP_MAX_PROCESSES is used as it is', function (): void {
+        putenv('NFSEN_NFDUMP_MAX_PROCESSES=3');
+        $s = Settings::fromEnv();
+
+        expect($s->nfdumpMaxProcesses)->toBe(3)
+            ->and($s->nfdumpMaxProcessesAuto)->toBeFalse()
+            ->and(Settings::fromArray([])->nfdumpMaxProcesses)->toBe(3)
+        ;
+    });
+
+    test('NFSEN_NFDUMP_WORKERS reaches the settings', function (): void {
+        putenv('NFSEN_NFDUMP_WORKERS=0');
+        expect(Settings::fromEnv()->nfdumpWorkers)->toBe(0);
+
+        putenv('NFSEN_NFDUMP_WORKERS=99');
+        expect(Settings::fromEnv()->nfdumpWorkers)->toBe(16);
     });
 });
 
@@ -162,12 +237,25 @@ describe('default theme (NFSEN_DEFAULT_THEME, issue #156)', function (): void {
             ->and(Settings::fromArray([])->withDefaultTheme('bogus')->defaultTheme)->toBe('auto')
         ;
     });
+
+    test('deploymentTheme keeps the configured theme through withDefaultTheme', function (): void {
+        putenv('NFSEN_DEFAULT_THEME=light');
+        $fromEnv = Settings::fromEnv();
+        $fromArray = Settings::fromArray(['frontend' => ['defaults' => ['theme' => 'dark']]]);
+        putenv('NFSEN_DEFAULT_THEME');
+
+        expect($fromEnv->deploymentTheme)->toBe('light')
+            ->and($fromEnv->withDefaultTheme('dark')->deploymentTheme)->toBe('light')
+            ->and($fromArray->deploymentTheme)->toBe('dark')
+            ->and($fromArray->withDefaultTheme('auto')->deploymentTheme)->toBe('dark')
+        ;
+    });
 });
 
 describe('Settings::fromEnv()', function (): void {
     test('returns instance with defaults when no env vars set', function (): void {
         // The ambient environment (e.g. this app's own docker-compose.dev.yml)
-        // may already export NFSEN_SOURCES/NFSEN_PORTS for the running app —
+        // may already export NFSEN_SOURCES/NFSEN_PORTS for the running app, so
         // clear them so this test genuinely exercises the "unset" defaults.
         putenv('NFSEN_SOURCES');
         putenv('NFSEN_PORTS');
@@ -180,6 +268,14 @@ describe('Settings::fromEnv()', function (): void {
             ->and($s->nfdumpMaxProcesses)->toBeGreaterThanOrEqual(1)
             ->and($s->sources)->toBe([])
             ->and($s->ports)->toBe([])
+            ->and($s->defaultView)->toBe('overview')
+            ->and($s->defaultGraphDatatype)->toBe('traffic')
+            ->and($s->defaultRange)->toBe('24h')
+            ->and($s->defaultUnit)->toBe('bits')
+            ->and($s->compactTables)->toBeFalse()
+            ->and($s->rdnsEnabled)->toBeTrue()
+            ->and($s->topnRetentionDays)->toBe(31)
+            ->and($s->geoipDb)->toBe('')
         ;
     });
 
@@ -261,9 +357,22 @@ describe('Settings with…() fluent mutators', function (): void {
         ;
     });
 
-    test('withNfdumpMaxProcesses clamps to minimum 1', function (): void {
-        $s = Settings::fromArray([])->withNfdumpMaxProcesses(0);
-        expect($s->nfdumpMaxProcesses)->toBe(1);
+    test('withNfdumpMaxProcesses(0) is auto, a positive value is kept', function (): void {
+        $auto = Settings::fromArray(['nfdump' => ['max-processes' => 3]])->withNfdumpMaxProcesses(0);
+        $fixed = Settings::fromArray([])->withNfdumpMaxProcesses(5);
+
+        expect($auto->nfdumpMaxProcesses)->toBe(CpuBudget::autoProcesses(CpuBudget::cores()))
+            ->and($auto->nfdumpMaxProcessesAuto)->toBeTrue()
+            ->and($fixed->nfdumpMaxProcesses)->toBe(5)
+            ->and($fixed->nfdumpMaxProcessesAuto)->toBeFalse()
+        ;
+    });
+
+    test('withNfdumpWorkers clamps to 0 to 16', function (): void {
+        expect(Settings::fromArray([])->withNfdumpWorkers(3)->nfdumpWorkers)->toBe(3)
+            ->and(Settings::fromArray([])->withNfdumpWorkers(17)->nfdumpWorkers)->toBe(16)
+            ->and(Settings::fromArray([])->withNfdumpWorkers(-2)->nfdumpWorkers)->toBe(0)
+        ;
     });
 
     test('withDatasourceConfig stores and returns config sub-array', function (): void {
@@ -302,6 +411,104 @@ describe('Settings with…() fluent mutators', function (): void {
             ->and($s->filters)->toBe(['proto tcp'])
             ->and($s->logPriority)->toBe(LOG_WARNING)
             ->and($s->nfdumpProfile)->toBe('live2')
+        ;
+    });
+});
+
+describe('redesign settings (preferences and environment)', function (): void {
+    test('both factories read NFSEN_TOPN_RETENTION_DAYS and NFSEN_GEOIP_DB', function (): void {
+        putenv('NFSEN_TOPN_RETENTION_DAYS=7');
+        putenv('NFSEN_GEOIP_DB=/data/GeoLite2-City.mmdb');
+        $fromEnv = Settings::fromEnv();
+        $fromArray = Settings::fromArray(['general' => ['sources' => ['gw1']]]);
+        putenv('NFSEN_TOPN_RETENTION_DAYS');
+        putenv('NFSEN_GEOIP_DB');
+
+        expect($fromEnv->topnRetentionDays)->toBe(7)
+            ->and($fromEnv->geoipDb)->toBe('/data/GeoLite2-City.mmdb')
+            ->and($fromArray->topnRetentionDays)->toBe(7)
+            ->and($fromArray->geoipDb)->toBe('/data/GeoLite2-City.mmdb')
+        ;
+    });
+
+    test('a retention of 0 disables collection and a negative one clamps to 0', function (): void {
+        putenv('NFSEN_TOPN_RETENTION_DAYS=0');
+        $off = Settings::fromEnv();
+        putenv('NFSEN_TOPN_RETENTION_DAYS=-5');
+        $negative = Settings::fromEnv();
+        putenv('NFSEN_TOPN_RETENTION_DAYS');
+
+        expect($off->topnRetentionDays)->toBe(0)
+            ->and($negative->topnRetentionDays)->toBe(0)
+            ->and(Settings::fromEnv()->withTopnRetentionDays(-1)->topnRetentionDays)->toBe(0)
+        ;
+    });
+
+    test('with...() mutators set and normalise the new fields', function (): void {
+        $original = Settings::fromEnv();
+        $s = $original
+            ->withDefaultRange('7D')
+            ->withDefaultUnit('Bytes')
+            ->withCompactTables(true)
+            ->withRdnsEnabled(false)
+            ->withTopnRetentionDays(14)
+            ->withGeoipDb('/geo.mmdb')
+        ;
+
+        expect($s->defaultRange)->toBe('7d')
+            ->and($s->defaultUnit)->toBe('bytes')
+            ->and($s->compactTables)->toBeTrue()
+            ->and($s->rdnsEnabled)->toBeFalse()
+            ->and($s->topnRetentionDays)->toBe(14)
+            ->and($s->geoipDb)->toBe('/geo.mmdb')
+            ->and($original->defaultRange)->toBe('24h')
+            ->and($original->rdnsEnabled)->toBeTrue()
+            ->and($original->withDefaultRange('2w')->defaultRange)->toBe('24h')
+            ->and($original->withDefaultUnit('nibbles')->defaultUnit)->toBe('bits')
+        ;
+    });
+
+    test('the enum normalisers', function (): void {
+        expect(array_map(Settings::normalizeRange(...), ['1h', '24h', '7d', '30d', '1y', ' 1Y ', '2h', '', null]))
+            ->toBe(['1h', '24h', '7d', '30d', '1y', '1y', '24h', '24h', '24h'])
+            ->and(array_map(Settings::normalizeUnit(...), ['bits', 'bytes', 'BYTES', 'octets', 42]))
+            ->toBe(['bits', 'bytes', 'bytes', 'bits', 'bits'])
+            ->and(array_map(Settings::normalizeGraphDatatype(...), ['traffic', 'packets', 'flows', 'bytes', 'Packets', 'nonsense']))
+            ->toBe(['traffic', 'packets', 'flows', 'traffic', 'packets', 'traffic'])
+            ->and(Settings::legacyUnit('bytes'))->toBe('bytes')
+            ->and(Settings::legacyUnit('traffic'))->toBe('bits')
+            ->and(Settings::legacyUnit(null))->toBe('bits')
+        ;
+    });
+
+    test("the legacy 'bytes' datatype in settings.php becomes traffic in bytes", function (): void {
+        $s = Settings::fromArray(['frontend' => ['defaults' => ['graphs' => ['datatype' => 'bytes']]]]);
+
+        expect($s->defaultGraphDatatype)->toBe('traffic')
+            ->and($s->defaultUnit)->toBe('bytes')
+            ->and(Settings::fromEnv()->withDefaultGraphDatatype('bytes')->defaultGraphDatatype)->toBe('traffic')
+            ->and(Settings::fromEnv()->withDefaultGraphDatatype('flows')->defaultGraphDatatype)->toBe('flows')
+        ;
+    });
+
+    test('defaultView holds a page id, mapped from the legacy view ids (D2)', function (): void {
+        expect(Settings::fromArray(['frontend' => ['defaults' => ['view' => 'statistics']]])->defaultView)->toBe('talkers')
+            ->and(Settings::fromEnv()->withDefaultView('sankey')->defaultView)->toBe('conversations')
+            ->and(Settings::fromEnv()->withDefaultView('graphs')->defaultView)->toBe('overview')
+            ->and(Settings::fromEnv()->withDefaultView('investigate')->defaultView)->toBe('flows')
+            ->and(Settings::fromEnv()->withDefaultView('Health')->defaultView)->toBe('health')
+            ->and(Settings::fromEnv()->withDefaultView('dashboard')->defaultView)->toBe('overview')
+            ->and(Settings::fromEnv()->defaultView)->toBe('overview')
+        ;
+    });
+
+    test('normalizeView maps every view id and rejects anything else', function (): void {
+        expect(array_map(Settings::normalizeView(...), ['graphs', 'flows', 'statistics', 'sankey', 'settings', 'investigate']))
+            ->toBe(['overview', 'flows', 'talkers', 'conversations', 'settings', 'flows'])
+            ->and(array_map(Settings::normalizeView(...), ['overview', 'talkers', 'flows', 'conversations', 'alerts', 'health', 'settings']))
+            ->toBe(['overview', 'talkers', 'flows', 'conversations', 'alerts', 'health', 'settings'])
+            ->and(Settings::normalizeView(null))->toBe('overview')
+            ->and(Settings::normalizeView(['graphs']))->toBe('overview')
         ;
     });
 });

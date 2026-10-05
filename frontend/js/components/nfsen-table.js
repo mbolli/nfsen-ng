@@ -1,616 +1,713 @@
 /**
- * NfsenTable Web Component
- * Encapsulates table container and handles IP link clicks
- * Uses MutationObserver to detect when backend sends table HTML via SSE
- * Includes column visibility selector stored in localStorage
+ * <nfsen-table> (4.3.4; ROCKET-SPEC 6.8, shape A): the client half of Table::generate(). All rows live
+ * in the host state and only the current page is in the document; Datastar's observer takes seconds over 10,000 rows.
  */
-
-export class NfsenTable extends HTMLElement {
-    static STORAGE_KEY_HIDDEN = 'nfsen-table-hidden-columns';
-    static STORAGE_KEY_SORT = 'nfsen-table-sort';
-
-    constructor() {
-        super();
-        this.tableId = this.id || 'defaultTable';
-        this.hiddenColumns = this.loadHiddenColumns();
-        this._currentView = 'table'; // 'table' or 'original'
-        this.sortState = this.loadSortState();
-    }
-
-    connectedCallback() {
-        // Initial setup
-        this.setupTable();
-
-        // Re-run setup when SSE morphing replaces inner HTML (restores column visibility, etc.)
-        this._observer = new MutationObserver(() => {
-            clearTimeout(this.setupTimeout);
-            this.setupTimeout = setTimeout(() => this.setupTable(), 50);
-        });
-        this._observer.observe(this, { childList: true, subtree: true });
-    }
-
-    disconnectedCallback() {
-        clearTimeout(this.setupTimeout);
-        if (this._observer) {
-            this._observer.disconnect();
-            this._observer = null;
-        }
-    }
-
-    /**
-     * Setup table features (sorting, visibility, etc.)
-     */
-    setupTable() {
-        // Pause observation to avoid retriggering on our own DOM mutations (replaceChild, etc.)
-        if (this._observer) this._observer.disconnect();
-        this.hiddenColumns = this.loadHiddenColumns();
-        this.sortState = this.loadSortState();
-        this.applyColumnVisibility();
-        this.attachViewSwitcherListeners();
-        this.addExportButtons();
-        this.addColumnSelector();
-        this.attachSortHandlers();
-        this.reapplySortState();
-        if (this._observer) this._observer.observe(this, { childList: true, subtree: true });
-    }
-
-    /**
-     * Load hidden columns from localStorage
-     */
-    loadHiddenColumns() {
-        const key = `${NfsenTable.STORAGE_KEY_HIDDEN}-${this.tableId}`;
-        const stored = localStorage.getItem(key);
-        return stored ? JSON.parse(stored) : [];
-    }
-
-    /**
-     * Save hidden columns to localStorage
-     */
-    saveHiddenColumns() {
-        const key = `${NfsenTable.STORAGE_KEY_HIDDEN}-${this.tableId}`;
-        localStorage.setItem(key, JSON.stringify(this.hiddenColumns));
-    }
-
-    /**
-     * Load sort state from localStorage
-     */
-    loadSortState() {
-        const key = `${NfsenTable.STORAGE_KEY_SORT}-${this.tableId}`;
-        const stored = localStorage.getItem(key);
-        return stored ? JSON.parse(stored) : { column: null, direction: 'asc' };
-    }
-
-    /**
-     * Save sort state to localStorage
-     */
-    saveSortState() {
-        const key = `${NfsenTable.STORAGE_KEY_SORT}-${this.tableId}`;
-        localStorage.setItem(key, JSON.stringify(this.sortState));
-    }
-
-    /**
-     * Attach event listeners to view switcher buttons (if they exist)
-     */
-    attachViewSwitcherListeners() {
-        const buttons = this.querySelectorAll('button[data-view]');
-        if (buttons.length === 0) return;
-
-        // Remove old listeners by replacing with clones
-        buttons.forEach((button) => {
-            const newButton = button.cloneNode(true);
-            button.parentNode.replaceChild(newButton, button);
-
-            newButton.addEventListener('click', (e) => {
-                const view = e.currentTarget.dataset.view;
-                this.switchView(view);
-            });
-        });
-
-        // Apply current view if there's an original view
-        if (this.querySelector('.original')) {
-            this.applyView();
-        }
-    }
-
-    /**
-     * Switch between table and original views
-     */
-    switchView(view) {
-        this._currentView = view;
-
-        // Update button states
-        const buttons = this.querySelectorAll('.view-switcher button');
-        buttons.forEach((button) => {
-            button.setAttribute('aria-pressed', String(button.dataset.view === view));
-        });
-
-        this.applyView();
-    }
-
-    /**
-     * Apply the current view (show/hide elements)
-     */
-    applyView() {
-        const originalView = this.querySelector('.original');
-        const tableContainers = this.querySelectorAll('.table-responsive');
-        const columnSelector = this.querySelector('.column-selector');
-
-        if (this._currentView === 'table') {
-            // Show table and controls
-            tableContainers.forEach((container) => {
-                container.style.display = '';
-            });
-            if (columnSelector) columnSelector.style.display = '';
-            if (originalView) originalView.style.display = 'none';
-        } else {
-            // Show original view, hide table and column selector
-            tableContainers.forEach((container) => {
-                container.style.display = 'none';
-            });
-            if (columnSelector) columnSelector.style.display = 'none';
-            if (originalView) originalView.style.display = '';
-        }
-    }
-
-    /**
-     * Attach event listeners to export buttons
-     */
-    addExportButtons() {
-        const buttons = this.querySelector('.export-buttons');
-        if (!buttons) {
-            console.log('Export buttons container not found');
-            return;
-        }
-
-        // Check if listeners already attached (by checking for a flag)
-        if (buttons.dataset.listenersAttached) return;
-
-        // Attach event listeners to existing buttons (remove old listeners by cloning)
-        const csvButton = buttons.querySelector('.export-csv');
-        const jsonButton = buttons.querySelector('.export-json');
-        const printButton = buttons.querySelector('.export-print');
-
-        if (csvButton) {
-            const newCsvButton = csvButton.cloneNode(true);
-            csvButton.parentNode.replaceChild(newCsvButton, csvButton);
-            newCsvButton.addEventListener('click', () => this.exportToCSV());
-        }
-
-        if (jsonButton) {
-            const newJsonButton = jsonButton.cloneNode(true);
-            jsonButton.parentNode.replaceChild(newJsonButton, jsonButton);
-            newJsonButton.addEventListener('click', () => this.exportToJSON());
-        }
-
-        if (printButton) {
-            const newPrintButton = printButton.cloneNode(true);
-            printButton.parentNode.replaceChild(newPrintButton, printButton);
-            newPrintButton.addEventListener('click', () => this.printTable());
-        }
-
-        buttons.dataset.listenersAttached = 'true';
-    }
-
-    /**
-     * Extract table data as JSON array
-     * @param {boolean} useEnhanced - If true, use displayed (enhanced/formatted) data; if false, use raw data from data attributes
-     */
-    getTableData(useEnhanced = true) {
-        const table = this.querySelector('table');
-        if (!table) return [];
-
-        const headers = Array.from(table.querySelectorAll('thead th'))
-            .filter((th) => th.style.display !== 'none')
-            .map((th) => th.textContent.replace(/[▲▼]/g, '').trim());
-
-        const data = [];
-        table.querySelectorAll('tbody tr').forEach((tr) => {
-            const row = {};
-            Array.from(tr.querySelectorAll('td')).forEach((td, index) => {
-                const th = table.querySelectorAll('thead th')[index];
-                if (th && th.style.display !== 'none') {
-                    const header = headers[Object.keys(row).length];
-                    // Use raw data if available and useEnhanced is false, otherwise use displayed text
-                    if (!useEnhanced && td.dataset.raw !== undefined) {
-                        row[header] = td.dataset.raw;
-                    } else {
-                        row[header] = td.textContent.trim();
-                    }
-                }
-            });
-            data.push(row);
-        });
-
-        return data;
-    }
-
-    /**
-     * Export table data to CSV
-     */
-    exportToCSV() {
-        const useEnhanced = this.querySelector('.export-enhanced-data')?.checked ?? true;
-        const data = this.getTableData(useEnhanced);
-        if (data.length === 0) return;
-
-        // Get headers from first row keys
-        const headers = Object.keys(data[0]);
-
-        // Convert to CSV rows
-        const rows = [headers];
-        data.forEach((row) => {
-            const values = headers.map((header) => {
-                let value = row[header] || '';
-                // Escape quotes and wrap in quotes if contains comma or quote
-                if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-                    value = `"${value.replace(/"/g, '""')}"`;
-                }
-                return value;
-            });
-            rows.push(values);
-        });
-
-        const csv = rows.map((row) => row.join(',')).join('\n');
-        this.downloadFile(csv, 'export.csv', 'text/csv');
-    }
-
-    /**
-     * Export table data to JSON
-     */
-    exportToJSON() {
-        const useEnhanced = this.querySelector('.export-enhanced-data')?.checked ?? true;
-        const data = this.getTableData(useEnhanced);
-        const json = JSON.stringify(data, null, 2);
-        this.downloadFile(json, 'export.json', 'application/json');
-    }
-
-    /**
-     * Print the table
-     */
-    printTable() {
-        const table = this.querySelector('table');
-        if (!table) return;
-
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
-            <html>
-            <head>
-                <title>Statistics Report</title>
-                <style>
-                    body { font-family: Arial, sans-serif; padding: 20px; }
-                    table { border-collapse: collapse; width: 100%; }
-                    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                    th { background-color: #f2f2f2; font-weight: bold; }
-                    tr:nth-child(even) { background-color: #f9f9f9; }
-                    @media print {
-                        body { padding: 0; }
-                    }
-                </style>
-            </head>
-            <body>
-                <h1>Statistics Report</h1>
-                ${table.outerHTML}
-                <script>
-                    window.onload = function() {
-                        window.print();
-                        window.onafterprint = function() { window.close(); }
-                    }
-                </script>
-            </body>
-            </html>
-        `);
-        printWindow.document.close();
-    }
-
-    /**
-     * Helper to download a file
-     */
-    downloadFile(content, filename, mimeType) {
-        const blob = new Blob([content], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-
-    /**
-     * Add column selector dropdown to the table
-     */
-    addColumnSelector() {
-        const table = this.querySelector('table');
-        if (!table) return;
-
-        const headerRow = table.querySelector('thead tr');
-        if (!headerRow) return;
-
-        // Check if selector already exists
-        const existingSelector = this.querySelector('.column-selector');
-        if (existingSelector) return;
-
-        // Get all column headers
-        const headers = Array.from(headerRow.querySelectorAll('th'));
-        if (headers.length === 0) return;
-
-        // Create column selector
-        const selector = document.createElement('div');
-        selector.className = 'column-selector';
-        const allVisible = this.hiddenColumns.length === 0;
-        // Open/close runs on a browser-local Datastar signal, one per table (flowTable and
-        // statsTable are both on the page). __ifmissing keeps an open menu open across the SSE
-        // morphs that rebuild this markup. The menu needs data-bs-popper + dropdown-menu-end to
-        // land under the button and inside the viewport (#161).
-        const openSignal = `_colsOpen_${this.tableId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
-        selector.innerHTML = `
-            <div class="menu"
-                 data-signals__ifmissing="{${openSignal}: false}"
-                 data-on:click__outside="$${openSignal} = false"
-                 data-on:keydown__window="evt.key === 'Escape' && ($${openSignal} = false)">
-                <button data-size="sm" class="menu-toggle" type="button"
-                        data-on:click="$${openSignal} = !$${openSignal}"
-                        data-attr:aria-expanded="$${openSignal} ? 'true' : 'false'">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                        <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/>
-                        <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>
-                    </svg>
-                    Columns
-                </button>
-                <ul class="menu-list column-selector-menu"
-                    data-attr:data-open="$${openSignal}"
-                    style="max-height: 300px; overflow-y: auto;">
-                    <li>
-                        <label class="strong menu-head" style="cursor: pointer;">
-                            <input type="checkbox"  
-                                   id="column-toggle-all-${this.tableId}"
-                                   ${allVisible ? 'checked' : ''}>
-                            Show All
-                        </label>
-                    </li>
-                    ${headers
-                        .map((header, index) => {
-                            const columnName = header.textContent.trim();
-                            const isHidden = this.hiddenColumns.includes(columnName);
-                            return `
-                            <li>
-                                <label class="column-checkbox-item" style="cursor: pointer;">
-                                    <input type="checkbox" class="column-checkbox" 
-                                           data-column-index="${index}"
-                                           data-column-name="${columnName}"
-                                           ${isHidden ? '' : 'checked'}>
-                                    ${columnName}
-                                </label>
-                            </li>
-                        `;
-                        })
-                        .join('')}
-                </ul>
-            </div>
-        `;
-
-        // Insert selector into the placeholder in view-switcher, or before table if no placeholder
-        const placeholder = this.querySelector('.column-selector-placeholder');
-        if (placeholder) {
-            placeholder.appendChild(selector);
-        } else {
-            const tableParent = table.parentNode;
-            tableParent.parentNode.insertBefore(selector, tableParent);
-        }
-
-        // Attach event listener for "Show All" checkbox
-        const toggleAllCheckbox = selector.querySelector(`#column-toggle-all-${this.tableId}`);
-        if (toggleAllCheckbox) {
-            toggleAllCheckbox.addEventListener('change', (e) => {
-                const columnCheckboxes = selector.querySelectorAll('.column-checkbox');
-                if (e.target.checked) {
-                    // Show all columns
-                    this.hiddenColumns = [];
-                    columnCheckboxes.forEach((cb) => {
-                        cb.checked = true;
-                    });
-                } else {
-                    // Hide all columns
-                    this.hiddenColumns = headers.map((h) => h.textContent.trim());
-                    columnCheckboxes.forEach((cb) => {
-                        cb.checked = false;
-                    });
-                }
-                this.saveHiddenColumns();
-                this.applyColumnVisibility();
-            });
-        }
-
-        // Attach event listeners for individual column checkboxes
-        selector.querySelectorAll('.column-checkbox').forEach((checkbox) => {
-            checkbox.addEventListener('change', (e) => {
-                const columnName = e.target.dataset.columnName;
-                if (e.target.checked) {
-                    // Show column
-                    this.hiddenColumns = this.hiddenColumns.filter((col) => col !== columnName);
-                } else {
-                    // Hide column
-                    if (!this.hiddenColumns.includes(columnName)) {
-                        this.hiddenColumns.push(columnName);
-                    }
-                }
-
-                // Update "Show All" checkbox state
-                const allChecked = Array.from(selector.querySelectorAll('.column-checkbox')).every((cb) => cb.checked);
-                if (toggleAllCheckbox) {
-                    toggleAllCheckbox.checked = allChecked;
-                }
-
-                this.saveHiddenColumns();
-                this.applyColumnVisibility();
-            });
-        });
-    }
-
-    /**
-     * Apply column visibility based on hiddenColumns list
-     */
-    applyColumnVisibility() {
-        const table = this.querySelector('table');
-        if (!table) return;
-
-        const headerRow = table.querySelector('thead tr');
-        if (!headerRow) return;
-
-        const headers = Array.from(headerRow.querySelectorAll('th'));
-        const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
-
-        headers.forEach((header, index) => {
-            const columnName = header.textContent.replace(/[▲▼]/g, '').trim(); // Remove sort arrows
-            const isHidden = this.hiddenColumns.includes(columnName);
-
-            // Hide/show header
-            header.style.display = isHidden ? 'none' : '';
-
-            // Hide/show corresponding cells in body
-            bodyRows.forEach((row) => {
-                const cell = row.querySelectorAll('td')[index];
-                if (cell) {
-                    cell.style.display = isHidden ? 'none' : '';
-                }
-            });
-        });
-    }
-
-    /**
-     * Re-apply the current sort state after an SSE re-render without toggling direction.
-     */
-    reapplySortState() {
-        const { column, direction } = this.sortState;
-        if (column === null) return;
-
-        const table = this.querySelector('table');
-        if (!table) return;
-
-        const headers = table.querySelectorAll('thead th.sortable');
-        if (headers[column]) {
-            this.sortTable(column, headers[column], direction);
-        }
-    }
-
-    /**
-     * Attach click handlers to table headers for sorting
-     */
-    attachSortHandlers() {
-        const table = this.querySelector('table');
-        if (!table) return;
-
-        const headers = table.querySelectorAll('thead th.sortable');
-        headers.forEach((header, columnIndex) => {
-            // Remove existing listeners by cloning
-            const newHeader = header.cloneNode(true);
-            header.parentNode.replaceChild(newHeader, header);
-
-            newHeader.addEventListener('click', () => {
-                this.sortTable(columnIndex, newHeader);
-            });
-        });
-    }
-
-    /**
-     * Sort table by column index.
-     * Pass forceDirection to re-apply an existing sort without toggling.
-     */
-    sortTable(columnIndex, headerElement, forceDirection = null) {
-        const table = this.querySelector('table');
-        if (!table) return;
-
-        const tbody = table.querySelector('tbody');
-        const rows = Array.from(tbody.querySelectorAll('tr'));
-
-        // Determine sort direction
-        let direction;
-        if (forceDirection !== null) {
-            direction = forceDirection;
-        } else if (this.sortState.column === columnIndex) {
-            // Toggle direction if same column
-            direction = this.sortState.direction === 'asc' ? 'desc' : 'asc';
-        } else {
-            direction = 'asc';
-        }
-
-        // Update sort state
-        this.sortState = { column: columnIndex, direction };
-        this.saveSortState();
-
-        // Update header indicators
-        this.updateSortIndicators(headerElement, direction);
-
-        // Sort rows
-        rows.sort((rowA, rowB) => {
-            const cellA = rowA.querySelectorAll('td')[columnIndex];
-            const cellB = rowB.querySelectorAll('td')[columnIndex];
-
-            if (!cellA || !cellB) return 0;
-
-            const valueA = cellA.getAttribute('data-sort-value') || cellA.textContent;
-            const valueB = cellB.getAttribute('data-sort-value') || cellB.textContent;
-
-            return this.compareValues(valueA, valueB, direction);
-        });
-
-        // Re-append sorted rows
-        rows.forEach((row) => {
-            tbody.appendChild(row);
-        });
-
-        // Re-apply column visibility after sorting
-        this.applyColumnVisibility();
-    }
-
-    /**
-     * Compare two values for sorting
-     */
-    compareValues(a, b, direction) {
-        // Handle empty values - always sort to end
-        if (a === '' || a === null || a === undefined) return direction === 'asc' ? 1 : -1;
-        if (b === '' || b === null || b === undefined) return direction === 'asc' ? -1 : 1;
-
-        // Try numeric comparison first
-        const numA = parseFloat(a);
-        const numB = parseFloat(b);
-
-        let result = 0;
-
-        if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
-            // Both are numbers
-            result = numA - numB;
-        } else {
-            // String comparison (case-insensitive, with natural numeric sorting)
-            result = String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
-        }
-
-        return direction === 'asc' ? result : -result;
-    }
-
-    /**
-     * Update sort indicators in table headers
-     */
-    updateSortIndicators(activeHeader, direction) {
-        const table = this.querySelector('table');
-        if (!table) return;
-
-        // Remove all existing indicators
-        table.querySelectorAll('thead th.sortable').forEach((header) => {
-            header.classList.remove('sort-asc', 'sort-desc');
-            const existingIcon = header.querySelector('.sort-icon');
-            if (existingIcon) existingIcon.remove();
-        });
-
-        // Add indicator to active column
-        activeHeader.classList.add(direction === 'asc' ? 'sort-asc' : 'sort-desc');
-
-        // Add arrow icon
-        const icon = document.createElement('span');
-        icon.className = 'sort-icon';
-        icon.innerHTML = direction === 'asc' ? '▲' : '▼';
-        activeHeader.appendChild(icon);
+import { rocket, root } from 'datastar';
+import { download } from 'nfsen/download';
+import { escapeHtml } from 'nfsen/format';
+import { hostState, peekState, whenGone } from 'nfsen/host-state';
+
+const PAGE_SIZES = [25, 50, 100, 250];
+/** Rows per frame: at about 100, Datastar's and Rocket's observers and the table layout run a frame past 50 ms. */
+const ROWS_PER_FRAME = 50;
+const STORAGE_HIDDEN = 'nfsen-table-hidden-columns';
+const STORAGE_SORT = 'nfsen-table-sort';
+const STORAGE_PAGE_SIZE = 'nfsen-table-page-size';
+
+function load(key, fallback) {
+    try {
+        return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback;
+    } catch {
+        return fallback;
     }
 }
 
-customElements.define('nfsen-table', NfsenTable);
+function save(key, value) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+        // storage disabled: the choice lasts for this page only
+    }
+}
+
+/** A tab signal by name; the wire id carries a per-context suffix. */
+function signal(name) {
+    const key = Object.keys(root).find((k) => k === name || k.startsWith(`${name}____`));
+    return key === undefined ? undefined : root[key];
+}
+
+const DIGITS = /^\d+$/;
+const NUMBER = /^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i;
+
+/**
+ * Sort keys: digit strings of any length by value (IPv6 keys have 41 digits, past a float's
+ * precision), other numbers as numbers, the rest as text with natural digit order.
+ */
+export function compareValues(a, b) {
+    if (DIGITS.test(a) && DIGITS.test(b)) {
+        const x = a.replace(/^0+(?=\d)/, '');
+        const y = b.replace(/^0+(?=\d)/, '');
+        return x.length - y.length || (x < y ? -1 : x > y ? 1 : 0);
+    }
+    if (NUMBER.test(a) && NUMBER.test(b)) return Number(a) - Number(b);
+    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+/** What Table::generate() left out because the cell shows it: the sort key, then the raw value. */
+function sortKey(cell) {
+    return cell.dataset.sortValue ?? cell.querySelector('time[data-epoch]')?.dataset.epoch ?? cell.dataset.raw ?? cell.textContent.trim();
+}
+
+const n = (v) => Number(v).toLocaleString('en');
+
+/** Same words as Table::pagerText(). */
+export function pagerText(from, to, total, limit, reached = undefined) {
+    const shown = total === 0 ? 'No rows' : `Showing ${n(from)}-${n(to)} of ${n(total)}`;
+    if (!(limit > 0)) return shown + (total === 0 ? '.' : ' rows.');
+    const text = `${shown} returned (limit ${n(limit)}).`;
+    return (reached ?? total >= limit) ? `${text} nfdump cannot skip rows: raise the limit to see more.` : text;
+}
+
+/** Same pages as Table::pagerPages(): null is a gap. */
+export function pagerPages(current, pages) {
+    if (pages <= 7) return Array.from({ length: pages }, (_, i) => i);
+    if (current < 4) return [0, 1, 2, 3, 4, null, pages - 1];
+    if (current > pages - 5) return [0, null, ...Array.from({ length: 5 }, (_, i) => pages - 5 + i)];
+    return [0, null, current - 1, current, current + 1, null, pages - 1];
+}
+
+/** Token colours in the light scheme, resolved now, for a printout on paper. */
+function printColors() {
+    const probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;visibility:hidden;color-scheme:light;forced-color-adjust:none';
+    document.body.append(probe);
+    const read = (token) => {
+        probe.style.color = `var(${token})`;
+        return getComputedStyle(probe).color;
+    };
+    const colors = {
+        text: read('--text-1'),
+        muted: read('--text-2'),
+        border: read('--border'),
+        header: read('--surface-3'),
+        zebra: read('--surface-2'),
+        paper: read('--surface-1'),
+        font: getComputedStyle(document.body).fontFamily,
+    };
+    probe.remove();
+    return colors;
+}
+
+/** Scroll listeners are per element, and a new setup can meet the same elements again. */
+const scrollBound = new WeakSet();
+
+/** What a host keeps across a move (K14): the result it shows, its rows and the reader's choices. */
+function blank() {
+    return {
+        result: undefined,
+        table: null,
+        body: null,
+        headers: [],
+        keys: [],
+        rows: [],
+        filling: null,
+        held: null,
+        page: 0,
+        sort: {},
+        hiddenColumns: [],
+        paginate: false,
+        pageSize: Number.POSITIVE_INFINITY,
+        view: 'table',
+        queued: false,
+        watch: null,
+        resizes: null,
+    };
+}
+
+function release(state) {
+    unhold(state);
+    Object.assign(state, { rows: [], filling: null, table: null, body: null, headers: [] });
+}
+
+/**
+ * Builds for a new result (a new <table>, or a new data-result when Datastar morphed this host into
+ * the next one); true when it built.
+ */
+function refresh(host, state) {
+    const table = host.querySelector('table');
+    let built = false;
+    if (table !== state.table || host.dataResult !== state.result) {
+        state.table = table;
+        state.result = host.dataResult;
+        if (table) {
+            build(host, state);
+            built = true;
+        }
+    }
+    watch(host, state);
+    return built;
+}
+
+/** After a morph: a new result builds. */
+function update(host) {
+    const state = peekState(host);
+    if (state && host.isConnected) refresh(host, state);
+}
+
+/** One refresh per burst of prop changes, after the morph that made them (K15). */
+function schedule(host) {
+    const state = peekState(host);
+    if (!state || state.queued) return;
+    state.queued = true;
+    queueMicrotask(() => {
+        state.queued = false;
+        update(host);
+    });
+}
+
+/** The child observer sees the <table> being replaced. */
+function watch(host, state) {
+    const observer = state.watch;
+    if (!observer) return;
+    observer.disconnect();
+    observer.observe(host, { childList: true });
+    const wrap = state.table?.parentElement;
+    if (wrap && wrap !== host) observer.observe(wrap, { childList: true });
+}
+
+function build(host, state) {
+    const table = state.table;
+    state.headers = [...table.querySelectorAll('thead th')];
+    state.keys = state.headers.map((th) => th.dataset.originalTitle ?? titleOf(th));
+    state.body = table.tBodies[0] ?? null;
+    state.filling = null;
+    unhold(state);
+    state.rows = [...(state.body?.rows ?? []), ...takeRows(host)];
+    state.hiddenColumns = loadHidden(host, state);
+    state.sort = loadSort(host);
+    state.paginate = host.hasAttribute('data-page-size');
+    state.pageSize = state.paginate ? loadPageSize(host) : Number.POSITIVE_INFINITY;
+    state.page = 0;
+    localiseTimes(state.rows);
+    buildColumnMenu(host, state);
+    switchView(host, state, host.dataset.view ?? 'table');
+    bindScrollbar(host, state);
+    applyColumns(host, state);
+    if (state.sort.key && state.keys.includes(state.sort.key)) sortBy(host, state, state.sort.key, state.sort.direction);
+    else showPage(host, state);
+}
+
+/** Rows past the first page, which the server sends with it in <template class="table-rows">. */
+function takeRows(host) {
+    const rows = [];
+    for (const template of host.querySelectorAll(':scope > template.table-rows')) {
+        rows.push(...template.content.children);
+        template.remove();
+    }
+    return rows;
+}
+
+function titleOf(th) {
+    return (th.querySelector('.sort-button') ?? th).textContent.trim();
+}
+
+function onClick(host, event) {
+    const state = peekState(host);
+    const target = event.target instanceof Element ? event.target : null;
+    if (!state?.table || !target) return;
+    const sort = target.closest('.sort-button');
+    const index = sort ? state.headers.indexOf(sort.closest('th')) : -1;
+    if (index !== -1) {
+        const key = state.keys[index];
+        sortBy(host, state, key, state.sort.key === key && state.sort.direction === 'asc' ? 'desc' : 'asc');
+        save(`${STORAGE_SORT}-${host.id}`, state.sort);
+        return;
+    }
+    const page = target.closest('.table-pager button[data-page]');
+    if (page && !page.disabled) {
+        const to = page.dataset.page;
+        state.page = to === 'prev' ? state.page - 1 : to === 'next' ? state.page + 1 : Number(to);
+        showPage(host, state);
+        return;
+    }
+    const view = target.closest('button[data-view]');
+    if (view) switchView(host, state, view.dataset.view);
+}
+
+function onChange(host, event) {
+    const state = peekState(host);
+    const input = event.target;
+    if (!state?.table) return;
+    if (input instanceof HTMLSelectElement && input.closest('.table-pager')) {
+        const size = Number(input.value);
+        if (!PAGE_SIZES.includes(size) && size !== host.dataPageSize) return;
+        const first = state.page * state.pageSize;
+        state.pageSize = size;
+        state.page = Math.floor(first / size);
+        save(`${STORAGE_PAGE_SIZE}-${host.id}`, size);
+        showPage(host, state);
+        return;
+    }
+    if (!(input instanceof HTMLInputElement) || !input.closest('.column-selector-menu')) return;
+    if (input.hasAttribute('data-column-all')) {
+        state.hiddenColumns = input.checked
+            ? state.hiddenColumns.filter((k) => !state.keys.includes(k))
+            : [...new Set([...state.hiddenColumns, ...state.keys])];
+    } else if (input.checked) {
+        state.hiddenColumns = state.hiddenColumns.filter((k) => k !== input.dataset.columnKey);
+    } else {
+        state.hiddenColumns = [...state.hiddenColumns, input.dataset.columnKey];
+    }
+    save(`${STORAGE_HIDDEN}-${host.id}`, state.hiddenColumns);
+    applyColumns(host, state);
+}
+
+// ── Stored choices ────────────────────────────────────────────────────────
+
+/** Hidden column keys. Older versions stored titles, which map to their key here. */
+function loadHidden(host, state) {
+    const stored = load(`${STORAGE_HIDDEN}-${host.id}`, []);
+    if (!Array.isArray(stored)) return [];
+    const byTitle = new Map(state.headers.map((th, i) => [titleOf(th), state.keys[i]]));
+    return [...new Set(stored.map((v) => (state.keys.includes(v) ? v : (byTitle.get(v) ?? v))))];
+}
+
+function loadSort(host) {
+    const stored = load(`${STORAGE_SORT}-${host.id}`, {});
+    return typeof stored?.key === 'string' ? { key: stored.key, direction: stored.direction === 'desc' ? 'desc' : 'asc' } : {};
+}
+
+function loadPageSize(host) {
+    const stored = Number(load(`${STORAGE_PAGE_SIZE}-${host.id}`, 0));
+    return PAGE_SIZES.includes(stored) ? stored : Math.max(1, host.dataPageSize || 50);
+}
+
+// ── Columns ───────────────────────────────────────────────────────────────
+
+/** A new Columns popover (POPOVER-SPEC PC1, PC2, PC5); the trigger names its list, which is in the same tree. */
+function createColumnPopover(host) {
+    const listId = `${host.id}-columns`;
+    const popover = document.createElement('sb-popover');
+    popover.id = `${host.id}-columnsPopover`;
+    popover.className = 'column-selector';
+    popover.setAttribute('label', 'Columns to show');
+    popover.setAttribute('placement', 'bottom-end');
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.slot = 'trigger';
+    trigger.className = 'menu-toggle';
+    trigger.dataset.size = 'sm';
+    trigger.dataset.preserveAttr = 'aria-expanded aria-haspopup';
+    trigger.setAttribute('aria-controls', listId);
+    trigger.textContent = 'Columns';
+    const list = document.createElement('ul');
+    list.className = 'popover-list column-selector-menu';
+    list.id = listId;
+    popover.append(trigger, list);
+    return popover;
+}
+
+/**
+ * The Columns popover, one per host for all its results. Table::toolbar() marks the placeholder data-ignore-morph,
+ * so a new result keeps host and trigger and replaces only the list's items.
+ */
+function buildColumnMenu(host, state) {
+    const slot = host.querySelector('.column-selector-placeholder');
+    if (!slot || !state.headers.length) return;
+    let popover = slot.querySelector(':scope > sb-popover.column-selector');
+    if (!popover) {
+        popover = createColumnPopover(host);
+        slot.replaceChildren(popover);
+    }
+    const list = popover.querySelector('.column-selector-menu');
+    const focused = list.contains(document.activeElement) ? document.activeElement : null;
+
+    const item = (text, input) => {
+        const li = document.createElement('li');
+        const label = document.createElement('label');
+        input.type = 'checkbox';
+        label.append(input, ` ${text}`);
+        li.append(label);
+        return li;
+    };
+    const all = document.createElement('input');
+    all.dataset.columnAll = '';
+    const separator = document.createElement('li');
+    separator.className = 'menu-sep';
+    separator.setAttribute('role', 'separator');
+    const boxes = state.keys.map((key) => {
+        const box = document.createElement('input');
+        box.className = 'column-checkbox';
+        box.dataset.columnKey = key;
+        return box;
+    });
+    list.replaceChildren(item('Show all', all), separator, ...boxes.map((box, i) => item(titleOf(state.headers[i]), box)));
+    // A result that lands while the popover is open leaves the focus on the same column.
+    if (focused) (boxes.find((box) => box.dataset.columnKey === focused.dataset.columnKey) ?? all).focus();
+}
+
+function applyColumns(host, state, rows = state.rows) {
+    const hide = state.keys.map((key) => state.hiddenColumns.includes(key));
+    state.headers.forEach((th, i) => {
+        th.hidden = hide[i];
+    });
+    for (const row of rows) {
+        for (let i = 0; i < row.cells.length; i++) {
+            if (row.cells[i].hidden !== Boolean(hide[i])) row.cells[i].hidden = Boolean(hide[i]);
+        }
+    }
+    const list = host.querySelector('.column-selector-menu');
+    if (!list) return;
+    for (const box of list.querySelectorAll('.column-checkbox')) box.checked = !state.hiddenColumns.includes(box.dataset.columnKey);
+    const all = list.querySelector('[data-column-all]');
+    if (all) all.checked = hide.every((h) => !h);
+}
+
+// ── Sorting and pages ─────────────────────────────────────────────────────
+
+/** Sorts every row, not just the page, and goes back to the first page. */
+function sortBy(host, state, key, direction) {
+    if (state.keys.indexOf(key) !== -1) {
+        sortRows(state, key, direction);
+        state.page = 0;
+    }
+    showPage(host, state);
+}
+
+/** Stable, with empty cells last. */
+function sortRows(state, key, direction) {
+    const index = state.keys.indexOf(key);
+    state.sort = { key, direction };
+    const factor = direction === 'desc' ? -1 : 1;
+    const rows = state.rows.map((row, order) => {
+        const cell = row.cells[index];
+        return { row, order, value: cell ? sortKey(cell) : '' };
+    });
+    rows.sort((x, y) => {
+        const emptyX = x.value === '';
+        const emptyY = y.value === '';
+        if (emptyX || emptyY) return emptyX === emptyY ? x.order - y.order : emptyX ? 1 : -1;
+        return factor * compareValues(x.value, y.value) || x.order - y.order;
+    });
+    state.rows = rows.map(({ row }) => row);
+    state.headers.forEach((th, i) => {
+        if (i === index) th.setAttribute('aria-sort', direction === 'desc' ? 'descending' : 'ascending');
+        else th.removeAttribute('aria-sort');
+    });
+}
+
+/** Puts the current page's rows in the document, if they are not there yet, and updates the pager. */
+function showPage(host, state) {
+    const total = state.rows.length;
+    const size = state.paginate ? state.pageSize : Math.max(1, total);
+    const pages = Math.max(1, Math.ceil(total / size));
+    state.page = Math.min(Math.max(0, state.page), pages - 1);
+    const start = state.page * size;
+    const end = Math.min(total, start + size);
+    const shown = state.rows.slice(start, end);
+    const current = state.filling ?? state.body?.rows ?? [];
+    if (state.body && (current.length !== shown.length || shown.some((row, i) => current[i] !== row))) fill(state, shown);
+    if (state.paginate) renderPager(host, state, total ? start + 1 : 0, end, total, pages);
+}
+
+/** The first rows of a page now, the rest one batch per frame after the next paint. */
+function fill(state, rows) {
+    const body = state.body;
+    const wrap = state.table.closest('.table-wrap');
+    // The wrap keeps its height until the last batch is in, so a page no taller than the last leaves the pager in place.
+    if (wrap && rows.length > ROWS_PER_FRAME) {
+        const height = wrap.offsetHeight;
+        if (state.held !== wrap) unhold(state);
+        wrap.style.minBlockSize = `${height}px`;
+        state.held = wrap;
+    }
+    // Emptied in one step: replaceChildren(...rows) takes out each row still here in a record of its own,
+    // and Rocket's observer rescans the whole body for each record.
+    body.replaceChildren();
+    state.filling = rows;
+    const add = (from) => {
+        if (state.filling !== rows || state.body !== body) return;
+        body.append(...rows.slice(from, from + ROWS_PER_FRAME));
+        if (from + ROWS_PER_FRAME < rows.length) {
+            requestAnimationFrame(() => setTimeout(add, 0, from + ROWS_PER_FRAME));
+            return;
+        }
+        state.filling = null;
+        unhold(state);
+    };
+    add(0);
+}
+
+function unhold(state) {
+    state.held?.style.removeProperty('min-block-size');
+    state.held = null;
+}
+
+function renderPager(host, state, from, to, total, pages) {
+    const pager = host.querySelector('.table-pager');
+    if (!pager) return;
+    const status = pager.querySelector('.table-pager-status');
+    const reached = host.hasAttribute('data-limit-reached') ? host.dataLimitReached : undefined;
+    const text = pagerText(from, to, total, host.dataLimit || 0, reached);
+    if (status && status.textContent !== text) status.textContent = text;
+
+    const focused = pager.contains(document.activeElement) ? document.activeElement.dataset.page : undefined;
+    const list = pager.querySelector('.table-pager-pages');
+    if (list) {
+        list.replaceChildren(
+            ...pagerPages(state.page, pages).map((page) => {
+                const li = document.createElement('li');
+                if (page === null) {
+                    li.setAttribute('aria-hidden', 'true');
+                    li.textContent = '…';
+                    return li;
+                }
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.dataset.size = 'sm';
+                button.dataset.page = String(page);
+                button.setAttribute('aria-label', `Page ${page + 1}`);
+                if (page === state.page) button.setAttribute('aria-current', 'page');
+                button.textContent = String(page + 1);
+                li.append(button);
+                return li;
+            })
+        );
+    }
+    const prev = pager.querySelector('[data-page="prev"]');
+    const next = pager.querySelector('[data-page="next"]');
+    if (prev) prev.disabled = state.page === 0;
+    if (next) next.disabled = state.page >= pages - 1;
+    const select = pager.querySelector('select');
+    if (select && select.value !== String(state.pageSize)) select.value = String(state.pageSize);
+
+    // A pressed page button was rebuilt or disabled (Next on the last page): focus its successor, or the current page.
+    if (focused !== undefined && (!pager.contains(document.activeElement) || document.activeElement.disabled)) {
+        const again = pager.querySelector(`[data-page="${focused}"]:not(:disabled)`) ?? pager.querySelector('[aria-current="page"]');
+        again?.focus();
+    }
+}
+
+// ── View, scrollbar, times ────────────────────────────────────────────────
+
+/** Table or nfdump's own text (Top Talkers keeps the Original view); data-view carries it to the CSS. */
+function switchView(host, state, view) {
+    state.view = view === 'original' ? 'original' : 'table';
+    host.dataset.view = state.view;
+    for (const button of host.querySelectorAll('button[data-view]')) {
+        button.setAttribute('aria-pressed', String(button.dataset.view === state.view));
+    }
+    const original = host.querySelector('.original');
+    if (original) original.hidden = state.view !== 'original';
+}
+
+function scrollParts(host) {
+    const id = CSS.escape(host.id);
+    return { outer: host.querySelector(`#${id}Outer`), inner: host.querySelector(`#${id}Inner`) };
+}
+
+/** Sizes the scrollbar above a wide table like the one below it. */
+function measure(host) {
+    const { outer, inner } = scrollParts(host);
+    if (!outer || !inner) return;
+    outer.style.setProperty('--scroll-width', `${inner.scrollWidth}px`);
+    host.toggleAttribute('data-overflow', inner.scrollWidth > inner.clientWidth + 1);
+}
+
+/** The scrollbar above a wide table mirrors the one below it. */
+function bindScrollbar(host, state) {
+    const { outer, inner } = scrollParts(host);
+    if (!outer || !inner) return;
+    if (!scrollBound.has(outer)) {
+        scrollBound.add(outer);
+        outer.addEventListener(
+            'scroll',
+            () => {
+                if (inner.scrollLeft !== outer.scrollLeft) inner.scrollLeft = outer.scrollLeft;
+            },
+            { passive: true }
+        );
+    }
+    if (!scrollBound.has(inner)) {
+        scrollBound.add(inner);
+        inner.addEventListener(
+            'scroll',
+            () => {
+                if (outer.scrollLeft !== inner.scrollLeft) outer.scrollLeft = inner.scrollLeft;
+            },
+            { passive: true }
+        );
+    }
+    state.resizes?.disconnect();
+    for (const target of [inner, state.table]) if (target) state.resizes?.observe(target);
+    measure(host);
+}
+
+/** Times the server wrote in its own timezone, shown in the display timezone. */
+function localiseTimes(rows) {
+    const times = rows.flatMap((row) => [...row.getElementsByTagName('time')]).filter((t) => t.dataset.epoch);
+    if (!times.length) return;
+    const options = window.nfsenTime?.tzOptions?.(signal('displayTz') ?? 'browser', signal('nfcapdTz') ?? 'UTC') ?? {};
+    let format;
+    try {
+        format = new Intl.DateTimeFormat('sv-SE', {
+            ...options,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hourCycle: 'h23',
+        });
+    } catch {
+        return;
+    }
+    for (const time of times) {
+        const text = format.format(Number(time.dataset.epoch) * 1000);
+        if (time.textContent !== text) time.textContent = text;
+    }
+}
+
+// ── Exports (the page's Export menu calls these) ──────────────────────────
+
+/** The shown columns in their order, titled; a repeated title gets its key. */
+function shownColumns(state) {
+    const seen = new Set();
+    return state.headers.flatMap((th, i) => {
+        if (th.hidden) return [];
+        let title = titleOf(th);
+        if (seen.has(title)) title = `${title} (${state.keys[i]})`;
+        seen.add(title);
+        return [{ index: i, title }];
+    });
+}
+
+/** Every row in the current order, not just the page; enhanced = the text shown, else the raw value. */
+function rowsFor(state, columns, enhanced) {
+    return state.rows.map((row) =>
+        columns.map(({ index }) => {
+            const cell = row.cells[index];
+            if (!cell) return '';
+            return !enhanced && cell.dataset.raw !== undefined ? cell.dataset.raw : cell.textContent.replace(/\s+/g, ' ').trim();
+        })
+    );
+}
+
+function enhanced(host) {
+    return host.querySelector(`#${CSS.escape(host.id)}-enhanced`)?.checked ?? true;
+}
+
+function fileName(host, extension) {
+    return `${host.dataExportName || host.id}.${extension}`;
+}
+
+/** The state with every row, or null before the table is built. */
+function allRows(host) {
+    const state = peekState(host);
+    return state?.table ? state : null;
+}
+
+async function exportCsv(host) {
+    const state = await allRows(host);
+    if (!state) return;
+    const columns = shownColumns(state);
+    const quote = (value) => (/[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
+    const lines = [columns.map((c) => quote(c.title)), ...rowsFor(state, columns, enhanced(host)).map((row) => row.map(quote))];
+    download(`${lines.map((line) => line.join(',')).join('\n')}\n`, fileName(host, 'csv'), 'text/csv');
+}
+
+async function exportJson(host) {
+    const state = await allRows(host);
+    if (!state) return;
+    const columns = shownColumns(state);
+    const rows = rowsFor(state, columns, enhanced(host)).map((row) => Object.fromEntries(columns.map((c, i) => [c.title, row[i]])));
+    download(JSON.stringify(rows, null, 2), fileName(host, 'json'), 'application/json');
+}
+
+/** The shown columns of every row in a print window titled by the caption, in the light scheme. */
+async function print(host) {
+    // Opened before any wait, while the click still counts as the user's.
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const state = await allRows(host);
+    if (!state) {
+        win.close();
+        return;
+    }
+    const columns = shownColumns(state);
+    const title = host.dataCaption || document.title;
+    const c = printColors();
+    const head = columns.map((col) => `<th>${escapeHtml(col.title)}</th>`).join('');
+    const body = rowsFor(state, columns, true)
+        .map((row) => `<tr>${row.map((v) => `<td>${escapeHtml(v)}</td>`).join('')}</tr>`)
+        .join('');
+    win.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
+        body { margin: 1.5rem; font-family: ${c.font}; color: ${c.text}; background: ${c.paper}; }
+        h1 { font-size: 1.25rem; margin: 0 0 1rem; }
+        p { color: ${c.muted}; font-size: 0.8rem; }
+        table { border-collapse: collapse; inline-size: 100%; font-size: 0.75rem; }
+        th, td { border: 1px solid ${c.border}; padding: 0.25rem 0.5rem; text-align: start; }
+        th { background: ${c.header}; }
+        tbody tr:nth-child(even) { background: ${c.zebra}; }
+        @media print { body { margin: 0; } }
+    </style></head><body><h1>${escapeHtml(title)}</h1><p>${escapeHtml(new Date().toLocaleString())}</p><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></body></html>`);
+    win.document.close();
+    win.addEventListener('afterprint', () => win.close());
+    win.focus();
+    win.print();
+}
+
+rocket('nfsen-table', {
+    mode: 'open',
+    props: ({ bool, number, string }) => ({
+        dataResult: string.docs({ description: 'The result id; a new one on a moved host means a new result to build.' }),
+        dataPageSize: number.docs({ description: 'Rows per page the server rendered; present means the table has pages.' }),
+        dataLimit: number.docs({ description: 'The row limit nfdump ran with, for the pager text; 0 for none.' }),
+        dataLimitReached: bool.docs({ description: 'Whether that limit cut the result, so the pager says why there are no more rows.' }),
+        dataTotal: number.docs({ description: 'Rows in the whole result.' }),
+        dataCaption: string.docs({ description: 'The table caption, used as the print title.' }),
+        dataExportName: string.docs({ description: 'File name of the CSV and JSON exports, without the extension.' }),
+    }),
+    manifest: {
+        events: [],
+    },
+    setup: ({ cleanup, defineHostProp, host, observeProps }) => {
+        if (!host.shadowRoot.firstChild) host.shadowRoot.append(document.createElement('slot'));
+        const state = hostState(host, blank);
+
+        defineHostProp('rows', { get: () => peekState(host)?.rows });
+        defineHostProp('keys', { get: () => peekState(host)?.keys });
+        defineHostProp('headers', { get: () => peekState(host)?.headers });
+        defineHostProp('exportCsv', { value: () => exportCsv(host) });
+        defineHostProp('exportJson', { value: () => exportJson(host) });
+        defineHostProp('print', { value: () => print(host) });
+
+        // Delegated, so a morph that keeps the old buttons leaves no second listener on them.
+        const click = (event) => onClick(host, event);
+        const change = (event) => onChange(host, event);
+        host.addEventListener('click', click);
+        host.addEventListener('change', change);
+        const watcher = new MutationObserver(() => update(host));
+        const resizes = new ResizeObserver(() => measure(host));
+        state.watch = watcher;
+        state.resizes = resizes;
+
+        // Set up again after a move that was not atomic: the rows in memory are still the ones to show.
+        if (!refresh(host, state) && state.table) {
+            switchView(host, state, state.view);
+            bindScrollbar(host, state);
+        }
+        observeProps(() => schedule(host), 'dataResult');
+
+        cleanup(() => {
+            host.removeEventListener('click', click);
+            host.removeEventListener('change', change);
+            watcher.disconnect();
+            resizes.disconnect();
+            if (state.watch === watcher) state.watch = null;
+            if (state.resizes === resizes) state.resizes = null;
+            whenGone(host, release);
+        });
+    },
+});

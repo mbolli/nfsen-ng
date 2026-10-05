@@ -32,7 +32,7 @@ describe('Port processing on the live import path (#173)', function (): void {
         $importer = $factory->invoke(new ImportDaemon('live'));
 
         // Without these, importFile() writes source.rrd and the all-sources port.rrd but
-        // never source_port.rrd — the file the ports graph reads.
+        // never source_port.rrd, the file the ports graph reads.
         foreach (['processPorts', 'processPortsBySource'] as $flag) {
             $property = new ReflectionProperty(Import::class, $flag);
             $property->setAccessible(true);
@@ -77,7 +77,7 @@ describe('Protocol bucketing of port statistics (#173)', function (): void {
         ['UDP', 'udp'],
         ['ICMP', 'icmp'],
         ['IPv6-ICMP', 'icmp'],
-        // Anything else has no data source of its own — writing flows_gre made
+        // Anything else has no data source of its own: writing flows_gre made
         // RRDUpdater throw "unknown DS name" and cost the capture file its port data.
         ['GRE', 'other'],
         ['ESP', 'other'],

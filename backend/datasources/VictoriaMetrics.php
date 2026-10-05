@@ -12,8 +12,13 @@ use mbolli\nfsen_ng\common\HealthChecker;
 /**
  * @phpstan-import-type DatasourceRecord from Datasource
  * @phpstan-import-type GraphData from Datasource
+ * @phpstan-import-type Totals from TotalsProvider
+ * @phpstan-import-type ProtocolTotals from TotalsProvider
  */
-class VictoriaMetrics implements Datasource {
+class VictoriaMetrics implements Datasource, TotalsProvider {
+    /** Seconds per stored-totals query: a KPI or a Summary waits on up to 15 of them in a row. */
+    public const int TOTALS_TIMEOUT = 5;
+
     private readonly Debug $d;
     private readonly string $writeUrl;
     private readonly string $queryUrl;
@@ -166,12 +171,12 @@ class VictoriaMetrics implements Datasource {
 
         switch ($display) {
             case 'protocols':
+                $resolved = self::resolveSources($sources);
                 foreach ($protocols as $protocol) {
                     $proto = ($protocol === 'any') ? null : $protocol;
                     $metricName = $this->buildMetricName($type, $proto);
-                    $labels = $this->buildLabels($sources[0], 0, $proto, forQuery: true, profile: $profile);
-                    $queries[] = "{$metricName}{$labels}";
-                    $legends[] = implode('_', array_filter([$protocol, $type, $sources[0]]));
+                    $queries[] = self::sumPerSource($metricName . $this->querySelector($resolved, 0, $proto, $profile));
+                    $legends[] = $protocol . '_' . $type;
                 }
 
                 break;
@@ -188,14 +193,14 @@ class VictoriaMetrics implements Datasource {
                 break;
 
             case 'ports':
+                $proto = ($protocols[0] === 'any') ? null : $protocols[0];
+                $metricName = $this->buildMetricName($type, $proto);
+                // null: every configured source, which the cross-source port series (no source label) already sums.
+                $subset = self::sourceSubset($sources);
+                $legendSource = ($subset !== null && \count($subset) === 1) ? $subset[0] : '';
                 foreach ($ports as $port) {
-                    $source = ($sources[0] === 'any') ? '' : $sources[0];
-                    $proto = ($protocols[0] === 'any') ? null : $protocols[0];
-                    $metricName = $this->buildMetricName($type, $proto);
-                    // forQuery: true still needed here; port > 0 so port="" is not emitted.
-                    $labels = $this->buildLabels($source, $port, $proto, forQuery: true, profile: $profile);
-                    $queries[] = "{$metricName}{$labels}";
-                    $legends[] = implode('_', array_filter([$port, $type, $source, $protocols[0]]));
+                    $queries[] = self::sumPerSource($metricName . $this->querySelector($subset ?? [''], $port, $proto, $profile));
+                    $legends[] = implode('_', array_filter([(string) $port, $type, $legendSource, $protocols[0]], static fn (string $part): bool => $part !== ''));
                 }
 
                 break;
@@ -223,10 +228,6 @@ class VictoriaMetrics implements Datasource {
         }
     }
 
-    /**
-     * Creates a new database for every source/port combination.
-     * Note: VictoriaMetrics doesn't require pre-creation, but we can verify connectivity.
-     */
     /**
      * A sample is addressed by its timestamp and labels, so re-importing an older capture
      * simply writes the slot it belongs to. Retention is the only limit (#171).
@@ -260,10 +261,10 @@ class VictoriaMetrics implements Datasource {
 
         $vmUiUrl = "http://{$vmHost}:{$vmPort}/vmui";
         $checks[] = ['id' => 'vm_config', 'label' => 'VictoriaMetrics config', 'status' => 'ok',
-            'detail' => "<code>{$vmHost}:{$vmPort}</code> — <a href=\"{$vmUiUrl}\" target=\"_blank\" rel=\"noopener\">Open UI ↗</a>",
+            'detail' => "<code>{$vmHost}:{$vmPort}</code> · <a href=\"{$vmUiUrl}\" target=\"_blank\" rel=\"noopener\">Open UI ↗</a>",
             'group' => $group, 'code' => false, 'hint' => '', 'epoch' => 0];
 
-        // HTTP health check — VictoriaMetrics /health returns 'OK' when ready
+        // HTTP health check: VictoriaMetrics /health returns 'OK' when ready
         try {
             $healthResponse = trim($this->httpGet("http://{$vmHost}:{$vmPort}/health", 2));
         } catch (\Throwable $e) {
@@ -301,13 +302,13 @@ class VictoriaMetrics implements Datasource {
                     if ($lastUpdate === 0) {
                         $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
                             'status' => 'warning', 'detail' => 'No data yet', 'group' => $group,
-                            'code' => false, 'hint' => 'Go to Admin → click "Initial Import" to populate the database', 'epoch' => 0];
+                            'code' => false, 'hint' => 'Open Health and press Trigger in the Import card to import the capture files', 'epoch' => 0];
                     } else {
                         $age = time() - $lastUpdate;
                         $status = $age > 3600 ? 'warning' : 'ok';
                         $ageStr = HealthChecker::ageStr($age);
                         $detail = $age <= 0 ? 'Just imported'
-                            : ($age > 3600 ? "Last import {$ageStr} ago — may be stalled"
+                            : ($age > 3600 ? "Last import {$ageStr} ago, may be stalled"
                                            : "Last import {$ageStr} ago");
                         $checks[] = ['id' => $sourceId, 'label' => $sourceLabel,
                             'status' => $status, 'detail' => $detail,
@@ -335,8 +336,8 @@ class VictoriaMetrics implements Datasource {
     }
 
     /**
-     * Returns summed flows/packets/bytes for the most recently completed 5-min slot
-     * across all given sources.
+     * Each source's newest stored interval (a total per 5 minutes), summed. A source more than one
+     * interval behind the newest is left out, as one that stopped reporting.
      *
      * @param string[] $sources
      *
@@ -344,36 +345,89 @@ class VictoriaMetrics implements Datasource {
      */
     public function fetchLatestSlot(array $sources, string $profile): array {
         $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
-        $sel = $this->buildSourceSelector($sources, $profile);
+        $sel = $this->querySelector(array_values($sources), 0, null, $profile);
+        $newest = $this->newestSample($sel);
+        if ($newest === null) {
+            return $result;
+        }
 
         foreach (['flows', 'packets', 'bytes'] as $metric) {
             $metricName = $this->buildMetricName($metric, null);
-            $promql = "sum(last_over_time({$metricName}{$sel}[5m]))";
-            $result[$metric] = $this->queryInstantScalar($promql);
+            // At the newest sample, the window (newest - 600, newest] holds the newest one of each source not further behind.
+            $promql = self::sumPerSource("last_over_time({$metricName}{$sel}[600s])");
+            $result[$metric] = $this->queryInstantScalar($promql, $newest);
         }
 
         return $result;
     }
 
     /**
-     * Returns average flows/packets/bytes over a rolling window, summed across sources.
-     * Returns [0.0, 0.0, 0.0] when no data is available (cold-start safe).
+     * The average total per 5 minutes over the window before the interval starting at $end, summed
+     * across sources: the unit of fetchLatestSlot(). Without $end, the window before the newest
+     * complete interval by the clock, which is left out. Zeros without data.
      *
      * @param string[] $sources
      *
      * @return array{flows: float, packets: float, bytes: float}
      */
-    public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds): array {
+    public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds, ?int $end = null): array {
         $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
-        $sel = $this->buildSourceSelector($sources, $profile);
+        $sel = $this->querySelector(array_values($sources), 0, null, $profile);
+        $end ??= intdiv(time(), 300) * 300 - 300;
 
         foreach (['flows', 'packets', 'bytes'] as $metric) {
             $metricName = $this->buildMetricName($metric, null);
-            $promql = "sum(avg_over_time({$metricName}{$sel}[{$windowSeconds}s]))";
-            $result[$metric] = $this->queryInstantScalar($promql);
+            $promql = self::sumPerSource("avg_over_time({$metricName}{$sel}[{$windowSeconds}s])");
+            // Evaluated at $end - 1, the window holds the samples of [$end - window, $end).
+            $result[$metric] = $this->queryInstantScalar($promql, $end - 1);
         }
 
         return $result;
+    }
+
+    /**
+     * Samples carry their interval start and sum_over_time(m[R]) at T covers (T - R, T], so
+     * R = end - start evaluated at end - 1 is exactly [start, end).
+     *
+     * @param list<string> $sources
+     *
+     * @return Totals
+     */
+    public function fetchTotals(array $sources, string $profile, int $start, int $end, string $protocol = 'any'): array {
+        if (!\in_array($protocol, self::PROTOCOLS, true)) {
+            throw new \InvalidArgumentException("Unknown protocol '{$protocol}', expected one of " . implode(', ', self::PROTOCOLS));
+        }
+
+        $totals = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
+        if ($end <= $start) {
+            return $totals;
+        }
+
+        $proto = ($protocol === 'any') ? null : $protocol;
+        $selector = $this->querySelector(self::resolveSources($sources), 0, $proto, $profile);
+        $window = $end - $start;
+
+        foreach (array_keys($totals) as $metric) {
+            $metricName = $this->buildMetricName($metric, $proto);
+            $totals[$metric] = $this->queryTotal(self::sumPerSource("sum_over_time({$metricName}{$selector}[{$window}s])"), $end - 1);
+        }
+
+        return $totals;
+    }
+
+    /**
+     * @param list<string> $sources
+     *
+     * @return ProtocolTotals
+     */
+    public function fetchProtocolTotals(array $sources, string $profile, int $start, int $end): array {
+        return [
+            'any' => $this->fetchTotals($sources, $profile, $start, $end, 'any'),
+            'tcp' => $this->fetchTotals($sources, $profile, $start, $end, 'tcp'),
+            'udp' => $this->fetchTotals($sources, $profile, $start, $end, 'udp'),
+            'icmp' => $this->fetchTotals($sources, $profile, $start, $end, 'icmp'),
+            'other' => $this->fetchTotals($sources, $profile, $start, $end, 'other'),
+        ];
     }
 
     /**
@@ -450,17 +504,9 @@ class VictoriaMetrics implements Datasource {
     /**
      * Build a label selector for VictoriaMetrics.
      *
-     * @param bool $forQuery When true (read path), port=0 emits `port=""` which in
-     *                       PromQL matches series where the label is absent — i.e. the
-     *                       aggregate total — and excludes port-specific series that
-     *                       would otherwise also match a plain `{source="…"}` selector.
-     */
-    /**
-     * Build a label selector for VictoriaMetrics.
-     *
      * @param bool   $forQuery When true (read path), port=0 emits `port=""` which in
-     *                         PromQL matches series where the label is absent — i.e. the
-     *                         aggregate total — and excludes port-specific series that
+     *                         PromQL matches series where the label is absent (the
+     *                         aggregate total) and excludes port-specific series that
      *                         would otherwise also match a plain `{source="…"}` selector.
      *                         Also, $profile uses a regex `profile=~"live|"` to match both
      *                         labelled and old unlabelled series (backward compatibility).
@@ -488,7 +534,7 @@ class VictoriaMetrics implements Datasource {
 
         if ($profile !== '') {
             if ($forQuery) {
-                // Regex matches this profile OR absent label — backward compat with pre-profile data.
+                // Regex matches this profile OR absent label: backward compat with pre-profile data.
                 $labels[] = "profile=~\"{$profile}|\"";
             } else {
                 $labels[] = "profile=\"{$profile}\"";
@@ -540,16 +586,15 @@ class VictoriaMetrics implements Datasource {
      * Query for the first or last actual raw-sample timestamp of a metric.
      *
      * Uses VictoriaMetrics MetricsQL functions:
-     *   tfirst_over_time(v[d]) — timestamp of the oldest raw sample in the window
-     *   tlast_over_time(v[d])  — timestamp of the newest raw sample in the window
+     *   tfirst_over_time(v[d]): timestamp of the oldest raw sample in the window
+     *   tlast_over_time(v[d]):  timestamp of the newest raw sample in the window
      *
      * Both return the real data timestamp as value[1], not the query evaluation
      * time (unlike `timestamp(last_over_time(...))` which returns ~eval_time).
      */
     private function querySingleValue(string $query, string $field = 'timestamp', bool $first = true): int {
-        $windowDays = $this->importYears * 365;
         $fn = $first ? 'tfirst_over_time' : 'tlast_over_time';
-        $wrappedQuery = "{$fn}({$query}[{$windowDays}d])";
+        $wrappedQuery = "{$fn}({$query}[{$this->lookback()}])";
 
         $url = str_replace('query_range', 'query', $this->queryUrl) . '?' . http_build_query([
             'query' => $wrappedQuery,
@@ -566,6 +611,27 @@ class VictoriaMetrics implements Datasource {
         return isset($data['data']['result'][0]['value'][1])
             ? (int) (float) $data['data']['result'][0]['value'][1]
             : 0;
+    }
+
+    /** How far back the newest sample of a series is looked for: the import horizon. */
+    private function lookback(): string {
+        return ($this->importYears * 365) . 'd';
+    }
+
+    /**
+     * Start of the newest interval stored for the selector, null without one. A sample arrives after
+     * its interval ends, so the last hour holds it while imports keep up; only a catch-up or a
+     * stopped source needs the import horizon.
+     */
+    private function newestSample(string $selector): ?int {
+        foreach (['3600s', $this->lookback()] as $range) {
+            $newest = (int) $this->queryInstantScalar("max(tlast_over_time({$this->buildMetricName('flows', null)}{$selector}[{$range}]))");
+            if ($newest > 0) {
+                return $newest;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -604,12 +670,39 @@ class VictoriaMetrics implements Datasource {
     }
 
     /**
-     * Execute a PromQL instant query and return the first result value as float.
-     * Returns 0.0 on any error or empty result — safe for cold-start scenarios.
+     * One stored total: 0.0 when no sample lies in the window, an exception when the store did
+     * not answer, so a KPI never shows zero traffic for an outage.
+     *
+     * @throws \RuntimeException
      */
-    private function queryInstantScalar(string $promql): float {
+    private function queryTotal(string $promql, int $time): float {
+        $url = str_replace('query_range', 'query', $this->queryUrl) . '?' . http_build_query(['query' => $promql, 'time' => $time]);
+
+        try {
+            $data = json_decode($this->httpGet($url, self::TOTALS_TIMEOUT), true);
+        } catch (\Throwable $e) {
+            throw new \RuntimeException('VictoriaMetrics did not answer: ' . $e->getMessage(), 0, $e);
+        }
+        if (!\is_array($data) || !\is_array($data['data']['result'] ?? null)) {
+            throw new \RuntimeException('VictoriaMetrics answered without a result.');
+        }
+
+        return is_numeric($data['data']['result'][0]['value'][1] ?? null) ? (float) $data['data']['result'][0]['value'][1] : 0.0;
+    }
+
+    /**
+     * Execute a PromQL instant query and return the first result value as float.
+     * Returns 0.0 on any error or empty result, safe for cold-start scenarios.
+     *
+     * @param null|int $time evaluation timestamp; null lets VictoriaMetrics use now
+     */
+    private function queryInstantScalar(string $promql, ?int $time = null): float {
+        $params = ['query' => $promql];
+        if ($time !== null) {
+            $params['time'] = $time;
+        }
         $url = str_replace('query_range', 'query', $this->queryUrl)
-             . '?' . http_build_query(['query' => $promql]);
+             . '?' . http_build_query($params);
 
         try {
             $data = json_decode($this->httpGet($url), true);
@@ -617,29 +710,80 @@ class VictoriaMetrics implements Datasource {
             return isset($data['data']['result'][0]['value'][1])
                 ? (float) $data['data']['result'][0]['value'][1]
                 : 0.0;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            $this->d->log("VictoriaMetrics instant query failed ({$promql}): {$e->getMessage()}", LOG_DEBUG);
+
             return 0.0;
         }
     }
 
     /**
-     * Build a source-matching label for use in instant queries over multiple sources.
-     * When only one source is given, uses equality; multiple sources use regex OR.
+     * Label selector for reading series: one source by equality, several by regex OR.
      *
-     * @param string[] $sources
+     * @param list<string> $sources [] matches every source, [''] only series without a source label
+     * @param int          $port    0 selects the per-source totals (`port=""`)
      */
-    private function buildSourceSelector(array $sources, string $profile): string {
-        if (empty($sources)) {
-            return $this->buildLabels('', 0, null, forQuery: true, profile: $profile);
-        }
+    private function querySelector(array $sources, int $port, ?string $protocol, string $profile): string {
+        $labels = [];
 
         if (\count($sources) === 1) {
-            return $this->buildLabels($sources[0], 0, null, forQuery: true, profile: $profile);
+            $labels[] = 'source="' . self::escapeLabelValue($sources[0]) . '"';
+        } elseif ($sources !== []) {
+            $pattern = implode('|', array_map(static fn (string $source): string => preg_quote($source), $sources));
+            $labels[] = 'source=~"' . self::escapeLabelValue($pattern) . '"';
         }
 
-        $escaped = implode('|', array_map('preg_quote', $sources));
-        $profilePart = $profile !== '' ? ",profile=~\"{$profile}|\"" : '';
+        $labels[] = $port > 0 ? "port=\"{$port}\"" : 'port=""';
 
-        return "{source=~\"{$escaped}\",port=\"\"{$profilePart}}";
+        if ($protocol !== null && $protocol !== 'total') {
+            $labels[] = 'protocol="' . self::escapeLabelValue($protocol) . '"';
+        }
+
+        if ($profile !== '') {
+            $labels[] = 'profile=~"' . self::escapeLabelValue(preg_quote($profile)) . '|"';
+        }
+
+        return '{' . implode(',', $labels) . '}';
+    }
+
+    /**
+     * Counts a source once when both its labelled series and a pre-profile unlabelled one
+     * (a re-import) match `profile=~"<profile>|"`.
+     */
+    private static function sumPerSource(string $expression): string {
+        return "sum(max by (source) ({$expression}))";
+    }
+
+    /**
+     * A regex escape such as `\-` has to survive the string literal it is written in.
+     */
+    private static function escapeLabelValue(string $value): string {
+        return addcslashes($value, '\\"');
+    }
+
+    /**
+     * An empty selection or `any` means every configured source.
+     *
+     * @param list<string> $sources
+     *
+     * @return list<string>
+     */
+    private static function resolveSources(array $sources): array {
+        $named = array_values(array_unique(array_filter($sources, static fn (string $s): bool => $s !== '' && $s !== 'any')));
+
+        return ($named === [] || \in_array('any', $sources, true)) ? Config::$settings->sources : $named;
+    }
+
+    /**
+     * The selected sources, or null when they cover every configured source.
+     *
+     * @param list<string> $sources
+     *
+     * @return null|list<string>
+     */
+    private static function sourceSubset(array $sources): ?array {
+        $resolved = self::resolveSources($sources);
+
+        return array_diff(Config::$settings->sources, $resolved) === [] ? null : $resolved;
     }
 }

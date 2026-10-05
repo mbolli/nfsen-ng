@@ -1,0 +1,58 @@
+{# Query estimate (2.5, 3.5.3): files, size and time a Run would take. Param: target. #}
+{% set meta = querykit.targets[target] %}
+{% if meta.estimates %}
+{% set est = '$' ~ meta.estimateId %}
+{% set keys = [
+    'Math.floor($' ~ datestart.id() ~ ' / 300)',
+    'Math.floor($' ~ dateend.id() ~ ' / 300)',
+    "[].concat($" ~ graph_sources.id() ~ " ?? []).join(',')",
+    '$' ~ selected_profile.id(),
+] %}
+{% if target == 'overview' %}
+    {% set keys = keys|merge(['$' ~ graph_resolution.id(), '$' ~ graph_display.id()]) %}
+{% endif %}
+{% if target == 'drawer' and drawer_target is defined %}
+    {% set kinds = {} %}
+    {% for name, t in querykit.targets %}
+        {% if t.estimates and name != 'drawer' %}{% set kinds = kinds|merge({(name): t.kind}) %}{% endif %}
+    {% endfor %}
+    {% set keys = keys|merge(['$' ~ drawer_target.id()]) %}
+    {% set upTo = "$" ~ drawer_target.id() ~ " === 'flows'" %}
+    {% set runKind = '(' ~ kinds|json_encode ~ ')[$' ~ drawer_target.id() ~ ']' %}
+{% else %}
+    {% set upTo = meta.earlyStop ? 'true' : 'false' %}
+    {% set runKind = "'" ~ meta.kind ~ "'" %}
+{% endif %}
+{# A finished run of this kind is recorded, so the seconds (and "measured") may change. #}
+{% set ran = 'const running = $' ~ query_running.id() ~ ' === true; const ran = el.qkRunning === true && !running && $' ~ query_kind.id() ~ ' === ' ~ runKind ~ '; el.qkRunning = running;' %}
+{# Posts once per 5 minute bucket (1.7), after a run, coalesced over 250 ms, and again when a revival resets an answer. #}
+{% set state = "(" ~ est ~ ".window === '' ? (" ~ est ~ ".pending ? 'pending' : 'none') : (" ~ est ~ ".files > 0 ? 'ready' : 'empty'))" %}
+{% set notes = "[" ~ est ~ ".measured && 'measured', " ~ upTo ~ " && 'stops early once the limit is reached'].filter(Boolean).join(', ')" %}
+<div class="estimate" data-estimate="{{ target }}"
+     data-state="pending" data-attr:data-state="{{ state }}"
+     data-attr:data-level="{{ est }}.heavy ? 'warning' : false"
+     data-attr:aria-busy="{{ est }}.pending ? 'true' : false"
+     data-preserve-attr="data-state data-level aria-busy"
+     data-effect="const moved = window.nfsenChanged(el, {{ keys|join(', ') }}); const reset = {{ est }}.window === '' && el.qkAnswered === true; el.qkAnswered = {{ est }}.window !== ''; {{ ran }} if (moved || reset || ran) { clearTimeout(el.qkTimer); el.qkTimer = setTimeout(() => @post('{{ estimateQuery.url() }}?target={{ target }}'), 250) }">
+    <span class="estimate-pending">
+        <span class="spinner" aria-hidden="true"></span>
+        Estimating…
+    </span>
+    <p class="estimate-empty"
+       data-text="{{ est }}.clamped ? 'No capture files in the last ' + {{ est }}.window + '.' : 'No capture files in this range.'">No capture files in this range.</p>
+    <ul class="estimate-figures" aria-label="Estimate before running">
+        <li data-text="Number({{ est }}.files).toLocaleString('en') + ({{ est }}.files === 1 ? ' file' : ' files')"></li>
+        <li data-text="{{ est }}.bytesHuman"></li>
+        <li data-preserve-attr="title"
+            data-attr:title="{{ est }}.measured ? 'From recorded runs on this server' : 'From a default read rate, until this server has recorded enough runs'"
+            data-text="({{ upTo }} ? 'up to ' : 'about ') + {{ est }}.secondsHuman + ({{ notes }} ? ' (' + {{ notes }} + ')' : '')"></li>
+        <li hidden data-attr:hidden="!({{ est }}.runs > 1)" data-preserve-attr="hidden"
+            data-text="'in ' + Number({{ est }}.runs).toLocaleString('en') + ' nfdump runs'"></li>
+        <li hidden data-attr:hidden="!{{ est }}.clamped" data-preserve-attr="hidden"
+            title="Shortened by NFSEN_MAX_STATS_WINDOW"
+            data-text="'last ' + {{ est }}.window + ' only'"></li>
+        <li class="estimate-heavy" hidden data-attr:hidden="!{{ est }}.heavy" data-preserve-attr="hidden"
+            title="Reads more than 16 GiB of capture files">Large query</li>
+    </ul>
+</div>
+{% endif %}

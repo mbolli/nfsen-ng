@@ -4,6 +4,8 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.dev  # Use development Dockerfile
     container_name: nfsen-ng
+    # The mounted script, not the copy baked into the image, so a change to it needs no rebuild.
+    entrypoint: ["bash", "/var/www/html/nfsen-ng/deploy/docker-entrypoint-dev.sh"]
     expose:
       - "9000"  # OpenSwoole HTTP server (internal only)
     volumes:
@@ -14,8 +16,8 @@ services:
     environment:
       - TZ=UTC
       # Uncomment and set to the timezone nfcapd ran in if it differs from TZ above.
-      # Only needed for bare-metal setups where nfcapd used a non-UTC timezone.
-      - NFCAPD_TZ=Europe/Berlin
+      # Only needed for bare-metal setups where nfcapd used a non-UTC timezone; the nfcapd services below run in UTC.
+      # - NFCAPD_TZ=Europe/Berlin
 
       # ── Sources & ports (comma-separated lists) ────────────────────────────
       - NFSEN_SOURCES=all                  # NetFlow source names captured by nfcapd
@@ -26,7 +28,8 @@ services:
       - NFSEN_NFDUMP_BINARY=/usr/local/nfdump/bin/nfdump
       - NFSEN_NFDUMP_PROFILES=/data/nfsen-ng  # Must match the container-side volume mount path
       # - NFSEN_NFDUMP_PROFILE=live
-      # - NFSEN_NFDUMP_MAX_PROCESSES=1
+      # - NFSEN_NFDUMP_MAX_PROCESSES=auto  # Parallel nfdump processes (default auto: a third of the CPU cores, 2 to 8)
+      # - NFSEN_NFDUMP_WORKERS=2          # Filter threads per nfdump process, passed as -W (default 2)
 
       # ── RRD storage ────────────────────────────────────────────────────────
       # - NFSEN_RRD_PATH=/custom/rrd  # Default in dev: backend/datasources/data (mounted source)
@@ -39,7 +42,7 @@ services:
       # - NFSEN_LOG_LEVEL=DEBUG           # DEBUG, INFO, NOTICE, WARNING, ERR, CRIT, ALERT, EMERG
 
       # ── OpenSwoole ─────────────────────────────────────────────────────────
-      # - SWOOLE_WORKER_NUM=8             # Number of worker processes (default: 1)
+      # - SWOOLE_WORKER_NUM=1             # Keep at 1: nfsen-ng keeps queries and tab state per worker
       # - SWOOLE_MAX_COROUTINE=20000      # Max concurrent SSE connections (default: 10000)
     restart: unless-stopped
 
@@ -54,7 +57,7 @@ services:
       - nfsen
     restart: unless-stopped
 
-  # nfcapd — NetFlow collector for local development with softflowd.
+  # nfcapd: NetFlow collector for local development with softflowd.
   #
   # Usage:
   #   1. Uncomment this service.
@@ -81,7 +84,7 @@ services:
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng
     entrypoint: ["/usr/local/nfdump/bin/nfcapd"]
-    command: ["-w", "/data/nfsen-ng/live/all", "-z", "-S", "1", "-T", "all", "-p", "9995"]
+    command: ["-w", "/data/nfsen-ng/live/all", "-z=lz4", "-S", "1", "-p", "9995"]
     restart: unless-stopped
 
   # Second nfcapd writing to the 'test' profile (port 9996).
@@ -95,7 +98,7 @@ services:
     volumes:
       - /var/nfdump/profiles-data:/data/nfsen-ng
     entrypoint: ["/usr/local/nfdump/bin/nfcapd"]
-    command: ["-w", "/data/nfsen-ng/test/all", "-z", "-S", "1", "-T", "all", "-p", "9996"]
+    command: ["-w", "/data/nfsen-ng/test/all", "-z=lz4", "-S", "1", "-p", "9996"]
     restart: unless-stopped
 
 # volumes:

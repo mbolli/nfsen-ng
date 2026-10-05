@@ -15,7 +15,7 @@
   <TemplateURL>https://raw.githubusercontent.com/mbolli/nfsen-ng/master/deploy/unraid/nfsen-ng-nfcapd.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/mbolli/nfsen-ng/master/deploy/unraid/nfsen-ng-icon.png</Icon>
   <ExtraParams>--restart unless-stopped --entrypoint /usr/local/nfdump/bin/nfcapd</ExtraParams>
-  <PostArgs>-w /data/nfsen-ng/live/flows -z=lz4 -S 1 -T all -p 9995</PostArgs>
+  <PostArgs>-w /data/nfsen-ng/live/flows -z=lz4 -S 1 -p 9995</PostArgs>
   <DonateText>Buy the maintainer a beer</DonateText>
   <DonateLink>https://paypal.me/bolli</DonateLink>
   <Requires>Install the nfsen-ng UI template too, and mount both containers on the SAME data path (default /mnt/user/appdata/nfsen-ng). The last segment of the write path (-w .../live/&lt;name&gt;, default "flows") must match one of the UI's NFSEN_SOURCES. A device on your network must export flows to this host's collector UDP port.</Requires>

@@ -1,0 +1,256 @@
+/* Health (4.7): the import, capture, disk and system cards in one grid that rearranges with
+   the width it gets, then the checks and the recent log across the whole width. */
+
+.health {
+    container-type: inline-size;
+}
+
+.health .card > header h2 {
+    font-size: var(--font-size-1);
+}
+
+.health h3 {
+    font-size: var(--font-size-0);
+}
+
+.health h3 small {
+    margin-inline-start: var(--size-2);
+    font-weight: var(--font-weight-normal);
+}
+
+/* A status or summary at the end of a card header. */
+.health .card > header > :is(.health-state, .badge) {
+    margin-inline-start: auto;
+}
+
+.health-state {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-1);
+}
+
+.health-overview {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'import' 'sources' 'disks' 'system';
+    gap: var(--size-3);
+    align-items: start;
+}
+
+#healthImport {
+    grid-area: import;
+}
+
+#healthSources {
+    grid-area: sources;
+}
+
+#healthDisks {
+    grid-area: disks;
+}
+
+#healthSystem {
+    grid-area: system;
+}
+
+@container (min-width: 44rem) {
+    .health-overview {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas: 'import import' 'sources sources' 'disks system';
+    }
+}
+
+/* Until the profile and sources tables fit side by side, the sources table takes the full width. */
+@container (min-width: 64rem) {
+    .health-overview {
+        grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+        grid-template-areas: 'import disks' 'import system' 'sources sources';
+    }
+}
+
+/* 2.7.9 from 90rem, where both tables fit without scrolling (about 38 and 49rem wide), as
+   Alerts puts its two tables side by side only from 90rem (2.7.8). */
+@container (min-width: 90rem) {
+    .health-overview {
+        grid-template-columns: minmax(0, 4fr) minmax(0, 3fr) minmax(0, 2fr);
+        grid-template-areas: 'import sources sources' 'import disks system';
+    }
+}
+
+/* Tables that fill a card line up with its header. */
+.health .card > .table-wrap :is(th, td):first-child {
+    padding-inline-start: var(--size-4);
+}
+
+.health .card > .table-wrap :is(th, td):last-child {
+    padding-inline-end: var(--size-4);
+}
+
+.health tbody th[scope='row'] {
+    font-weight: var(--font-weight-normal);
+}
+
+/* ── Facts (Import and System) ──────────────────────────────────────────── */
+
+.health-facts {
+    grid-template-columns: minmax(7rem, max-content) 1fr;
+    margin: 0;
+}
+
+.health-facts dd > small {
+    display: block;
+}
+
+.health-lag > .status-dot {
+    margin-inline-end: var(--size-1);
+}
+
+.health-topn {
+    --stack-gap: var(--size-2);
+}
+
+.health-topn span > small {
+    margin-inline-start: var(--size-2);
+}
+
+.health-topn [data-topn-fill]:empty {
+    position: absolute;
+}
+
+/* ── Import ─────────────────────────────────────────────────────────────── */
+
+/* The row's buttons stay on one line; the table scrolls instead. */
+.health-profiles .cluster {
+    flex-wrap: nowrap;
+}
+
+.health-confirm {
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.health-confirm > .status-dot {
+    margin-block-start: 0;
+}
+
+/* Beside the glyph, however narrow; the buttons wrap below it instead. */
+#rescanConfirmText {
+    flex: 1 1 14rem;
+}
+
+.health-progress {
+    --stack-gap: var(--size-1);
+}
+
+/* The live region stays in the accessibility tree while empty, but takes no gap in the stack. */
+.health-outcome:empty {
+    position: absolute;
+}
+
+.health-import-log {
+    --stack-gap: var(--size-2);
+}
+
+.health-scroll {
+    max-block-size: 24rem;
+    overflow-y: auto;
+}
+
+.health-import-log .health-scroll {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+}
+
+.health-scroll thead th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: var(--layer-sticky);
+    background: var(--surface-2);
+}
+
+.health-message {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    overflow-wrap: anywhere;
+}
+
+/* ── Disk usage ─────────────────────────────────────────────────────────── */
+
+.disk-list {
+    --stack-gap: var(--size-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.disk {
+    --stack-gap: var(--size-1);
+}
+
+.disk code {
+    overflow-wrap: anywhere;
+}
+
+.usage-bar > span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-1);
+}
+
+/* ── Checks ─────────────────────────────────────────────────────────────── */
+
+.health-checks tbody th[scope='row'] {
+    inline-size: 38%;
+    vertical-align: top;
+}
+
+.health-checks td {
+    vertical-align: top;
+}
+
+.health-checks tbody th .status-dot {
+    margin-inline-end: var(--size-1);
+}
+
+.check-result {
+    --stack-gap: var(--size-1);
+}
+
+.check-hint {
+    font-size: var(--font-size-00);
+}
+
+/* ── Recent log ─────────────────────────────────────────────────────────── */
+
+.health-log > header .segmented {
+    margin-inline-start: auto;
+}
+
+/* The level column names each row's level, so rows carry neither zebra nor status tint. */
+.health-log tbody tr,
+.health-log tbody tr:nth-child(odd) {
+    background: none;
+}
+
+.health-log tbody tr:hover {
+    background: var(--surface-3);
+}
+
+.health-level {
+    white-space: nowrap;
+}
+
+.health-log[data-filter='warning'] tbody tr[data-level]:not([data-level='warning'], [data-level='error']),
+.health-log[data-filter='error'] tbody tr[data-level]:not([data-level='error']) {
+    display: none;
+}
+
+.health-log tbody tr[data-empty] {
+    display: none;
+}
+
+.health-log[data-filter='all'] tbody:not(:has(tr[data-level])) tr[data-empty='all'],
+.health-log[data-filter='warning'] tbody:not(:has(tr:is([data-level='warning'], [data-level='error']))) tr[data-empty='warning'],
+.health-log[data-filter='error'] tbody:not(:has(tr[data-level='error'])) tr[data-empty='error'] {
+    display: table-row;
+}

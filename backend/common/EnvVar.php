@@ -8,9 +8,9 @@ namespace mbolli\nfsen_ng\common;
  * Declarative description of a single environment variable nfsen-ng understands.
  *
  * One immutable record per variable lives in {@see EnvRegistry}. Everything the
- * app does with env vars — parsing to a typed value, validating, applying the
+ * app does with env vars (parsing to a typed value, validating, applying the
  * default, deprecation aliasing, config-reference docs, and the health-page
- * "unknown/invalid variable" checks — derives from these records, so there is a
+ * "unknown/invalid variable" checks) derives from these records, so there is a
  * single source of truth instead of scattered `getenv() ?: default` calls.
  *
  * `parse()` never throws: an unset, empty, or invalid value falls back to
@@ -48,7 +48,7 @@ final class EnvVar {
 
     /**
      * Parse a raw env string (or null when unset) into the typed value.
-     * Unset, empty, or invalid input yields {@see $default} — never throws.
+     * Unset, empty, or invalid input yields {@see $default}; never throws.
      */
     public function parse(?string $raw): mixed {
         if ($raw === null || $raw === '') {
@@ -70,7 +70,7 @@ final class EnvVar {
      * If a *set* value is unusable for this variable's type (so parse() fell
      * back to the default), return a human message explaining it; otherwise
      * null. Unset/empty is always fine. Soft format checks (url/email/path)
-     * are intentionally not covered here — the health check owns those.
+     * are intentionally not covered here: the health check owns those.
      */
     public function validationError(?string $raw): ?string {
         if ($raw === null || $raw === '') {
@@ -89,7 +89,7 @@ final class EnvVar {
         }
 
         return \sprintf(
-            'invalid value %s (expected %s) — falling back to default %s',
+            'invalid value %s (expected %s), falling back to default %s',
             $this->display($raw),
             $this->expected(),
             $this->display((string) $this->displayDefault()),

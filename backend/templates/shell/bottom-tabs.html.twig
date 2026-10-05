@@ -1,0 +1,47 @@
+{# Phone tab bar (4.9): each tab says its page's name. More is marked current, in words too,
+   while one of its pages is shown. #}
+{% import 'shell/icons.html.twig' as icons %}
+{% import 'shell/sidebar.html.twig' as nav %}
+{% set tabLabels = {overview: 'Overview', flows: 'Flows', conversations: 'Conversations', alerts: 'Alerts'} %}
+{% set morePages = shell.pagesMeta|filter(m => tabLabels[m.id] is not defined) %}
+{% set moreCurrent = morePages|filter(m => m.id == shell.activePage)|first %}
+{% set moreTitles %}({ {% for meta in morePages %}{{ meta.id }}: '{{ meta.title }}', {% endfor %}})[${{ page.id() }}]{% endset %}
+<nav class="tabbar" aria-label="Main">
+    {% for meta in shell.pagesMeta|filter(m => tabLabels[m.id] is defined) %}
+        <a class="tabbar-item" href="#/{{ meta.id }}" title="{{ meta.title }}"
+           data-attr:aria-current="${{ page.id() }} === '{{ meta.id }}' ? 'page' : false"
+           data-preserve-attr="aria-current">
+            {{ icons.icon(meta.icon) }}
+            <span>{{ tabLabels[meta.id] }}</span>
+            {% if meta.id == 'alerts' and shell.alertsFiring > 0 %}
+                <span class="nav-badge" data-level="error">{{ shell.alertsFiring }}<span class="visually-hidden"> {{ shell.alertsFiring == 1 ? 'rule' : 'rules' }} firing</span></span>
+            {% endif %}
+        </a>
+    {% endfor %}
+    <sb-popover id="tabbarMoreMenu" class="tabbar-more" label="More pages and theme" placement="top-end">
+        <button type="button" slot="trigger" class="menu-toggle tabbar-item" {% if moreCurrent %}data-current="page"{% endif %}
+                data-attr:data-current="{{ moreTitles }} ? 'page' : false" data-preserve-attr="aria-expanded aria-haspopup data-current">
+            {{ icons.icon('more') }}
+            <span>More</span>
+            {#- No space, so the name reads "More, current: Health". #}<span class="visually-hidden" data-ignore-morph
+                  data-text="{{ moreTitles }} ? ', current: ' + {{ moreTitles }} : ''">{% if moreCurrent %}, current: {{ moreCurrent.title }}{% endif %}</span>
+        </button>
+        <div class="popover-list" id="tabbarMore">
+            {% for meta in morePages %}
+                <a class="menu-item" href="#/{{ meta.id }}"
+                   data-attr:aria-current="${{ page.id() }} === '{{ meta.id }}' ? 'page' : false"
+                   data-preserve-attr="aria-current">
+                    {{ meta.title }}
+                    {% if meta.id == 'health' and shell.healthLevel in ['warning', 'error'] %}
+                        <span class="nav-dot" data-level="{{ shell.healthLevel }}"><span class="visually-hidden">Health: {{ shell.healthIssues }} {{ shell.healthLevel }}{{ shell.healthIssues == 1 ? '' : 's' }}</span></span>
+                    {% endif %}
+                </a>
+            {% endfor %}
+            <div class="menu-sep" role="separator"></div>
+            <p class="menu-heading" id="tabbarThemeHeading">Theme</p>
+            <div role="group" aria-labelledby="tabbarThemeHeading">
+                {{ nav.themeItems(shell.defaults.theme) }}
+            </div>
+        </div>
+    </sb-popover>
+</nav>

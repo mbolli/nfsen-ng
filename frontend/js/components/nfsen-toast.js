@@ -1,102 +1,163 @@
 /**
- * Toast Notification Web Component
- * Displays notice messages with auto-dismiss functionality
- * Each instance is a single toast that removes itself when dismissed
+ * <nfsen-toast level message auto-dismiss> (ROCKET-SPEC 6.1, shape B): the notice is built in setup, the message is always text.
+ * An auto-dismissing toast waits while the pointer or the focus is on it.
  */
-class NfsenToast extends HTMLElement {
-    constructor() {
-        super();
-        this.autoDismissDelay = 5000; // 5 seconds for success messages
+import { rocket } from 'datastar';
+import { hostState, peekState, whenGone } from 'nfsen/host-state';
+
+const LEVELS = ['success', 'info', 'warning', 'error'];
+const DURATION = 5000;
+const FADE = 220;
+
+const levelOf = (value) => (LEVELS.includes(value) ? value : 'info');
+
+/** Glyph, message, close button and, for a toast that times out, the time left. */
+function build(host, level, autoDismiss) {
+    const notice = document.createElement('div');
+    notice.className = 'notice dismissible';
+    notice.dataset.level = level;
+    // Each toast is its own live region; errors and warnings interrupt.
+    notice.setAttribute('role', level === 'error' || level === 'warning' ? 'alert' : 'status');
+
+    const glyph = document.createElement('span');
+    glyph.className = 'status-dot';
+    glyph.dataset.level = level;
+    glyph.setAttribute('aria-hidden', 'true');
+
+    const text = document.createElement('span');
+    text.className = 'toast-message';
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.dataset.variant = 'close';
+    close.setAttribute('aria-label', 'Dismiss notification');
+    close.title = 'Dismiss';
+
+    notice.append(glyph, text, close);
+    if (autoDismiss) {
+        const progress = document.createElement('span');
+        progress.className = 'toast-progress';
+        progress.setAttribute('aria-hidden', 'true');
+        progress.style.setProperty('--toast-duration', `${DURATION}ms`);
+        notice.append(progress);
     }
-
-    connectedCallback() {
-        // Get data from attributes
-        const type = this.dataset.type || 'info';
-        const message = this.dataset.message || '';
-        const autoDismiss = this.dataset.autoDismiss === 'true';
-
-        // Render the toast
-        this.render(type, message, autoDismiss);
-
-        // Auto-dismiss if requested
-        if (autoDismiss) {
-            setTimeout(() => {
-                this.dismiss();
-            }, this.autoDismissDelay);
-        }
-    }
-
-    /**
-     * Render the toast as a notice
-     */
-    render(type, message, autoDismiss = false) {
-        const level = type;
-        const icon = this.getIcon(type);
-        const progressBar = autoDismiss ? `<div class="toast-progress" style="animation-duration:${this.autoDismissDelay}ms"></div>` : '';
-
-        this.innerHTML = `
-            <div class="notice dismissible" data-level="${level}" role="alert">
-                ${icon}&nbsp;${message}
-                <button type="button" data-variant="close" aria-label="Close"></button>
-                ${progressBar}
-            </div>
-        `;
-
-        // Add click handler for close button
-        const closeBtn = this.querySelector('[data-variant="close"]');
-        closeBtn.addEventListener('click', () => {
-            this.dismiss();
-        });
-    }
-
-    /**
-     * Get the icon for a message type
-     */
-    getIcon(type) {
-        const icons = {
-            success:
-                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg>',
-            error: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/></svg>',
-            warning:
-                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/></svg>',
-            info: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2"/></svg>',
-        };
-        return icons[type] || icons.info;
-    }
-
-    /**
-     * Dismiss this toast with animation and remove from DOM
-     */
-    dismiss() {
-        const alert = this.querySelector('.alert');
-        if (alert) {
-            alert.classList.add('is-dismissing');
-        }
-        setTimeout(() => {
-            this.dispatchEvent(new CustomEvent('nfsen-toast-dismissed', { bubbles: true }));
-            this.remove();
-        }, 150); // Match the fade-out transition
-    }
+    host.replaceChildren(notice);
+    return text;
 }
 
-// Define the custom element
-customElements.define('nfsen-toast', NfsenToast);
+/** Fades the notice out, then removes the toast. */
+function dismiss(host, emit) {
+    const state = peekState(host);
+    if (!state || state.dismissing) return;
+    state.dismissing = true;
+    state.running = false;
+    clearTimeout(state.timer);
+    host.querySelector('.notice.dismissible')?.classList.add('is-dismissing');
+    state.fade = setTimeout(() => {
+        emit('nfsen-toast-dismissed', null);
+        host.remove();
+    }, FADE);
+}
 
-// Global helper function for client-side usage
-// containerSelector: optional CSS selector for the target container (should have data-ignore-morph)
+rocket('nfsen-toast', {
+    mode: 'light',
+    props: ({ bool, oneOf, string }) => ({
+        level: oneOf(...LEVELS)
+            .default('info')
+            .docs({ description: 'success, info, warning or error. Warnings and errors are alerts, the rest status messages.' }),
+        message: string.docs({ description: 'The text of the toast, never read as markup.' }),
+        autoDismiss: bool.docs({ description: 'Dismiss after 5 s, counting only while neither the pointer nor the focus is on it.' }),
+    }),
+    manifest: {
+        events: [
+            {
+                name: 'nfsen-toast-dismissed',
+                kind: 'custom-event',
+                bubbles: true,
+                composed: true,
+                description: 'The toast is about to be removed: by its close button, dismiss() or the timeout.',
+            },
+        ],
+    },
+    setup: ({ cleanup, defineHostProp, emit, host, props }) => {
+        const state = hostState(host, () => ({ left: DURATION, started: 0, running: false, timer: 0, fade: 0, dismissing: false }));
+        if (!host.firstChild) {
+            const text = build(host, levelOf(props.level), props.autoDismiss);
+            // A status region reads out what changes in it, not what it was inserted with.
+            requestAnimationFrame(() =>
+                requestAnimationFrame(() => {
+                    text.textContent = props.message;
+                })
+            );
+        } else if (props.autoDismiss) {
+            // A move that is not atomic restarts the animation; it resumes where the timer stands.
+            host.querySelector('.toast-progress')?.style.setProperty('animation-delay', `${state.left - DURATION}ms`);
+        }
+
+        defineHostProp('dismiss', { value: () => dismiss(host, emit) });
+
+        const held = () => host.matches(':hover, :focus-within');
+        const run = () => {
+            if (state.running || state.dismissing || held()) return;
+            state.running = true;
+            state.started = Date.now();
+            state.timer = setTimeout(() => dismiss(host, emit), state.left);
+        };
+        const pause = () => {
+            if (!state.running) return;
+            state.running = false;
+            clearTimeout(state.timer);
+            state.left = Math.max(0, state.left - (Date.now() - state.started));
+        };
+        const listeners = {
+            click: (event) => {
+                if (event.target instanceof Element && event.target.closest('button[data-variant="close"]')) dismiss(host, emit);
+            },
+        };
+        if (props.autoDismiss) {
+            Object.assign(listeners, {
+                pointerenter: pause,
+                focusin: pause,
+                pointerleave: run,
+                // Focus moving between the toast's own controls leaves it held.
+                focusout: () => setTimeout(run),
+            });
+            run();
+        }
+        for (const [type, listener] of Object.entries(listeners)) host.addEventListener(type, listener);
+
+        cleanup(() => {
+            for (const [type, listener] of Object.entries(listeners)) host.removeEventListener(type, listener);
+            pause();
+            whenGone(host, (gone) => {
+                clearTimeout(gone.timer);
+                clearTimeout(gone.fade);
+            });
+        });
+    },
+});
+
+const queued = window.showMessage?.queue ?? [];
+
+/**
+ * Shows a toast in containerSelector (keep it data-ignore-morph), else in the open modal's own stack
+ * (a modal makes the page inert), else in the shell's stack.
+ */
 window.showMessage = (type, message, autoDismiss = false, containerSelector = null) => {
-    // Create a new toast element
     const toast = document.createElement('nfsen-toast');
-    toast.dataset.type = type;
-    toast.dataset.message = message;
-    if (autoDismiss) {
-        toast.dataset.autoDismiss = 'true';
-    }
+    toast.level = levelOf(type);
+    toast.message = String(message ?? '');
+    toast.autoDismiss = !!autoDismiss;
 
-    // Prefer the specified container, then the fixed overlay, then body
+    const modal = [...document.querySelectorAll('dialog:modal')].pop();
     const container =
         (containerSelector && document.querySelector(containerSelector)) ||
+        modal?.querySelector(':scope > .toast-stack') ||
         document.getElementById('alerts-toast-container') ||
         document.body;
     container.appendChild(toast);
+    return toast;
 };
+
+// Calls made before this module ran, queued by the layout's stand-in (a fired alert on the first sync).
+for (const args of queued.splice(0)) window.showMessage(...args);

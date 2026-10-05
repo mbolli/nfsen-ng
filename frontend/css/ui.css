@@ -1,10 +1,14 @@
 /*
- * The UI layer: a reset, then plain elements, then the handful of things this app actually
- * has (a card, a segmented control, tabs, a menu, a notice).
+ * The UI layer: a reset, then plain elements, then the generic components every page
+ * shares (card, segmented control, tabs, menus, notice, badge, chip, KPI, bar list).
  *
  * Written against elements and roles rather than utility classes, so the markup says what a
  * thing is and this file says what that looks like. Where a class is unavoidable it names a
- * component, never a declaration: .segmented, not .d-flex.
+ * component, never a declaration: .segmented, not .d-flex. State lives in attributes
+ * (:checked, aria-pressed, aria-selected, aria-current, aria-expanded, [data-level]).
+ *
+ * Everything is neutral grey; colour only marks status ([data-level]) and data series
+ * ([data-series]). Selected states always add a border, bar or outline for forced colors.
  *
  * Layout uses logical properties (inline/block) throughout, so a right-to-left locale would
  * mirror without a second stylesheet.
@@ -29,8 +33,6 @@ html {
 
 body {
     min-block-size: 100dvb;
-    /* The page should not run into the window edge. */
-    padding: var(--size-3) var(--size-4);
     background: var(--surface-1);
     color: var(--text-1);
     font-family: var(--font-sans);
@@ -68,13 +70,19 @@ button {
     overflow-wrap: break-word;
 }
 
+/* An outline, not only a shadow: it is what forced-colors mode keeps. */
 :focus-visible {
-    outline: 2px solid var(--brand);
+    outline: 2px solid var(--focus-color);
     outline-offset: 2px;
 }
 
-/* Keyboard focus is drawn by the ring above; a mouse click should not paint one. */
-:focus:not(:focus-visible) {
+:is(button, input, select, textarea, a):focus-visible {
+    box-shadow: var(--focus-halo);
+}
+
+/* Keyboard focus is drawn by the ring above; a mouse click should not paint one. Zero
+   specificity, so the forced-colors state outline survives a mouse click. */
+:where(:focus:not(:focus-visible)) {
     outline: none;
 }
 
@@ -113,26 +121,15 @@ p {
     text-wrap: pretty;
 }
 
-small,
-.muted {
+small {
     font-size: var(--font-size-0);
-}
-
-small,
-.muted {
     color: var(--text-2);
-}
-
-/* Small marks the size; muted marks the role. Both together must not shrink twice. */
-small.muted {
-    font-size: var(--font-size-0);
 }
 
 code,
 kbd,
 samp,
-pre,
-.mono {
+pre {
     font-family: var(--font-mono);
     font-size: 0.9em;
 }
@@ -161,45 +158,25 @@ hr {
     margin-block: var(--size-4);
 }
 
+/* Colour no longer marks a link, so the underline has to. */
 a {
-    color: var(--brand);
-    text-underline-offset: 0.15em;
+    color: var(--text-1);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
 }
 
 a:hover {
-    color: color-mix(in oklab, var(--brand) 80%, var(--text-1));
+    text-decoration-thickness: 2px;
 }
 
-/* Four typographic helpers, kept because they name a role rather than a declaration:
-   text that is secondary, emphasised, tabular, or carries a status colour. */
-.strong {
-    font-weight: var(--font-weight-semibold);
+/* An address that opens the IP info dialog. */
+.ip-link {
+    text-decoration-style: dotted;
 }
 
-.center {
-    text-align: center;
-}
-
-/* A column of actions or figures, read from the end of the line. */
-.text-end {
-    text-align: end;
-}
-
-.nowrap {
-    white-space: nowrap;
-}
-
-.italic {
-    font-style: italic;
-}
-
-.upper {
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.lower {
-    text-transform: lowercase;
+.ip-link:hover {
+    text-decoration-style: solid;
 }
 
 /* ── Layout primitives ──────────────────────────────────────────────────── */
@@ -219,11 +196,11 @@ a:hover {
     gap: var(--cluster-gap, var(--size-2));
 }
 
-.cluster-between {
+.cluster[data-justify='between'] {
     justify-content: space-between;
 }
 
-.cluster-end {
+.cluster[data-justify='end'] {
     justify-content: flex-end;
 }
 
@@ -234,10 +211,6 @@ a:hover {
     gap: var(--grid-gap, var(--size-3));
 }
 
-.spacer {
-    margin-inline-start: auto;
-}
-
 .visually-hidden:not(:focus-visible) {
     position: absolute;
     width: 1px;
@@ -246,6 +219,135 @@ a:hover {
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+}
+
+/* ── Series slots ───────────────────────────────────────────────────────── */
+
+/* One slot per chart series; every component that shows a series colour reads
+   --series-color, so the palette lives in tokens.css only. */
+[data-series='1'] {
+    --series-color: var(--series-1);
+}
+
+[data-series='2'] {
+    --series-color: var(--series-2);
+}
+
+[data-series='3'] {
+    --series-color: var(--series-3);
+}
+
+[data-series='4'] {
+    --series-color: var(--series-4);
+}
+
+[data-series='5'] {
+    --series-color: var(--series-5);
+}
+
+[data-series='6'] {
+    --series-color: var(--series-6);
+}
+
+[data-series='7'] {
+    --series-color: var(--series-7);
+}
+
+[data-series='8'] {
+    --series-color: var(--series-8);
+}
+
+[data-series='others'] {
+    --series-color: var(--series-others);
+}
+
+/* ── Dialog and drawer ──────────────────────────────────────────────────── */
+
+dialog {
+    max-inline-size: min(48rem, 92vw);
+    max-block-size: 85dvb;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    background: var(--surface-2);
+    color: var(--text-1);
+    box-shadow: var(--shadow-2);
+}
+
+/* The reset's margin: 0 would pin a modal dialog to the corner. */
+dialog:modal {
+    margin: auto;
+}
+
+dialog::backdrop {
+    background: var(--backdrop);
+    backdrop-filter: blur(2px);
+}
+
+dialog > header,
+.dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-3);
+    padding: var(--size-3) var(--size-4);
+    border-block-end: 1px solid var(--border);
+}
+
+.dialog-body {
+    padding: var(--size-4);
+    overflow-y: auto;
+}
+
+.dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--size-2);
+    padding: var(--size-3) var(--size-4);
+    border-block-start: 1px solid var(--border);
+}
+
+/* A full-height panel from the inline end, sliding in on open. */
+dialog.drawer {
+    inset-block: 0;
+    inset-inline: auto 0;
+    inline-size: min(44rem, 100vw);
+    max-inline-size: 100vw;
+    block-size: 100dvb;
+    max-block-size: 100dvb;
+    margin: 0;
+    border: none;
+    border-inline-start: 1px solid var(--border-strong);
+    border-radius: 0;
+    translate: 100% 0;
+    transition:
+        translate var(--duration-normal) var(--ease-out),
+        overlay var(--duration-normal) allow-discrete,
+        display var(--duration-normal) allow-discrete;
+}
+
+dialog.drawer:dir(rtl) {
+    translate: -100% 0;
+}
+
+dialog.drawer[open] {
+    display: flex;
+    flex-direction: column;
+    translate: 0 0;
+}
+
+@starting-style {
+    dialog.drawer[open] {
+        translate: 100% 0;
+    }
+
+    dialog.drawer[open]:dir(rtl) {
+        translate: -100% 0;
+    }
+}
+
+dialog.drawer > .dialog-body {
+    flex: 1;
 }
 
 /* ── Surfaces ───────────────────────────────────────────────────────────── */
@@ -274,240 +376,29 @@ a:hover {
     padding: var(--size-5);
 }
 
-/* ── Buttons ────────────────────────────────────────────────────────────── */
-
-button,
-.button,
-input[type='submit'],
-input[type='reset'] {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--size-2);
-    padding: var(--size-2) var(--size-3);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-2);
-    background: var(--surface-2);
-    color: var(--text-1);
-    font-size: var(--font-size-0);
-    font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-tight);
-    text-decoration: none;
-    transition: background var(--duration-fast) var(--ease-out),
-        border-color var(--duration-fast) var(--ease-out);
-}
-
-button:hover:not(:disabled),
-.button:hover:not(:disabled) {
-    background: var(--surface-3);
-    border-color: var(--brand);
-}
-
-button:disabled,
-.button[aria-disabled='true'] {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
-button[data-variant='primary'],
-.button[data-variant='primary'] {
-    border-color: transparent;
-    background: var(--brand);
-    color: var(--text-on-accent);
-}
-
-button[data-variant='primary']:hover:not(:disabled) {
-    background: color-mix(in oklab, var(--brand) 85%, black);
-    border-color: transparent;
-}
-
-button[data-variant='danger'] {
-    border-color: transparent;
-    background: var(--danger);
-    color: var(--text-on-accent);
-}
-
-button[data-variant='danger']:hover:not(:disabled) {
-    background: color-mix(in oklab, var(--danger) 85%, black);
-    border-color: transparent;
-}
-
-button[data-variant='ghost'] {
-    border-color: transparent;
-    background: none;
-}
-
-button[data-variant='ghost']:hover:not(:disabled) {
-    background: var(--surface-3);
-    border-color: transparent;
-}
-
-button[data-variant='link'] {
-    padding-inline: 0;
-    border-color: transparent;
-    background: none;
-    color: var(--brand);
-    text-decoration: underline;
-}
-
-button[data-size='sm'],
-.button[data-size='sm'] {
-    padding: var(--size-1) var(--size-2);
-    font-size: var(--font-size-00);
-}
-
-/* A close affordance: the × is drawn, not typed, so it needs no icon font. */
-button[data-variant='close'] {
-    padding: var(--size-1);
-    border: none;
-    background: none;
-    color: var(--text-2);
-    font-size: var(--font-size-2);
-    line-height: 1;
-}
-
-button[data-variant='close']::before {
-    content: '\00d7';
-}
-
-button[data-variant='close']:hover {
-    color: var(--text-1);
-    background: none;
-}
-
-/* Buttons joined into one control. Unlike .segmented these are real buttons that do
-   something when pressed, so "currently chosen" is aria-pressed rather than a checked
-   input, and the state is announced instead of only drawn. */
-.button-group {
-    display: inline-flex;
-    flex-wrap: wrap;
-}
-
-.button-group > button {
-    border-radius: 0;
-}
-
-.button-group > button:not(:first-child) {
-    margin-inline-start: -1px;
-}
-
-.button-group > button:first-child {
-    border-start-start-radius: var(--radius-2);
-    border-end-start-radius: var(--radius-2);
-}
-
-.button-group > button:last-child {
-    border-start-end-radius: var(--radius-2);
-    border-end-end-radius: var(--radius-2);
-}
-
-.button-group > button:hover,
-.button-group > button:focus-visible {
-    z-index: 1;
-}
-
-button[aria-pressed='true'] {
-    border-color: var(--brand);
-    background: var(--brand-subtle);
-    font-weight: var(--font-weight-semibold);
-}
-
-/* ── Segmented control ──────────────────────────────────────────────────── */
-
-/*
- * One choice out of a few, drawn as joined buttons: the radio or checkbox stays in the DOM
- * and keeps the keyboard and the form value, while its label is what is painted. Checked
- * state comes from :checked, not from a class the server has to keep in sync, which is what
- * the old markup got wrong often enough to be worth saying twice.
- */
-.segmented {
-    display: inline-flex;
-    flex-wrap: wrap;
-}
-
-.segmented input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-}
-
-.segmented label {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--size-1);
-    padding: var(--size-2) var(--size-3);
-    border: 1px solid var(--border-strong);
-    background: var(--surface-2);
-    color: var(--text-1);
-    font-size: var(--font-size-0);
-    line-height: var(--line-height-tight);
-    cursor: pointer;
-    transition: background var(--duration-fast) var(--ease-out);
-}
-
-.segmented label:not(:first-of-type) {
-    margin-inline-start: -1px;
-}
-
-.segmented label:first-of-type {
-    border-start-start-radius: var(--radius-2);
-    border-end-start-radius: var(--radius-2);
-}
-
-.segmented label:last-of-type {
-    border-start-end-radius: var(--radius-2);
-    border-end-end-radius: var(--radius-2);
-}
-
-.segmented label:hover {
-    background: var(--surface-3);
-}
-
-.segmented input:checked + label {
-    z-index: 1;
-    border-color: var(--brand);
-    background: var(--brand-subtle);
-    color: var(--text-1);
-    font-weight: var(--font-weight-semibold);
-}
-
-.segmented input:focus-visible + label {
-    z-index: 2;
-    outline: 2px solid var(--brand);
-    outline-offset: 2px;
-}
-
-.segmented input:disabled + label {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
-/* Stacked in a narrow column rather than side by side. */
-.segmented[data-orientation='block'] {
-    flex-direction: column;
-}
-
-.segmented[data-orientation='block'] label:not(:first-of-type) {
-    margin-inline-start: 0;
-    margin-block-start: -1px;
-}
-
-.segmented[data-orientation='block'] label:first-of-type {
-    border-radius: var(--radius-2) var(--radius-2) 0 0;
-}
-
-.segmented[data-orientation='block'] label:last-of-type {
-    border-radius: 0 0 var(--radius-2) var(--radius-2);
-}
-
-/* Fills its container instead of hugging its labels. */
-.segmented[data-stretch] {
+.card > footer,
+.card-footer {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2);
+    padding: var(--size-3) var(--size-4);
+    border-block-start: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+    border-end-start-radius: inherit;
+    border-end-end-radius: inherit;
 }
 
-.segmented[data-stretch] label {
-    flex: 1;
+/* Secondary text in a card header: a caveat, a count, a source. */
+.card-meta {
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-normal);
+}
+
+.page-lede {
+    color: var(--text-2);
 }
 
 /* ── Forms ──────────────────────────────────────────────────────────────── */
@@ -519,7 +410,6 @@ label {
 input[type='text'],
 input[type='search'],
 input[type='number'],
-input[type='password'],
 input[type='email'],
 input[type='url'],
 input[type='date'],
@@ -529,7 +419,7 @@ textarea {
     inline-size: 100%;
     min-inline-size: 0;
     padding: var(--size-2) var(--size-3);
-    border: 1px solid var(--border-strong);
+    border: 1px solid var(--control-border);
     border-radius: var(--radius-2);
     background: var(--surface-2);
     color: var(--text-1);
@@ -545,9 +435,7 @@ textarea {
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-    outline: none;
-    border-color: var(--brand);
-    box-shadow: var(--focus-ring);
+    border-color: var(--text-1);
 }
 
 input:disabled,
@@ -560,8 +448,14 @@ textarea:disabled {
 
 input::placeholder,
 textarea::placeholder {
-    color: var(--text-2);
-    opacity: 0.8;
+    color: var(--text-3);
+    opacity: 1;
+}
+
+input[aria-invalid='true'],
+textarea[aria-invalid='true'],
+select[aria-invalid='true'] {
+    border-color: var(--danger);
 }
 
 select[multiple] {
@@ -573,11 +467,11 @@ select[multiple] option {
     border-radius: var(--radius-1);
 }
 
-/* Native controls follow color-scheme, so they only need a hue. */
+/* Native controls follow color-scheme, so they only need the accent. */
 input[type='checkbox'],
 input[type='radio'],
 input[type='range'] {
-    accent-color: var(--brand);
+    accent-color: var(--accent);
     inline-size: auto;
 }
 
@@ -626,7 +520,7 @@ input[type='range'] {
     block-size: 1.25rem;
     flex-shrink: 0;
     padding: 2px;
-    border: 1px solid var(--border-strong);
+    border: 1px solid var(--control-border);
     border-radius: var(--radius-round);
     background: var(--surface-3);
     transition: background var(--duration-fast) var(--ease-out);
@@ -636,26 +530,30 @@ input[type='range'] {
 .switch input::after {
     content: '';
     display: block;
-    inline-size: 1rem;
-    block-size: 1rem;
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
     border-radius: 50%;
     background: var(--text-2);
     transition: translate var(--duration-fast) var(--ease-out);
 }
 
 .switch input:checked {
-    border-color: var(--brand);
-    background: var(--brand);
+    border-color: var(--accent);
+    background: var(--accent);
 }
 
 .switch input:checked::after {
     translate: 1rem 0;
-    background: var(--text-on-accent);
+    background: var(--on-accent);
 }
 
-.switch input:focus-visible {
-    outline: 2px solid var(--brand);
-    outline-offset: 2px;
+.switch input:dir(rtl):checked::after {
+    translate: -1rem 0;
+}
+
+.switch input:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 /* Explanatory line under a control. */
@@ -716,9 +614,239 @@ dd {
     overflow-wrap: anywhere;
 }
 
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+button,
+input[type='submit'],
+input[type='reset'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--size-2);
+    padding: var(--size-2) var(--size-3);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-2);
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-tight);
+    text-decoration: none;
+    transition:
+        background var(--duration-fast) var(--ease-out),
+        border-color var(--duration-fast) var(--ease-out);
+}
+
+button:hover:not(:disabled, [aria-disabled='true']) {
+    background: var(--surface-3);
+}
+
+/* aria-disabled keeps a busy button focusable; its click handler guards the action. */
+button:is(:disabled, [aria-disabled='true']) {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+button[data-variant='primary'] {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+button[data-variant='primary']:hover:not(:disabled, [aria-disabled='true']) {
+    border-color: var(--accent-hover);
+    background: var(--accent-hover);
+}
+
+button[data-variant='danger'] {
+    border-color: var(--danger);
+    background: var(--danger);
+    color: var(--on-danger);
+}
+
+button[data-variant='danger']:hover:not(:disabled) {
+    border-color: var(--danger-emphasis);
+    background: var(--danger-emphasis);
+}
+
+button[data-variant='ghost'] {
+    border-color: transparent;
+    background: none;
+}
+
+button[data-variant='ghost']:hover:not(:disabled) {
+    background: var(--surface-3);
+}
+
+button[data-variant='link'] {
+    padding-inline: 0;
+    border-color: transparent;
+    background: none;
+    color: var(--text-1);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+button[data-variant='link']:hover:not(:disabled) {
+    background: none;
+    text-decoration-thickness: 2px;
+}
+
+button[data-size='sm'] {
+    padding: var(--size-1) var(--size-2);
+    font-size: var(--font-size-00);
+}
+
+/* A close affordance: the × is drawn, not typed, so it needs no icon font. */
+button[data-variant='close'] {
+    padding: var(--size-1);
+    border: none;
+    background: none;
+    color: var(--text-2);
+    font-size: var(--font-size-2);
+    line-height: 1;
+}
+
+button[data-variant='close']::before {
+    content: '\00d7';
+}
+
+button[data-variant='close']:hover:not(:disabled) {
+    color: var(--text-1);
+    background: none;
+}
+
+/* Pressed is the accent fill: the strongest contrast the neutral palette has. */
+button[aria-pressed='true'] {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: var(--font-weight-semibold);
+}
+
+button[aria-pressed='true']:hover:not(:disabled) {
+    border-color: var(--accent-hover);
+    background: var(--accent-hover);
+}
+
+/* Buttons joined into one control. Unlike .segmented these are real buttons that do
+   something when pressed, so "currently chosen" is aria-pressed rather than a checked
+   input, and the state is announced instead of only drawn. */
+.button-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+}
+
+.button-group > button {
+    border-radius: 0;
+}
+
+.button-group > button:not(:first-child) {
+    margin-inline-start: -1px;
+}
+
+.button-group > button:first-child {
+    border-start-start-radius: var(--radius-2);
+    border-end-start-radius: var(--radius-2);
+}
+
+.button-group > button:last-child {
+    border-start-end-radius: var(--radius-2);
+    border-end-end-radius: var(--radius-2);
+}
+
+.button-group > button:hover,
+.button-group > button[aria-pressed='true'],
+.button-group > button:focus-visible {
+    z-index: 1;
+}
+
+/* ── Segmented control ──────────────────────────────────────────────────── */
+
+/*
+ * One choice out of a few, drawn as joined buttons: the radio or checkbox stays in the DOM
+ * and keeps the keyboard and the form value, while its label is what is painted. Checked
+ * state comes from :checked, not from a class the server has to keep in sync, which is what
+ * the old markup got wrong often enough to be worth saying twice.
+ */
+.segmented {
+    display: inline-flex;
+    flex-wrap: wrap;
+}
+
+.segmented input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.segmented label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--size-1);
+    padding: var(--size-2) var(--size-3);
+    border: 1px solid var(--control-border);
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-size: var(--font-size-0);
+    line-height: var(--line-height-tight);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+}
+
+.segmented label:not(:first-of-type) {
+    margin-inline-start: -1px;
+}
+
+.segmented label:first-of-type {
+    border-start-start-radius: var(--radius-2);
+    border-end-start-radius: var(--radius-2);
+}
+
+.segmented label:last-of-type {
+    border-start-end-radius: var(--radius-2);
+    border-end-end-radius: var(--radius-2);
+}
+
+/* Fills its container instead of hugging its labels. */
+.segmented[data-stretch] {
+    display: flex;
+}
+
+.segmented[data-stretch] label {
+    flex: 1;
+}
+
+.segmented label:hover {
+    background: var(--surface-3);
+}
+
+.segmented input:checked + label {
+    z-index: 1;
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: var(--font-weight-semibold);
+}
+
+.segmented input:focus-visible + label {
+    z-index: 2;
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+    box-shadow: var(--focus-halo);
+}
+
+.segmented input:disabled + label {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 /* ── Tables ─────────────────────────────────────────────────────────────── */
 
+/* Relative, so a visually hidden cell text is clipped here and cannot widen the page. */
 .table-wrap {
+    position: relative;
     overflow-x: auto;
 }
 
@@ -730,17 +858,35 @@ table {
 
 th,
 td {
-    padding: var(--size-2) var(--size-3);
+    padding: var(--cell-pad-block) var(--cell-pad-inline);
     text-align: start;
     vertical-align: middle;
 }
 
 thead th {
-    padding-block: var(--size-3);
+    padding-block: calc(var(--cell-pad-block) + var(--size-1));
     border-block-end: 2px solid var(--border);
     color: var(--text-1);
     font-weight: var(--font-weight-semibold);
     white-space: nowrap;
+}
+
+/* Figures line up by their digits, read from the end of the cell. */
+th[data-num],
+td[data-num] {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+}
+
+td[data-kind='time'] {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+td[data-kind='address'] {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    overflow-wrap: anywhere;
 }
 
 tbody tr {
@@ -755,8 +901,17 @@ tbody tr:hover {
     background: var(--surface-3);
 }
 
+/* Selected is darker than hover and zebra, and carries a bar, so it never reads as either. */
 tbody tr[aria-selected='true'] {
-    background: var(--brand-subtle);
+    background: var(--surface-4);
+}
+
+tbody tr[aria-selected='true'] > :first-child {
+    box-shadow: inset 3px 0 0 var(--text-1);
+}
+
+tbody tr[aria-selected='true'] > :first-child:dir(rtl) {
+    box-shadow: inset -3px 0 0 var(--text-1);
 }
 
 /* A heading row inside the body, naming the group of rows under it. */
@@ -796,85 +951,91 @@ tbody tr[data-level='error']:hover {
 
 /* ── Tabs ───────────────────────────────────────────────────────────────── */
 
+/* <div class="tabs" role="tablist"> of <button role="tab" aria-selected>, keyboard from
+   nfsen-controls.js. */
 .tabs {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: var(--size-1);
-    list-style: none;
+    align-items: stretch;
+    gap: var(--size-2);
     padding: 0;
+    box-shadow: inset 0 -1px 0 var(--border);
 }
 
-.tabs a {
+.tabs [role='tab'] {
     display: inline-flex;
     align-items: center;
     gap: var(--size-2);
     padding: var(--size-2) var(--size-3);
-    border: 1px solid transparent;
-    border-radius: var(--radius-2) var(--radius-2) 0 0;
+    border: none;
+    border-block-end: 2px solid transparent;
+    border-radius: 0;
+    background: none;
     color: var(--text-2);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-medium);
     text-decoration: none;
 }
 
-.tabs a:hover {
-    background: var(--surface-3);
+.tabs [role='tab']:not([aria-selected='true']):hover:not(:disabled) {
+    border-block-end-color: var(--border-strong);
+    background: none;
     color: var(--text-1);
 }
 
-.tabs a[aria-current='page'],
-.tabs a.active {
-    border-color: var(--border);
-    border-block-end-color: var(--surface-2);
-    background: var(--surface-2);
+.tabs [role='tab'][aria-selected='true'] {
+    border-block-end-color: var(--text-1);
+    background: none;
     color: var(--text-1);
     font-weight: var(--font-weight-semibold);
 }
 
-/* A vertical list of sections, as the settings page uses. */
-.tabs[aria-orientation='vertical'] {
-    flex-direction: column;
-    align-items: stretch;
+.tabs [role='tab']:focus-visible {
+    outline-offset: -2px;
+    box-shadow: none;
 }
 
-.tabs[aria-orientation='vertical'] a {
-    border-radius: var(--radius-2);
+/* In-card tabs: a step smaller. */
+.tabs[data-size='sm'] [role='tab'] {
+    padding: var(--size-1) var(--size-2);
+    font-size: var(--font-size-00);
 }
 
-.tabs[aria-orientation='vertical'] a.active {
-    border-color: transparent;
-    background: var(--brand-subtle);
+[role='tabpanel'] {
+    min-inline-size: 0;
 }
 
-/* ── Menu ───────────────────────────────────────────────────────────────── */
+/* ── Menus ──────────────────────────────────────────────────────────────── */
 
-.menu {
-    position: relative;
-    display: inline-block;
+/* Popover: sb-popover > [slot=trigger].menu-toggle + .popover-list. The component draws the
+   panel (starbase.css) and writes aria-expanded on the trigger; the list only holds the items. */
+.menu-toggle::after {
+    content: '';
+    inline-size: 0.4em;
+    block-size: 0.4em;
+    margin-block-start: -0.2em;
+    border-block-end: 1.5px solid currentcolor;
+    border-inline-end: 1.5px solid currentcolor;
+    rotate: 45deg;
+    transition: rotate var(--duration-fast) var(--ease-out);
 }
 
-.menu-list {
-    position: absolute;
-    z-index: 30;
-    inset-block-start: calc(100% + var(--size-1));
-    inset-inline-end: 0;
-    min-inline-size: 12rem;
-    max-block-size: 60vh;
-    overflow-y: auto;
-    padding: var(--size-1);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-2);
-    background: var(--surface-2);
-    box-shadow: var(--shadow-2);
+.menu-toggle[aria-expanded='true']::after {
+    margin-block: 0.2em 0;
+    rotate: 225deg;
+}
+
+.popover-list {
+    margin: 0;
+    padding: 0;
     list-style: none;
 }
 
-.menu-list:not([data-open]) {
-    display: none;
-}
-
-.menu-list li > * {
+.popover-list li > :is(a, button, label),
+.menu-item {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     gap: var(--size-2);
     inline-size: 100%;
     padding: var(--size-1) var(--size-2);
@@ -883,16 +1044,56 @@ tbody tr[data-level='error']:hover {
     background: none;
     color: var(--text-1);
     font-size: var(--font-size-0);
+    font-weight: var(--font-weight-normal);
     text-align: start;
     text-decoration: none;
 }
 
-.menu-list li > *:hover {
+.popover-list li > :is(a, button, label):hover,
+.menu-item:hover:not(:disabled),
+.menu-item:focus-visible {
     background: var(--surface-3);
+}
+
+.menu-item:focus-visible {
+    outline-offset: -2px;
+    box-shadow: none;
+}
+
+/* The current choice gets a check mark, never a fill: menus stay neutral. Every item of such
+   a list keeps the mark's column; the mark is a mask, as no font is sure to have U+2713. */
+.popover-list:has(.menu-item:is([aria-pressed], [aria-current])) .menu-item::before {
+    content: '';
+    flex: 0 0 1em;
+    block-size: 0.75rem;
+}
+
+.menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page']) {
+    border-color: transparent;
+    background: none;
+    color: var(--text-1);
+    font-weight: var(--font-weight-semibold);
+}
+
+.popover-list .menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page'])::before {
+    background: currentcolor;
+    mask: var(--glyph-success) center / contain no-repeat;
+}
+
+.menu-item:is([aria-pressed='true'], [aria-current='true'], [aria-current='page']):hover:not(:disabled) {
+    background: var(--surface-3);
+}
+
+.menu-sep {
+    block-size: 0;
+    margin-block: var(--size-1);
+    border-block-start: 1px solid var(--border);
+    list-style: none;
 }
 
 /* ── Notices ────────────────────────────────────────────────────────────── */
 
+/* Level-less is the neutral hint, caveat or stale note; [data-level] is for real status. */
 .notice {
     display: flex;
     align-items: flex-start;
@@ -926,11 +1127,22 @@ tbody tr[data-level='error']:hover {
     background: var(--info-subtle);
 }
 
+/* Results that belong to an earlier query. */
+.notice[data-kind='stale'] {
+    border-inline-start-style: dashed;
+    color: var(--text-2);
+}
+
 /* On its way out: the toast keeps its box while it fades, so the ones below it do not
    jump up a row before the animation finishes. */
 .notice.is-dismissing {
     opacity: 0;
     transition: opacity var(--duration-normal) var(--ease-out);
+}
+
+/* A quoted nfdump command wraps anywhere, or a phone would cut it off. */
+.notice code {
+    overflow-wrap: anywhere;
 }
 
 /* A notice that can be closed keeps room for the button at its end. */
@@ -971,6 +1183,7 @@ tbody tr[data-level='error']:hover {
     align-items: center;
     gap: var(--size-1);
     padding: 0.15em 0.55em;
+    border: 1px solid transparent;
     border-radius: var(--radius-round);
     background: var(--surface-4);
     color: var(--text-1);
@@ -1000,9 +1213,457 @@ tbody tr[data-level='error']:hover {
     color: var(--info-emphasis);
 }
 
-.badge[data-level='brand'] {
-    background: var(--brand);
-    color: var(--text-on-accent);
+/* A figure from the precomputed per-interval top N rather than an exact query. */
+.badge[data-kind='approx'] {
+    border: 1px dashed var(--border-strong);
+    background: none;
+    color: var(--text-2);
+}
+
+/* ── Status glyphs ──────────────────────────────────────────────────────── */
+
+/* A status never rests on colour alone: each level has its own shape, drawn as a mask
+   unless the markup brings its own <svg>. */
+:root {
+    --glyph-success: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M.6 6.4 2.3 4.7l2.4 2.4L9.7 2.1l1.7 1.7-6.7 6.7z'/%3E%3C/svg%3E");
+    --glyph-warning: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill-rule='evenodd' d='M6 .6 11.8 11H.2zM5.2 4.4h1.6v3.4H5.2zm0 4.4h1.6v1.4H5.2z'/%3E%3C/svg%3E");
+    --glyph-error: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.3.6 6 4.3 9.7.6l1.7 1.7L7.7 6l3.7 3.7-1.7 1.7L6 7.7l-3.7 3.7-1.7-1.7L4.3 6 .6 2.3z'/%3E%3C/svg%3E");
+    --glyph-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill-rule='evenodd' d='M6 .5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11M5.2 5h1.6v4.5H5.2zm0-2.5h1.6V4H5.2z'/%3E%3C/svg%3E");
+    --glyph-neutral: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill-rule='evenodd' d='M6 .8a5.2 5.2 0 1 1 0 10.4A5.2 5.2 0 0 1 6 .8m0 2a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4'/%3E%3C/svg%3E");
+}
+
+.status-dot,
+.nav-dot {
+    --glyph: var(--glyph-neutral);
+    display: inline-flex;
+    flex-shrink: 0;
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+    color: var(--text-2);
+    vertical-align: -0.05em;
+}
+
+.status-dot::before,
+.nav-dot::before {
+    content: '';
+    flex: 1;
+    background: currentcolor;
+    mask: var(--glyph) center / contain no-repeat;
+}
+
+.status-dot:has(> svg)::before,
+.nav-dot:has(> svg)::before {
+    content: none;
+}
+
+.status-dot > svg,
+.nav-dot > svg {
+    inline-size: 100%;
+    block-size: 100%;
+    fill: currentcolor;
+}
+
+/* Text that states a status in words, coloured to match its glyph. */
+.status-text {
+    color: var(--text-2);
+}
+
+/* ── Chip ───────────────────────────────────────────────────────────────── */
+
+/* Neutral for routine activity, levelled only when something needs attention.
+   [data-state=running] makes the dot pulse. */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-2);
+    padding: var(--size-1) var(--size-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-round);
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-tight);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+a.chip:hover,
+button.chip:hover:not(:disabled) {
+    background: var(--surface-3);
+}
+
+.chip-dot {
+    --glyph: var(--glyph-neutral);
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--text-2);
+}
+
+.chip[data-level] .chip-dot,
+.chip-dot[data-level] {
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+    border-radius: 0;
+    background: currentcolor;
+    mask: var(--glyph) center / contain no-repeat;
+}
+
+.chip[data-state='running'] .chip-dot {
+    animation: glyph-pulse 1.2s ease-in-out infinite;
+}
+
+:is(.status-dot, .nav-dot, .chip-dot)[data-level='success'],
+.chip[data-level='success'] .chip-dot {
+    --glyph: var(--glyph-success);
+    color: var(--success);
+}
+
+:is(.status-dot, .nav-dot, .chip-dot)[data-level='warning'],
+.chip[data-level='warning'] .chip-dot {
+    --glyph: var(--glyph-warning);
+    color: var(--warning);
+}
+
+:is(.status-dot, .nav-dot, .chip-dot)[data-level='error'],
+.chip[data-level='error'] .chip-dot {
+    --glyph: var(--glyph-error);
+    color: var(--danger);
+}
+
+:is(.status-dot, .nav-dot, .chip-dot)[data-level='info'],
+.chip[data-level='info'] .chip-dot {
+    --glyph: var(--glyph-info);
+    color: var(--info);
+}
+
+.chip[data-level='warning'] {
+    border-color: var(--warning);
+    background: var(--warning-subtle);
+    color: var(--warning-emphasis);
+}
+
+.chip[data-level='error'] {
+    border-color: var(--danger);
+    background: var(--danger-subtle);
+    color: var(--danger-emphasis);
+}
+
+.chip[data-level='success'] {
+    border-color: var(--success);
+    background: var(--success-subtle);
+    color: var(--success-emphasis);
+}
+
+@keyframes glyph-pulse {
+    50% {
+        opacity: 0.35;
+    }
+}
+
+/* ── Rank chip and series swatch ────────────────────────────────────────── */
+
+/* Neutral unless its row is a charted series; then a solid colour tab at its start, never
+   a tint, since the printed key and the legend carry the identity. */
+.rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 1.75em;
+    block-size: 1.75em;
+    padding-inline: 0.4em;
+    border-radius: var(--radius-1);
+    background: var(--surface-4);
+    color: var(--text-1);
+    font-size: var(--font-size-00);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--font-weight-semibold);
+    line-height: 1;
+}
+
+.rank[data-series] {
+    padding-inline-start: calc(0.4em + 0.375rem);
+    box-shadow: inset 0.375rem 0 0 var(--series-color);
+}
+
+.rank[data-series]:dir(rtl) {
+    box-shadow: inset -0.375rem 0 0 var(--series-color);
+}
+
+/* A square for areas and bars; with [data-pattern] a short line in that pattern. */
+.series-swatch {
+    display: inline-block;
+    flex-shrink: 0;
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+    border-radius: 2px;
+    background: var(--series-color, currentcolor);
+    vertical-align: -0.05em;
+}
+
+.series-swatch[data-pattern] {
+    inline-size: 1.25rem;
+    block-size: 0;
+    border-block-start: 3px solid var(--series-color, currentcolor);
+    border-radius: 0;
+    background: none;
+    vertical-align: middle;
+}
+
+.series-swatch[data-pattern='dashed'] {
+    border-block-start-style: dashed;
+}
+
+.series-swatch[data-pattern='dotted'] {
+    border-block-start-style: dotted;
+}
+
+/* ── KPI ────────────────────────────────────────────────────────────────── */
+
+.kpi-strip {
+    --grid-min: 12rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(var(--grid-min), 1fr));
+    gap: var(--grid-gap, var(--size-3));
+}
+
+.kpi {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-1);
+    min-inline-size: 0;
+    padding: var(--size-3) var(--size-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    background: var(--surface-2);
+}
+
+.kpi-label {
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.kpi-value {
+    overflow: hidden;
+    font-size: var(--font-size-4);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* An address has to be read whole: smaller, and an IPv6 one may take a second line. */
+.kpi-value[data-kind='address'] {
+    display: -webkit-box;
+    font-size: var(--font-size-2);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+.kpi-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-1) var(--size-2);
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+}
+
+/* ── Bar list and usage bar ─────────────────────────────────────────────── */
+
+/* <ol class="bar-list"> of <li class="bar-row" style="--share: 42%"> with a label, a value
+   and a .bar; subgrid keeps every row's bar starting at the same place. */
+.bar-list {
+    display: grid;
+    grid-template-columns: minmax(3rem, max-content) minmax(3rem, 1fr) max-content;
+    gap: var(--size-2) var(--size-3);
+    align-items: center;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--font-size-0);
+}
+
+.bar-row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+}
+
+.bar-label {
+    grid-area: 1 / 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bar-value {
+    grid-area: 1 / 3;
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+}
+
+.bar {
+    position: relative;
+    overflow: hidden;
+    block-size: 0.5rem;
+    border-radius: var(--radius-round);
+    background: var(--surface-4);
+}
+
+.bar::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    inline-size: var(--share, 0%);
+    border-radius: inherit;
+    background: var(--bar-color, var(--text-2));
+}
+
+.bar[data-series] {
+    --bar-color: var(--series-color);
+}
+
+.bar-row > .bar {
+    grid-area: 1 / 2;
+}
+
+/* <div class="usage-bar" role="meter" aria-valuenow="42" style="--share: 42%">42%</div>:
+   a filled track followed by its percentage, levelled at 85 % and 95 % by the markup. */
+.usage-bar {
+    display: grid;
+    grid-template-columns: minmax(4rem, 1fr) auto;
+    gap: var(--size-2);
+    align-items: center;
+    font-size: var(--font-size-0);
+    font-variant-numeric: tabular-nums;
+}
+
+.usage-bar::before {
+    content: '';
+    block-size: 0.5rem;
+    border-radius: var(--radius-round);
+    background: linear-gradient(to right, var(--usage-color, var(--text-2)) var(--share, 0%), var(--surface-4) 0);
+}
+
+.usage-bar:dir(rtl)::before {
+    background: linear-gradient(to left, var(--usage-color, var(--text-2)) var(--share, 0%), var(--surface-4) 0);
+}
+
+.usage-bar[data-level='warning'] {
+    --usage-color: var(--warning);
+}
+
+.usage-bar[data-level='error'] {
+    --usage-color: var(--danger);
+}
+
+/* A ranked list: rank chip first, then the key, the figures and a share bar. */
+table.ranking :is(th, td):first-child {
+    inline-size: 1%;
+    white-space: nowrap;
+}
+
+table.ranking td[data-kind='share'] {
+    min-inline-size: 10rem;
+    white-space: nowrap;
+}
+
+table.ranking td[data-kind='share'] > .bar {
+    display: inline-block;
+    inline-size: 6rem;
+    margin-inline-end: var(--size-2);
+    vertical-align: middle;
+}
+
+/* ── Empty, loading, skeleton ───────────────────────────────────────────── */
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--size-2);
+    padding: var(--size-7) var(--size-4);
+    color: var(--text-2);
+    text-align: center;
+}
+
+.empty-state > svg {
+    inline-size: 2rem;
+    block-size: 2rem;
+}
+
+/* Inside a card with its own h2 title the heading is an h3. */
+.empty-state :is(h2, h3) {
+    color: var(--text-1);
+    font-size: var(--font-size-2);
+}
+
+.empty-state p {
+    max-inline-size: 42ch;
+    font-size: var(--font-size-0);
+}
+
+.page-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-3);
+}
+
+.page-skeleton > * {
+    min-block-size: 4rem;
+    border-radius: var(--radius-3);
+    background: var(--surface-3);
+    animation: skeleton-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+    50% {
+        opacity: 0.55;
+    }
+}
+
+/* A panel whose content is being replaced: dimmed, with a moving line along its top. */
+:is(.card-body, [role='tabpanel'])[aria-busy='true'] {
+    position: relative;
+}
+
+:is(.card-body, [role='tabpanel'])[aria-busy='true'] > * {
+    opacity: 0.5;
+    transition: opacity var(--duration-normal) var(--ease-out);
+}
+
+:is(.card-body, [role='tabpanel'])[aria-busy='true']::before {
+    content: '';
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 0;
+    inset-inline: 0;
+    block-size: 2px;
+    background: linear-gradient(to right, transparent 0 35%, var(--text-2) 35% 65%, transparent 65%) 0 0 / 300% 100% no-repeat;
+    animation: busy-sweep 1.4s linear infinite;
+}
+
+@keyframes busy-sweep {
+    from {
+        background-position: 100% 0;
+    }
+
+    to {
+        background-position: 0 0;
+    }
 }
 
 /* ── Progress and spinners ──────────────────────────────────────────────── */
@@ -1022,19 +1683,19 @@ progress::-webkit-progress-bar {
 }
 
 progress::-webkit-progress-value {
-    background: var(--brand);
+    background: var(--accent);
     transition: inline-size var(--duration-normal) var(--ease-out);
 }
 
 progress::-moz-progress-bar {
-    background: var(--brand);
+    background: var(--accent);
 }
 
 /* An indeterminate progress bar: a stripe pattern that moves. */
 progress[data-indeterminate]::-webkit-progress-value {
     background-image: repeating-linear-gradient(
         45deg,
-        color-mix(in oklab, var(--text-on-accent) 25%, transparent) 0 0.5rem,
+        color-mix(in oklab, var(--on-accent) 25%, transparent) 0 0.5rem,
         transparent 0.5rem 1rem
     );
     animation: progress-stripes 1s linear infinite;
@@ -1070,66 +1731,100 @@ progress[data-indeterminate]::-webkit-progress-value {
     .spinner {
         animation-duration: 2s;
     }
+
+    .page-skeleton > *,
+    .chip[data-state='running'] .chip-dot {
+        animation: none;
+    }
+
+    :is(.card-body, [role='tabpanel'])[aria-busy='true']::before {
+        animation: none;
+        background: var(--text-2);
+        opacity: 0.5;
+    }
 }
 
-/* ── Dialog ─────────────────────────────────────────────────────────────── */
+/* ── Forced colors ──────────────────────────────────────────────────────── */
 
-dialog {
-    max-inline-size: min(48rem, 92vw);
-    max-block-size: 85dvb;
-    padding: 0;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-3);
-    background: var(--surface-2);
-    color: var(--text-1);
-    box-shadow: var(--shadow-2);
+/* The system palette is the contract here, so system colour keywords are allowed. */
+@media (forced-colors: active) {
+    [aria-pressed='true'],
+    [aria-current]:not([aria-current='false']),
+    [aria-selected='true'],
+    .segmented :checked + label {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+
+    /* Focus on a selected control: the state ring stays inside, the focus ring adds one outside. */
+    :is([aria-pressed='true'], [aria-current]:not([aria-current='false']), [aria-selected='true']):focus-visible,
+    .segmented :checked:focus-visible + label {
+        outline: 6px double Highlight;
+        outline-offset: -2px;
+    }
+
+    /* A transparent border is forced visible; paint the unselected tabs' bars as Canvas. */
+    .tabs [role='tab']:not([aria-selected='true']) {
+        border-color: Canvas;
+    }
+
+    /* The menu's check mark is a mask on currentcolor, which forced colours would repaint. */
+    .menu-item::before {
+        forced-color-adjust: none;
+    }
+
+    .series-swatch,
+    .rank[data-series],
+    .status-dot,
+    .nav-dot,
+    .chip-dot,
+    .bar,
+    .usage-bar,
+    .switch input {
+        forced-color-adjust: none;
+    }
+
+    .switch input {
+        border-color: CanvasText;
+        background: Canvas;
+    }
+
+    .switch input::after {
+        background: CanvasText;
+    }
+
+    .switch input:checked {
+        border-color: Highlight;
+        background: Highlight;
+    }
+
+    .switch input:checked::after {
+        background: HighlightText;
+    }
+
+    /* forced-color-adjust: none keeps the theme's focus colour, which can match Canvas. */
+    .switch input:focus-visible {
+        outline-color: Highlight;
+        box-shadow: none;
+    }
 }
 
-dialog::backdrop {
-    background: rgb(0 0 0 / 45%);
-    backdrop-filter: blur(2px);
-}
+/* ── Status text ────────────────────────────────────────────────────────── */
 
-dialog > header,
-.dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--size-3);
-    padding: var(--size-3) var(--size-4);
-    border-block-end: 1px solid var(--border);
-}
-
-.dialog-body {
-    padding: var(--size-4);
-    overflow-y: auto;
-}
-
-.dialog-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--size-2);
-    padding: var(--size-3) var(--size-4);
-    border-block-start: 1px solid var(--border);
-}
-
-/*
- * Status colours last: they say what a piece of text means, so they have to win against a
- * component rule that only says where it sits. `.help.text-warning` under a disabled email
- * field was grey because .help came later and both weigh the same.
- */
-.text-danger {
-    color: var(--danger-emphasis);
-}
-
-.text-warning {
-    color: var(--warning-emphasis);
-}
-
-.text-success {
+/* Status colours last: they say what a piece of text means, so they win against a component
+   rule of the same weight that only says where it sits. */
+.status-text[data-level='success'] {
     color: var(--success-emphasis);
 }
 
-.text-info {
+.status-text[data-level='warning'] {
+    color: var(--warning-emphasis);
+}
+
+.status-text[data-level='error'] {
+    color: var(--danger-emphasis);
+}
+
+.status-text[data-level='info'] {
     color: var(--info-emphasis);
 }

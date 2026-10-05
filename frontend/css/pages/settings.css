@@ -1,0 +1,136 @@
+/* Settings (4.8): the preferences form and the read-only deployment tabs. */
+
+.settings .card > header h2 {
+    font-size: var(--font-size-1);
+}
+
+.settings h3 {
+    font-size: var(--font-size-1);
+}
+
+/* The preferences form: groups of fields, each under its own heading, divided by a rule. */
+.settings-form fieldset {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.settings-form fieldset + fieldset {
+    padding-block-start: var(--size-4);
+    border-block-start: 1px solid var(--border);
+}
+
+/* Floated, so the legend sits inside the group under its rule instead of cutting through it. */
+.settings-form legend {
+    float: inline-start;
+    inline-size: 100%;
+    margin-block-end: var(--size-3);
+    padding: 0;
+    color: var(--text-1);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-semibold);
+}
+
+.settings-form legend + * {
+    clear: both;
+}
+
+/* auto-fill, so every group lines up on the same columns. */
+.settings-form .grid {
+    --grid-min: 15rem;
+    grid-template-columns: repeat(auto-fill, minmax(var(--grid-min), 1fr));
+    align-items: start;
+}
+
+.settings-form .field > .segmented {
+    align-self: start;
+}
+
+.settings-form > footer {
+    justify-content: space-between;
+}
+
+/* Read-only facts: the term column fits the longest term, values wrap anywhere (paths). */
+.settings-facts {
+    grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+}
+
+.settings-facts dd {
+    font-size: var(--font-size-0);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--size-1) var(--size-2);
+}
+
+/* A phone has no room for two columns: each value goes under its term. */
+@media (max-width: 47.98em) {
+    .settings-facts {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: var(--size-1);
+    }
+
+    .settings-facts dd + dt {
+        margin-block-start: var(--size-2);
+    }
+}
+
+/* An inline list of short values: sources, ports, profiles. */
+.settings-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-1) var(--size-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* One integration per block, divided by a rule. */
+.settings-integrations {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4);
+}
+
+.integration {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-2);
+}
+
+.integration + .integration {
+    padding-block-start: var(--size-4);
+    border-block-start: 1px solid var(--border);
+}
+
+.settings-status {
+    font-size: var(--font-size-0);
+    display: flex;
+    align-items: center;
+    gap: var(--size-2);
+}
+
+/* The environment table scrolls sideways on a phone rather than squeezing its values. */
+.settings-env {
+    min-inline-size: 44rem;
+}
+
+.settings-env tbody th[scope='row'] {
+    font-weight: var(--font-weight-normal);
+    white-space: nowrap;
+}
+
+/* Long values (URLs, JSON) wrap anywhere; the column keeps room so short ones stay whole. */
+.settings-env td:nth-child(2) {
+    min-inline-size: 10rem;
+}
+
+.settings-env td code {
+    overflow-wrap: anywhere;
+}
+
+.settings-env td:last-child {
+    min-inline-size: 16rem;
+    color: var(--text-2);
+}

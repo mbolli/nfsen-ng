@@ -1,31 +1,29 @@
-// Graphs tab, Ports display: the failure mode reported in #160 -- the ports view
-// dying on a filter change and staying dead until a full page reload.
+// Overview graph, Ports display: the failure mode reported in #160, the ports view dying on a
+// filter change and staying dead until a full page reload.
 //
-// Two independent regressions are covered here, because either one alone was
-// enough to produce the reported "the Graphs tab crashes" behaviour:
+// Two independent regressions are covered here, because either one alone was enough to produce
+// the reported "the Graphs tab crashes" behaviour:
 //
-//  1. graph_ports arriving as something other than a plain array. Port values are
-//     the only filter values that parse as JSON scalars, so a scalar "25" used to
-//     come out of getTitle()'s parse() as the *number* 25 and throw
-//     "displayItems.join is not a function" -- which is why this only ever hit the
-//     Ports view. The server now normalizes the signal back to a list of ints, and
-//     the client no longer assumes JSON.parse() returns an array.
+//  1. graph_ports arriving as something other than a plain array: a <select>'s values are
+//     strings, and a scalar "25" once took the whole ports view down. The server normalises the
+//     signal back to a list of ints.
 //
-//  2. An error during a chart update leaving a live ECharts instance bound to a
-//     container whose contents had already been replaced by the error message.
-//     Every later update then took the setOption() path on that orphan and the
-//     graph never came back. showMessage() now disposes first, so the next update
-//     rebuilds from scratch.
+//  2. An error during a chart update leaving a live ECharts instance bound to a container whose
+//     contents had already been replaced by the error message. showMessage() disposes first,
+//     so the next update rebuilds from scratch.
+//
+// The ports are read from the page (the dev stack configures NFSEN_PORTS), and every switch is
+// waited for: a change posted before the SSE stream is up is otherwise lost.
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
 
-const CHART = "document.querySelector('nfsen-chart')";
-const settle = () => new Promise((resolve) => setTimeout(resolve, 2500));
+const CHART = "document.getElementById('trafficGraph')";
+const config = `JSON.parse(${CHART}.dataset.chartConfig || '{}')`;
 
 /** Merge a raw value into a context-scoped signal the way a stray client write would. */
 async function pokeSignal(page, name, value) {
     const ok = await page.evaluate(`(function(){
-        var m = document.documentElement.outerHTML.match(new RegExp(${JSON.stringify(name)} + '____[a-z0-9]+'));
+        var m = document.documentElement.outerHTML.match(new RegExp(${JSON.stringify(name)} + '(?:____[a-z0-9]+)+'));
         if (!m) return false;
         var d = document.createElement('div');
         var o = {}; o[m[0]] = ${JSON.stringify(value)};
@@ -34,53 +32,77 @@ async function pokeSignal(page, name, value) {
         return true;
     })()`);
     if (!ok) throw new Error('signal id not found in page: ' + name);
+    // Datastar applies the new data-signals element on its next mutation pass.
+    const start = Date.now();
+    while (JSON.stringify(await page.signalValue(name)) !== JSON.stringify(value)) {
+        if (Date.now() - start > 3000) throw new Error(`${name} never took the poked value`);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+}
+
+/** Switch the display and wait until the chart's configuration says so. */
+async function showDisplay(page, display) {
+    await page.setSelectValue('#filterDisplaySelect', display);
+    await page.waitFor(`${config}.display === ${JSON.stringify(display)} && ${CHART}.dataset.mode === 'overview'`, {
+        timeout: 10000,
+        label: `the graph to show ${display}`,
+    });
 }
 
 export default async function graphsPortsTest() {
     await withPage(async (page) => {
         await page.navigate(BASE + '/');
-        await page.waitFor(`${CHART}`, { label: 'chart element to exist' });
+        await page.waitForBoot();
+        await page.gotoPage('overview');
+        await page.waitFor(`!!${CHART}.dataset.chartData`, { label: 'the graph data' });
+        // A week keeps rrd_xport well above its minimum row count.
+        await page.setRangePreset('7d');
 
-        await page.setSelectValue('#filterDisplaySelect', 'ports');
-        await settle();
+        const ports = await page.evaluate(`[...document.querySelectorAll('#filterPortsSelect option')].map(function(o){ return Number(o.value); })`);
+        assert.ok(ports.length > 0 && ports.every((p) => p > 0), `expected the configured ports, got ${JSON.stringify(ports)}`);
+        await showDisplay(page, 'ports');
+        assert.match(await page.evaluate(`document.getElementById('trafficGraphTitle').textContent`), / by port$/);
+        assert.equal(await page.evaluate(`!document.getElementById('filterPorts').hidden`), true, 'the Ports select shows for the Ports display');
 
-        // Nothing below is meaningful without ports data to draw; this sandbox can
-        // legitimately have none (see the note in graphs.test.mjs).
+        // Nothing below is meaningful without ports data to draw; a fresh environment has none.
         if (!(await page.evaluate(`!!${CHART}.chart`))) {
             console.log('  (graphs-ports: no ports data in this environment -- skipping)');
+            await showDisplay(page, 'sources');
             return;
         }
 
-        // 1. A scalar port must not take the view down.
-        await pokeSignal(page, 'graph_ports', '25');
+        // Each configured port is its own series, coloured in configured order (2.3).
+        const drawn = await page.evaluate(`${config}.seriesNames`);
+        const slots = await page.evaluate(`${config}.seriesSlots`);
+        for (const [i, name] of drawn.entries()) {
+            assert.equal(slots[i], ports.indexOf(Number(name)) + 1, `port ${name} keeps its configured slot`);
+        }
+
+        // 1. A scalar port must not take the view down: php-via refuses it, so every port stays drawn.
+        const port = ports[0];
+        await pokeSignal(page, 'graph_ports', String(port));
         await page.setSelectValue('#filterDisplaySelect', 'ports'); // re-fire the refresh
-        await settle();
-
+        await page.waitFor(`${config}.seriesNames?.length === ${drawn.length}`, { timeout: 10000, label: 'every series after a scalar port' });
         assert.ok(await page.evaluate(`!!${CHART}.chart`), 'chart should survive a scalar graph_ports');
-        const ports = await page.evaluate(`JSON.parse(${CHART}.dataset.chartConfig).ports`);
-        assert.deepEqual(ports, [25], `expected the server to normalize graph_ports back to [25], got ${JSON.stringify(ports)}`);
-        assert.match(
-            await page.evaluate(`${CHART}.chart.getOption().title[0].text`),
-            /port 25$/,
-            'expected the title to name the single selected port'
-        );
 
-        // 2. After an error wipes the chart, the next update must rebuild it --
-        //    without this the graph stayed blank until the user reloaded the page.
-        await page.evaluate(`${CHART}.showMessage('simulated failure', 'error')`);
+        await pokeSignal(page, 'graph_ports', [port]);
+        await page.setSelectValue('#filterDisplaySelect', 'ports');
+        await page.waitFor(`${config}.seriesNames?.length === 1`, { timeout: 10000, label: 'one series for one port' });
+        assert.deepEqual(await page.evaluate(`${config}.seriesNames`), [String(port)], 'the one series is named after the port');
+
+        // 2. After an error wipes the chart, the next update must rebuild it. showMessage() is part of
+        //    the Rocket host's API.
+        assert.equal(await page.evaluate(`${CHART}.rocketInstanceId !== undefined`), true, 'the traffic graph is a Rocket host');
+        await page.evaluate(`${CHART}.showMessage('simulated failure')`);
         assert.equal(await page.evaluate(`${CHART}.chart`), null, 'showMessage() should dispose the chart instance');
 
+        await pokeSignal(page, 'graph_ports', ports);
         await page.setSelectValue('#filterDisplaySelect', 'ports');
-        await settle();
-        assert.ok(await page.evaluate(`!!${CHART}.chart`), 'chart should rebuild on the next update after an error');
-        assert.ok(
-            await page.evaluate(`!!document.querySelector('.chart-canvas canvas')`),
-            'expected a real canvas back in the container after recovery'
-        );
+        await page.waitFor(`!!${CHART}.chart`, { timeout: 10000, label: 'the chart to rebuild after an error' });
+        assert.ok(await page.evaluate(`!!${CHART}.querySelector('.chart-canvas canvas')`), 'expected a real canvas back in the container after recovery');
 
         // Leave the view as we found it for whatever runs next.
-        await page.setSelectValue('#filterDisplaySelect', 'sources');
-        await settle();
+        await showDisplay(page, 'sources');
 
         const errors = page.realErrors();
         assert.deepEqual(errors, [], `expected no console errors during the Ports test, got:\n${errors.join('\n')}`);

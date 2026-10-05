@@ -7,7 +7,7 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["frontend/js/components/**", "frontend/css/nfsen-ng.css"]
+		"includes": ["frontend/js/components/**", "frontend/css/**"]
 	},
 	"formatter": {
 		"enabled": true,

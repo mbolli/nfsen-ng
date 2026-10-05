@@ -1,0 +1,436 @@
+{#
+    Alerts (4.6): the rules beside the recent alerts (stacked below 90rem), the rule form and the
+    default notification templates. Data: pages.alerts (AlertsPage::viewData).
+#}
+{# A row of {token} buttons; alert-template-preview.js inserts the token into the scope's last focused field. #}
+{% macro tokenBar(tokens) %}
+    <div class="token-bar" role="group" aria-label="Insert a variable into the last field you edited">
+        <span class="help">Insert:</span>
+        {% for token in tokens %}
+            <button type="button" data-size="sm" data-variant="ghost" data-alert-token="{{ token }}">{{ token }}</button>
+        {% endfor %}
+    </div>
+{% endmacro %}
+
+{% import _self as ui %}
+{% import 'shell/icons.html.twig' as icons %}
+{% set a = pages.alerts %}
+{% set f = a.form %}
+{% set t = a.templates %}
+{% set editing = alert_form_id.string() != '' %}
+{% set formId = '$' ~ alert_form_id.id() %}
+{# Copies the object r into the rule form's signals, one assignment per field. #}
+{% set fillForm %}{% for field, sid in f.signals %}${{ sid }} = r.{{ field }}; {% endfor %}{% endset %}
+{% set resetForm %}const r = JSON.parse(document.getElementById('alert-form-card').dataset.defaults); {{ fillForm }}{% endset %}
+{% set filterText = "String($" ~ alert_form_nfdumpFilter.id() ~ " ?? '')" %}
+{# A filtered rule sums one interval's flows, and some datasources store interval totals (AlertsPage::valueBasis). #}
+{% set filtered = alert_form_nfdumpFilter.string()|trim != '' %}
+{% set perInterval = f.perInterval or filtered %}
+{# Where a percent-of-average rule's baseline comes from (AlertManager::baseline). #}
+{% set averageHelp = {
+    stored: 'The average of the stored traffic of the rule\'s sources over this window, before the interval checked.',
+    filtered: 'The average of the filter\'s own traffic over this window, before the interval checked. An enabled rule records that traffic at each check, so there is no baseline until it has checked one interval, or while the filter matched nothing in the window.',
+} %}
+{% set previewVars %}window.buildAlertPreviewVars({ rule: ${{ alert_form_name.id() }}, metric: ${{ alert_form_metric.id() }}, operator: ${{ alert_form_operator.id() }}, profile: ${{ alert_form_profile.id() }}, sources: ${{ alert_form_sources.id() }}, allSources: '{{ t.allSources|e('js') }}', thresholdType: ${{ alert_form_thresholdType.id() }}, thresholdValue: ${{ alert_form_thresholdValue.id() }} }){% endset %}
+{# Busy or blocked buttons stay focusable (aria-disabled plus a guard), so focus is not dropped to the body. #}
+{% set saveBlocked %}$_alert_saving{% if f.filterStatus %} || ({{ filterText }}.trim() !== '' && ${{ f.filterStatus }}?.checked === {{ filterText }} && ${{ f.filterStatus }}?.status === 'invalid'){% endif %}{% endset %}
+
+<div class="alerts-page stack">
+    <div class="alerts-layout">
+        <section id="alertRules" class="card alert-rules-card" aria-labelledby="alertRulesTitle">
+            <header class="card-header">
+                <h2 id="alertRulesTitle">Rules</h2>
+                <span class="badge">{{ a.rules|length }} rule{{ a.rules|length != 1 ? 's' }}</span>
+                <button type="button" class="alert-new-rule" data-size="sm"
+                        data-on:click="{{ resetForm }}window.alertForm.open()">
+                    {{ icons.icon('plus') }} New rule
+                </button>
+            </header>
+            <div class="card-body">
+                {% if a.rules is empty %}
+                    <div class="empty-state">
+                        {{ icons.icon('bell') }}
+                        <h2>No alert rules yet</h2>
+                        <p>A rule checks the traffic after each import and notifies by email or webhook.</p>
+                        <button type="button" data-on:click="{{ resetForm }}window.alertForm.open()">
+                            {{ icons.icon('plus') }} New rule
+                        </button>
+                    </div>
+                {% else %}
+                    <div class="table-wrap">
+                        <table class="alert-rules">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Name</th>
+                                    <th scope="col">Condition</th>
+                                    <th scope="col">Threshold</th>
+                                    <th scope="col">Sources</th>
+                                    <th scope="col">Last triggered</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in a.rules %}
+                                    {% set testing = '$_alert_testing_' ~ row.key %}
+                                    <tr id="alertRule-{{ row.key }}" data-status="{{ row.status }}">
+                                        <th scope="row">
+                                            {{ row.name }}
+                                            <small>Profile {{ row.form.profile }}</small>
+                                        </th>
+                                        <td>{{ row.condition }}</td>
+                                        <td data-num>{{ row.threshold }}</td>
+                                        <td>{{ row.sources }}</td>
+                                        <td data-kind="time">
+                                            {% if row.lastFired is not null %}
+                                                <sb-relative-time datetime="{{ row.lastFired }}" format="long" numeric="auto" title-lang="auto" title-style="numeric"
+                                                                  data-attr:time-zone="${{ displayTz.id() }} === 'server' ? ${{ nfcapdTz.id() }} : ''"
+                                                                  data-preserve-attr="time-zone">{{ row.lastFiredLabel }}</sb-relative-time>
+                                            {% else %}
+                                                {{ row.lastFiredLabel }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="alert-rule-status">
+                                                <label class="switch">
+                                                    <input type="checkbox" role="switch" {{ row.enabled ? 'checked' }}
+                                                           aria-label="{{ row.name }} enabled"
+                                                           data-on:change="@post('{{ toggleAlert.url() }}?id={{ row.id|url_encode }}&enabled=' + el.checked)">
+                                                </label>
+                                                <span class="badge" data-status="{{ row.status }}"{% if row.level %} data-level="{{ row.level }}"{% endif %}>
+                                                    {%- if row.level %}<span class="status-dot" data-level="{{ row.level }}" aria-hidden="true"></span>{% endif -%}
+                                                    {{ row.statusLabel }}
+                                                </span>
+                                                {% if row.filter %}
+                                                    <span class="badge" data-kind="filter" title="nfdump filter: {{ row.filter }}">Filter<span class="visually-hidden">: {{ row.filter }}</span></span>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="alert-rule-actions">
+                                                <button type="button" data-size="sm" data-variant="ghost"
+                                                        aria-label="Edit {{ row.name }}" title="Edit {{ row.name }}"
+                                                        data-rule="{{ row.form|json_encode }}"
+                                                        data-on:click="const r = JSON.parse(el.dataset.rule); {{ fillForm }}window.alertForm.open()">
+                                                    {{ icons.icon('edit') }}
+                                                </button>
+                                                <button type="button" data-size="sm" data-variant="ghost"
+                                                        data-signals__ifmissing="{_alert_testing_{{ row.key }}: false}"
+                                                        aria-label="Test {{ row.name }}" title="Test {{ row.name }}"
+                                                        data-indicator:_alert_testing_{{ row.key }}
+                                                        data-attr:aria-busy="{{ testing }} ? 'true' : false"
+                                                        data-attr:aria-disabled="{{ testing }} ? 'true' : false"
+                                                        data-preserve-attr="aria-busy aria-disabled"
+                                                        data-on:click="!{{ testing }} && @post('{{ testAlert.url() }}?id={{ row.id|url_encode }}')">
+                                                    <span class="spinner" aria-hidden="true" hidden
+                                                          data-attr:hidden="!{{ testing }}" data-preserve-attr="hidden"></span>
+                                                    <span class="alert-action-icon" data-attr:hidden="{{ testing }}" data-preserve-attr="hidden">{{ icons.icon('play') }}</span>
+                                                </button>
+                                                <button type="button" data-size="sm" data-variant="ghost"
+                                                        aria-label="Delete {{ row.name }}" title="Delete {{ row.name }}"
+                                                        data-on:click="confirm('{{ ('Delete the rule ' ~ row.name ~ '?')|e('js') }}') && @post('{{ deleteAlert.url() }}?id={{ row.id|url_encode }}')">
+                                                    {{ icons.icon('trash') }}
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section id="alertHistory" class="card alert-history" aria-labelledby="alertHistoryTitle">
+            <header class="card-header">
+                <h2 id="alertHistoryTitle">Recent alerts</h2>
+            </header>
+            <div class="card-body">
+                {% if not a.history.available %}
+                    <p class="notice" data-level="warning">History unavailable: {{ a.history.error }}</p>
+                {% elseif a.history.events is empty %}
+                    <div class="empty-state">
+                        {{ icons.icon('clock') }}
+                        <h2>No alerts yet</h2>
+                        <p>Fired, resolved and test events appear here.</p>
+                    </div>
+                {% else %}
+                    {# Scrolls on its own, so fifty events never push the rule form out of reach. #}
+                    <div class="alert-events-scroll" role="region" aria-labelledby="alertHistoryTitle" tabindex="0">
+                        <ol class="alert-events">
+                            {% for event in a.history.events %}
+                                <li class="alert-event" id="alertEvent-{{ event.id }}" data-kind="{{ event.kind }}">
+                                    <span class="badge"{% if event.level %} data-level="{{ event.level }}"{% endif %}>
+                                        {%- if event.level %}<span class="status-dot" data-level="{{ event.level }}" aria-hidden="true"></span>{% endif -%}
+                                        {{ event.label }}
+                                    </span>
+                                    <span class="alert-event-rule">{{ event.ruleName }}</span>
+                                    <time datetime="{{ event.iso }}"
+                                          data-text="new Date({{ event.ts }} * 1000).toLocaleString(undefined, tzOptions(${{ displayTz.id() }}, ${{ nfcapdTz.id() }}))">{{ event.iso }}</time>
+                                    <span class="alert-event-detail">{{ event.value }}<span class="alert-event-profile">Profile {{ event.profile }}</span></span>
+                                </li>
+                            {% endfor %}
+                        </ol>
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+
+    <section id="alert-form-card" class="card alert-form" aria-labelledby="alertFormTitle"
+             data-defaults="{{ f.defaults|json_encode }}">
+        <header class="card-header">
+            <h2 id="alertFormTitle"
+                data-text="const names = JSON.parse('{{ f.ruleNames|e('js') }}'); const id = {{ formId }}; id === '' ? 'New rule' : (Object.hasOwn(names, id) ? 'Edit rule: ' + names[id] : 'Edit rule')">{{ f.title }}</h2>
+            <label class="switch alert-form-enabled">
+                <input id="alertFormEnabled" type="checkbox" role="switch" {{ alert_form_enabled.bool() ? 'checked' }} {{ bind(alert_form_enabled) }}>
+                Enabled
+            </label>
+        </header>
+        <div class="card-body stack">
+            <div class="grid">
+                <div class="field">
+                    <label for="alertFormName">Name</label>
+                    <input id="alertFormName" type="text" required autocomplete="off"
+                           placeholder="e.g. High traffic on gw1"
+                           {{ bind(alert_form_name) }}>
+                </div>
+                <div class="field">
+                    <label for="alertFormProfile">Profile</label>
+                    <select id="alertFormProfile" {{ bind(alert_form_profile) }}>
+                        {% for profile in f.profiles %}
+                            <option value="{{ profile }}" {{ profile == alert_form_profile.string() ? 'selected' }}>{{ profile }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="alertFormSources">Sources</label>
+                    <select id="alertFormSources" multiple size="{{ min(max(f.sources|length, 2), 6) }}"
+                            aria-describedby="alertFormSourcesHelp" {{ bind(alert_form_sources) }}>
+                        {% for source in f.sources %}
+                            <option value="{{ source }}" {{ source in alert_form_sources.array() ? 'selected' }}>{{ source }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="help" id="alertFormSourcesHelp">With none selected the rule covers every source, including ones added later.</p>
+                </div>
+            </div>
+
+            <fieldset class="alert-form-group">
+                <legend>Condition</legend>
+                <div class="grid">
+                    <div class="field">
+                        <label for="alertFormMetric">Metric</label>
+                        <select id="alertFormMetric" {{ bind(alert_form_metric) }}>
+                            {% for value, label in f.metrics %}
+                                <option value="{{ value }}" {{ value == alert_form_metric.string() ? 'selected' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="alertFormOperator">Operator</label>
+                        <select id="alertFormOperator" {{ bind(alert_form_operator) }}>
+                            {% for op in f.operators %}
+                                <option value="{{ op }}" {{ op == alert_form_operator.string() ? 'selected' }}>{{ op }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="alertFormThresholdType">Threshold type</label>
+                        <select id="alertFormThresholdType" {{ bind(alert_form_thresholdType) }}>
+                            {% for value, label in f.thresholdTypes %}
+                                <option value="{{ value }}" {{ value == alert_form_thresholdType.string() ? 'selected' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="alertFormThresholdValue"
+                               data-text="${{ alert_form_thresholdType.id() }} === 'percent_of_avg' ? 'Threshold (% of the average)' : 'Threshold (' + ${{ alert_form_metric.id() }} + (({{ f.perInterval ? 'true' : 'false' }} || {{ filterText }}.trim() !== '') ? ' per 5 min' : '/s') + ')'">
+                            {{- alert_form_thresholdType.string() == 'percent_of_avg' ? 'Threshold (% of the average)' : 'Threshold (' ~ alert_form_metric.string() ~ (perInterval ? ' per 5 min' : '/s') ~ ')' -}}
+                        </label>
+                        <input id="alertFormThresholdValue" type="number" min="0" step="any"
+                               aria-describedby="alertFormThresholdHelp" {{ bind(alert_form_thresholdValue) }}>
+                        <p class="help" id="alertFormThresholdHelp">Use <code>&lt; 1</code> to fire on an empty interval.</p>
+                    </div>
+                    <div class="field" {{ alert_form_thresholdType.string() != 'percent_of_avg' ? 'hidden' }}
+                         data-attr:hidden="${{ alert_form_thresholdType.id() }} !== 'percent_of_avg'" data-preserve-attr="hidden">
+                        <label for="alertFormAvgWindow">Average over</label>
+                        <select id="alertFormAvgWindow" aria-describedby="alertFormAvgWindowHelp" {{ bind(alert_form_avgWindow) }}>
+                            {% for value, label in f.windows %}
+                                <option value="{{ value }}" {{ value == alert_form_avgWindow.string() ? 'selected' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="help" id="alertFormAvgWindowHelp"
+                           data-text="{{ filterText }}.trim() !== '' ? '{{ averageHelp.filtered|e('js') }}' : '{{ averageHelp.stored|e('js') }}'">{{ filtered ? averageHelp.filtered : averageHelp.stored }}</p>
+                    </div>
+                    <div class="field">
+                        <label for="alertFormCooldown">Cooldown (5 minute intervals)</label>
+                        <input id="alertFormCooldown" type="number" min="0" max="288" step="1"
+                               aria-describedby="alertFormCooldownHelp" {{ bind(alert_form_cooldownSlots) }}>
+                        <p class="help" id="alertFormCooldownHelp">Intervals to wait before notifying again while the rule keeps firing.</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="alert-form-group">
+                <legend>Traffic filter (optional)</legend>
+                {% include 'components/filter-field.html.twig' with {target: 'alert', signal: alert_form_nfdumpFilter, textareaId: 'alertNfdumpFilter', label: 'nfdump filter', rows: 2} %}
+                <p class="help">With a filter the rule counts only the matching flows in each interval's capture files, so its threshold is a total per 5 minutes, not a rate, and a percentage of the average compares with the filter's own recent traffic. Without one it reads the stored traffic.</p>
+            </fieldset>
+
+            <fieldset class="alert-form-group">
+                <legend>Notifications</legend>
+                <div class="grid alert-form-notify">
+                    <div class="stack" data-token-scope>
+                        <div class="field">
+                            <label for="alertFormEmail">
+                                Email address
+                                {% if not f.emailEnabled %}<span class="badge">off</span>{% endif %}
+                            </label>
+                            <input id="alertFormEmail" type="email" placeholder="alerts@example.com"
+                                   {% if not f.emailEnabled %}disabled aria-describedby="alertFormEmailHelp"{% endif %}
+                                   {{ bind(alert_form_notifyEmail) }}>
+                            {% if not f.emailEnabled %}
+                                <p class="help" id="alertFormEmailHelp">Set <code>NFSEN_ALERT_EMAIL_FROM</code> to send email.</p>
+                            {% endif %}
+                        </div>
+                        <details class="template-override" data-preserve-attr="open">
+                            <summary>Customize the email</summary>
+                            <div class="stack">
+                                <div class="field">
+                                    <label for="alertFormEmailSubject">Subject</label>
+                                    <input id="alertFormEmailSubject" type="text" data-template-field
+                                           placeholder="{{ t.effective.subject }}" {{ bind(alert_form_emailSubjectTemplate) }}>
+                                </div>
+                                <div class="field">
+                                    <label for="alertFormEmailBody">Body</label>
+                                    <textarea id="alertFormEmailBody" rows="4" data-template-field
+                                              placeholder="{{ t.effective.body }}" {{ bind(alert_form_emailBodyTemplate) }}></textarea>
+                                </div>
+                                {{ ui.tokenBar(t.tokens) }}
+                                <div class="field">
+                                    <span class="field-label" id="alertFormEmailPreviewLabel">Preview</span>
+                                    <pre class="template-preview" aria-labelledby="alertFormEmailPreviewLabel"
+                                         data-text="const v = {{ previewVars }}; 'Subject: ' + window.renderAlertTemplatePreview(${{ alert_form_emailSubjectTemplate.id() }} || '{{ t.effective.subject|e('js') }}', v) + '\n\n' + window.renderAlertTemplatePreview(${{ alert_form_emailBodyTemplate.id() }} || '{{ t.effective.body|e('js') }}', v)"></pre>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <div class="stack" data-token-scope>
+                        <div class="field">
+                            <label for="alertFormWebhook">Webhook URL</label>
+                            <input id="alertFormWebhook" type="url" placeholder="https://hooks.example.com/alert"
+                                   aria-describedby="alertFormWebhookHelp" {{ bind(alert_form_notifyWebhook) }}>
+                            <p class="help" id="alertFormWebhookHelp">An HTTP POST with a JSON body whose <code>title</code>, <code>message</code> and <code>body</code> suit Gotify and Apprise. The URL starts with <code>http://</code> or <code>https://</code>.</p>
+                        </div>
+                        <details class="template-override" data-preserve-attr="open">
+                            <summary>Customize the webhook message</summary>
+                            <div class="stack">
+                                <div class="field">
+                                    <label for="alertFormWebhookTitle">Title</label>
+                                    <input id="alertFormWebhookTitle" type="text" data-template-field
+                                           placeholder="{{ t.effective.title }}" {{ bind(alert_form_webhookTitleTemplate) }}>
+                                </div>
+                                <div class="field">
+                                    <label for="alertFormWebhookMessage">Message</label>
+                                    <input id="alertFormWebhookMessage" type="text" data-template-field
+                                           placeholder="{{ t.effective.message }}" {{ bind(alert_form_webhookMessageTemplate) }}>
+                                </div>
+                                {{ ui.tokenBar(t.tokens) }}
+                                <div class="field">
+                                    <span class="field-label" id="alertFormWebhookPreviewLabel">Preview</span>
+                                    <pre class="template-preview" aria-labelledby="alertFormWebhookPreviewLabel"
+                                         data-text="const v = {{ previewVars }}; 'Title: ' + window.renderAlertTemplatePreview(${{ alert_form_webhookTitleTemplate.id() }} || '{{ t.effective.title|e('js') }}', v) + '\n' + window.renderAlertTemplatePreview(${{ alert_form_webhookMessageTemplate.id() }} || '{{ t.effective.message|e('js') }}', v)"></pre>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="cluster alert-form-actions">
+                <button type="button" data-variant="primary"
+                        data-signals__ifmissing="{_alert_saving: false}"
+                        data-indicator:_alert_saving
+                        data-attr:aria-busy="$_alert_saving ? 'true' : false"
+                        data-attr:aria-disabled="({{ saveBlocked }}) ? 'true' : false"
+                        data-preserve-attr="aria-busy aria-disabled"
+                        data-on:click="!({{ saveBlocked }}) && @post('{{ saveAlert.url() }}')">
+                    <span class="spinner" aria-hidden="true" hidden data-attr:hidden="!$_alert_saving" data-preserve-attr="hidden"></span>
+                    <span data-text="{{ formId }} !== '' ? 'Update rule' : 'Create rule'">{{ editing ? 'Update rule' : 'Create rule' }}</span>
+                </button>
+                <button type="button" {{ editing ? '' : 'hidden' }}
+                        data-attr:hidden="{{ formId }} === ''" data-preserve-attr="hidden"
+                        data-on:click="{{ resetForm }}">
+                    Cancel edit
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section id="alert-default-templates-card" class="card alert-templates" aria-labelledby="alertTemplatesTitle"
+             data-signals__ifmissing="{_alert_templatesOpen: false}">
+        <header class="card-header">
+            <h2 id="alertTemplatesTitle">
+                <button type="button" class="alert-templates-toggle" aria-controls="alertTemplatesBody"
+                        aria-expanded="false" data-attr:aria-expanded="$_alert_templatesOpen ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+                        data-on:click="$_alert_templatesOpen = !$_alert_templatesOpen">Default templates</button>
+            </h2>
+            <span class="card-meta">Used by every rule that does not set its own</span>
+        </header>
+        <div class="card-body stack" id="alertTemplatesBody" data-token-scope
+             hidden data-attr:hidden="!$_alert_templatesOpen" data-preserve-attr="hidden">
+            <p class="help">Leave a field empty to keep the built-in text shown in it.</p>
+            {{ ui.tokenBar(t.tokens) }}
+            <div class="grid">
+                <div class="stack">
+                    <div class="field">
+                        <label for="alertDefaultEmailSubject">Email subject</label>
+                        <input id="alertDefaultEmailSubject" type="text" data-template-field
+                               placeholder="{{ t.builtin.subject }}" {{ bind(settings_defaultEmailSubjectTemplate) }}>
+                    </div>
+                    <div class="field">
+                        <label for="alertDefaultEmailBody">Email body</label>
+                        <textarea id="alertDefaultEmailBody" rows="4" data-template-field
+                                  placeholder="{{ t.builtin.body }}" {{ bind(settings_defaultEmailBodyTemplate) }}></textarea>
+                    </div>
+                    <div class="field">
+                        <span class="field-label" id="alertDefaultEmailPreviewLabel">Preview</span>
+                        <pre class="template-preview" aria-labelledby="alertDefaultEmailPreviewLabel"
+                             data-text="const v = window.buildAlertPreviewVars({}); 'Subject: ' + window.renderAlertTemplatePreview(${{ settings_defaultEmailSubjectTemplate.id() }} || '{{ t.builtin.subject|e('js') }}', v) + '\n\n' + window.renderAlertTemplatePreview(${{ settings_defaultEmailBodyTemplate.id() }} || '{{ t.builtin.body|e('js') }}', v)"></pre>
+                    </div>
+                </div>
+                <div class="stack">
+                    <div class="field">
+                        <label for="alertDefaultWebhookTitle">Webhook title</label>
+                        <input id="alertDefaultWebhookTitle" type="text" data-template-field
+                               placeholder="{{ t.builtin.title }}" {{ bind(settings_defaultWebhookTitleTemplate) }}>
+                    </div>
+                    <div class="field">
+                        <label for="alertDefaultWebhookMessage">Webhook message</label>
+                        <input id="alertDefaultWebhookMessage" type="text" data-template-field
+                               placeholder="{{ t.builtin.message }}" {{ bind(settings_defaultWebhookMessageTemplate) }}>
+                    </div>
+                    <div class="field">
+                        <span class="field-label" id="alertDefaultWebhookPreviewLabel">Preview</span>
+                        <pre class="template-preview" aria-labelledby="alertDefaultWebhookPreviewLabel"
+                             data-text="const v = window.buildAlertPreviewVars({}); 'Title: ' + window.renderAlertTemplatePreview(${{ settings_defaultWebhookTitleTemplate.id() }} || '{{ t.builtin.title|e('js') }}', v) + '\n' + window.renderAlertTemplatePreview(${{ settings_defaultWebhookMessageTemplate.id() }} || '{{ t.builtin.message|e('js') }}', v)"></pre>
+                    </div>
+                </div>
+            </div>
+            <div class="cluster" data-justify="end">
+                <button type="button" data-variant="primary"
+                        data-signals__ifmissing="{_alert_tpl_saving: false}"
+                        data-indicator:_alert_tpl_saving
+                        data-attr:aria-busy="$_alert_tpl_saving ? 'true' : false"
+                        data-attr:aria-disabled="$_alert_tpl_saving ? 'true' : false"
+                        data-preserve-attr="aria-busy aria-disabled"
+                        data-on:click="!$_alert_tpl_saving && @post('{{ saveAlertTemplates.url() }}')">
+                    <span class="spinner" aria-hidden="true" hidden data-attr:hidden="!$_alert_tpl_saving" data-preserve-attr="hidden"></span>
+                    Save default templates
+                </button>
+            </div>
+        </div>
+    </section>
+</div>

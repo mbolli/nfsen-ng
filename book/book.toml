@@ -11,3 +11,16 @@ fold.enable = true
 git-repository-url = "https://github.com/mbolli/nfsen-ng"
 additional-css = ["theme/lightbox.css"]
 additional-js = ["theme/lightbox.js"]
+
+# The redesign renamed these pages; old links land on their successors.
+[output.html.redirect]
+"/guide/dashboard.html" = "overview.html"
+"/guide/statistics.html" = "top-talkers.html"
+"/guide/sankey.html" = "conversations.html"
+"/guide/admin-health.html" = "health.html"
+"/guide/preferences.html" = "settings.html"
+"/features/graphs.html" = "overview.html"
+"/features/statistics.html" = "top-talkers.html"
+"/features/sankey.html" = "conversations.html"
+"/features/health-admin.html" = "health.html"
+"/features/preferences.html" = "settings.html"

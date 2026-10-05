@@ -1,0 +1,120 @@
+/* Overview (spec 4.1.4 to 4.1.6): the KPI strip and the top-N card under the traffic graph. */
+
+/* A state instead of a figure ("Collecting ...") reads as text, not as a number. */
+.kpi-value[data-kind='state'] {
+    color: var(--text-2);
+    font-size: var(--font-size-1);
+    font-weight: var(--font-weight-medium);
+    white-space: normal;
+}
+
+/* Dimmed while overview-topn answers for other inputs, as a busy card body is (2.5). */
+.kpi[aria-busy='true'] > :not(.kpi-label) {
+    opacity: 0.5;
+    transition: opacity var(--duration-normal) var(--ease-out);
+}
+
+.kpi-value .ip-link {
+    color: inherit;
+}
+
+.topn-header h2 {
+    font-size: var(--font-size-1);
+}
+
+.topn-header .badge {
+    margin-inline-start: auto;
+}
+
+.topn-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--size-2) var(--size-4);
+    padding: var(--size-2) var(--size-4) 0;
+}
+
+.topn-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2);
+    padding-block-end: var(--size-2);
+}
+
+.topn-options select {
+    inline-size: auto;
+}
+
+.topn-body {
+    padding: var(--size-3) var(--size-4);
+}
+
+.topn-body .table-wrap {
+    overflow-x: auto;
+}
+
+/* An IPv4 address and a figure stay on one line; the table scrolls on a phone instead. */
+.topn-body td[data-kind='address'] {
+    min-inline-size: 15ch;
+    overflow-wrap: anywhere;
+}
+
+.topn-body td[data-num] {
+    white-space: nowrap;
+}
+
+.topn-exact-label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2);
+    margin-block-end: var(--size-2);
+    font-size: var(--font-size-0);
+}
+
+.topn-exact-label code {
+    overflow-wrap: anywhere;
+}
+
+.topn-exact-run {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--size-2) var(--size-4);
+    padding-block: var(--size-3);
+}
+
+.topn-body:has(table) .topn-exact-run {
+    justify-content: space-between;
+    padding-block-end: 0;
+}
+
+.topn-notes {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--size-1);
+    text-align: start;
+}
+
+/* Two cards a row on a phone, so the top-N list is not four screens down. */
+@media (max-width: 47.98em) {
+    .overview .kpi-strip {
+        --grid-min: 9.5rem;
+    }
+
+    .overview .kpi {
+        padding: var(--size-2) var(--size-3);
+    }
+
+    .overview .kpi-value {
+        font-size: var(--font-size-3);
+    }
+
+    /* An IPv4 address fits one line of a half-width card only at this size. */
+    .overview .kpi-value[data-kind='address'] {
+        font-size: var(--font-size-1);
+    }
+}

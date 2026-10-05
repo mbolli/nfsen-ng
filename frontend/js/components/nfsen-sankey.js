@@ -1,318 +1,357 @@
 /**
- * NfsenSankey Web Component
- * Renders a src -> dst traffic-flow Sankey diagram using Apache ECharts.
- *
- * Node ids from the server are pre-prefixed with 'src:'/'dst:' (see
- * SankeyActions::buildSankeyPayload()) so the graph is always strictly bipartite —
- * every node has either only outgoing or only incoming edges, never both. ECharts'
- * default topology-driven sankey layout therefore naturally produces exactly two
- * columns (sources left, destinations right) with no manual depth/nodeAlign config.
+ * <nfsen-sankey data-conversation data-seconds data-unit> (4.4.4; ROCKET-SPEC 6.6, shape A): sources, ports, destinations.
+ * The canvas sits in an ignored container in the light DOM, so a morph never touches it.
  */
-export class NfsenSankey extends HTMLElement {
-    constructor() {
-        super();
-        this.chart = null;
-        this.container = null;
-        this.lastPayload = null;
-    }
+import { rocket } from 'datastar';
+import { copyText } from 'nfsen/clipboard';
+import { downloadUrl } from 'nfsen/download';
+import { escapeHtml, fitLabel, formatBytesExact, formatCountExact, formatMetricExact, formatRate, labelWidth } from 'nfsen/format';
+import { hostState, peekState, whenGone } from 'nfsen/host-state';
+import { chartTheme, onThemeChange, seriesColor } from 'nfsen/theme-colors';
 
-    connectedCallback() {
-        this.container = this.querySelector('.sankey-canvas');
-        this.initializeChart();
+const MIN_HEIGHT = 500;
+const PX_PER_NODE = 22;
+/** Node key of Others in each column; no address, subnet or port contains it. */
+const OTHERS = '*';
 
-        // Observe the canvas container itself, not just the custom element — the
-        // outer <nfsen-sankey> can already be at its final size while the inner div
-        // is still settling (e.g. right after the results card switches from
-        // display:none to visible), which is exactly when ECharts needs to re-measure.
-        this._resizeObserver = new ResizeObserver(() => {
-            if (this.chart) this.chart.resize();
-        });
-        this._resizeObserver.observe(this);
-        if (this.container) this._resizeObserver.observe(this.container);
-
-        this._themeObserver = new MutationObserver(() => {
-            if (this.chart && this.lastPayload) this.renderChart(this.lastPayload);
-        });
-        this._themeObserver.observe(document.documentElement, { attributeFilter: ['data-theme'] });
-    }
-
-    disconnectedCallback() {
-        if (this._resizeObserver) {
-            this._resizeObserver.disconnect();
-            this._resizeObserver = null;
-        }
-        if (this._themeObserver) {
-            this._themeObserver.disconnect();
-            this._themeObserver = null;
-        }
-        this.destroy();
-    }
-
-    showMessage(message, type = 'info') {
-        if (!this.container) return;
-
-        const typeClasses = {
-            error: 'alert alert-danger',
-            warning: 'alert alert-warning',
-            info: 'chart-placeholder',
-            loading: 'chart-placeholder',
-        };
-
-        if (this.chart) {
-            this.chart.dispose();
-            this.chart = null;
-        }
-
-        const cssClass = typeClasses[type] || typeClasses.info;
-        this.container.innerHTML = `<div class="${cssClass}">${message}</div>`;
-    }
-
-    async waitForEcharts(timeout = 5000) {
-        const startTime = Date.now();
-
-        while (!window.echarts) {
-            if (Date.now() - startTime > timeout) {
-                return false;
-            }
-            await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-
-        return true;
-    }
-
-    async initializeChart() {
-        if (!this.container) {
-            this.container = this.querySelector('.sankey-canvas');
-            if (!this.container) return;
-        }
-
-        if (!window.echarts) {
-            this.showMessage('Waiting for ECharts library...', 'info');
-            const loaded = await this.waitForEcharts();
-            if (!loaded) {
-                this.showMessage('ECharts library failed to load', 'error');
-                return;
-            }
-        }
-
-        const dataAttr = this.dataset.sankeyData;
-        if (!dataAttr) {
-            return;
-        }
-
-        try {
-            const payload = JSON.parse(dataAttr);
-            this.updateChart(payload);
-        } catch (e) {
-            console.error('Error parsing sankey data:', e, 'dataAttr:', dataAttr);
-            this.showMessage(`Error parsing data: ${e.message}`, 'error');
-        }
-    }
-
-    /**
-     * Format a raw byte count as a human-readable string (e.g. "1.7 GB").
-     */
-    formatBytes(value) {
-        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        let n = Number(value) || 0;
-        let i = 0;
-        while (n >= 1024 && i < units.length - 1) {
-            n /= 1024;
-            i++;
-        }
-        return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-    }
-
-    formatNumber(value) {
-        return Number(value).toLocaleString();
-    }
-
-    getThemeColors() {
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        return {
-            textColor: isDark ? '#dee2e6' : '#212529',
-            lineColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)',
-            tooltipBg: isDark ? '#2b3035' : '#ffffff',
-            tooltipBorder: isDark ? '#495057' : '#dee2e6',
-        };
-    }
-
-    updateChart(payload) {
-        const nodes = payload?.nodes || [];
-        const links = payload?.links || [];
-
-        if (!nodes.length || !links.length) {
-            this.lastPayload = null;
-            this.showMessage('No data available for the selected range.', 'info');
-            return;
-        }
-
-        this.lastPayload = payload;
-        this.renderChart(payload);
-    }
-
-    /**
-     * Sankey node labels collide vertically once too many nodes are packed into a
-     * fixed-height canvas (GitHub issue #152 — 100+ nodes per column reduced to an
-     * unreadable smear of overlapping text). Give each node a minimum vertical
-     * allowance so labels on either column stay legible, growing the canvas (the
-     * outer .sankey-container scrolls, see nfsen-ng.css) instead of shrinking
-     * node/label spacing indefinitely.
-     */
-    computeCanvasHeight(nodes) {
-        const MIN_HEIGHT = 500;
-        const PX_PER_NODE = 22;
-        // Height is driven by the tallest column. With the optional ports layout a
-        // third ('port:') column joins src/dst; count each independently.
-        const srcCount = nodes.filter((n) => n.name.startsWith('src:')).length;
-        const portCount = nodes.filter((n) => n.name.startsWith('port:')).length;
-        const dstCount = nodes.length - srcCount - portCount;
-        const maxPerColumn = Math.max(srcCount, portCount, dstCount, 1);
-        return Math.max(MIN_HEIGHT, maxPerColumn * PX_PER_NODE);
-    }
-
-    renderChart(payload) {
-        if (!this.container) return;
-
-        const nodes = payload?.nodes || [];
-        const links = payload?.links || [];
-
-        this.container.style.height = `${this.computeCanvasHeight(nodes)}px`;
-
-        if (!this.chart) {
-            // showMessage() may have left a message div behind (error/empty state) — clear it
-            // before creating a fresh ECharts instance on the container.
-            this.container.innerHTML = '';
-            this.chart = window.echarts.init(this.container);
-            // Defensive: if the container's layout hadn't fully settled yet (e.g. right
-            // after the results card switched from display:none to visible), ECharts
-            // may have measured a stale/undersized width at init time. Re-measure once
-            // on the next frame so the diagram isn't permanently stuck at that size.
-            requestAnimationFrame(() => this.chart?.resize());
-        } else {
-            // Container height may have just changed above (new payload, different node
-            // count) — re-measure so ECharts doesn't keep rendering at the old size.
-            this.chart.resize();
-        }
-
-        const theme = this.getThemeColors();
-        const formatBytes = this.formatBytes.bind(this);
-        const formatNumber = this.formatNumber.bind(this);
-
-        this.chart.setOption(
-            {
-                backgroundColor: 'transparent',
-                tooltip: {
-                    trigger: 'item',
-                    triggerOn: 'mousemove',
-                    backgroundColor: theme.tooltipBg,
-                    borderColor: theme.tooltipBorder,
-                    textStyle: { color: theme.textColor },
-                    formatter: (params) => {
-                        // Node/edge ids carry a column prefix (src:/port:/dst:) that must
-                        // never surface in the tooltip — strip whichever one applies.
-                        const stripPrefix = (id) => String(id).replace(/^(?:src|port|dst):/, '');
-                        if (params.dataType === 'edge') {
-                            const src = stripPrefix(params.data.source);
-                            const dst = stripPrefix(params.data.target);
-                            return (
-                                `${src} &rarr; ${dst}<br>` +
-                                `Volume: <b>${formatBytes(params.data.value)}</b><br>` +
-                                `Flows: <b>${formatNumber(params.data.flows || 0)}</b>`
-                            );
-                        }
-                        const label = params.data?.label || params.name;
-                        return label;
-                    },
-                },
-                series: [
-                    {
-                        type: 'sankey',
-                        // Reserve margin on both sides for the outside-positioned src/dst
-                        // labels — without this, nodes sitting exactly at the container's
-                        // left/right edge have their labels clipped by the canvas boundary
-                        // (observed: labels reduced to just 1-2 visible characters).
-                        left: 130,
-                        right: 130,
-                        emphasis: { focus: 'adjacency' },
-                        nodeGap: 16,
-                        lineStyle: {
-                            color: 'gradient',
-                            curveness: 0.5,
-                            opacity: 0.4,
-                        },
-                        label: {
-                            color: theme.textColor,
-                        },
-                        data: nodes.map((n) => {
-                            const isSrc = n.name.startsWith('src:');
-                            const isPort = n.name.startsWith('port:');
-                            const label = {
-                                formatter: n.label,
-                                // Source-column nodes sit at the left edge — their default
-                                // 'right' label position would point inward, overlapping the
-                                // ribbons and the destination column. Point outward instead.
-                                // Destination nodes keep the default outward 'right'.
-                                position: isSrc ? 'left' : isPort ? 'inside' : 'right',
-                            };
-                            if (isPort) {
-                                // Middle 'port:' nodes (ports layout) have ribbons on both
-                                // sides, so an outside label points cleanly at neither. Center
-                                // it vertically on the node bar so the port reads as part of
-                                // its flow instead of floating above it (issue #152 follow-up:
-                                // a top label detaches from the bulk of a thick flow), and back
-                                // it with a small chip so a short port number stays legible
-                                // where it crosses the ribbons on either side.
-                                label.align = 'center';
-                                label.verticalAlign = 'middle';
-                                label.backgroundColor = theme.tooltipBg;
-                                label.borderColor = theme.tooltipBorder;
-                                label.borderWidth = 1;
-                                label.borderRadius = 4;
-                                label.padding = [2, 5];
-                            }
-                            return { name: n.name, label };
-                        }),
-                        links: links.map((l) => ({
-                            source: l.source,
-                            target: l.target,
-                            value: l.value,
-                            flows: l.flows,
-                        })),
-                    },
-                ],
-            },
-            true
-        );
-    }
-
-    // Method to update chart data (can be called from Datastar)
-    static get observedAttributes() {
-        return ['data-sankey-data'];
-    }
-
-    attributeChangedCallback(_name, oldValue, newValue) {
-        if (oldValue !== newValue && this.isConnected && newValue !== null) {
-            this.initializeChart();
-        }
-    }
-
-    resize() {
-        if (this.chart) {
-            this.chart.resize();
-        }
-    }
-
-    destroy() {
-        if (this.chart) {
-            this.chart.dispose();
-            this.chart = null;
-        }
-    }
-
-    toJSON() {
-        return this.tagName;
+/** The payload of a data-conversation attribute, or null when it holds none. */
+export function parsePayload(text) {
+    try {
+        const payload = JSON.parse(text || 'null');
+        return Array.isArray(payload?.pairs) ? payload : null;
+    } catch {
+        return null;
     }
 }
 
-customElements.define('nfsen-sankey', NfsenSankey);
+/** A port node's label: the number, or ICMP's type.code (a string in the payload). */
+export function portLabel(port) {
+    return typeof port === 'string' ? `ICMP ${port}` : String(port);
+}
+
+/**
+ * Nodes and links for the Sankey. Node ids carry their column (src:, port:, dst:), so one
+ * address on both sides is two nodes and the layout keeps two or three clean columns. Nodes
+ * come in rank order with Others last, which the layout keeps.
+ */
+export function sankeyGraph(payload) {
+    const metric = payload.meta?.metric === 'packets' ? 'packets' : 'bytes';
+    const byPort = payload.meta?.groupBy === 'port';
+    const nodes = new Map();
+    const links = new Map();
+
+    const node = (name, label, kind, series = null, others = false) => {
+        if (!nodes.has(name)) nodes.set(name, { name, label, kind, series, others });
+        return name;
+    };
+    const link = (source, target, pair) => {
+        const key = `${source}\u0000${target}`;
+        const entry = links.get(key) ?? { source, target, value: 0, bytes: 0, packets: 0, flows: 0, reverse: null };
+        entry.value += pair[metric];
+        entry.bytes += pair.bytes;
+        entry.packets += pair.packets;
+        entry.flows += pair.flows;
+        entry.reverse = pair.reverse ?? entry.reverse;
+        links.set(key, entry);
+    };
+
+    const connect = (src, port, dst, pair) => {
+        if (port === null) {
+            link(src, dst, pair);
+            return;
+        }
+        link(src, port, pair);
+        link(port, dst, pair);
+    };
+
+    for (const pair of payload.pairs) {
+        const src = node(`src:${pair.src}`, pair.src, 'source', pair.series ?? null);
+        const port = byPort ? node(`port:${pair.port}`, portLabel(pair.port), 'port') : null;
+        const dst = node(`dst:${pair.dst}`, pair.dst, 'destination');
+        connect(src, port, dst, pair);
+    }
+
+    const others = payload.others;
+    if (others && others[metric] > 0) {
+        const src = node(`src:${OTHERS}`, 'Others', 'source', null, true);
+        const port = byPort ? node(`port:${OTHERS}`, 'Others', 'port', null, true) : null;
+        const dst = node(`dst:${OTHERS}`, 'Others', 'destination', null, true);
+        connect(src, port, dst, { bytes: others.bytes, packets: others.packets, flows: others.flows, reverse: null });
+    }
+
+    return { metric, nodes: [...nodes.values()], links: [...links.values()] };
+}
+
+// The page's Export menu and the subnet node click (4.4.4).
+window.nfsenConversations ??= {
+    async copy(text, what) {
+        const ok = await copyText(text);
+        window.showMessage?.(ok ? 'success' : 'warning', ok ? `Copied the ${what}.` : `Could not copy the ${what}.`, true);
+    },
+    exportPairs(kind) {
+        const table = document.querySelector('#convPanel-pairs nfsen-table');
+        if (kind === 'json') table?.exportJson();
+        else table?.exportCsv();
+    },
+    exportPng(view) {
+        document.querySelector(`#convPanel-${view} :is(nfsen-sankey, nfsen-matrix)`)?.downloadPng?.();
+    },
+};
+
+/** The payload the host holds, parsed again only when the attribute changed. */
+function payloadOf(host) {
+    const state = peekState(host);
+    if (!state) return parsePayload(host.dataConversation);
+    if (state.text !== host.dataConversation) {
+        state.text = host.dataConversation;
+        state.payload = parsePayload(state.text);
+    }
+    return state.payload;
+}
+
+function release(state) {
+    state.chart?.dispose();
+    state.chart = null;
+}
+
+function note(state, canvas, text) {
+    release(state);
+    state.drawn = null;
+    const p = document.createElement('p');
+    p.className = 'conv-chart-message';
+    p.textContent = text;
+    canvas.replaceChildren(p);
+}
+
+/** One redraw per burst of prop changes, after the morph that made them (K15). */
+function schedule(host) {
+    const state = peekState(host);
+    if (!state || state.queued) return;
+    state.queued = true;
+    queueMicrotask(() => {
+        state.queued = false;
+        draw(host);
+    });
+}
+
+/** Lays the chart out for the payload, the width and the theme; `force` also redraws what is already drawn. */
+function draw(host, force = false) {
+    const state = peekState(host);
+    const canvas = host.querySelector('.sankey-canvas');
+    if (!state || !canvas || !host.isConnected) return;
+    const payload = payloadOf(host);
+    if (!payload?.pairs.length) {
+        note(state, canvas, 'No conversations in this result.');
+        return;
+    }
+    // A hidden view has no width; the ResizeObserver draws it once it is shown.
+    if (canvas.clientWidth === 0) return;
+    if (!window.echarts) {
+        clearTimeout(state.retry);
+        state.retry = setTimeout(() => draw(host, force), 100);
+        return;
+    }
+    const theme = chartTheme();
+    const drawn = state.drawn;
+    // The canvas, not the host: the container's scrollbar narrows only the canvas.
+    if (!force && state.chart && drawn?.text === state.text && drawn.theme === theme && drawn.width === canvas.clientWidth) return;
+
+    const graph = sankeyGraph(payload);
+    state.nodes = new Map(graph.nodes.map((n) => [n.name, n]));
+    const perColumn = ['source', 'port', 'destination'].map((kind) => graph.nodes.filter((n) => n.kind === kind).length);
+    canvas.style.height = `${Math.max(MIN_HEIGHT, Math.max(...perColumn) * PX_PER_NODE)}px`;
+    // Read after the height, which can bring or drop that scrollbar.
+    const width = canvas.clientWidth;
+
+    if (state.chart) {
+        state.chart.resize();
+    } else {
+        canvas.replaceChildren();
+        state.chart = window.echarts.init(canvas);
+        state.chart.on('click', (params) => host.onClick?.(params));
+    }
+    state.chart.setOption(option(host, graph, theme, width), true);
+    state.drawn = { text: state.text, theme, width };
+}
+
+function option(host, graph, theme, width) {
+    const { metric } = graph;
+    // Each outer column gets the room its widest label needs, up to a share of the width.
+    const room = (kind) => {
+        const widest = Math.max(0, ...graph.nodes.filter((n) => n.kind === kind).map((n) => labelWidth(n.label)));
+        return Math.max(48, Math.min(Math.ceil(widest) + 14, 240, Math.round(width * 0.28)));
+    };
+    const left = room('source');
+    const right = room('destination');
+
+    return {
+        backgroundColor: 'transparent',
+        animation: false,
+        tooltip: {
+            trigger: 'item',
+            backgroundColor: theme.tooltipBg,
+            borderColor: theme.tooltipBorder,
+            textStyle: { color: theme.text },
+            formatter: (params) => tooltip(host, params, metric, host.dataSeconds),
+        },
+        series: [
+            {
+                type: 'sankey',
+                left,
+                right,
+                top: 8,
+                bottom: 8,
+                nodeGap: 12,
+                // Rank order top to bottom, so series slots N and N+1 sit side by side (2.3).
+                layoutIterations: 0,
+                draggable: false,
+                emphasis: { focus: 'adjacency' },
+                lineStyle: { color: 'source', curveness: 0.5, opacity: 0.35 },
+                label: { color: theme.text, fontSize: 11 },
+                data: graph.nodes.map((n) => ({
+                    name: n.name,
+                    text: n.label,
+                    kind: n.kind,
+                    others: n.others,
+                    itemStyle: { color: seriesColor(n.series ?? 'others'), borderColor: theme.surface },
+                    label: nodeLabel(n, theme, (n.kind === 'source' ? left : right) - 10),
+                })),
+                links: graph.links,
+            },
+        ],
+    };
+}
+
+/** Sources point their label outward to the left, destinations to the right, ports sit on a chip. */
+function nodeLabel(node, theme, width) {
+    const position = node.kind === 'source' ? 'left' : node.kind === 'port' ? 'inside' : 'right';
+    if (node.kind !== 'port') {
+        const text = fitLabel(node.label, width);
+        return { position, formatter: () => text };
+    }
+    return {
+        position,
+        formatter: () => node.label,
+        align: 'center',
+        verticalAlign: 'middle',
+        backgroundColor: theme.tooltipBg,
+        borderColor: theme.tooltipBorder,
+        borderWidth: 1,
+        borderRadius: 4,
+        padding: [2, 5],
+    };
+}
+
+/** The tooltip of a node or a link: the metric, its average rate in the traffic unit, and the other counts. */
+function tooltip(host, params, metric, seconds) {
+    const unit = host.dataUnit === 'bytes' ? 'bytes' : 'bits';
+    const state = peekState(host);
+    const figures = (d) =>
+        [
+            `<b>${escapeHtml(formatMetricExact(d[metric], metric))}</b> (${escapeHtml(formatRate(d[metric], metric, seconds, unit))} on average)`,
+            metric === 'packets' ? escapeHtml(formatBytesExact(d.bytes)) : `${escapeHtml(formatCountExact(d.packets))} packets`,
+            `${escapeHtml(formatCountExact(d.flows))} flows`,
+        ].join('<br>');
+
+    const payload = payloadOf(host);
+    const topN = payload?.meta?.topN ?? payload?.pairs.length ?? 0;
+    if (params.dataType === 'edge') {
+        const d = params.data;
+        const name = (id) => {
+            const n = state?.nodes.get(id);
+            if (!n) return escapeHtml(String(id).replace(/^(?:src|port|dst):/, ''));
+            return escapeHtml(n.kind === 'port' && /^\d+$/.test(n.label) ? `port ${n.label}` : n.label);
+        };
+        if (state?.nodes.get(d.source)?.others) {
+            return `Others, the pairs not in the top ${escapeHtml(topN)}<br>${figures(d)}`;
+        }
+        let html = `${name(d.source)} → ${name(d.target)}<br>${figures(d)}`;
+        if (d.reverse) {
+            html += `<br>of which ${escapeHtml(formatMetricExact(d.reverse[metric], metric))} from ${name(d.target)} to ${name(d.source)}`;
+        }
+        return html;
+    }
+
+    const label = escapeHtml(params.data?.text ?? params.name);
+    const total = escapeHtml(formatMetricExact(params.value, metric));
+    if (params.data?.others) return `${label}<br>pairs not in the top ${escapeHtml(topN)}, ${total}`;
+    const hint = { source: 'source', destination: 'destination', port: 'destination port' }[params.data?.kind] ?? '';
+    return `${label}<br>${hint}, ${total}`;
+}
+
+/** An address node opens its IP info (the page handles the event); a subnet node copies its filter. */
+function nodeClick(host, params, emit) {
+    if (params?.dataType !== 'node') return;
+    const { text: label, kind: column, others } = params.data ?? {};
+    if (column === 'port' || others) return;
+    const group = payloadOf(host)?.meta?.groupBy;
+    if (group === 'net24' || group === 'net16') {
+        window.nfsenConversations.copy(`net ${label}`, `filter net ${label}`);
+        return;
+    }
+    emit('conversation-node', { address: label });
+}
+
+function downloadPng(host) {
+    const chart = peekState(host)?.chart;
+    if (!chart) return;
+    downloadUrl(chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: chartTheme().surface }), 'conversations-sankey.png');
+}
+
+rocket('nfsen-sankey', {
+    mode: 'open',
+    props: ({ number, string }) => ({
+        dataConversation: string.docs({ description: 'The result as ConversationPayload JSON: ranked pairs, Others, totals and meta.' }),
+        dataSeconds: number.docs({ description: 'The length of the result window in seconds, for the average rates.' }),
+        dataUnit: string.docs({ description: 'bits or bytes: the traffic graph unit the tooltip prints rates in.' }),
+    }),
+    manifest: {
+        events: [
+            {
+                name: 'conversation-node',
+                kind: 'custom-event',
+                bubbles: true,
+                composed: true,
+                description: 'An address node was clicked; detail.address is the address to look up.',
+            },
+        ],
+    },
+    setup: ({ cleanup, defineHostProp, emit, host, observeProps }) => {
+        if (!host.shadowRoot.firstChild) host.shadowRoot.append(document.createElement('slot'));
+        const state = hostState(host, () => ({
+            chart: null,
+            text: null,
+            payload: null,
+            nodes: new Map(),
+            drawn: null,
+            frame: 0,
+            retry: 0,
+            queued: false,
+        }));
+
+        defineHostProp('chart', { get: () => peekState(host)?.chart ?? null });
+        defineHostProp('resize', { value: () => draw(host, true) });
+        defineHostProp('downloadPng', { value: () => downloadPng(host) });
+        defineHostProp('onClick', { value: (params) => nodeClick(host, params, emit) });
+        defineHostProp('tooltip', { value: (params, metric, seconds) => tooltip(host, params, metric, seconds) });
+        defineHostProp('toJSON', { value: () => host.tagName });
+
+        observeProps(() => schedule(host), 'dataConversation');
+        // Also sees the view become visible: a chart drawn while hidden has no size.
+        const resizes = new ResizeObserver(() => {
+            cancelAnimationFrame(state.frame);
+            state.frame = requestAnimationFrame(() => draw(host));
+        });
+        resizes.observe(host);
+        const stopTheme = onThemeChange(() => draw(host));
+        schedule(host);
+
+        cleanup(() => {
+            resizes.disconnect();
+            stopTheme();
+            cancelAnimationFrame(state.frame);
+            clearTimeout(state.retry);
+            whenGone(host, release);
+        });
+    },
+});

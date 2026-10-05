@@ -47,9 +47,9 @@ describe('QueryProgress throttling', function (): void {
 
     test('suppresses ticks that are both too soon and too small', function (): void {
         $h = progressHarness();
-        $h->progress->update(1, 1000);   // 1‰  — emitted (first)
-        $h->progress->update(2, 1000);   // 2‰  — +1‰, no time passed
-        $h->progress->update(3, 1000);   // 3‰  — still under both thresholds
+        $h->progress->update(1, 1000);   // 1‰: emitted (first)
+        $h->progress->update(2, 1000);   // 2‰: +1‰, no time passed
+        $h->progress->update(3, 1000);   // 3‰: still under both thresholds
 
         expect($h->ticks)->toHaveCount(1);
     });

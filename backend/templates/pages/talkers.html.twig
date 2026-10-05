@@ -1,0 +1,357 @@
+{#
+    Top Talkers (4.2, 2.7.4): the statistic picker, the query card beside the protocol and ASN
+    panels, and the last run of the chosen statistic. Choosing a statistic never runs a query
+    (D12): the result of a statistic that ran before comes back through talkers-select.
+#}
+{% import 'components/result-host.html.twig' as rh %}
+{% import _self as talkers %}
+{% set t = pages.talkers %}
+{% set r = t.result %}
+{% set forId = '$' ~ stats_for.id() %}
+{% set dirId = '$' ~ stats_dir.id() %}
+{% set cat = '$_statsCatalog' %}
+{% set est = '$' ~ querykit.targets.talkers.estimateId %}
+{% set tz = '$' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() %}
+{# Only a statistic with a stored run needs the server; the rest switches in the browser. #}
+{% set show = t.stored|json_encode ~ '.includes(' ~ forId ~ ') && ' ~ forId ~ ' !== ' ~ (t.result ? t.result.element : '')|json_encode ~ " && @post('" ~ talkersSelect.url() ~ "')" %}
+
+{# Whether the fields differ from a run's inputs as its fingerprint sees them (no post needed);
+   `aggregation` is the -A it ran with, rebuilt as Nfdump::buildAggregationString() does. #}
+{% macro changed(inputs, s, aggregation = null) %}
+    {%- set parts = [
+        "String($" ~ s.filter.id() ~ " ?? '').trim() !== " ~ inputs.filter|json_encode,
+        "String($" ~ s.lower.id() ~ " ?? '').trim() !== " ~ inputs.lower|json_encode,
+        "String($" ~ s.upper.id() ~ " ?? '').trim() !== " ~ inputs.upper|json_encode,
+    ] -%}
+    {%- if inputs.count is defined -%}
+        {%- set parts = parts|merge([
+            'Number($' ~ s.count.id() ~ ') !== ' ~ inputs.count,
+            'String($' ~ s.order.id() ~ ') !== ' ~ inputs.order|json_encode,
+        ]) -%}
+    {%- endif -%}
+    {%- if aggregation is not null -%}
+        {%- set a = s.agg -%}
+        {%- set on = "(v) => String(v) === 'true'" -%}
+        {%- set ip = "(v, p) => (v = String(v ?? '').trim(), p = String(p ?? '').trim(), v === '' || v === 'none' ? '' : ['srcip4', 'srcip6', 'dstip4', 'dstip6'].includes(v) && p !== '' ? v + '/' + p : v)" -%}
+        {%- set parts = parts|merge(["((on, ip) => on($" ~ a.bidirectional.id() ~ ") ? 'bidirectional' : [on($" ~ a.proto.id() ~ ") && 'proto', on($" ~ a.srcport.id() ~ ") && 'srcport', on($" ~ a.dstport.id() ~ ") && 'dstport', ip($" ~ a.srcip.id() ~ ", $" ~ a.srcipPrefix.id() ~ "), ip($" ~ a.dstip.id() ~ ", $" ~ a.dstipPrefix.id() ~ ")].filter(Boolean).join(','))(" ~ on ~ ", " ~ ip ~ ") !== " ~ aggregation|json_encode]) -%}
+    {%- endif -%}
+    {{- '(' ~ parts|join(' || ') ~ ')' -}}
+{% endmacro %}
+{% set inputSignals = {
+    filter: stats_filter, lower: stats_lower_limit, upper: stats_upper_limit, count: stats_count, order: stats_orderBy,
+    agg: {bidirectional: stats_agg_bidirectional, proto: stats_agg_proto, srcport: stats_agg_srcport, dstport: stats_agg_dstport,
+          srcip: stats_agg_srcip, srcipPrefix: stats_agg_srcip_prefix, dstip: stats_agg_dstip, dstipPrefix: stats_agg_dstip_prefix},
+} %}
+
+<div class="stack talkers"
+     data-signals__ifmissing="{{ {_statsCatalog: t.catalog.client, _stats_panel: '', _stats_copied: ''}|json_encode }}"
+     data-computed:_stats_run_kind="${{ query_kind.id() }} === 'talkers-panel' ? 'talkers-panel-' + $_stats_panel : ${{ query_kind.id() }}">
+
+    <div class="stat-bar">
+        <fieldset class="stat-picker">
+            <legend>Statistic</legend>
+            <div class="stat-picker-options">
+                {% for tab in t.catalog.tabs %}
+                    <input type="radio" name="statFamily" id="talkersTab-{{ tab.id }}" value="{{ tab.id }}"
+                           {{ t.tab == tab.id ? 'checked' }}
+                           data-effect="el.checked = {{ cat }}.tabOf[{{ forId }}] === '{{ tab.id }}'"
+                           data-on:change="const f = {{ cat }}.family['{{ tab.id }}']; {{ forId }} = f[{{ dirId }}] ?? f.any; {{ show }}">
+                    <label for="talkersTab-{{ tab.id }}">{{ tab.label }}</label>
+                {% endfor %}
+            </div>
+        </fieldset>
+        <div class="field stat-more">
+            <label for="statsFilterForSelection">More statistics</label>
+            <select id="statsFilterForSelection" {{ bind(stats_for) }}
+                    data-on:change="{{ forId }} = el.value; {{ show }}">
+                {% for group in t.catalog.groups %}
+                    <optgroup label="{{ group.label }}">
+                        {% for o in group.options %}
+                            <option value="{{ o.value }}" {{ o.value == t.element ? 'selected' }}
+                                    {% if o.reason %}disabled title="{{ o.reason }}"{% endif %}>
+                                {{- o.label }}{% if o.reason %} (not supported by this nfdump){% endif -%}
+                            </option>
+                        {% endfor %}
+                    </optgroup>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <div class="talkers-layout">
+        <section class="card query-card" aria-labelledby="talkersQueryTitle"
+                 data-collapsed data-attr:data-collapsed="!$_optionsOpen_talkers" data-preserve-attr="data-collapsed">
+            <header>
+                <h2 id="talkersQueryTitle">Query</h2>
+                <button type="button" class="options-toggle" data-size="sm" aria-controls="talkersQueryFields"
+                        aria-expanded="false" data-attr:aria-expanded="$_optionsOpen_talkers ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+                        data-on:click="$_optionsOpen_talkers = !$_optionsOpen_talkers"
+                        data-text="$_optionsOpen_talkers ? 'Hide filters' : 'Show filters'">Show filters</button>
+            </header>
+            <div class="card-body stack">
+                <div class="query-fields stack" id="talkersQueryFields">
+                    <div class="talkers-options">
+                        {# Keeps the direction in step with a statistic picked from More statistics. #}
+                        <fieldset class="field talkers-direction"
+                                  data-effect="const d = {{ cat }}.dirOf[{{ forId }}]; if (d && d !== {{ dirId }}) {{ dirId }} = d">
+                            <legend class="field-label">Direction</legend>
+                            <div class="segmented" data-stretch {% if not t.hasDirection %}aria-disabled="true"{% endif %}
+                                 data-attr:aria-disabled="{{ cat }}.dirOf[{{ forId }}] ? false : 'true'" data-preserve-attr="aria-disabled">
+                                {% for d in [{id: 'any', label: 'Any'}, {id: 'src', label: 'Source'}, {id: 'dst', label: 'Destination'}] %}
+                                    <input type="radio" name="statsDir" id="statsDir-{{ d.id }}" value="{{ d.id }}" {{ bind(stats_dir) }}
+                                           {{ stats_dir.string() == d.id ? 'checked' }} {{ not t.hasDirection ? 'disabled' }}
+                                           data-attr:disabled="!{{ cat }}.dirOf[{{ forId }}]" data-preserve-attr="disabled"
+                                           data-effect="el.checked = {{ dirId }} === '{{ d.id }}'"
+                                           data-on:change="const f = {{ cat }}.family[{{ forId }}]; if (f) { {{ dirId }} = el.value; {{ forId }} = f[el.value] ?? f.any; {{ show }} }">
+                                    <label for="statsDir-{{ d.id }}">{{ d.label }}</label>
+                                {% endfor %}
+                            </div>
+                        </fieldset>
+                        <div class="field">
+                            <label for="statsCount">Top records</label>
+                            <select id="statsCount" {{ bind(stats_count) }}>
+                                {% for n in t.counts %}
+                                    <option value="{{ n }}" {{ stats_count.int() == n ? 'selected' }}>{{ n }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="statsFilterOrderBySelection">Order by</label>
+                            <select id="statsFilterOrderBySelection" {{ bind(stats_orderBy) }}>
+                                {% for o in t.orders %}
+                                    <option value="{{ o.value }}" {{ stats_orderBy.string() == o.value ? 'selected' }}>{{ o.label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <span class="field-label" aria-hidden="true">Filter</span>
+                        {% include 'components/filter-field.html.twig' with {target: 'talkers', signal: stats_filter, textareaId: 'filterNfdumpTextareaStats', rows: 2} %}
+                    </div>
+
+                    <fieldset class="talkers-bytes">
+                        <legend class="field-label">Bytes per flow</legend>
+                        <div class="field">
+                            <label for="stats_lower_limitInput">Min</label>
+                            <input type="text" id="stats_lower_limitInput" placeholder="e.g. 1M" autocomplete="off"
+                                   aria-describedby="statsBytesHelp" {{ bind(stats_lower_limit) }}>
+                        </div>
+                        <div class="field">
+                            <label for="stats_upper_limitInput">Max</label>
+                            <input type="text" id="stats_upper_limitInput" placeholder="e.g. 100M" autocomplete="off"
+                                   aria-describedby="statsBytesHelp" {{ bind(stats_upper_limit) }}>
+                        </div>
+                        <p class="help" id="statsBytesHelp">Only flows of this size count. Accepts k, M and G.</p>
+                    </fieldset>
+
+                    {# nfdump applies -A to the Flow Records statistic only (#174). #}
+                    <fieldset class="talkers-aggregation" id="filterStatsAggregation"
+                              {{ t.element != 'record' ? 'hidden' }}
+                              data-attr:hidden="{{ forId }} !== 'record'" data-preserve-attr="hidden">
+                        <legend class="field-label">Aggregation</legend>
+                        <div class="filter-subgrid">
+                            {% include 'partials/aggregation-controls.html.twig' with {
+                                idPrefix: 'filterStats',
+                                aggBidirectional: stats_agg_bidirectional,
+                                aggProto: stats_agg_proto,
+                                aggSrcPort: stats_agg_srcport,
+                                aggDstPort: stats_agg_dstport,
+                                aggSrcIp: stats_agg_srcip,
+                                aggSrcIpPrefix: stats_agg_srcip_prefix,
+                                aggDstIp: stats_agg_dstip,
+                                aggDstIpPrefix: stats_agg_dstip_prefix
+                            } only %}
+                        </div>
+                    </fieldset>
+                </div>
+
+                <p class="notice" data-level="warning" {{ not t.unsupported ? 'hidden' }}
+                   data-attr:hidden="!{{ cat }}.unsupported[{{ forId }}]" data-preserve-attr="hidden"
+                   data-text="'This nfdump cannot compute this statistic: ' + {{ cat }}.unsupported[{{ forId }}]">
+                    {%- if t.unsupported %}This nfdump cannot compute this statistic: {{ t.unsupported }}{% endif -%}
+                </p>
+
+                <div class="talkers-run">
+                    {% include 'components/query-estimate.html.twig' with {target: 'talkers'} %}
+                    {% include 'partials/progress-button.html.twig' with {
+                        id: 'statsRun',
+                        label: 'Run',
+                        action: statsActions.url(),
+                        killAction: killNfdump.url(),
+                        running: query_running.id(),
+                        permille: query_permille.id(),
+                        status: query_status.id(),
+                        eta: query_eta.id(),
+                        exact: query_exact.id(),
+                        kindSignal: query_kind.id(),
+                        kind: 'stats',
+                        run: 'talkers',
+                        doneText: "Number($" ~ _stats_rows.id() ~ ").toLocaleString('en') + ($" ~ _stats_rows.id() ~ " === 1 ? ' row' : ' rows') + ' returned'",
+                    } only %}
+                </div>
+            </div>
+        </section>
+
+        <div class="talkers-side">
+            {% for p in t.panels %}
+                <section class="card talkers-panel" id="talkersPanel-{{ p.id }}" aria-labelledby="talkersPanel-{{ p.id }}-title">
+                    <header>
+                        <h2 id="talkersPanel-{{ p.id }}-title">{{ p.title }}</h2>
+                    </header>
+                    <div class="card-body stack">
+                        <div class="talkers-panel-run">
+                            <p class="talkers-panel-cost" hidden data-attr:hidden="!({{ est }}.files > 0)" data-preserve-attr="hidden"
+                               data-text="Number({{ est }}.files).toLocaleString('en') + ({{ est }}.files === 1 ? ' file, ' : ' files, ') + {{ est }}.bytesHuman + ' to read'"></p>
+                            {% include 'partials/progress-button.html.twig' with {
+                                id: 'talkersPanelRun-' ~ p.id,
+                                label: 'Run',
+                                action: talkersPanel.url() ~ '?panel=' ~ p.id,
+                                killAction: killNfdump.url(),
+                                running: query_running.id(),
+                                permille: query_permille.id(),
+                                status: query_status.id(),
+                                eta: query_eta.id(),
+                                exact: query_exact.id(),
+                                kindSignal: '_stats_run_kind',
+                                kind: 'talkers-panel-' ~ p.id,
+                                run: 'talkers-' ~ p.id,
+                                onClick: "$_stats_panel = '" ~ p.id ~ "'; ",
+                                doneText: "'" ~ p.title ~ " updated'",
+                            } only %}
+                        </div>
+                        {% if p.id == 'proto' and t.protocolHint %}
+                            <p class="notice">{{ t.protocolHint }}</p>
+                        {% endif %}
+                        {% if p.ran %}
+                            <p class="notice" data-kind="stale" {{ not p.stale ? 'hidden' }}
+                               data-attr:hidden="!({{ p.scopeStale ? 'true' : 'false' }} || {{ talkers.changed(p.inputs, inputSignals) }})" data-preserve-attr="hidden">
+                                These results are for an earlier query. Run again to update.
+                            </p>
+                        {% endif %}
+                        {% if p.clamp and not p.error %}
+                            <p class="notice" data-level="warning">{{ p.clamp }}</p>
+                        {% endif %}
+                        {% if p.error %}
+                            <div class="notice" data-level="error" role="alert">
+                                Error: {{ p.error }}{% if p.command %} <code>{{ p.command }}</code>{% endif %}
+                            </div>
+                        {% elseif p.bars is not empty %}
+                            <ol class="bar-list" aria-label="{{ p.title }}, share of bytes">
+                                {% for b in p.bars %}
+                                    <li class="bar-row" style="--share: {{ b.width }}%">
+                                        <span class="bar-label">{{ b.label }}</span>
+                                        <span class="bar" {% if b.series %}data-series="{{ b.series }}"{% endif %} aria-hidden="true"></span>
+                                        <span class="bar-value" title="{{ b.bytes }}">{{ b.value }}</span>
+                                    </li>
+                                {% endfor %}
+                            </ol>
+                            {% if p.id == 'as' %}
+                                <p class="help">The share counts each flow half for its source AS and half for its destination AS.</p>
+                            {% endif %}
+                        {% elseif p.ran %}
+                            <p class="help">No traffic matched.</p>
+                        {% else %}
+                            <p class="help">{{ p.id == 'proto' ? 'Bytes per protocol for the query above.' : 'The busiest autonomous systems for the query above.' }} Runs on its own.</p>
+                        {% endif %}
+                    </div>
+                </section>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% set current = r ? forId ~ ' === ' ~ r.element|json_encode : 'false' %}
+    <section class="card talkers-results" id="statsResults" aria-labelledby="statsResultsTitle">
+        <header>
+            <h2 id="statsResultsTitle" aria-live="polite"
+                {% if r %}data-text="{{ current }} ? {{ r.title|json_encode }} : 'Results'"{% endif %}>{{ r ? r.title : 'Results' }}</h2>
+            {% if r and r.rows > 0 %}
+                <sb-popover class="talkers-export" id="statsExport" label="Export {{ r.caption }}" placement="bottom-end"
+                            data-attr:hidden="!({{ current }})" data-preserve-attr="hidden">
+                    <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
+                            data-preserve-attr="aria-expanded aria-haspopup">Export</button>
+                    <ul class="popover-list" id="statsExportMenu">
+                        {% for item in [{id: 'csv', label: 'CSV', method: 'exportCsv'},
+                                        {id: 'json', label: 'JSON', method: 'exportJson'},
+                                        {id: 'print', label: 'Print', method: 'print'}] %}
+                            <li><button type="button" class="menu-item" data-export="{{ item.id }}"
+                                        data-on:click="document.getElementById('statsTable')?.{{ item.method }}()">{{ item.label }}</button></li>
+                        {% endfor %}
+                    </ul>
+                </sb-popover>
+            {% endif %}
+        </header>
+        <div class="card-body stack">
+            {% if r %}
+                <p class="notice" data-kind="stale" {{ not r.stale ? 'hidden' }}
+                   data-attr:hidden="!({{ current }} && ({{ r.scopeStale ? 'true' : 'false' }} || {{ talkers.changed(r.inputs, inputSignals, r.aggregation) }}))" data-preserve-attr="hidden">
+                    These results are for an earlier query. Run again to update.
+                </p>
+                {% if r.moved %}
+                    <p class="notice" data-talkers-moved
+                       data-attr:hidden="!({{ current }}) || {{ talkers.changed(r.inputs, inputSignals, r.aggregation) }}" data-preserve-attr="hidden"
+                       data-text="'Covers ' + window.nfsenTime.formatRange({{ r.from }}, {{ r.to }}, {{ tz }}) + '. The live window has moved on; Run again to include newer data.'">
+                        Covers {{ r.from|date('Y-m-d H:i') }} to {{ r.to|date('Y-m-d H:i') }}. The live window has moved on; Run again to include newer data.
+                    </p>
+                {% endif %}
+            {% endif %}
+
+            <div id="statsMessage" class="stack">
+                {% if r %}
+                    <div class="talkers-command" data-attr:hidden="!({{ current }})" data-preserve-attr="hidden">
+                        <span class="talkers-command-label">nfdump:</span>
+                        <code id="statsCommand">{{ r.command }}</code>
+                        <button type="button" data-size="sm" aria-label="Copy the nfdump command" data-copy-source="statsCommand"
+                                data-on:nfsen-copy="$_stats_copied = evt.detail.label; clearTimeout(el.copiedTimer); el.copiedTimer = setTimeout(() => ($_stats_copied = ''), 2000)">
+                            <span data-text="$_stats_copied || 'Copy'">Copy</span>
+                        </button>
+                        <small>{{ r.elapsed }} s</small>
+                        {% if r.notes is not empty %}
+                            <ul class="talkers-notes">
+                                {% for note in r.notes %}<li>{{ note }}</li>{% endfor %}
+                            </ul>
+                        {% endif %}
+                    </div>
+                    {% if r.warnings is not empty %}
+                        {# About this result (the clamp, nfdump's stderr), so they come and go with its table. #}
+                        <div class="stack" data-attr:hidden="!({{ current }})" data-preserve-attr="hidden">
+                            {% for n in r.warnings %}
+                                <div class="notice dismissible" data-level="warning">
+                                    <span>{{ n.message }}{% if n.code %} <code>{{ n.code }}</code>{% endif %}</span>
+                                    <button type="button" data-variant="close" aria-label="Dismiss"
+                                            data-on:click="@post('{{ dismissNotification.url() }}?page=talkers&id={{ n.id }}')"></button>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endif %}
+                {% if t.notifications is not empty %}
+                    <div class="stack" data-attr:hidden="{{ t.noticesFor|json_encode }} !== '' && {{ forId }} !== {{ t.noticesFor|json_encode }}" data-preserve-attr="hidden">
+                        {% for n in t.notifications %}
+                            <div class="notice dismissible" {% if n.type != 'info' %}data-level="{{ n.type }}"{% endif %}
+                                 {% if n.type == 'error' %}role="alert"{% endif %}>
+                                <span>{{ n.message }}{% if n.code %} <code>{{ n.code }}</code>{% endif %}</span>
+                                <button type="button" data-variant="close" aria-label="Dismiss"
+                                        data-on:click="@post('{{ dismissNotification.url() }}?page=talkers&id={{ n.id }}')"></button>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            {% if r %}
+                <div class="talkers-table" data-attr:hidden="!({{ current }})" data-preserve-attr="hidden">
+                    {{ rh.host('statsResult', r.id, r.send, r.html) }}
+                </div>
+            {% endif %}
+
+            <div class="empty-state" {{ r ? 'hidden' }} data-attr:hidden="{{ current }}" data-preserve-attr="hidden">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <path d="M4 11H2v3h2zm5-4H7v7h2zm5-5v12h-2V2zm-2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM6 7a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm-5 4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1z"/>
+                </svg>
+                <h3>No results yet</h3>
+                <p>Pick a statistic and press Run.</p>
+            </div>
+        </div>
+    </section>
+</div>

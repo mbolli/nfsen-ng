@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
+use mbolli\nfsen_ng\datasources\TotalsProvider;
 use mbolli\nfsen_ng\datasources\VictoriaMetrics;
 
 // ── Test double ───────────────────────────────────────────────────────────────
@@ -29,8 +30,19 @@ class VictoriaMetricsTest extends VictoriaMetrics {
     /** @var list<string> Optional queue of responses for sequential calls; falls back to nextGetResponse */
     public array $getResponseQueue = [];
 
+    /** @var null|Closure(string): string Answers by URL when set, ahead of the queue */
+    public ?Closure $responder = null;
+
+    /** @var list<int> */
+    public array $capturedTimeouts = [];
+
     protected function httpGet(string $url, int $timeout = 30): string {
         $this->capturedGetUrls[] = $url;
+        $this->capturedTimeouts[] = $timeout;
+
+        if ($this->responder !== null) {
+            return ($this->responder)($url);
+        }
 
         if (!empty($this->getResponseQueue)) {
             return array_shift($this->getResponseQueue);
@@ -52,7 +64,65 @@ class VictoriaMetricsTest extends VictoriaMetrics {
     }
 }
 
+/**
+ * Evaluates `sum(max by (source) (sum_over_time(<metric>{...}[<R>s])))` at `time` the way
+ * VictoriaMetrics does, over (time - R, time]. Every series of the metric matches.
+ *
+ * @internal
+ *
+ * @coversNothing
+ */
+final class VictoriaMetricsSampleStub extends VictoriaMetrics {
+    /** @var list<array{metric: string, source: string, profile: string, samples: array<int, float>}> */
+    public array $series = [];
+
+    protected function httpGet(string $url, int $timeout = 30): string {
+        $params = vmQueryParams($url);
+        if (!preg_match('/^sum\(max by \(source\) \(sum_over_time\((\w+)\{[^}]*\}\[(\d+)s\]\)\)\)$/', $params['query'] ?? '', $m)) {
+            throw new RuntimeException('Unexpected query: ' . ($params['query'] ?? ''));
+        }
+        $time = (int) $params['time'];
+        $perSource = [];
+        foreach ($this->series as $series) {
+            if ($series['metric'] !== $m[1]) {
+                continue;
+            }
+            $sum = 0.0;
+            foreach ($series['samples'] as $ts => $value) {
+                if ($ts > $time - (int) $m[2] && $ts <= $time) {
+                    $sum += $value;
+                }
+            }
+            $perSource[$series['source']] = max($perSource[$series['source']] ?? $sum, $sum);
+        }
+
+        return json_encode(['status' => 'success', 'data' => ['resultType' => 'vector', 'result' => [['metric' => [], 'value' => [$time, (string) array_sum($perSource)]]]]]);
+    }
+
+    protected function sendToVM(string $url, string $body): bool {
+        return true;
+    }
+}
+
 // ── Bootstrap helper ──────────────────────────────────────────────────────────
+
+/**
+ * The decoded query string of a captured VictoriaMetrics URL.
+ *
+ * @return array<string, string>
+ */
+function vmQueryParams(string $url): array {
+    parse_str((string) parse_url($url, PHP_URL_QUERY), $params);
+
+    return array_map(static fn (mixed $v): string => (string) $v, $params);
+}
+
+/**
+ * A query_range answer with one series holding one point.
+ */
+function vmRangeResponse(int $ts, string $value): string {
+    return json_encode(['status' => 'success', 'data' => ['result' => [['metric' => [], 'values' => [[$ts, $value]]]]]]);
+}
 
 function makeVmSettings(): void {
     Config::$settings = Settings::fromArray([
@@ -343,7 +413,7 @@ describe('VictoriaMetrics::get_graph_data()', function (): void {
     });
 });
 
-// ── transformToOutputFormat — alignment edge-cases ───────────────────────────
+// ── transformToOutputFormat: alignment edge-cases ────────────────────────────
 
 describe('VictoriaMetrics output format alignment', function (): void {
     beforeEach(function (): void {
@@ -425,7 +495,7 @@ describe('VictoriaMetrics output format alignment', function (): void {
             display: 'sources',
         );
 
-        // With the current implementation each timestamp appears separately with 1 value —
+        // With the current implementation each timestamp appears separately with 1 value:
         // document this as the known behavior (ragged timestamps are not merged/padded).
         expect($result['data'])->toHaveKey($ts1);
         expect($result['data'])->toHaveKey($ts2);
@@ -538,5 +608,269 @@ describe('VictoriaMetrics::healthChecks()', function (): void {
         $iy = $checks[array_search('import_years', $ids, true)];
 
         expect($iy['status'])->toBe('ok');
+    });
+});
+
+// ── get_graph_data() over several sources ─────────────────────────────────────
+
+describe('VictoriaMetrics::get_graph_data() multi-source series', function (): void {
+    beforeEach(function (): void {
+        makeVmSettings();
+        $this->vm = new VictoriaMetricsTest();
+        $this->start = 1700000100;
+        $this->end = $this->start + 3600;
+        $this->vm->responder = fn (string $url): string => vmRangeResponse($this->start, '1');
+        $this->queries = fn (): array => array_map(static fn (string $url): string => vmQueryParams($url)['query'], $this->vm->capturedGetUrls);
+    });
+
+    test('protocols display sums every protocol over the source regex, each source once', function (): void {
+        $result = $this->vm->get_graph_data($this->start, $this->end, ['gw', 'srv'], ['tcp', 'any'], [], 'flows', 'protocols');
+
+        expect(($this->queries)())->toBe([
+            'sum(max by (source) (nfsen_flows_tcp{source=~"gw|srv",port="",protocol="tcp"}))',
+            'sum(max by (source) (nfsen_flows{source=~"gw|srv",port=""}))',
+        ]);
+        expect($result['legend'])->toBe(['tcp_flows', 'any_flows']);
+    });
+
+    test('protocols display with any reads every configured source, profile included', function (): void {
+        $this->vm->get_graph_data($this->start, $this->end, ['any'], ['udp'], [], 'packets', 'protocols', profile: 'live');
+
+        expect(($this->queries)())->toBe(['sum(max by (source) (nfsen_packets_udp{source=~"gateway|server1",port="",protocol="udp",profile=~"live|"}))']);
+    });
+
+    test('a profile name is matched literally, not as a regex', function (): void {
+        $this->vm->get_graph_data($this->start, $this->end, ['gw'], ['any'], [], 'flows', 'protocols', profile: 'a.b+c');
+
+        expect(($this->queries)())->toBe(['sum(max by (source) (nfsen_flows{source="gw",port="",profile=~"a\\\\.b\\\\+c|"}))']);
+    });
+
+    test('ports display sums a source subset per port', function (): void {
+        $result = $this->vm->get_graph_data($this->start, $this->end, ['gw', 'srv'], ['any'], [80, 443], 'bytes', 'ports');
+
+        expect(($this->queries)())->toBe([
+            'sum(max by (source) (nfsen_bytes{source=~"gw|srv",port="80"}))',
+            'sum(max by (source) (nfsen_bytes{source=~"gw|srv",port="443"}))',
+        ]);
+        expect($result['legend'])->toBe(['80_bytes_any', '443_bytes_any']);
+    });
+
+    test('ports display with one source keeps the source in the legend', function (): void {
+        $result = $this->vm->get_graph_data($this->start, $this->end, ['gateway'], ['tcp'], [80], 'flows', 'ports');
+
+        expect(($this->queries)())->toBe(['sum(max by (source) (nfsen_flows_tcp{source="gateway",port="80",protocol="tcp"}))']);
+        expect($result['legend'])->toBe(['80_flows_gateway_tcp']);
+    });
+
+    test('ports display over every configured source reads the cross-source series', function (): void {
+        foreach ([['gateway', 'server1'], ['any']] as $sources) {
+            $this->vm->capturedGetUrls = [];
+            $result = $this->vm->get_graph_data($this->start, $this->end, $sources, ['any'], [80], 'flows', 'ports');
+
+            expect(($this->queries)())->toBe(['sum(max by (source) (nfsen_flows{source="",port="80"}))']);
+            expect($result['legend'])->toBe(['80_flows_any']);
+        }
+    });
+
+    test('regex characters in source names are escaped for the string literal', function (): void {
+        $this->vm->get_graph_data($this->start, $this->end, ['gw-1', 'edge.2'], ['any'], [], 'flows', 'protocols');
+
+        expect(($this->queries)()[0])->toBe('sum(max by (source) (nfsen_flows{source=~"gw\\\\-1|edge\\\\.2",port=""}))');
+    });
+
+    test('sources display still issues one plain query per source', function (): void {
+        $this->vm->get_graph_data($this->start, $this->end, ['gw', 'srv'], ['tcp'], [], 'flows', 'sources');
+
+        expect(($this->queries)())->toBe([
+            'nfsen_flows_tcp{source="gw",port="",protocol="tcp"}',
+            'nfsen_flows_tcp{source="srv",port="",protocol="tcp"}',
+        ]);
+    });
+});
+
+// ── fetchTotals() / fetchProtocolTotals() ─────────────────────────────────────
+
+describe('VictoriaMetrics stored totals', function (): void {
+    beforeEach(function (): void {
+        makeVmSettings();
+        $this->vm = new VictoriaMetricsTest();
+        $this->start = 1700000100;
+        $this->end = $this->start + 3600;
+        $this->params = fn (): array => array_map(vmQueryParams(...), $this->vm->capturedGetUrls);
+    });
+
+    test('is a TotalsProvider', function (): void {
+        expect($this->vm)->toBeInstanceOf(TotalsProvider::class);
+    });
+
+    test('one instant query per metric: sum_over_time over end - start, evaluated at end - 1', function (): void {
+        $this->vm->fetchTotals(['gw', 'srv'], 'live', $this->start, $this->end);
+
+        $selector = '{source=~"gw|srv",port="",profile=~"live|"}[3600s]';
+        expect(($this->params)())->toBe([
+            ['query' => "sum(max by (source) (sum_over_time(nfsen_flows{$selector})))", 'time' => (string) ($this->end - 1)],
+            ['query' => "sum(max by (source) (sum_over_time(nfsen_packets{$selector})))", 'time' => (string) ($this->end - 1)],
+            ['query' => "sum(max by (source) (sum_over_time(nfsen_bytes{$selector})))", 'time' => (string) ($this->end - 1)],
+        ]);
+        expect(parse_url($this->vm->capturedGetUrls[0], PHP_URL_PATH))->toBe('/api/v1/query')
+            ->and($this->vm->capturedTimeouts)->toBe(array_fill(0, 3, VictoriaMetrics::TOTALS_TIMEOUT))
+        ;
+    });
+
+    test('returns the value of each metric', function (): void {
+        $this->vm->responder = static function (string $url): string {
+            preg_match('/nfsen_(\w+)\{/', vmQueryParams($url)['query'], $m);
+            $value = ['flows' => '12', 'packets' => '340', 'bytes' => '56000'][$m[1]];
+
+            return json_encode(['status' => 'success', 'data' => ['result' => [['metric' => [], 'value' => [0, $value]]]]]);
+        };
+
+        expect($this->vm->fetchTotals(['gw'], '', $this->start, $this->end))
+            ->toBe(['flows' => 12.0, 'packets' => 340.0, 'bytes' => 56000.0])
+        ;
+    });
+
+    test('the protocol variant selects the protocol series', function (): void {
+        $this->vm->fetchTotals(['gw'], '', $this->start, $this->end, 'icmp');
+
+        expect(($this->params)()[0]['query'])
+            ->toBe('sum(max by (source) (sum_over_time(nfsen_flows_icmp{source="gw",port="",protocol="icmp"}[3600s])))')
+        ;
+    });
+
+    test('an empty source list or any means every configured source', function (): void {
+        foreach ([[], ['any']] as $sources) {
+            $this->vm->capturedGetUrls = [];
+            $this->vm->fetchTotals($sources, '', $this->start, $this->end);
+
+            expect(($this->params)()[0]['query'])
+                ->toBe('sum(max by (source) (sum_over_time(nfsen_flows{source=~"gateway|server1",port=""}[3600s])))')
+            ;
+        }
+    });
+
+    test('an empty or inverted window is zero without a query', function (): void {
+        expect($this->vm->fetchTotals(['gw'], '', $this->end, $this->end))->toBe(['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0]);
+        expect($this->vm->fetchTotals(['gw'], '', $this->end, $this->start))->toBe(['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0]);
+        expect($this->vm->capturedGetUrls)->toBe([]);
+    });
+
+    test('rejects a protocol outside any|tcp|udp|icmp|other', function (): void {
+        $this->vm->fetchTotals(['gw'], '', $this->start, $this->end, 'sctp');
+    })->throws(InvalidArgumentException::class, 'sctp');
+
+    test('an unreachable VictoriaMetrics throws after one query instead of answering zero', function (): void {
+        $this->vm->responder = static fn (string $url): string => throw new Exception('connection refused');
+
+        expect(fn () => $this->vm->fetchProtocolTotals(['gw'], '', $this->start, $this->end))
+            ->toThrow(RuntimeException::class, 'VictoriaMetrics did not answer: connection refused')
+            ->and($this->vm->capturedGetUrls)->toHaveCount(1)
+        ;
+    });
+
+    test('an error answer throws; a window without samples is zero', function (): void {
+        $this->vm->nextGetResponse = '{"status":"error","error":"bad query"}';
+        expect(fn () => $this->vm->fetchTotals(['gw'], '', $this->start, $this->end))->toThrow(RuntimeException::class, 'without a result');
+
+        $this->vm->nextGetResponse = '{"status":"success","data":{"result":[]}}';
+        expect($this->vm->fetchTotals(['gw'], '', $this->start, $this->end))->toBe(['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0]);
+    });
+
+    test('fetchProtocolTotals() queries every metric of every protocol', function (): void {
+        $this->vm->responder = static function (string $url): string {
+            preg_match('/nfsen_(\w+?)(?:_(tcp|udp|icmp|other))?\{/', vmQueryParams($url)['query'], $m);
+            $value = ['flows' => 1, 'packets' => 10, 'bytes' => 100][$m[1]] * ['' => 5, 'tcp' => 1, 'udp' => 2, 'icmp' => 3, 'other' => 4][$m[2] ?? ''];
+
+            return json_encode(['status' => 'success', 'data' => ['result' => [['metric' => [], 'value' => [0, (string) $value]]]]]);
+        };
+
+        $totals = $this->vm->fetchProtocolTotals(['gw'], '', $this->start, $this->end);
+
+        expect($this->vm->capturedGetUrls)->toHaveCount(15);
+        expect(array_unique(array_column(($this->params)(), 'time')))->toBe([(string) ($this->end - 1)]);
+        expect($totals)->toBe([
+            'any' => ['flows' => 5.0, 'packets' => 50.0, 'bytes' => 500.0],
+            'tcp' => ['flows' => 1.0, 'packets' => 10.0, 'bytes' => 100.0],
+            'udp' => ['flows' => 2.0, 'packets' => 20.0, 'bytes' => 200.0],
+            'icmp' => ['flows' => 3.0, 'packets' => 30.0, 'bytes' => 300.0],
+            'other' => ['flows' => 4.0, 'packets' => 40.0, 'bytes' => 400.0],
+        ]);
+    });
+
+    test('half-open window: the sample on start counts, the sample on end does not', function (): void {
+        $vm = new VictoriaMetricsSampleStub();
+        $vm->series[] = ['metric' => 'nfsen_flows', 'source' => 'gw', 'profile' => '', 'samples' => [
+            $this->start - 300 => 1000.0,
+            $this->start => 1.0,
+            $this->start + 300 => 2.0,
+            $this->end - 300 => 4.0,
+            $this->end => 8000.0,
+        ]];
+
+        expect($vm->fetchTotals(['gw'], '', $this->start, $this->end)['flows'])->toBe(7.0);
+        // Adjacent windows share no sample.
+        expect($vm->fetchTotals(['gw'], '', $this->end, $this->end + 300)['flows'])->toBe(8000.0);
+        expect($vm->fetchTotals(['gw'], '', $this->start - 300, $this->start)['flows'])->toBe(1000.0);
+    });
+
+    test('a source re-imported next to its pre-profile unlabelled series counts once', function (): void {
+        $vm = new VictoriaMetricsSampleStub();
+        $samples = [$this->start => 1.0, $this->start + 300 => 2.0];
+        $vm->series = [
+            ['metric' => 'nfsen_flows', 'source' => 'gw', 'profile' => 'live', 'samples' => $samples],
+            ['metric' => 'nfsen_flows', 'source' => 'gw', 'profile' => '', 'samples' => $samples],
+            ['metric' => 'nfsen_flows', 'source' => 'srv', 'profile' => 'live', 'samples' => [$this->start => 10.0]],
+        ];
+
+        expect($vm->fetchTotals(['gw', 'srv'], 'live', $this->start, $this->end)['flows'])->toBe(13.0);
+    });
+});
+
+// ── fetchLatestSlot() / fetchRollingAverage() ─────────────────────────────────
+
+describe('VictoriaMetrics load queries', function (): void {
+    beforeEach(function (): void {
+        makeVmSettings();
+        $this->vm = new VictoriaMetricsTest();
+        $this->queries = fn (): array => array_map(static fn (string $url): string => vmQueryParams($url)['query'], $this->vm->capturedGetUrls);
+    });
+
+    // A sample carries its interval start and arrives after the interval ends, so a 5 minute look-back from now never reaches it.
+    test('fetchLatestSlot() sums each source\'s newest sample, read at the newest one of any source', function (): void {
+        $this->vm->responder = static fn (string $url): string => str_contains(vmQueryParams($url)['query'], 'tlast_over_time')
+            ? '{"status":"success","data":{"result":[{"metric":{},"value":[0,"1790000100"]}]}}'
+            : '{"status":"success","data":{"result":[]}}';
+
+        $this->vm->fetchLatestSlot(['gw', 'srv'], 'live');
+
+        expect(($this->queries)())->toBe([
+            'max(tlast_over_time(nfsen_flows{source=~"gw|srv",port="",profile=~"live|"}[3600s]))',
+            'sum(max by (source) (last_over_time(nfsen_flows{source=~"gw|srv",port="",profile=~"live|"}[600s])))',
+            'sum(max by (source) (last_over_time(nfsen_packets{source=~"gw|srv",port="",profile=~"live|"}[600s])))',
+            'sum(max by (source) (last_over_time(nfsen_bytes{source=~"gw|srv",port="",profile=~"live|"}[600s])))',
+        ])
+            ->and(vmQueryParams($this->vm->capturedGetUrls[0]))->not->toHaveKey('time')
+            ->and(vmQueryParams($this->vm->capturedGetUrls[1])['time'])->toBe('1790000100')
+        ;
+    });
+
+    test('fetchLatestSlot() looks back to the import horizon only when the last hour holds no sample', function (): void {
+        expect($this->vm->fetchLatestSlot(['gw'], 'live'))->toBe(['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0])
+            ->and(($this->queries)())->toBe([
+                'max(tlast_over_time(nfsen_flows{source="gw",port="",profile=~"live|"}[3600s]))',
+                'max(tlast_over_time(nfsen_flows{source="gw",port="",profile=~"live|"}[1095d]))',
+            ])
+        ;
+    });
+
+    test('fetchRollingAverage() sums the sources, each source once, over the window before the newest complete interval or before $end', function (): void {
+        $newest = intdiv(time(), 300) * 300 - 300;
+        $this->vm->fetchRollingAverage(['gw'], 'live', 3600);
+        $this->vm->fetchRollingAverage(['gw'], 'live', 3600, 1_790_000_100);
+
+        expect(($this->queries)()[0])->toBe('sum(max by (source) (avg_over_time(nfsen_flows{source="gw",port="",profile=~"live|"}[3600s])))')
+            ->and((int) vmQueryParams($this->vm->capturedGetUrls[0])['time'])->toBeIn([$newest - 1, $newest + 299])
+            ->and(vmQueryParams($this->vm->capturedGetUrls[3])['time'])->toBe('1790000099')
+        ;
     });
 });

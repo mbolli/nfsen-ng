@@ -1,0 +1,292 @@
+/* Alerts (spec 4.6, 2.7.8): the rules beside the recent alerts from 90rem, stacked below it,
+   then the rule form and the default templates. */
+
+.alerts-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--size-4);
+    align-items: start;
+}
+
+@media (min-width: 90rem) {
+    .alerts-layout {
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    }
+}
+
+.alerts-page .card-header h2 {
+    font-size: var(--font-size-1);
+}
+
+.alert-new-rule {
+    margin-inline-start: auto;
+}
+
+/* ── Rules table ────────────────────────────────────────────────────────── */
+
+.alert-rules :is(th, td) {
+    vertical-align: middle;
+}
+
+.alert-rules tbody th {
+    font-weight: var(--font-weight-semibold);
+    text-align: start;
+}
+
+.alert-rules tbody th small {
+    display: block;
+    font-weight: var(--font-weight-normal);
+}
+
+/* Room for "59 seconds ago", so the column keeps its width while sb-relative-time counts the seconds.
+   A fixed width keeps the table's spare space from following the text's width. */
+.alert-rules td[data-kind='time'] {
+    box-sizing: content-box;
+    min-inline-size: 15ch;
+    inline-size: 15ch;
+}
+
+.alert-rule-status,
+.alert-rule-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2);
+}
+
+.alert-rule-actions {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: var(--size-1);
+}
+
+.alert-rule-actions > button {
+    flex: none;
+    padding: var(--size-1);
+}
+
+/* The play icon sizes against the button, as the Edit and Delete icons do. */
+.alert-action-icon {
+    display: contents;
+}
+
+/* ── Recent alerts ──────────────────────────────────────────────────────── */
+
+.alert-events-scroll {
+    max-block-size: 30rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.alert-events {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.alert-event {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: var(--size-1) var(--size-2);
+    padding-block: var(--size-2);
+    padding-inline-end: var(--size-2);
+    border-block-end: 1px solid var(--border);
+}
+
+.alert-event:first-child {
+    padding-block-start: 0;
+}
+
+.alert-event:last-child {
+    border-block-end: none;
+}
+
+.alert-event-rule {
+    font-weight: var(--font-weight-semibold);
+    overflow-wrap: anywhere;
+}
+
+.alert-event > time,
+.alert-event-detail {
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+    font-variant-numeric: tabular-nums;
+}
+
+.alert-event-detail {
+    grid-column: 1 / -1;
+    overflow-wrap: anywhere;
+}
+
+.alert-event-profile::before {
+    content: '\00b7';
+    padding-inline: var(--size-2);
+}
+
+/* ── Rule form ──────────────────────────────────────────────────────────── */
+
+.alert-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-3);
+    min-inline-size: 0;
+    margin: 0;
+    padding: var(--size-4) 0 0;
+    border: none;
+    border-block-start: 1px solid var(--border);
+}
+
+.alert-form-group > legend {
+    float: inline-start;
+    inline-size: 100%;
+    padding: 0;
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.alert-form-enabled {
+    margin-inline-start: auto;
+    font-weight: var(--font-weight-normal);
+}
+
+.alert-form-notify {
+    --grid-min: 20rem;
+    align-items: start;
+}
+
+.alert-form-actions {
+    padding-block-start: var(--size-4);
+    border-block-start: 1px solid var(--border);
+}
+
+/* A rule's own email or webhook text, closed until it is wanted. */
+.template-override > summary {
+    inline-size: fit-content;
+    color: var(--text-1);
+    font-size: var(--font-size-0);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
+}
+
+.template-override:where([open]) > summary {
+    margin-block-end: var(--size-3);
+}
+
+.template-override > .stack {
+    padding: var(--size-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    background: var(--surface-3);
+}
+
+.template-preview {
+    margin: 0;
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.token-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-1);
+}
+
+.token-bar > button {
+    font-family: var(--font-mono);
+}
+
+/* ── Default templates ──────────────────────────────────────────────────── */
+
+.alert-templates-toggle {
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-1);
+    background: none;
+    color: inherit;
+    font: inherit;
+}
+
+.alert-templates-toggle:hover:not(:disabled) {
+    background: none;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.alert-templates-toggle::before {
+    content: '';
+    inline-size: 0.45em;
+    block-size: 0.45em;
+    border-block-end: 1.5px solid currentcolor;
+    border-inline-end: 1.5px solid currentcolor;
+    rotate: -45deg;
+    transition: rotate var(--duration-fast) var(--ease-out);
+}
+
+.alert-templates-toggle:dir(rtl)::before {
+    rotate: 135deg;
+}
+
+.alert-templates-toggle[aria-expanded='true']::before {
+    rotate: 45deg;
+}
+
+/* Closed, the header is the whole card. */
+.alert-templates:has(> .card-body[hidden]) > .card-header {
+    border-block-end: none;
+    border-radius: inherit;
+}
+
+/* ── Test result dialog ─────────────────────────────────────────────────── */
+
+.alert-test-result {
+    inline-size: min(40rem, 100vw - 2rem);
+}
+
+.alert-test-outcome {
+    display: flex;
+    align-items: center;
+    gap: var(--size-2);
+    font-size: var(--font-size-1);
+}
+
+.alert-test-templates {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--size-1);
+}
+
+.alert-test-templates > dt {
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-semibold);
+}
+
+.alert-test-templates > dd {
+    margin: 0 0 var(--size-2);
+}
+
+.alert-test-templates pre {
+    margin: 0;
+    font-size: var(--font-size-0);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .alert-templates-toggle::before {
+        transition: none;
+    }
+}

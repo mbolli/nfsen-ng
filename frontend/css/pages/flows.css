@@ -1,0 +1,339 @@
+/* Flows (4.3, 2.7.5): the query beside its estimate, traffic over time, the results. The
+   result table itself is styled in nfsen-ng.css, which every page with a table shares. */
+
+.flows-page {
+    container-type: inline-size;
+}
+
+.flows-page .card > header h2 {
+    font-size: var(--font-size-1);
+}
+
+.flows-page h3 {
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* ── Query and estimate ─────────────────────────────────────────────────── */
+
+.flows-query {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--size-4);
+    align-items: start;
+}
+
+@container (min-width: 56rem) {
+    .flows-query {
+        grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
+    }
+}
+
+.flows-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    gap: var(--size-3) var(--size-4);
+    align-items: start;
+}
+
+.flows-bytes {
+    min-inline-size: 0;
+    padding: 0;
+    border: none;
+}
+
+.flows-bytes > legend {
+    margin-block-end: var(--size-1);
+    padding: 0;
+}
+
+.flows-bytes-inputs {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: var(--size-2);
+    align-items: center;
+}
+
+.flows-bytes-inputs > label {
+    color: var(--text-2);
+}
+
+.flows-aggregation {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+}
+
+.flows-aggregation > summary {
+    padding: var(--size-2) var(--size-3);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+}
+
+.flows-aggregation[open] > summary {
+    border-block-end: 1px solid var(--border);
+}
+
+.flows-aggregation-body {
+    padding: var(--size-3);
+}
+
+/* The estimate reads as a short list here, one figure per line (2.7.5). */
+.flows-estimate .estimate {
+    font-size: var(--font-size-1);
+}
+
+.flows-estimate .estimate-figures {
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.flows-estimate .estimate-figures > li + li::before {
+    content: none;
+}
+
+/* ── Traffic over time ──────────────────────────────────────────────────── */
+
+.flows-disclosure {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-2);
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+}
+
+.flows-disclosure:hover:not(:disabled) {
+    background: none;
+    text-decoration: underline;
+}
+
+.flows-disclosure::before {
+    content: '';
+    inline-size: 0.45em;
+    block-size: 0.45em;
+    border-block-end: 1.5px solid currentcolor;
+    border-inline-end: 1.5px solid currentcolor;
+    rotate: -45deg;
+    transition: rotate var(--duration-fast) var(--ease-out);
+}
+
+.flows-disclosure:dir(rtl)::before {
+    rotate: 135deg;
+}
+
+.flows-disclosure[aria-expanded='true']::before {
+    rotate: 45deg;
+}
+
+.flows-graph .chart-canvas {
+    inline-size: 100%;
+    block-size: 16rem;
+}
+
+.flows-graph-legend {
+    max-block-size: 13rem;
+    overflow-y: auto;
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+}
+
+/* ── Results ────────────────────────────────────────────────────────────── */
+
+/* The tabs sit on the header's bottom edge, the count and the Export menu at its end. */
+.flows-results > header {
+    align-items: flex-end;
+    padding-block-end: 0;
+}
+
+.flows-results > header > .tabs {
+    box-shadow: none;
+}
+
+.flows-results > header > .card-meta {
+    margin-inline-start: auto;
+    padding-block-end: var(--size-2);
+}
+
+.flows-results > header > sb-popover {
+    padding-block-end: var(--size-2);
+}
+
+.flows-results [role='tabpanel']:focus-visible {
+    outline-offset: 2px;
+}
+
+.flows-command {
+    font-size: var(--font-size-0);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.flows-notes {
+    padding-inline-start: var(--size-4);
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+}
+
+.flows-output {
+    max-block-size: 60vh;
+    overflow: auto;
+    font-size: var(--font-size-00);
+    line-height: 1.35;
+}
+
+.flows-output[aria-busy='true']:empty::before {
+    content: "Loading nfdump's output…";
+    color: var(--text-2);
+}
+
+.flows-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    gap: var(--size-5);
+    align-items: start;
+}
+
+.flows-figures {
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--size-1) var(--size-4);
+}
+
+.flows-figures > div {
+    display: contents;
+}
+
+.flows-figures dd {
+    font-variant-numeric: tabular-nums;
+}
+
+.flows-summary .empty-state {
+    padding-block: var(--size-4);
+}
+
+.flows-protocols tbody th {
+    font-weight: var(--font-weight-normal);
+}
+
+.flows-protocols .series-swatch {
+    margin-inline-end: var(--size-2);
+}
+
+/* ── The list (sb-virtual-scroll, ADOPT-VSCROLL 3.7) ────────────────────── */
+
+/* Enhanced data, and the Columns picker at the end; on a phone the picker wraps onto its own line. */
+.flows-results .table-toolbar > sb-popover.column-selector {
+    margin-inline-start: auto;
+    margin-block-end: 0;
+}
+
+#flowsExports:has(> .notice) {
+    margin-block-start: var(--size-3);
+}
+
+/* Rows and the header share one grid template (--flow-cols, set by the server), so the columns
+   line up; a list wider than the card scrolls sideways inside the component. */
+.flows-results sb-virtual-scroll {
+    block-size: min(70dvh, 48rem);
+    border: 1px solid var(--border);
+    font-size: var(--font-size-0);
+}
+
+.flows-results sb-virtual-scroll > [role='row'] {
+    display: grid;
+    grid-template-columns: var(--flow-cols);
+    align-items: center;
+    min-inline-size: min-content;
+    overflow: hidden;
+}
+
+.flows-results sb-virtual-scroll > [role='row']:not([slot]) {
+    border-block-end: 1px solid var(--border);
+}
+
+.flows-results sb-virtual-scroll > [data-stripe] {
+    background: color-mix(in oklab, var(--surface-3) 60%, transparent);
+}
+
+.flows-results sb-virtual-scroll > [role='row']:not([slot]):hover {
+    background: var(--surface-3);
+}
+
+/* The component gives the header no background: rows would show through it. */
+.flows-results sb-virtual-scroll > [slot='header'] {
+    border-block-end: 2px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-weight: var(--font-weight-semibold);
+}
+
+.flows-results sb-virtual-scroll :is([role='cell'], [role='columnheader']) {
+    min-inline-size: 0;
+    padding-inline: var(--cell-pad-inline);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* Room above and below a link for its focus ring (2px outline at 2px offset), which the overflow would clip. */
+.flows-results sb-virtual-scroll [role='cell'] {
+    padding-block: var(--size-1);
+}
+
+.flows-results sb-virtual-scroll [role='columnheader'] {
+    padding-block: calc(var(--cell-pad-block) + var(--size-1));
+}
+
+.flows-results sb-virtual-scroll :is([role='cell'], [role='columnheader'])[data-num] {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+}
+
+.flows-results sb-virtual-scroll [role='cell'][data-kind='time'] {
+    font-variant-numeric: tabular-nums;
+}
+
+.flows-results sb-virtual-scroll [role='cell'][data-kind='address'] {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+}
+
+.flows-results sb-virtual-scroll [role='columnheader'] > button {
+    max-inline-size: 100%;
+    padding: 0;
+    overflow: hidden;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.flows-results sb-virtual-scroll [role='columnheader'] > button:hover {
+    background: none;
+    text-decoration: underline;
+}
+
+/* The sorted column: an arrow, and a bar that forced colours keep as an outline. */
+.flows-results sb-virtual-scroll [role='columnheader'][aria-sort] {
+    box-shadow: inset 0 -3px 0 var(--text-1);
+}
+
+.flows-results sb-virtual-scroll [role='columnheader'][aria-sort] > button::after {
+    content: ' \25B2' / '';
+    font-size: 0.7em;
+}
+
+.flows-results sb-virtual-scroll [role='columnheader'][aria-sort='descending'] > button::after {
+    content: ' \25BC' / '';
+}
+
+@media (forced-colors: active) {
+    .flows-results sb-virtual-scroll [role='columnheader'][aria-sort] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+}

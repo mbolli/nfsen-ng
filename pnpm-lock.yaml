@@ -8,15 +8,9 @@ importers:
 
   .:
     dependencies:
-      datastar:
-        specifier: github:starfederation/datastar#v1.0.2
-        version: https://codeload.github.com/starfederation/datastar/tar.gz/5cce9fcdda43cb443b4e5e596b67cef903619831
       echarts:
         specifier: ^6.1.0
         version: 6.1.0
-      nouislider:
-        specifier: ^15.8.1
-        version: 15.8.1
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.5.13
@@ -81,15 +75,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  datastar@https://codeload.github.com/starfederation/datastar/tar.gz/5cce9fcdda43cb443b4e5e596b67cef903619831:
-    resolution: {gitHosted: true, integrity: sha512-MpEqPofEcplCDuhw8JfG4GXtx5Nd7Fq4EouFYrC6CIPXkJrusl3yG4GZ1QMCbnimsZ0XAdO/hIjj2D8/ILxt/A==, tarball: https://codeload.github.com/starfederation/datastar/tar.gz/5cce9fcdda43cb443b4e5e596b67cef903619831}
-    version: 0.0.0
-
   echarts@6.1.0:
     resolution: {integrity: sha512-q0yaFPggC9FUdsWH4blavRWFmxdrIodbkoKNAjJudAI6CA9gNPxHtV2RcZNEepZVlk4yvBYkOkbk6HIVpIyHZA==}
-
-  nouislider@15.8.1:
-    resolution: {integrity: sha512-93TweAi8kqntHJSPiSWQ1o/uZ29VWOmal9YKb6KKGGlCkugaNfAupT7o1qTHqdJvNQ7S0su5rO6qRFCjP8fxtw==}
 
   tslib@2.3.0:
     resolution: {integrity: sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==}
@@ -134,14 +121,10 @@ snapshots:
   '@biomejs/cli-win32-x64@2.5.13':
     optional: true
 
-  datastar@https://codeload.github.com/starfederation/datastar/tar.gz/5cce9fcdda43cb443b4e5e596b67cef903619831: {}
-
   echarts@6.1.0:
     dependencies:
       tslib: 2.3.0
       zrender: 6.1.0
-
-  nouislider@15.8.1: {}
 
   tslib@2.3.0: {}
 

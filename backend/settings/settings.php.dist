@@ -2,7 +2,7 @@
 /**
  * nfsen-ng optional settings file.
  *
- * For standard Docker deployments you do NOT need this file — configure nfsen-ng
+ * For standard Docker deployments you do NOT need this file: configure nfsen-ng
  * entirely through environment variables (NFSEN_SOURCES, NFSEN_PORTS, NFSEN_NFDUMP_BINARY,
  * NFSEN_NFDUMP_PROFILES, NFSEN_DATASOURCE, NFSEN_IMPORT_YEARS, …).
  * See deploy/docker-compose.yml for the full list.
@@ -70,7 +70,7 @@ $nfsen_config = [
         // Can also be set via the NFSEN_MAX_STATS_WINDOW environment variable.
         'max_stats_window' => (int) (getenv('NFSEN_MAX_STATS_WINDOW') ?: 0),
 
-        // Netbox integration — optional, for RFC1918 / private IP lookups.
+        // Netbox integration, optional, for RFC1918 / private IP lookups.
         // When set, clicking an IP from the flow/stats table queries Netbox for
         // address metadata (description, tenant, VRF, status) instead of showing
         // the public geo lookup (which returns no data for private ranges anyway).
@@ -84,7 +84,7 @@ $nfsen_config = [
     ],
     'frontend' => [
         'defaults' => [
-            'theme' => getenv('NFSEN_DEFAULT_THEME') ?: 'auto', // auto (follow OS), dark, light — default for browsers with no saved toggle
+            'theme' => getenv('NFSEN_DEFAULT_THEME') ?: 'auto', // auto (follow OS), dark, light; default for browsers with no saved toggle
             'view' => 'graphs', // graphs, flows, statistics
             'graphs' => [
                 'display' => 'sources', // sources, protocols, ports
@@ -103,7 +103,8 @@ $nfsen_config = [
         'binary' => getenv('NFSEN_NFDUMP_BINARY') ?: '/usr/bin/nfdump',
         'profiles-data' => getenv('NFSEN_NFDUMP_PROFILES') ?: '/var/nfdump/profiles-data',
         'profile' => getenv('NFSEN_NFDUMP_PROFILE') ?: 'live',
-        'max-processes' => (int) (getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 1),
+        'max-processes' => getenv('NFSEN_NFDUMP_MAX_PROCESSES') ?: 'auto',
+        'workers' => getenv('NFSEN_NFDUMP_WORKERS') === false ? 2 : getenv('NFSEN_NFDUMP_WORKERS'),
     ],
     'db' => [
         'RRD' => [

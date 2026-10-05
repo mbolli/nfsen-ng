@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\common;
 
+use Mbolli\PhpVia\Via;
+use OpenSwoole\Coroutine;
+use OpenSwoole\Timer;
+
 /**
- * ImportDaemon — extracted from listen.php for embedding in app.php.
+ * ImportDaemon, extracted from listen.php for embedding in app.php.
  *
  * Usage in app.php:
  *   $daemon = new ImportDaemon();
@@ -13,10 +17,35 @@ namespace mbolli\nfsen_ng\common;
  *   // Long-running bulk catch-up (run in a coroutine)
  *   \OpenSwoole\Coroutine::create(fn() => $daemon->initialImport());
  *
- *   // Ongoing inotify poll — call every second via $app->setInterval()
- *   $app->setInterval(fn() => $daemon->pollOnce(fn() => $app->broadcast('rrd:live')), 1000);
+ *   // Ongoing inotify poll: call every second via $app->setInterval()
+ *   $app->setInterval(fn() => $daemon->pollOnce(fn() => ImportDaemon::broadcast($app, 'rrd:live')), 1000);
  */
 class ImportDaemon {
+    /** App-global outcome of the last import pass: complete, cancelled or failed ('' while none). */
+    public const string OUTCOME_STATE = 'import_outcome';
+
+    /** Import progress and rrd:live re-render every tab, so each scope goes out at most this often. */
+    public const int BROADCAST_EVERY_MS = 250;
+
+    /** App-global Import log: its newest LOG_KEEP entries, and how many of each kind came in. */
+    public const string LOG_STATE = 'import_log';
+
+    public const string LOG_COUNTS_STATE = 'import_log_counts';
+
+    public const int LOG_KEEP = 100;
+
+    /** @var array<string, int> scope → hrtime (ns) at which its last broadcast finished rendering */
+    private static array $broadcastDone = [];
+
+    /** @var array<string, int> scope → timer of the broadcast a throttled call deferred */
+    private static array $broadcastTimers = [];
+
+    /** @var array<string, true> scopes whose fan-out is rendering */
+    private static array $broadcastRendering = [];
+
+    /** @var array<string, true> scopes a throttled call asked for while their fan-out rendered */
+    private static array $broadcastAfter = [];
+
     private readonly Debug $debug;
 
     /** @var false|resource inotify file descriptor */
@@ -42,6 +71,11 @@ class ImportDaemon {
 
     /** Unix timestamp of the last inotify-triggered import, 0 if none yet. */
     private int $lastAutoImportTime = 0;
+
+    /** Timer ticks overlap while an import yields, so a tick that finds one running returns. */
+    private bool $polling = false;
+
+    private bool $stopped = false;
 
     private readonly string $profile;
 
@@ -82,7 +116,115 @@ class ImportDaemon {
         return $this->profile;
     }
 
+    /**
+     * From the worker's shutdown: closes the inotify descriptor and turns pollOnce() into a
+     * no-op. A running import ends through its cancel check, which also reads isShuttingDown().
+     */
+    public function stop(): void {
+        $this->stopped = true;
+        if (\is_resource($this->inotify)) {
+            fclose($this->inotify);
+        }
+        $this->inotify = false;
+        $this->watches = [];
+    }
+
+    public function isStopped(): bool {
+        return $this->stopped;
+    }
+
     // ─── Public API ──────────────────────────────────────────────────────────
+
+    /**
+     * Adds Debug entries to the Import log. A pass can warn about every file, so only the newest
+     * LOG_KEEP stay and the rest are counted.
+     *
+     * @param array<int, array{ts: int, level: int, msg: string}> $entries
+     */
+    public static function appendLog(Via $app, array $entries): void {
+        if ($entries === []) {
+            return;
+        }
+        $counts = self::logCounts($app);
+        $app->setGlobalState(self::LOG_STATE, \array_slice([...self::log($app), ...array_values($entries)], -self::LOG_KEEP));
+        $app->setGlobalState(self::LOG_COUNTS_STATE, [
+            'total' => $counts['total'] + \count($entries),
+            'errors' => $counts['errors'] + \count(array_filter($entries, static fn (array $e): bool => $e['level'] <= LOG_ERR)),
+        ]);
+    }
+
+    /** Empties the Import log for a new pass. */
+    public static function clearLog(Via $app): void {
+        $app->setGlobalState(self::LOG_STATE, []);
+        $app->setGlobalState(self::LOG_COUNTS_STATE, ['total' => 0, 'errors' => 0]);
+    }
+
+    /**
+     * The entries the Import log keeps, oldest first.
+     *
+     * @return list<array<mixed>>
+     */
+    public static function log(Via $app): array {
+        $log = $app->globalState(self::LOG_STATE, []);
+
+        return \is_array($log) ? array_values(array_filter($log, \is_array(...))) : [];
+    }
+
+    /**
+     * Every entry of the pass, kept or not, and its errors.
+     *
+     * @return array{total: int, errors: int}
+     */
+    public static function logCounts(Via $app): array {
+        $counts = $app->globalState(self::LOG_COUNTS_STATE, null);
+        if (\is_array($counts) && \is_int($counts['total'] ?? null) && \is_int($counts['errors'] ?? null)) {
+            return ['total' => $counts['total'], 'errors' => $counts['errors']];
+        }
+        $log = self::log($app);
+
+        return ['total' => \count($log), 'errors' => \count(array_filter($log, static fn (array $e): bool => (int) ($e['level'] ?? LOG_WARNING) <= LOG_ERR))];
+    }
+
+    /**
+     * At most one broadcast of $scope per BROADCAST_EVERY_MS after the last one rendered; a call
+     * inside that window defers one that renders the state at its end. $now sends at once.
+     */
+    public static function broadcast(Via $app, string $scope, bool $now = false): void {
+        // Without an event loop (CLI, tests) nothing would send a deferred broadcast.
+        if ($now || Coroutine::getCid() <= 0) {
+            self::dropDeferred($scope);
+            self::send($app, $scope);
+
+            return;
+        }
+        if (isset(self::$broadcastRendering[$scope])) {
+            self::$broadcastAfter[$scope] = true;
+
+            return;
+        }
+        $wait = (self::$broadcastDone[$scope] ?? 0) + self::BROADCAST_EVERY_MS * 1_000_000 - (int) hrtime(true);
+        if ($wait <= 0) {
+            self::dropDeferred($scope);
+            self::send($app, $scope);
+
+            return;
+        }
+        self::defer($app, $scope, $wait);
+    }
+
+    /** From the worker's shutdown, and for tests: drops every deferred broadcast and the history. */
+    public static function resetBroadcasts(): void {
+        foreach (array_keys(self::$broadcastTimers) as $scope) {
+            self::dropDeferred($scope);
+        }
+        self::$broadcastDone = [];
+        self::$broadcastAfter = [];
+    }
+
+    /** Whether a throttled call left a broadcast of $scope waiting for its window. */
+    public static function broadcastDeferred(string $scope): bool {
+        return isset(self::$broadcastTimers[$scope]) || isset(self::$broadcastAfter[$scope]);
+    }
 
     /**
      * Run the initial bulk import (catch-up for missed nfcapd files).
@@ -131,6 +273,9 @@ class ImportDaemon {
      * After this returns, pollOnce() will begin responding to inotify events.
      */
     public function setupWatchesOnly(): void {
+        if ($this->stopped) {
+            return;
+        }
         $this->importer = $this->newOngoingImporter();
 
         $this->initWatches();
@@ -140,11 +285,11 @@ class ImportDaemon {
     /**
      * Process one inotify poll tick. Call this from $app->setInterval(..., 1000).
      *
-     * @param callable $onImportDone invoked after each successfully imported file
+     * @param callable(string $source, int $fileTs, bool $isLastSource): void $onImportDone invoked after each imported file
      */
     public function pollOnce(callable $onImportDone): void {
-        if ($this->inotify === false) {
-            // Watches not yet initialised (initial import still running)
+        if ($this->inotify === false || $this->stopped) {
+            // No watches yet (the initial import is still running), or stopped.
             return;
         }
 
@@ -156,12 +301,91 @@ class ImportDaemon {
             return;
         }
 
+        if ($this->polling) {
+            return;
+        }
+        $this->polling = true;
+
+        try {
+            $this->poll($onImportDone);
+        } finally {
+            $this->polling = false;
+        }
+    }
+
+    // ─── Internals ───────────────────────────────────────────────────────────
+
+    private static function dropDeferred(string $scope): void {
+        unset(self::$broadcastAfter[$scope]);
+        if (isset(self::$broadcastTimers[$scope])) {
+            Timer::clear(self::$broadcastTimers[$scope]); // @phpstan-ignore arguments.count (OpenSwoole 26.2's arginfo leaves out the timer id)
+            unset(self::$broadcastTimers[$scope]);
+        }
+    }
+
+    private static function defer(Via $app, string $scope, int $waitNs): void {
+        if (isset(self::$broadcastTimers[$scope]) || $app->isShuttingDown()) {
+            return;
+        }
+        $timer = Timer::after(intdiv($waitNs + 999_999, 1_000_000), static function () use ($app, $scope): void {
+            unset(self::$broadcastTimers[$scope]);
+            if ($app->isShuttingDown()) {
+                return;
+            }
+
+            // Nothing above this timer would catch it, and an uncaught throw ends the worker.
+            try {
+                // OpenSwoole's timers can fire a millisecond or two early, so the window is checked again.
+                self::broadcast($app, $scope);
+            } catch (\Throwable $e) {
+                Debug::getInstance()->log("Broadcast of {$scope} failed: " . $e->getMessage(), LOG_WARNING);
+            }
+        });
+        if (\is_int($timer)) {
+            self::$broadcastTimers[$scope] = $timer;
+        } else {
+            self::send($app, $scope);
+        }
+    }
+
+    private static function send(Via $app, string $scope): void {
+        if ($app->getClients() === []) {
+            return;
+        }
+        // php-via renders the scope once more when the running fan-out ends.
+        if (isset(self::$broadcastRendering[$scope])) {
+            $app->broadcast($scope);
+
+            return;
+        }
+        self::$broadcastRendering[$scope] = true;
+
+        try {
+            $app->broadcast($scope);
+        } finally {
+            unset(self::$broadcastRendering[$scope]);
+            self::$broadcastDone[$scope] = (int) hrtime(true);
+            if (isset(self::$broadcastAfter[$scope])) {
+                unset(self::$broadcastAfter[$scope]);
+                self::defer($app, $scope, self::BROADCAST_EVERY_MS * 1_000_000);
+            }
+        }
+    }
+
+    private function poll(callable $onImportDone): void {
+        if ($this->inotify === false) {
+            return;
+        }
+
         $events = @inotify_read($this->inotify);
 
         if ($events) {
             $this->debug->log('ImportDaemon: received ' . \count($events) . ' inotify event(s)', LOG_DEBUG);
 
             foreach ($events as $event) {
+                if ($this->stopped) {
+                    return;
+                }
                 $this->handleEvent($event, $onImportDone);
             }
         }
@@ -182,8 +406,6 @@ class ImportDaemon {
         }
     }
 
-    // ─── Internals ───────────────────────────────────────────────────────────
-
     /**
      * Scan a directory for nfcapd files that already exist on disk and import
      * any that have not been processed yet. Called after a new inotify watch is
@@ -198,6 +420,9 @@ class ImportDaemon {
         $isLastSource = $source === end($sources);
 
         foreach (scandir($path) ?: [] as $filename) {
+            if ($this->stopped) {
+                return;
+            }
             if (!preg_match('/^nfcapd\.\d{12}$/', $filename)) {
                 continue;
             }
@@ -216,14 +441,32 @@ class ImportDaemon {
             );
 
             try {
-                $this->importer ??= $this->newOngoingImporter();
-                $this->importer->importFile($relativePath, $source, $isLastSource);
+                $this->importTimed($relativePath, $source, $isLastSource);
                 $this->debug->log("ImportDaemon: catch-up imported {$filename} (source: {$source})", LOG_INFO);
                 $this->lastAutoImportTime = time();
-                $onImportDone();
+                $onImportDone($source, self::fileTs($filename), $isLastSource);
             } catch (\Throwable $e) {
                 $this->debug->log("ImportDaemon: catch-up error {$filename}: " . $e->getMessage(), LOG_ERR);
             }
+        }
+    }
+
+    /** Interval start of an nfcapd.YYYYMMDDHHII file, read in the nfcapd timezone. */
+    private static function fileTs(string $filename): int {
+        $dt = \DateTimeImmutable::createFromFormat('!YmdHi', substr($filename, -12), Config::nfcapdTimezone());
+
+        return $dt === false ? 0 : $dt->getTimestamp();
+    }
+
+    /**
+     * Imports one file with the ongoing importer (created lazily when initialImport() has not
+     * run) and records the import rate when the file was written.
+     */
+    private function importTimed(string $relativePath, string $source, bool $isLastSource): void {
+        $this->importer ??= $this->newOngoingImporter();
+        $started = hrtime(true);
+        if ($this->importer->importFile($relativePath, $source, $isLastSource)) {
+            ImportStats::record($this->profile, $source, $relativePath, intdiv(hrtime(true) - $started, 1_000_000));
         }
     }
 
@@ -232,8 +475,8 @@ class ImportDaemon {
      *
      * Port processing must be enabled here exactly as it is for the bulk import in
      * initialImport(): without it importFile() writes source.rrd and the all-sources
-     * port.rrd but never source_port.rrd, so the per-source port graphs — which is
-     * what the ports view reads — stop at the last bulk import and stay empty (#173).
+     * port.rrd but never source_port.rrd, so the per-source port graphs (which is
+     * what the ports view reads) stop at the last bulk import and stay empty (#173).
      */
     private function newOngoingImporter(): Import {
         $importer = new Import();
@@ -247,6 +490,11 @@ class ImportDaemon {
     }
 
     private function initWatches(): void {
+        // An initial import the stop cancelled returns here; it must not watch again.
+        if ($this->stopped) {
+            return;
+        }
+
         $inotify = @inotify_init();
         if (!\is_resource($inotify)) {
             $error = error_get_last();
@@ -365,13 +613,10 @@ class ImportDaemon {
         $isLastSource = $eventSource === end($sources);
 
         try {
-            // Lazy-init importer if initialImport() hasn't run yet (edge case)
-            $this->importer ??= $this->newOngoingImporter();
-
-            $this->importer->importFile($relativePath, $eventSource, $isLastSource);
+            $this->importTimed($relativePath, $eventSource, $isLastSource);
             $this->debug->log("ImportDaemon: processed {$filename}", LOG_INFO);
             $this->lastAutoImportTime = time();
-            $onImportDone();
+            $onImportDone($eventSource, self::fileTs($filename), $isLastSource);
         } catch (\Throwable $e) {
             $this->debug->log("ImportDaemon: error processing {$filename}: " . $e->getMessage(), LOG_ERR);
             $this->debug->log('ImportDaemon: ' . $e->getTraceAsString(), LOG_DEBUG);

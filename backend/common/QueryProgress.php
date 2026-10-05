@@ -9,7 +9,7 @@ namespace mbolli\nfsen_ng\common;
  *
  * A filtered-graph build runs one nfdump per time bin and can easily produce several
  * hundred progress ticks. Each tick reaches the browser as a Datastar signal patch, so
- * emitting all of them would be wasteful — this collapses them to at most one every
+ * emitting all of them would be wasteful; this collapses them to at most one every
  * $minInterval seconds, plus one whenever the per-mille figure has moved far enough to
  * be worth showing. The first and last tick always get through, so a bar never starts
  * late or stops short of its end.
@@ -65,7 +65,7 @@ final class QueryProgress {
     }
 
     /**
-     * Force a final 1000‰ tick. Idempotent — later update() calls are ignored.
+     * Force a final 1000‰ tick. Idempotent: later update() calls are ignored.
      *
      * $total is echoed back to the emitter so a status line built from the counts can
      * render "N / N" rather than falling back to zeroes on the closing tick.
@@ -84,7 +84,7 @@ final class QueryProgress {
      * Whether finish() has run.
      *
      * Lets a sampler coroutine tell that the work it was reporting on is over, without a
-     * by-reference bool shared across coroutines — which is both harder to reason about
+     * by-reference bool shared across coroutines, which is both harder to reason about
      * and unprovable to static analysis.
      */
     public function isFinished(): bool {

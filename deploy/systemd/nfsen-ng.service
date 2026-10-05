@@ -9,7 +9,8 @@ Restart=always
 StartLimitIntervalSec=0
 RestartSec=2
 User=www-data
-ExecStart=php /var/www/nfsen-ng/backend/app.php
+# The images give the worker the same limit; a distribution CLI php.ini often sets none (-1).
+ExecStart=php -d memory_limit=512M /var/www/nfsen-ng/backend/app.php
 
 [Install]
 WantedBy=multi-user.target

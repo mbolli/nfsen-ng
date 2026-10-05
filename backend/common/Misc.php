@@ -95,7 +95,7 @@ class Misc {
 
     /**
      * Whether a process-inspection tool (pgrep or ps) is available.
-     * countProcessesByName() silently returns 0 without either — surfaced as a
+     * countProcessesByName() silently returns 0 without either, surfaced as a
      * health check so a missing procps package doesn't masquerade as
      * "no other nfdump processes running".
      */
@@ -108,5 +108,48 @@ class Misc {
         exec('command -v ps 2>/dev/null', $psOutput);
 
         return !empty($psOutput);
+    }
+
+    /**
+     * A byte volume in the display unit (D5): bytes in base 1024 ("24.8 GiB"), bits in base
+     * 1000 ("2.49 Tb"), so both read the same as the graph's axis.
+     */
+    public static function formatVolume(float $bytes, string $unit = 'bytes'): string {
+        if ($unit === 'bits') {
+            return self::scaled($bytes * 8, 1000, ['b', 'kb', 'Mb', 'Gb', 'Tb', 'Pb', 'Eb']);
+        }
+
+        return self::scaled($bytes, 1024, ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB']);
+    }
+
+    /** A packet or flow count in base 1000: "482", "987 k", "1.2 M". */
+    public static function formatCount(float $count): string {
+        return self::scaled($count, 1000, ['', 'k', 'M', 'G', 'T', 'P', 'E']);
+    }
+
+    /**
+     * Three significant digits and the prefix that keeps the number below the base.
+     *
+     * @param non-empty-list<string> $units
+     */
+    private static function scaled(float $value, int $base, array $units): string {
+        if (!is_finite($value) || $value <= 0) {
+            return trim('0 ' . $units[0]);
+        }
+
+        $i = 0;
+        while ($value >= $base && $i < \count($units) - 1) {
+            $value /= $base;
+            ++$i;
+        }
+        // Rounding can carry into the next prefix (1023.9 KiB reads "1024 KiB" otherwise).
+        $decimals = $i === 0 ? 0 : ($value < 9.995 ? 2 : ($value < 99.95 ? 1 : 0));
+        if (round($value, $decimals) >= $base && $i < \count($units) - 1) {
+            $value /= $base;
+            ++$i;
+            $decimals = 2;
+        }
+
+        return trim(number_format($value, $decimals, '.', '') . ' ' . $units[$i]);
     }
 }

@@ -1,0 +1,245 @@
+{#
+    Conversations (4.4): the query card, then one result shown three ways (Sankey, Matrix, IP
+    pairs). Controls take their value from data-bind only, so a morph never resets an edit.
+    Notices are plain text and escaped here (D21).
+#}
+{% import 'components/result-host.html.twig' as rh %}
+{% import 'shell/icons.html.twig' as icons %}
+{% set cv = pages.conversations %}
+{% set info = cv.info %}
+{% set hasPairs = cv.has and info.pairs > 0 %}
+{% set group = '$' ~ conv_group.id() %}
+{% set direction = '$' ~ conv_direction.id() %}
+{% set check = "@post('" ~ conversationsCheck.url() ~ "')" %}
+{% set cardKeys = [group, direction, '$' ~ sankey_metric.id(), '$' ~ sankey_topN.id(), "String($" ~ sankey_filter.id() ~ " ?? '')", '$' ~ sankey_lower_limit.id(), '$' ~ sankey_upper_limit.id()] %}
+{% set views = {sankey: 'Sankey', matrix: 'Matrix', pairs: 'IP pairs'} %}
+{% set tz = 'tzOptions($' ~ displayTz.id() ~ ', $' ~ nfcapdTz.id() ~ ')' %}
+{% macro when(epoch, tz) %}
+    <time datetime="{{ epoch|date('c') }}" data-text="new Date({{ epoch }} * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', ...{{ tz }} })">{{ epoch|date('Y-m-d H:i') }}</time>
+{%- endmacro %}
+{% import _self as page %}
+
+<div class="stack conversations">
+    <section class="card query-card" aria-labelledby="conversationsQueryTitle"
+             data-collapsed data-attr:data-collapsed="!$_optionsOpen_conversations" data-preserve-attr="data-collapsed">
+        <header>
+            <h2 id="conversationsQueryTitle">Query</h2>
+            <button type="button" class="options-toggle" data-size="sm" aria-controls="conversationsQueryFields"
+                    aria-expanded="false" data-attr:aria-expanded="$_optionsOpen_conversations ? 'true' : 'false'" data-preserve-attr="aria-expanded"
+                    data-on:click="$_optionsOpen_conversations = !$_optionsOpen_conversations"
+                    data-text="$_optionsOpen_conversations ? 'Hide filters' : 'Show filters'">Show filters</button>
+        </header>
+        <div class="card-body stack">
+            {# Any change to the card's signals, typed or applied from the filter drawer, asks whether
+               the result still matches (_conv_stale); nothing runs. The first evaluation only records them. #}
+            <div class="query-fields conv-fields" id="conversationsQueryFields"
+                 data-effect="const moved = window.nfsenChanged(el, {{ cardKeys|join(', ') }}); const first = el.cvSeen !== true; el.cvSeen = true; if (moved && !first) { clearTimeout(el.cvTimer); el.cvTimer = setTimeout(() => {{ check }}, 400) }">
+                <div class="field conv-group">
+                    <label for="convGroupBy">Group by</label>
+                    <select id="convGroupBy" {{ bind(conv_group) }}>
+                        {% for value, label in cv.groups %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+
+                {# Both is a merge of the directed pairs (D15), which a port in the key does not allow. #}
+                <fieldset class="field conv-direction"
+                          data-effect="{{ group }} === 'port' && {{ direction }} === 'both' && ({{ direction }} = 'forward')">
+                    <legend class="field-label">Direction</legend>
+                    <div class="segmented">
+                        <input type="radio" name="convDirection" value="both" id="convDirBoth" {{ bind(conv_direction) }}
+                               aria-describedby="convDirHelp"
+                               data-attr:disabled="{{ group }} === 'port'">
+                        <label for="convDirBoth">Both</label>
+                        <input type="radio" name="convDirection" value="forward" id="convDirForward" {{ bind(conv_direction) }}
+                               aria-describedby="convDirHelp">
+                        <label for="convDirForward">Source to destination</label>
+                    </div>
+                    <p class="help" id="convDirHelp"
+                       data-text="{{ group }} === 'port' ? 'Both is not available when grouping by destination port.' : ({{ direction }} === 'both' ? 'Each pair adds up both directions; the busier sender is the source.' : 'Each direction is its own pair.')">Each pair adds up both directions; the busier sender is the source.</p>
+                </fieldset>
+
+                <fieldset class="field conv-metric">
+                    <legend class="field-label">Metric</legend>
+                    <div class="segmented">
+                        <input type="radio" name="sankeyMetric" value="bytes" id="sankeyMetricBytes" {{ bind(sankey_metric) }}>
+                        <label for="sankeyMetricBytes">Bytes</label>
+                        <input type="radio" name="sankeyMetric" value="packets" id="sankeyMetricPackets" {{ bind(sankey_metric) }}>
+                        <label for="sankeyMetricPackets">Packets</label>
+                    </div>
+                </fieldset>
+
+                <div class="field conv-topn">
+                    <label for="sankeyTopN">Top pairs</label>
+                    <select id="sankeyTopN" {{ bind(sankey_topN) }}>
+                        {% for n in cv.topNChoices %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+                    </select>
+                </div>
+
+                <div class="field conv-filter">
+                    <span class="field-label" aria-hidden="true">nfdump filter</span>
+                    {% include 'components/filter-field.html.twig' with {target: 'conversations', signal: sankey_filter, textareaId: 'filterNfdumpTextareaSankey', label: 'nfdump filter', rows: 2} %}
+                </div>
+
+                <fieldset class="field conv-bytes">
+                    <legend class="field-label">Bytes per flow</legend>
+                    <div class="cluster">
+                        <label class="conv-limit" for="sankey_lower_limitInput">Min
+                            <input type="text" id="sankey_lower_limitInput" {{ bind(sankey_lower_limit) }} placeholder="e.g. 1M"
+                                   inputmode="text" autocomplete="off" aria-describedby="convBytesHelp">
+                        </label>
+                        <label class="conv-limit" for="sankey_upper_limitInput">Max
+                            <input type="text" id="sankey_upper_limitInput" {{ bind(sankey_upper_limit) }} placeholder="e.g. 100M"
+                                   inputmode="text" autocomplete="off" aria-describedby="convBytesHelp">
+                        </label>
+                    </div>
+                    <p class="help" id="convBytesHelp">Flows outside this range are left out. Accepts k, M and G.</p>
+                </fieldset>
+
+                <p class="notice conv-subnet-note" hidden
+                   data-attr:hidden="!['net24', 'net16'].includes({{ group }})" data-preserve-attr="hidden">Subnet grouping covers IPv4 only.</p>
+            </div>
+
+            <div class="query-run cluster">
+                {% include 'components/query-estimate.html.twig' with {target: 'conversations'} %}
+                {% include 'partials/progress-button.html.twig' with {
+                    id: 'conversationsRun',
+                    label: 'Run',
+                    action: conversationsRun.url(),
+                    killAction: killNfdump.url(),
+                    running: query_running.id(),
+                    permille: query_permille.id(),
+                    status: query_status.id(),
+                    eta: query_eta.id(),
+                    exact: query_exact.id(),
+                    kindSignal: query_kind.id(),
+                    kind: 'conversations',
+                    run: 'conversations',
+                    doneText: "($" ~ _conv_pairs.id() ~ " === 1 ? '1 pair' : Number($" ~ _conv_pairs.id() ~ ").toLocaleString('en') + ' pairs') + ' returned'",
+                } only %}
+            </div>
+        </div>
+    </section>
+
+    {# A Sankey node click bubbles up here: addresses open the IP info. #}
+    <section class="card conv-results" id="conversationsResults" aria-labelledby="conversationsResultsTitle"
+             data-on:conversation-node="evt.detail.address && @post('{{ ipInfo.url() }}?ip=' + encodeURIComponent(evt.detail.address))">
+        {# Before a run the bar would be an empty band, so only the heading is rendered. #}
+        {% if cv.has %}<header>{% endif %}
+            <h2 id="conversationsResultsTitle" class="visually-hidden">Results</h2>
+            {% if hasPairs %}
+                <div class="tabs" role="tablist" aria-label="Conversation views" data-size="sm"
+                     data-init="['sankey', 'matrix', 'pairs'].includes($_conv_view) || ($_conv_view = 'sankey')">
+                    {% for id, label in views %}
+                        <button type="button" role="tab" id="convView-{{ id }}" aria-controls="convPanel-{{ id }}"
+                                aria-selected="{{ loop.first ? 'true' : 'false' }}" tabindex="{{ loop.first ? '0' : '-1' }}"
+                                data-attr:aria-selected="$_conv_view === '{{ id }}' ? 'true' : 'false'"
+                                data-preserve-attr="aria-selected tabindex"
+                                data-on:click="$_conv_view = '{{ id }}'">{{ label }}</button>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            {% if cv.has %}
+                <p class="card-meta conv-summary" id="convSummary" aria-live="polite">
+                    {{ cv.summary }}
+                    {% if info.approximate %}
+                        <span class="badge" data-kind="approx"
+                              title="Both directions were merged from the top {{ cv.fetched|number_format }} directed pairs, so a pair near the end of the list can miss part of its reverse traffic.">approx.</span>
+                    {% endif %}
+                </p>
+            {% endif %}
+            {% if hasPairs %}
+                {# The command stays out of the popover's data-* values: Rocket rewrites $$ and @name( in them (PC4). #}
+                <code id="convCommand" hidden>{{ info.command }}</code>
+                <sb-popover class="conv-export" id="convExport" label="Export" placement="bottom-end">
+                    <button type="button" slot="trigger" class="menu-toggle" data-size="sm" id="convExportToggle"
+                            data-preserve-attr="aria-expanded aria-haspopup">Export</button>
+                    <ul class="popover-list" id="convExportMenu">
+                        <li><button type="button" class="menu-item" data-export="csv"
+                                    data-on:click="window.nfsenConversations.exportPairs('csv')">CSV of the IP pairs</button></li>
+                        <li><button type="button" class="menu-item" data-export="json"
+                                    data-on:click="window.nfsenConversations.exportPairs('json')">JSON of the IP pairs</button></li>
+                        <li><button type="button" class="menu-item" data-export="png"
+                                    aria-disabled="false" data-attr:aria-disabled="$_conv_view === 'pairs' ? 'true' : 'false'"
+                                    data-preserve-attr="aria-disabled"
+                                    data-on:click="el.getAttribute('aria-disabled') !== 'true' && window.nfsenConversations.exportPng($_conv_view)"
+                                    data-text="$_conv_view === 'matrix' ? 'PNG of the Matrix' : ($_conv_view === 'pairs' ? 'PNG of a chart (open Sankey or Matrix)' : 'PNG of the Sankey')">PNG of the Sankey</button></li>
+                        {# Closes first, so the focus is on the trigger when the copy's fallback moves it and puts it back. #}
+                        <li><button type="button" class="menu-item" data-export="command"
+                                    data-on:click="el.closest('sb-popover').hide(); window.nfsenConversations.copy(document.getElementById('convCommand').textContent, 'nfdump command')">Copy nfdump command</button></li>
+                    </ul>
+                </sb-popover>
+            {% endif %}
+        {% if cv.has %}</header>{% endif %}
+
+        <div class="card-body stack">
+            <div id="conversationsMessage" class="stack">
+                {% for n in cv.notifications %}
+                    <div class="notice dismissible" data-level="{{ n.type }}" role="alert">
+                        {{ n.message }}{% if n.code %} <code>{{ n.code }}</code>{% endif %}
+                        <button type="button" data-variant="close" aria-label="Dismiss"
+                                data-on:click="@post('{{ dismissNotification.url() }}?page=conversations&id={{ n.id }}')"></button>
+                    </div>
+                {% endfor %}
+            </div>
+
+            {% if cv.has %}
+                <p class="notice" data-kind="stale" id="convStale" role="status"
+                   {% if not _conv_stale.bool() %}hidden{% endif %}
+                   data-attr:hidden="!${{ _conv_stale.id() }}" data-preserve-attr="hidden">These results are for an earlier query. Run again to update.</p>
+                {% if cv.aged %}
+                    <p class="notice" id="convAged" data-attr:hidden="${{ _conv_stale.id() }}" data-preserve-attr="hidden">
+                        Covers {{ page.when(info.start, tz) }} to {{ page.when(info.end, tz) }}. The live window has moved on; Run again to include newer data.
+                    </p>
+                {% endif %}
+            {% endif %}
+
+            {% if hasPairs %}
+                {% if cv.result.send %}
+                    {% set chartOf = (info.pairs == 1 ? 'the top pair' : 'the top ' ~ info.pairs|number_format ~ ' pairs') ~ ' by ' ~ info.metric %}
+                    {% set sameData = 'The IP pairs view lists the same pairs as a table.' %}
+                    {% set sankey -%}
+                        <nfsen-sankey data-conversation="{{ cv.payload }}" data-seconds="{{ cv.seconds }}"
+                                      role="img" aria-label="Sankey of {{ chartOf }}{{ info.groupBy == 'port' ? ', through their destination ports' : '' }}{{ cv.others ? ', and the rest as Others' : '' }}. {{ sameData }}"
+                                      data-unit="{{ graph_trafficUnit.string() }}" data-attr:data-unit="${{ graph_trafficUnit.id() }}">
+                            <div class="sankey-container" data-ignore-morph data-ignore><div class="sankey-canvas"></div></div>
+                        </nfsen-sankey>
+                    {%- endset %}
+                    {% set matrix -%}
+                        <nfsen-matrix data-conversation="{{ cv.payload }}" data-seconds="{{ cv.seconds }}"
+                                      role="img" aria-label="Matrix of {{ chartOf }}, sources against destinations. {{ sameData }}"
+                                      data-unit="{{ graph_trafficUnit.string() }}" data-attr:data-unit="${{ graph_trafficUnit.id() }}">
+                            <div class="matrix-container" data-ignore-morph data-ignore><div class="matrix-canvas"></div></div>
+                        </nfsen-matrix>
+                    {%- endset %}
+                    {% set pairs -%}
+                        {{ cv.tableHtml|raw }}
+                        {% if cv.others %}<p class="conv-others" id="convOthers">{{ cv.others }}</p>{% endif %}
+                    {%- endset %}
+                {% else %}
+                    {% set sankey, matrix, pairs = '', '', '' %}
+                {% endif %}
+
+                {% for id, content in {sankey: sankey, matrix: matrix, pairs: pairs} %}
+                    <div role="tabpanel" id="convPanel-{{ id }}" aria-labelledby="convView-{{ id }}" tabindex="0" class="conv-panel"
+                         {% if not loop.first %}hidden{% endif %}
+                         data-attr:hidden="$_conv_view !== '{{ id }}'" data-preserve-attr="hidden"
+                         {% if id != 'pairs' %}data-effect="$_conv_view === '{{ id }}' && requestAnimationFrame(() => el.querySelector('nfsen-{{ id }}')?.resize?.())"{% endif %}>
+                        {{ rh.host('conv-' ~ id, cv.result.id, cv.result.send, content) }}
+                    </div>
+                {% endfor %}
+            {% elseif cv.has %}
+                <div class="empty-state">
+                    {{ icons.icon('arrows-exchange') }}
+                    <h3>No conversations</h3>
+                    <p>Nothing matched this query in the selected range. Widen the range or loosen the filter, then run again.</p>
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    {{ icons.icon('arrows-exchange') }}
+                    <h3>No results yet</h3>
+                    <p>Choose how to group conversations and press Run.</p>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+</div>

@@ -1,0 +1,14 @@
+#!/bin/sh
+# An nfdump built without NEL support: rejects the NEL element statistics the way 1.7.8
+# does (exit 1, "Unknown statistic" on stderr) and accepts everything else.
+for arg; do
+    case "$arg" in
+        nevent/*|nsrcip/*|ndstip/*|nsrcport/*|ndstport/*)
+            echo "Available element statistics:"
+            echo "Unknown statistic: ${arg%%/*}" >&2
+            echo "Failed to parse element stat option: $arg" >&2
+            exit 1
+            ;;
+    esac
+done
+exit 0

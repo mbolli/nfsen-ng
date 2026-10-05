@@ -18,9 +18,11 @@ deploy/*.dist
 
 # Local settings file (must not be baked into the image; configure via env vars or volume mount)
 backend/settings/settings.php
-backend/settings/alerts-log.json
+backend/settings/alerts-log.json*
 backend/settings/alerts-state.json
 backend/settings/preferences.json
+backend/settings/preferences.json.tmp.*
+backend/settings/nfsen-ng.sqlite*
 
 # PHP tooling config
 phpstan.neon
@@ -29,6 +31,10 @@ eslint.config.js
 pnpm-lock.yaml
 .php-cs-fixer.cache
 
+# scripts/starbase-vendor.mjs pull stages here; a pull killed midway leaves one behind
+frontend/js/.starbase-stage-*
+
 # Misc
 *.md
+**/*.pdf
 LICENSE

@@ -8,9 +8,10 @@ namespace mbolli\nfsen_ng\common;
  * Utility methods for IP address lookups.
  *
  * Provides Netbox integration for RFC1918 addresses, geolocation for public
- * ones, and a helper to detect private/reserved IP ranges. All HTTP calls use
- * file_get_contents() which is coroutine-hooked by OpenSwoole SWOOLE_HOOK_ALL
- * and therefore non-blocking.
+ * ones (from the local GeoIP database when NFSEN_GEOIP_DB is set, else a web
+ * service), and a helper to detect private/reserved IP ranges. All HTTP calls
+ * use file_get_contents() which is coroutine-hooked by OpenSwoole
+ * SWOOLE_HOOK_ALL and therefore non-blocking.
  */
 final class IpLookup {
     /**
@@ -18,6 +19,9 @@ final class IpLookup {
      * replaced with the (URL-encoded) address being looked up.
      */
     public const DEFAULT_GEO_URL = 'https://ipapi.co/{ip}/json/';
+
+    /** `source` of an answer from the local GeoIP database; web answers carry no `source`. */
+    public const SOURCE_MAXMIND = 'maxmind';
 
     /**
      * Returns true if the given IP is a private or reserved address
@@ -50,7 +54,7 @@ final class IpLookup {
      * `{ip}` is substituted with the URL-encoded address; a template without the
      * placeholder gets the address appended, so a bare base URL such as
      * `https://ipinfo.io/` also works. `{token}` is substituted with
-     * NFSEN_IPINFO_TOKEN, which keeps the credential out of the URL — every
+     * NFSEN_IPINFO_TOKEN, which keeps the credential out of the URL: every
      * provider spells its key parameter differently (`?key=`, `?token=`,
      * `?apiKey=`), so the template owns the spelling and the secret stays in its
      * own masked variable. Kept separate from {@see geo()} so the substitution
@@ -73,14 +77,20 @@ final class IpLookup {
     /**
      * Look up geolocation data for a public IP address.
      *
-     * The endpoint is configurable via NFSEN_IPINFO_URL because the default
-     * (ipapi.co) rate-limits anonymous callers — see issue #163. Error bodies
-     * are read rather than discarded (`ignore_errors`), so a rate-limit reply
-     * reaches the modal as a message instead of an empty table.
+     * With a local GeoIP database the answer comes from it and no request is
+     * made. Otherwise the endpoint is configurable via NFSEN_IPINFO_URL because
+     * the default (ipapi.co) rate-limits anonymous callers (issue #163). Error
+     * bodies are read rather than discarded (`ignore_errors`), so a rate-limit
+     * reply reaches the modal as a message instead of an empty table.
      *
-     * @return array<string, mixed> the provider's payload, normalized; empty if the request failed outright
+     * @return array<string, mixed> the provider's payload, normalized; `error` and `reason` when the lookup failed
      */
     public static function geo(string $ip): array {
+        $local = GeoIpDatabase::shared();
+        if ($local !== null) {
+            return self::localGeo($local, $ip);
+        }
+
         $ctx = stream_context_create([
             'http' => [
                 'timeout' => 5,
@@ -151,6 +161,37 @@ final class IpLookup {
     }
 
     /**
+     * The local database's answer under ipapi.co's key names, which normalizeGeo() completes
+     * like a web answer, so the modal and the MCP tool read both alike.
+     *
+     * @return array<string, mixed>
+     */
+    private static function localGeo(GeoIpDatabase $db, string $ip): array {
+        try {
+            $row = $db->lookup($ip);
+        } catch (\Throwable $e) {
+            return ['error' => true, 'reason' => 'The local GeoIP database could not be read: ' . $e->getMessage(), 'source' => self::SOURCE_MAXMIND];
+        }
+        if ($row === null) {
+            return ['error' => true, 'reason' => 'The local GeoIP database has no entry for this address.', 'source' => self::SOURCE_MAXMIND];
+        }
+
+        $data = array_filter([
+            'ip' => $ip,
+            'city' => $row['city'],
+            'region' => $row['region'],
+            'country_name' => $row['country'],
+            'country_code' => $row['countryCode'],
+            'latitude' => $row['latitude'],
+            'longitude' => $row['longitude'],
+            'asn' => $row['asn'],
+            'org' => $row['org'],
+        ], static fn (mixed $v): bool => $v !== '' && $v !== null);
+
+        return self::normalizeGeo($data, []) + ['source' => self::SOURCE_MAXMIND];
+    }
+
+    /**
      * Smooth over the differences between geolocation providers so the modal
      * template doesn't have to know which one answered.
      *
@@ -161,7 +202,7 @@ final class IpLookup {
      *   (ip-api.com, ipwho.is) or `countryName` (freeipapi.com).
      * - `country_code` is what the flag needs; providers return the
      *   two-letter code as `country` (ipinfo.io) or `countryCode` (ip-api.com)
-     *   instead — note `country` is the full name at the latter, hence the
+     *   instead. `country` is the full name at the latter, hence the
      *   two-letter shape check.
      * - The error branch expects `error` truthy plus a human `reason`. ipinfo.io
      *   nests `{"error": {"title": …, "message": …}}`; ipwho.is (`success: false`)
@@ -206,7 +247,7 @@ final class IpLookup {
                 [$nested['title'] ?? null, $nested['message'] ?? null],
                 static fn ($v): bool => \is_string($v) && $v !== '',
             );
-            $data['reason'] ??= $parts === [] ? 'IP lookup failed' : implode(' — ', $parts);
+            $data['reason'] ??= $parts === [] ? 'IP lookup failed' : implode(': ', $parts);
             $data['error'] = true;
         }
 

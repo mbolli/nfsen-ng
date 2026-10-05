@@ -14,6 +14,8 @@ class Debug {
     /** @var array<int,array{ts:int,level:int,msg:string}> Ring buffer for admin UI log drain. */
     private static array $logBuffer = [];
 
+    private static ?LogRing $recent = null;
+
     public function __construct() {
         $this->stopwatch = microtime(true);
         $this->cli = (\PHP_SAPI === 'cli');
@@ -36,6 +38,7 @@ class Debug {
         $cfgPriority = isset(Config::$settings) ? Config::$settings->logPriority : LOG_INFO;
         if ($cfgPriority >= $priority) {
             syslog($priority, 'nfsen-ng: ' . $message);
+            self::ring()->push($priority, $message);
 
             if ($this->cli === true && $this->debug === true) {
                 echo date('Y-m-d H:i:s') . ' ' . $message . PHP_EOL;
@@ -61,6 +64,24 @@ class Debug {
         self::$logBuffer = [];
 
         return $entries;
+    }
+
+    /**
+     * Lines that passed the configured log level, newest first. `ts` is in milliseconds.
+     *
+     * @return list<array{seq: int, ts: int, level: int, levelName: string, message: string}>
+     */
+    public static function recent(int $limit = 200, int $maxPriority = LOG_DEBUG): array {
+        return self::ring()->recent($limit, $maxPriority);
+    }
+
+    /**
+     * Lines logged after $seq, oldest first.
+     *
+     * @return list<array{seq: int, ts: int, level: int, levelName: string, message: string}>
+     */
+    public static function recentSince(int $seq): array {
+        return self::ring()->since($seq);
     }
 
     /**
@@ -96,5 +117,9 @@ class Debug {
 
     public function setDebug(bool $debug): void {
         $this->debug = $debug;
+    }
+
+    private static function ring(): LogRing {
+        return self::$recent ??= new LogRing();
     }
 }

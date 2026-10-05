@@ -1,0 +1,7 @@
+#!/bin/sh
+# `nfdump -Z` for a broken filter. nfdump 1.7.8 reports on stdout, numbered by the filter
+# line it stopped on (here the last one), and exits 254.
+for last; do :; done
+lines=$(printf '%s\n' "$last" | wc -l | tr -d ' ')
+echo "Line $lines: syntax error at 'x'"
+exit 254

@@ -1,0 +1,705 @@
+/* The page frame (spec 2.6, 4.0, 4.9). Breakpoints are literals: custom properties do not work
+   in media queries. */
+
+/* Page sections, headings and banners are shown and hidden through the attribute, and a
+   component's own display rule must not bring them back. */
+[hidden] {
+    display: none !important;
+}
+
+.icon {
+    flex-shrink: 0;
+}
+
+/* ── Frame ──────────────────────────────────────────────────────────────── */
+
+body.app {
+    display: grid;
+    grid-template-columns: var(--sidebar-size) minmax(0, 1fr);
+    align-items: start;
+}
+
+body.app[data-sidebar='collapsed'] {
+    grid-template-columns: var(--sidebar-collapsed-size) minmax(0, 1fr);
+}
+
+/* The sidebar's column keeps its surface below the sticky panel, all the way down a long page. */
+body.app::before {
+    content: '';
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    border-inline-end: 1px solid var(--border);
+    background: var(--surface-sidebar);
+}
+
+/* Only the sidebar and the main column take grid cells; the rest is fixed or in the top layer. */
+#modal-root,
+#client-root {
+    display: contents;
+}
+
+.app-main {
+    display: flex;
+    flex-direction: column;
+    grid-column: 2;
+    grid-row: 1;
+    min-block-size: 100dvb;
+    min-inline-size: 0;
+}
+
+/* The brand and the controls bar share a row on phones only; elsewhere the wrapper has no box. */
+.app-top {
+    display: contents;
+}
+
+.app-brand {
+    display: none;
+}
+
+.shell-notices:not(:has(> :not([hidden]))) {
+    display: none;
+}
+
+.shell-notices {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-2);
+    padding: var(--size-3) var(--size-4) 0;
+}
+
+/* A levelled notice leads with its glyph, set on the first line of the text. */
+.notice > .status-dot {
+    margin-block-start: 0.2lh;
+}
+
+#page-content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--size-4);
+    padding: var(--size-4);
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+
+.sidebar {
+    position: sticky;
+    z-index: var(--layer-sidebar);
+    inset-block-start: 0;
+    display: flex;
+    flex-direction: column;
+    grid-column: 1;
+    grid-row: 1;
+    block-size: 100dvb;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-inline-end: 1px solid var(--border);
+    background: var(--surface-sidebar);
+}
+
+.sidebar-brand {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--size-2);
+    padding: var(--size-4);
+    color: var(--text-1);
+    font-weight: var(--font-weight-semibold);
+    text-decoration: none;
+}
+
+.sidebar-brand > .icon {
+    align-self: center;
+}
+
+.sidebar-brand small {
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-normal);
+}
+
+.sidebar-nav {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 var(--size-2) var(--size-2);
+}
+
+.nav-group {
+    margin-block: var(--size-4) var(--size-1);
+    padding-inline: var(--size-2);
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.nav-item,
+.sidebar-action {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--size-3);
+    min-block-size: 2.25rem;
+    padding: var(--size-1) var(--size-2);
+    border: none;
+    border-radius: var(--radius-2);
+    background: none;
+    color: var(--text-1);
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-normal);
+    text-align: start;
+    text-decoration: none;
+}
+
+.nav-item:hover,
+.sidebar-action:hover:not(:disabled) {
+    background: var(--surface-3);
+}
+
+/* Current: a heavier weight and a solid bar, never a fill alone (2.1). */
+.nav-item[aria-current='page'] {
+    background: var(--surface-4);
+    font-weight: var(--font-weight-semibold);
+    box-shadow: inset 3px 0 0 var(--text-1);
+}
+
+.nav-item[aria-current='page']:dir(rtl) {
+    box-shadow: inset -3px 0 0 var(--text-1);
+}
+
+.sidebar-nav .nav-item[data-slot='end'] {
+    margin-block-start: auto;
+}
+
+.nav-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The label takes the room, so the count, glyphs and chevron line up at the end. */
+:is(.nav-item, .sidebar-action) > .nav-label {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+}
+
+.nav-badge {
+    min-inline-size: 1.25rem;
+    padding: 0 var(--size-1);
+    border-radius: var(--radius-round);
+    background: var(--surface-4);
+    color: var(--text-1);
+    font-size: var(--font-size-00);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--font-weight-semibold);
+    line-height: 1.25rem;
+    text-align: center;
+}
+
+.nav-badge[data-level='error'] {
+    background: var(--danger);
+    color: var(--on-danger);
+}
+
+.nav-import {
+    display: inline-flex;
+    color: var(--text-2);
+    animation: glyph-pulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nav-import {
+        animation: none;
+    }
+}
+
+.sidebar-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--size-2);
+    border-block-start: 1px solid var(--border);
+}
+
+.sidebar-action {
+    justify-content: flex-start;
+    inline-size: 100%;
+    cursor: pointer;
+}
+
+/* ── Theme menu (4.0.7) ─────────────────────────────────────────────────── */
+
+/* A grid host stretches the component's wrapper around the trigger, so the trigger fills the row. */
+sb-popover.theme-menu {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+/* The toggle shows the theme in effect; the head script sets data-theme before paint. */
+:root[data-theme='dark'] [data-theme-icon='light'],
+:root:not([data-theme='dark']) [data-theme-icon='dark'] {
+    display: none;
+}
+
+.theme-icon {
+    display: inline-flex;
+}
+
+/* Forced colours drop the fill and the bar; the More tab gets the ring its pages get. */
+@media (forced-colors: active) {
+    .tabbar-item[data-current='page'] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+}
+
+.menu-heading {
+    padding: var(--size-1) var(--size-2) 0;
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+/* ── Collapsed sidebar: icons only ──────────────────────────────────────── */
+
+/* Every item keeps its name, visually hidden, and a title. */
+body.app[data-sidebar='collapsed'] .sidebar :is(.nav-label, .nav-group) {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+body.app[data-sidebar='collapsed'] :is(.nav-item, .sidebar-action, .sidebar-brand) {
+    justify-content: center;
+}
+
+body.app[data-sidebar='collapsed'] .sidebar-brand {
+    padding-inline: 0;
+}
+
+body.app[data-sidebar='collapsed'] .sidebar-nav {
+    padding-block-start: var(--size-2);
+}
+
+body.app[data-sidebar='collapsed'] sb-popover.theme-menu > [slot='trigger']::after {
+    content: none;
+}
+
+/* The Alerts count stays a number and the Health glyph keeps its shape, over the icon's corner. */
+body.app[data-sidebar='collapsed'] .nav-item :is(.nav-badge, .nav-dot, .nav-import) {
+    position: absolute;
+    inset-block-start: 0.125rem;
+    inset-inline-end: 0.125rem;
+    margin: 0;
+}
+
+body.app[data-sidebar='collapsed'] .nav-item .nav-import {
+    inset-block: auto 0.125rem;
+}
+
+body.app[data-sidebar='collapsed'] .nav-badge {
+    min-inline-size: 1rem;
+    font-size: 0.625rem;
+    line-height: 1rem;
+}
+
+/* ── Page header and sections ───────────────────────────────────────────── */
+
+.page-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--size-3);
+}
+
+.page-heading h1 {
+    font-size: var(--font-size-3);
+}
+
+.page-heading h1:focus {
+    outline: none;
+}
+
+.page-heading h1:focus-visible {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+}
+
+.page-lede {
+    color: var(--text-2);
+}
+
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4);
+}
+
+.page .card > header h2 {
+    font-size: var(--font-size-1);
+}
+
+/* The rough shape of a page while its content is on its way: a query card, then results. */
+.page-skeleton > :first-child {
+    min-block-size: 7rem;
+}
+
+.page-skeleton > :last-child {
+    min-block-size: 16rem;
+}
+
+/* Query cards collapse their fields behind "Show filters" on phones; the run row stays (4.9). */
+.options-toggle {
+    display: none;
+    margin-inline-start: auto;
+}
+
+/* ── Footer (4.0.5) ─────────────────────────────────────────────────────── */
+
+.status-footer {
+    justify-content: center;
+    padding: var(--size-3) var(--size-4);
+    border-block-start: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+}
+
+.status-footer a {
+    color: var(--text-2);
+}
+
+.status-footer a:hover {
+    color: var(--text-1);
+}
+
+.status-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-1);
+    cursor: help;
+}
+
+/* ── IP info dialog (4.0.6) ─────────────────────────────────────────────── */
+
+/* The tab's modal root (D24): IP info and the alert Test result. A column lets the body scroll
+   under a fixed header and footer. */
+[id='modal-root'] > dialog[open] {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+[id='modal-root'] > dialog > :is(.dialog-content, form) {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    max-block-size: none;
+}
+
+[id='modal-root'] > dialog .dialog-body {
+    flex: 1 1 auto;
+    min-block-size: 0;
+}
+
+dialog.ip-info {
+    inline-size: min(32rem, 100vw - 2rem);
+}
+
+.ip-info-address {
+    font-family: var(--font-mono);
+    font-weight: var(--font-weight-medium);
+    overflow-wrap: anywhere;
+}
+
+.ip-info-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-2);
+}
+
+.ip-info-section h3 {
+    color: var(--text-2);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.ip-info-fields {
+    display: grid;
+    grid-template-columns: minmax(7rem, max-content) minmax(0, 1fr);
+    gap: var(--size-1) var(--size-4);
+    margin: 0;
+}
+
+.ip-info-fields dt {
+    color: var(--text-2);
+}
+
+.ip-info-fields dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.ip-info-fields dd[data-kind='none'],
+.ip-info-source {
+    color: var(--text-2);
+    font-size: var(--font-size-0);
+}
+
+.ip-info-fields dd[data-kind='none'] {
+    font-style: italic;
+}
+
+/* A regional-indicator pair, not a CDN image. The colour emoji fonts are named because the
+   body font draws the two letters in a monochrome box on some Linux setups. */
+.flag-emoji {
+    margin-inline-end: var(--size-1);
+    font-family: 'Twemoji Mozilla', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', sans-serif;
+    font-size: 1.25rem;
+    line-height: 1;
+    vertical-align: -0.15em;
+}
+
+dialog.ip-info .dialog-body {
+    --stack-gap: var(--size-4);
+}
+
+/* ── Toasts (4.0.6) ─────────────────────────────────────────────────────── */
+
+.toast-stack {
+    position: fixed;
+    z-index: var(--layer-toast);
+    inset-block-end: var(--size-4);
+    inset-inline-end: var(--size-4);
+    display: flex;
+    flex-direction: column-reverse;
+    gap: var(--size-2);
+    inline-size: min(28rem, 100vw - 2 * var(--size-4));
+    pointer-events: none;
+}
+
+.toast-stack > nfsen-toast {
+    display: block;
+    pointer-events: auto;
+}
+
+.toast-stack .notice {
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-2);
+}
+
+.toast-message {
+    overflow-wrap: anywhere;
+}
+
+/* Time left before an auto-dismiss; it pauses while the pointer or focus is on the toast. */
+.toast-progress {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    block-size: 3px;
+    background: currentcolor;
+    opacity: 0.25;
+    transform-origin: left;
+    animation: toast-shrink var(--toast-duration, 5s) linear forwards;
+}
+
+.toast-progress:dir(rtl) {
+    transform-origin: right;
+}
+
+nfsen-toast:is(:hover, :focus-within) .toast-progress {
+    animation-play-state: paused;
+}
+
+@keyframes toast-shrink {
+    to {
+        transform: scaleX(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast-progress {
+        display: none;
+    }
+}
+
+/* ── Mobile tab bar ─────────────────────────────────────────────────────── */
+
+.tabbar {
+    display: none;
+}
+
+/* ── Phones (< 48em, spec 4.9) ──────────────────────────────────────────── */
+
+@media (max-width: 47.98em) {
+    body.app,
+    body.app[data-sidebar='collapsed'] {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .sidebar,
+    body.app::before {
+        display: none;
+    }
+
+    .app-main {
+        grid-column: 1;
+        padding-block-end: calc(var(--tabbar-size) + env(safe-area-inset-bottom));
+    }
+
+    /* Logo, then the controls bar's own row: range menu and its overflow button (#controlsMore). */
+    .app-top {
+        position: sticky;
+        z-index: var(--layer-sticky);
+        inset-block-start: 0;
+        display: flex;
+        align-items: stretch;
+        border-block-end: 1px solid var(--border);
+        background: var(--surface-2);
+    }
+
+    .app-brand {
+        display: flex;
+        align-items: center;
+        padding-inline: var(--size-3) var(--size-2);
+        color: var(--text-1);
+    }
+
+    .app-top > .controls-bar {
+        position: static;
+        flex: 1;
+        min-inline-size: 0;
+        padding-inline-start: 0;
+        border-block-end: none;
+    }
+
+    .shell-notices {
+        padding: var(--size-2) var(--size-3) 0;
+    }
+
+    #page-content {
+        padding: var(--size-3);
+        gap: var(--size-3);
+    }
+
+    /* The lede goes: on a phone the title alone says where you are. */
+    .page-heading .page-lede {
+        display: none;
+    }
+
+    .page-heading h1 {
+        font-size: var(--font-size-2);
+    }
+
+    .options-toggle {
+        display: inline-flex;
+    }
+
+    .query-card[data-collapsed] .query-fields {
+        display: none;
+    }
+
+    .status-footer {
+        gap: var(--size-2) var(--size-3);
+        padding: var(--size-3);
+        font-size: var(--font-size-00);
+    }
+
+    .toast-stack {
+        inset-block-end: calc(var(--tabbar-size) + env(safe-area-inset-bottom) + var(--size-2));
+        inset-inline: var(--size-2);
+        inline-size: auto;
+    }
+
+    .tabbar {
+        position: fixed;
+        z-index: var(--layer-sidebar);
+        inset-inline: 0;
+        inset-block-end: 0;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        block-size: calc(var(--tabbar-size) + env(safe-area-inset-bottom));
+        padding-block-end: env(safe-area-inset-bottom);
+        border-block-start: 1px solid var(--border);
+        background: var(--surface-sidebar);
+    }
+
+    .tabbar-item {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        inline-size: 100%;
+        block-size: 100%;
+        padding: 0;
+        border: none;
+        border-radius: 0;
+        background: none;
+        color: var(--text-2);
+        font-size: var(--font-size-00);
+        font-weight: var(--font-weight-normal);
+        text-decoration: none;
+    }
+
+    .tabbar-item:hover:not(:disabled) {
+        background: var(--surface-3);
+        color: var(--text-1);
+    }
+
+    /* Current: the text colour, a heavier weight and a bar along the top edge. */
+    .tabbar-item:is([aria-current='page'], [data-current='page']) {
+        color: var(--text-1);
+        font-weight: var(--font-weight-semibold);
+        box-shadow: inset 0 3px 0 var(--text-1);
+    }
+
+    .tabbar-item > .icon {
+        inline-size: 1.25rem;
+        block-size: 1.25rem;
+    }
+
+    /* "Conversations" fits a fifth of 390 px at this size, semibold too; narrower, it ellipsises. */
+    .tabbar-item > span:not(.visually-hidden, .nav-badge) {
+        max-inline-size: 100%;
+        overflow: hidden;
+        font-size: 0.6875rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .tabbar-item > .nav-badge {
+        position: absolute;
+        inset-block-start: var(--size-1);
+        inset-inline-start: calc(50% + 0.375rem);
+        min-inline-size: 1rem;
+        font-size: 0.625rem;
+        line-height: 1rem;
+    }
+
+    /* As the theme menu: the trigger fills its fifth of the bar, in both axes. */
+    sb-popover.tabbar-more {
+        display: grid;
+        grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+    }
+
+    sb-popover.tabbar-more > [slot='trigger']::after {
+        content: none;
+    }
+
+    sb-popover.tabbar-more .menu-item .nav-dot {
+        margin-inline-start: auto;
+    }
+}

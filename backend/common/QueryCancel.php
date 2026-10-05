@@ -12,8 +12,8 @@ namespace mbolli\nfsen_ng\common;
  * to the next. The loop therefore checks a flag between bins, and the Kill button sets it
  * alongside sending the signal.
  *
- * Keyed by context id so one tab's Kill cannot stop another tab's query. A static store
- * is safe here for the same reason Nfdump::$runningPid is — php-via runs a single worker.
+ * Keyed by context id so one tab's Kill cannot stop another tab's query. A static store works
+ * because nfsen-ng runs one worker: a Kill served by a second one would not see the flag.
  */
 final class QueryCancel {
     /** @var array<string, true> */

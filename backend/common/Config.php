@@ -22,6 +22,14 @@ abstract class Config {
 
     /** True when a preferences.json was found and overlaid on top of the deployment config. */
     public static bool $preferencesFileLoaded = false;
+
+    /**
+     * Filter presets from settings.php or NFSEN_FILTERS, before preferences.json overlays
+     * Settings::$filters. SavedFilterSeeder imports these.
+     *
+     * @var list<string>
+     */
+    public static array $deploymentFilters = [];
     public static Datasource $db;
     public static Processor $processorClass;
     private static bool $initialized = false;
@@ -41,7 +49,7 @@ abstract class Config {
      * URL would never see the fix (only a hard refresh bypasses `immutable`).
      * Derived from the newest mtime under frontend/js and frontend/css instead,
      * so every such change invalidates the cache automatically. Memoized for
-     * the lifetime of the worker process — code changes already require a
+     * the lifetime of the worker process: code changes already require a
      * process restart to take effect, so re-scanning per request buys nothing.
      */
     public static function assetVersion(): string {
@@ -71,7 +79,7 @@ abstract class Config {
      *
      * Reads NFCAPD_TZ env var first; falls back to the PHP effective timezone
      * (which itself comes from date.timezone ini or the TZ env var).
-     * Cached after first call — safe to call before initialize().
+     * Cached after first call, so it is safe to call before initialize().
      *
      * @throws \InvalidArgumentException if NFCAPD_TZ is set to an invalid timezone identifier
      */
@@ -109,11 +117,11 @@ abstract class Config {
             if ($explicitFile !== '') {
                 throw new \Exception('Settings file not found: ' . $settingsFile . '. Check NFSEN_SETTINGS_FILE.');
             }
-            // No settings file — build from environment variables (standard Docker deployment).
+            // No settings file: build from environment variables (standard Docker deployment).
             self::$settings = Settings::fromEnv();
         } else {
             // Deprecated file-based config (bare-metal). settings.php overlays the
-            // env baseline — see Settings::fromArray(). The health page flags this
+            // env baseline, see Settings::fromArray(). The health page flags this
             // via Config::$settingsFileLoaded and steers users toward env vars.
             include $settingsFile;
             self::$settings = Settings::fromArray($nfsen_config);
@@ -122,8 +130,9 @@ abstract class Config {
 
         self::$path = \dirname(__DIR__);
         self::$initialized = true;
+        self::$deploymentFilters = self::$settings->filters;
 
-        // Resolve the state directory — where mutable runtime state (preferences,
+        // Resolve the state directory, where mutable runtime state (preferences,
         // alert rules/state/log) is written. In Docker this should be a mounted
         // volume so it survives image upgrades; the default keeps state next to
         // the code, which is what dev (bind-mounted source) and bare-metal want.
@@ -141,14 +150,7 @@ abstract class Config {
         $prefs = UserPreferences::load(self::$prefsFile);
         if ($prefs !== null) {
             self::$preferencesFileLoaded = true;
-            // Capture settings.php filter presets before preferences overlay them.
-            // Merge: settings.php filters first (deployment defaults), then user-saved
-            // filters on top, deduplicated. This ensures the settings tab textarea and
-            // the flow/stats filter dropdowns always include the deployment presets.
-            $baseFilters = self::$settings->filters;
             self::$settings = $prefs->applyTo(self::$settings);
-            $merged = array_values(array_unique(array_merge($baseFilters, self::$settings->filters)));
-            self::$settings = self::$settings->withFilters($merged);
         }
 
         // Validate directory structure for nfcapd files
@@ -218,7 +220,7 @@ abstract class Config {
                 // Flat profile: $entry directly contains source dirs with date hierarchy
                 $profiles[] = $entry;
             } else {
-                // Possibly a group — check each child as a potential sub-profile
+                // Possibly a group: check each child as a potential sub-profile
                 foreach (scandir($entryPath) ?: [] as $child) {
                     if ($child[0] === '.') {
                         continue;

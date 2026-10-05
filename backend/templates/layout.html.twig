@@ -1,360 +1,252 @@
 <!DOCTYPE html>
+{% import 'shell/icons.html.twig' as icons %}
+{% set activeMeta = shell.pagesMeta|filter(m => m.id == shell.activePage)|first %}
 <html lang="en"
-    {# Every signal named in data-persist below must be seeded *here*, not further down the
-       page: data-persist reads them once on apply, and a path that doesn't exist yet reads
-       back as '' — which it then writes to localStorage and restores unconditionally on
-       every later load, beating the seed that was supposed to own the default. That is how
-       _graph_stepplot (default true) ended up permanently '' and the graph silently stopped
-       rendering as a step plot. #}
-    {# _darkMode is seeded from the head script's already-painted value, so signal and
-       attribute cannot disagree. Not persisted — only the explicit choice is (#167). #}
-    data-signals__ifmissing="{_darkMode: window.__nfsenTheme.dark, _currentView: '{{ defaults.view ?? 'graphs' }}', _settingsSection: 'preferences', _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _autoSyncGraph: false, _filtersOpen: false}"
-    data-persist="{_currentView: $_currentView, _settingsSection: $_settingsSection, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _autoSyncGraph: $_autoSyncGraph}"
+    data-density="{{ shell.defaults.density }}"
+    {# Read by the head script, so a new instance default applies to a browser without its own choice. #}
+    data-theme-default="{{ shell.defaults.theme }}"
+    {# The client-local signals of 1.9, seeded on the element that persists them: an unseeded
+       path reads back as '', which data-persist would store over the default for good. #}
+    data-signals__ifmissing="{ {{ page.id() }}: '{{ shell.activePage }}', _darkMode: window.__nfsenTheme.dark, _themeChoice: window.__nfsenTheme.choice ?? 'default', _sidebarCollapsed: window.__nfsenSidebar.collapsed, _optionsOpen_overview: false, _optionsOpen_talkers: false, _optionsOpen_flows: false, _optionsOpen_conversations: false, _prevRange: null, _autoSyncGraph: false, _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _ov_optionsOpen: false, _ov_seriesOpen: true, _flows_tab: 'flows', _flows_sort: '', _flows_hidden: [], _flows_enhanced: true, _conv_view: 'sankey', _settings_tab: 'general', _drawer_tab: 'builder', _drawer_draftFor: '' }"
+    data-persist="{_autoSyncGraph: $_autoSyncGraph, _graph_logscale: $_graph_logscale, _graph_stacked: $_graph_stacked, _graph_stepplot: $_graph_stepplot, _ov_optionsOpen: $_ov_optionsOpen, _ov_seriesOpen: $_ov_seriesOpen, _flows_tab: $_flows_tab, _flows_sort: $_flows_sort, _flows_hidden: $_flows_hidden, _conv_view: $_conv_view, _settings_tab: $_settings_tab, _drawer_tab: $_drawer_tab}"
+    data-on:hashchange__window="window.nfsenRouter.follow(${{ page.id() }}, (p) => { ${{ page.id() }} = p; @post('{{ navigate.url() }}') })"
     {# Fallback for JS off entirely; the head script overrides it (#156, #167). #}
-    {% if defaults.theme|default('auto') == 'dark' %}data-theme="dark"{% elseif defaults.theme|default('auto') == 'light' %}data-theme="light"{% endif %}
+    {% if shell.defaults.theme == 'dark' %}data-theme="dark"{% elseif shell.defaults.theme == 'light' %}data-theme="light"{% endif %}
     data-attr:data-theme="$_darkMode ? 'dark' : 'light'"
-    {# Dispatched by the head script's matchMedia listener. #}
-    data-on:nfsen-colorscheme__window="$_darkMode = evt.detail.dark"
-    {# Keep the client's live theme across SSE morphs, which otherwise strip/overwrite data-theme and let a chart re-render read the wrong theme (see #151). #}
+    {# Dispatched by the head script whenever the resolved theme or the stored choice changes. #}
+    data-on:nfsen-colorscheme__window="$_darkMode = evt.detail.dark; $_themeChoice = evt.detail.choice ?? 'default'"
+    {# Keep the client's live theme across SSE morphs (#151). #}
     data-preserve-attr="data-theme">
 <head>
     <meta charset="utf-8">
-    {# Blocking, and above the stylesheets: data-attr:data-theme is applied by Datastar,
-       a module at the end of <body>, so the light frame had already painted (#167).
-       Precedence: explicit toggle, else NFSEN_DEFAULT_THEME, else the OS. #}
+    {# php-via's SSE bootstrap and the import map ('datastar' and the nfsen/* entries of app.php). #}
+    {{ via_head() }}
     {#
-        The Investigate view was removed once the Flows tab grew its own traffic graph (#166).
-        Anyone who was on it has 'investigate' persisted, and Datastar would restore a view
-        that no longer renders anything — a blank page on their next visit. Rewritten here,
-        before the bundle boots, to the tab that now answers the same question.
+        Runs once, before anything reads the hash: a view persisted by the old tab layout
+        becomes the page it maps to (D2), and both keys go, so a bare / opens the default view.
     #}
     <script>
         (function () {
             try {
-                if (localStorage.getItem('nfsen-persist:_currentView') === '"investigate"') {
-                    localStorage.setItem('nfsen-persist:_currentView', '"flows"');
+                var read = function (key) {
+                    var raw = localStorage.getItem('nfsen-persist:' + key);
+                    localStorage.removeItem('nfsen-persist:' + key);
+                    try { return raw === null ? null : JSON.parse(raw); } catch (e) { return null; }
+                };
+                var view = read('_currentView');
+                var section = read('_settingsSection');
+                var views = { graphs: 'overview', statistics: 'talkers', sankey: 'conversations', investigate: 'flows', flows: 'flows' };
+                var sections = { import: 'health', health: 'health', alerts: 'alerts', preferences: 'settings', system: 'settings' };
+                var page = view === 'settings' ? (sections[section] || 'settings') : views[view];
+                if (page && (location.hash === '' || location.hash === '#')) {
+                    history.replaceState(history.state, '', '#/' + page);
                 }
-            } catch (e) { /* private mode: nothing was persisted either */ }
+            } catch (e) { /* storage disabled: nothing was persisted either */ }
         })();
     </script>
-
+    {# Blocking, and above the stylesheets, so the wrong frame never paints first (#167, D8).
+       Precedence: this browser's choice, else the instance default, else the OS. #}
     <script>
         (function () {
-            var DEFAULT = {{ (defaults.theme|default('auto'))|json_encode|raw }};
+            var root = document.documentElement;
             var mq = window.matchMedia('(prefers-color-scheme: dark)');
+            var CHOICES = ['light', 'dark', 'system'];
+            var KEY = 'nfsen-theme';
+            var valid = function (value) { return CHOICES.indexOf(value) >= 0 ? value : null; };
             var choice = null;
             try {
-                choice = localStorage.getItem('nfsen-theme');
+                choice = valid(localStorage.getItem(KEY));
                 // Pre-#167 key held the resolved value, so it cannot be told apart from an
                 // auto-resolved one. Dropped rather than migrated.
                 localStorage.removeItem('nfsen-persist:_darkMode');
             } catch (e) { /* storage disabled */ }
 
+            // 'light', 'dark', or 'system'/'auto', which follow the OS.
             function resolve() {
-                if (choice === 'dark' || choice === 'light') return choice === 'dark';
-                if (DEFAULT === 'dark') return true;
-                if (DEFAULT === 'light') return false;
+                var pick = choice || root.getAttribute('data-theme-default') || 'auto';
+                if (pick === 'dark' || pick === 'light') return pick === 'dark';
                 return mq.matches;
             }
 
-            function apply(dark) {
-                document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-            }
-
-            window.__nfsenTheme = {
+            var theme = {
                 dark: resolve(),
-                choose: function (dark) {
-                    choice = dark ? 'dark' : 'light';
-                    try { localStorage.setItem('nfsen-theme', choice); } catch (e) {}
+                choice: choice,
+                choose: function (next) {
+                    choice = valid(next);
+                    try {
+                        if (choice) localStorage.setItem(KEY, choice);
+                        else localStorage.removeItem(KEY);
+                    } catch (e) { /* storage disabled: the choice lasts for this page */ }
+                    apply(true);
                 },
             };
-            apply(window.__nfsenTheme.dark);
 
-            // With no explicit choice, follow the OS live. The event moves the signal too,
-            // so the sun/moon icon stays in step.
-            mq.addEventListener('change', function (e) {
-                if (choice === 'dark' || choice === 'light') return;
-                window.__nfsenTheme.dark = e.matches;
-                apply(e.matches);
-                window.dispatchEvent(new CustomEvent('nfsen-colorscheme', { detail: { dark: e.matches } }));
+            function apply(announce) {
+                var dark = resolve();
+                announce = announce || dark !== theme.dark;
+                theme.dark = dark;
+                theme.choice = choice;
+                root.setAttribute('data-theme', dark ? 'dark' : 'light');
+                if (announce) {
+                    window.dispatchEvent(new CustomEvent('nfsen-colorscheme', { detail: { dark: dark, choice: choice } }));
+                }
+            }
+
+            window.__nfsenTheme = theme;
+            root.setAttribute('data-theme', theme.dark ? 'dark' : 'light');
+
+            mq.addEventListener('change', function () { apply(false); });
+            // A choice made in another tab of this browser.
+            window.addEventListener('storage', function (e) {
+                if (e.key !== KEY && e.key !== null) return;
+                try { choice = valid(localStorage.getItem(KEY)); } catch (err) { choice = null; }
+                apply(true);
             });
+            // A new instance default, which a sync writes into data-theme-default.
+            new MutationObserver(function () { apply(false); }).observe(root, { attributeFilter: ['data-theme-default'] });
         })();
     </script>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>nfsen-ng</title>
-    {# Derived from the Unraid app icon: same palette, simplified to stay legible at 16px (#170). #}
-    <link rel="icon" type="image/svg+xml" href="{{ basePath }}favicon.svg?v={{ assetVersion }}">
-    <link rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href="{{ basePath }}favicon.ico?v={{ assetVersion }}">
-    <link rel="apple-touch-icon" href="{{ basePath }}apple-touch-icon.png?v={{ assetVersion }}">
+    <title>{{ activeMeta ? activeMeta.title ~ ' · ' : '' }}nfsen-ng</title>
+    {# One mark everywhere: the sidebar logo, these icons and the Unraid app icon, in the interface's greys (#170). #}
+    <link rel="icon" type="image/svg+xml" href="{{ basePath }}favicon.svg?v={{ shell.assetVersion }}">
+    <link rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href="{{ basePath }}favicon.ico?v={{ shell.assetVersion }}">
+    <link rel="apple-touch-icon" href="{{ basePath }}apple-touch-icon.png?v={{ shell.assetVersion }}">
 
-    {#
-        php-via SSE bootstrap — mirrors the pattern in php-via's shell.html.
-        contextId and basePath are auto-injected by Context::render().
-        _connecting is a Datastar-managed indicator (no server signal needed).
-        _disconnected is local-only (underscore prefix = never sent to server).
-    #}
-    <meta data-signals='{"via_ctx":"{{ contextId }}","_disconnected":false}'>
-    <meta data-indicator="_connecting"
-          data-on-interval__duration.15s.leading="!$_connecting && @get('{{ basePath }}_sse')"
-          data-on:datastar-fetch="el === evt.detail.el &&
-                             ((evt.detail.type.startsWith('datastar') && ($_disconnected = false)) ||
-                             (['retrying', 'error', 'finished'].includes(evt.detail.type) && ($_disconnected = true)))">
-    <meta data-init="window.addEventListener('beforeunload', () => { navigator.sendBeacon('{{ basePath }}_session/close', '{{ contextId }}'); });">
-    <link rel="stylesheet" type="text/css" href="{{ basePath }}css/tokens.css?v={{ assetVersion }}">
-    <link rel="stylesheet" type="text/css" href="{{ basePath }}css/ui.css?v={{ assetVersion }}">
-    <link rel="stylesheet" type="text/css" href="{{ basePath }}css/nouislider.min.css?v={{ assetVersion }}">
-    <link rel="stylesheet" type="text/css" href="{{ basePath }}css/nfsen-ng.css?v={{ assetVersion }}">
+    {% for sheet in ['tokens', 'starbase', 'ui', 'shell', 'controls-bar', 'traffic-graph', 'query-kit', 'drawer', 'nfsen-ng', 'pages/overview', 'pages/talkers', 'pages/flows', 'pages/conversations', 'pages/alerts', 'pages/health', 'pages/settings'] %}
+        <link rel="stylesheet" type="text/css" href="{{ basePath }}css/{{ sheet }}.css?v={{ shell.assetVersion }}">
+    {% endfor %}
 </head>
 
-{#
-    _currentView: purely browser-local navigation signal (underscore prefix).
-    The server never reads it — in immediate mode every tab's content is always
-    rendered and Datastar data-show handles visibility client-side. Persisted
-    via data-persist (see html tag above) so a forced reload (e.g. after the
-    SSE context's cleanup grace period expires while the tab is backgrounded)
-    restores the tab the user was on instead of defaulting to Graphs.
-#}
-<body>
-    {# ── Reconnect banner ─────────────────────────────────────────────────── #}
-    <div data-show="$_disconnected" style="display:none" class="notice" data-level="warning" role="status">
-        ⚠ Reconnecting to server…
-    </div>
-
-    {# ── Fatal config error ────────────────────────────────────────────────── #}
-    {% if fatalError %}
-    <div class="notice" data-level="error" role="alert">
-        <strong>Fatal error:</strong> {{ fatalError }}
-    </div>
-    {% endif %}
-
-    <header class="cluster">
-        <a class="brand" href="https://github.com/mbolli/nfsen-ng" target="_blank">
-            nfsen-ng <span id="version">{{ version }}</span>
-        </a>
-        {# Profile selector — only shown when multiple profiles are detected #}
-        {% set availableProfilesList = available_profiles.getValue() %}
-        {% if availableProfilesList|length > 1 %}
-            <select class="profile-select" {{ bind(selected_profile) }}
-                    data-on:change="@post('{{ changeProfile.url() }}')">
-                {% set lastGroup = null %}
-                {% for p in availableProfilesList %}
-                    {% set parts = p|split('/') %}
-                    {% if parts|length > 1 %}
-                        {% set group = parts[0] %}
-                        {% if group != lastGroup %}
-                            {% if lastGroup is not null %}</optgroup>{% endif %}
-                            <optgroup label="{{ group }}">
-                            {% set lastGroup = group %}
-                        {% endif %}
-                        <option value="{{ p }}">{{ parts[1:parts|length]|join('/') }}</option>
-                    {% else %}
-                        {% if lastGroup is not null %}</optgroup>{% set lastGroup = null %}{% endif %}
-                        <option value="{{ p }}">{{ p }}</option>
-                    {% endif %}
-                {% endfor %}
-                {% if lastGroup is not null %}</optgroup>{% endif %}
-            </select>
-        {% endif %}
-        {% include 'partials/nav.html.twig' %}
-    </header>
-
-    {# ── Global import status strip — visible on every tab while import runs ── #}
-    <div id="importStatusStrip"
-         data-show="${{ import_running.id() }}"
-         style="display:none; cursor:pointer;"
-         class="import-strip"
-         data-on:click="$_currentView = 'settings'; $_settingsSection = 'import'"
-         title="Import in progress — click to view details">
-        <progress data-indeterminate max="100" value="{{ importProgress }}"></progress>
-        <div class="cluster cluster-between import-strip-line">
-            <small class="muted">
-                {{ importStatusText ?: 'Importing\u2026' }}
-                {% if importCurrentFile %}
-                    &bull; <code>{{ importCurrentFile|split('/')|last }}</code>
-                {% endif %}
-            </small>
-            <small class="strong">
-                {{ importProgress }}%{% if importEta %} &bull; {{ importEta }}{% endif %}
-            </small>
-        </div>
-    </div>
-
-    <main class="tab-content">
-
-        {# ── Server error signal (pushed by server, never sent back) ───────── #}
-        <div class="notice" data-level="error"
-             data-effect="el.style.display = (${{ _error.id() }} != null && ${{ _error.id() }} != '') ? 'block' : 'none'"
-             role="alert"
-             data-text="${{ _error.id() }}"
-             style="display: none;"></div>
-
-        <div class="filter-bar"
-             data-show="$_currentView != 'settings'"
-             data-indicator:nfcapd._counting
-             data-on:change__window__throttle.1000ms="($_currentView === 'flows' || $_currentView === 'statistics' || $_currentView === 'sankey' || ($_currentView === 'graphs' && ${{ graph_mode.id() }} === 'filtered')) && evt.target.closest('nfsen-daterange') && @post('{{ countFiles.url() }}')">
-            <div class="card">
-                <div class="card-body stack">
-
-                        {% include 'partials/date-range.html.twig' %}
-
-                        {#
-                            One toggle for every panel, since only one is ever on screen. It
-                            shows up below the width where the controls stop fitting; the
-                            submit row is deliberately left outside what collapses, so a
-                            query can still be run without opening the filters first.
-                        #}
-                        <button type="button" class="filter-toggle" data-size="sm"
-                                data-on:click="$_filtersOpen = !$_filtersOpen"
-                                data-text="$_filtersOpen ? 'Hide filters' : 'Show filters'"></button>
-
-                        {# View-specific filter panels — all rendered, visibility via data-show. #}
-                        <div data-class:filter-collapsed="!$_filtersOpen">
-                            <div>
-                                <div data-show="$_currentView == 'graphs'">
-                                    {% include 'partials/graph-filters.html.twig' %}
-                                </div>
-                                <div data-show="$_currentView == 'flows'" style="display: none;">
-                                    {% include 'partials/flow-filters.html.twig' %}
-                                </div>
-                            </div>
-                            <div data-show="$_currentView == 'statistics'" style="display: none;">
-                                {% include 'partials/stats-filters.html.twig' %}
-                            </div>
-                            <div data-show="$_currentView == 'sankey'" style="display: none;">
-                                {% include 'partials/sankey-filters.html.twig' %}
-                            </div>
-                        </div>
-
-                </div>
-            </div>
-        </div>
-
-        {# ── View panels ───────────────────────────────────────────────────── #}
-        <div data-show="$_currentView == 'graphs'">
-            {% include 'partials/graph-view.html.twig' %}
-        </div>
-        <div data-show="$_currentView == 'flows'" style="display: none;">
-            {% include 'partials/flow-view.html.twig' %}
-        </div>
-        <div data-show="$_currentView == 'statistics'" style="display: none;">
-            {% include 'partials/stats-view.html.twig' %}
-        </div>
-        <div data-show="$_currentView == 'sankey'" style="display: none;">
-            {% include 'partials/sankey-view.html.twig' %}
-        </div>
-        <div data-show="$_currentView == 'settings'" style="display: none;">
-            {% include 'partials/settings.html.twig' %}
-        </div>
-
-    </main>
-
-    {# ── Server stats footer ───────────────────────────────────────────────── #}
-    <footer class="center muted">
-        {# Traffic light: capture health (nfcapd proxy) + import daemon #}
-        <span title="{{ captureLabel }}" style="cursor:help">
-            <span class="text-{{ captureStatus }}">&#9679;</span> nfcapd
-        </span>
-        <span class="muted">|</span>
-        <span title="{{ daemonLabel }}" style="cursor:help">
-            <span class="text-{{ daemonStatus }}">&#9679;</span> daemon
-        </span>
-        &bull;
-        <span class="badge" data-level="brand">{{ connections }} connection{{ connections != 1 ? 's' : '' }}</span>
-        &bull;
-        <a href="https://github.com/mbolli/nfsen-ng" target="_blank" rel="noopener" class="muted">nfsen-ng {{ version }}</a>
-        &bull;
-        <a href="https://github.com/mbolli/nfsen-ng/releases" target="_blank" rel="noopener" class="muted">Changelog</a>
-        &bull;
-        <a href="https://github.com/mbolli/nfsen-ng/issues" target="_blank" rel="noopener" class="muted">Issues</a>
-    </footer>
-
-    {# ── JS ────────────────────────────────────────────────────────────────── #}
-    <script src="{{ basePath }}js/nouislider.min.js" defer></script>
-    <script src="{{ basePath }}js/echarts.min.js" defer></script>
-
-    {#
-        Import map so datastar-persist.js's `import ... from 'datastar'` resolves
-        to the exact same module instance as the main datastar.js script tag
-        below. A relative import (`../datastar.js`) would resolve to a URL
-        without the `?v=` cache-busting query string, which the module loader
-        treats as a DIFFERENT module — loading the whole engine a second time
-        with its own MutationObserver, signal store, etc. Mirrors
-        mbolli/datastar-attribute-prop's own approach.
-
-        MUST be the first `type="module"`-adjacent tag in the document — including
-        before inline `<script type="module">` blocks, not just external ones.
-        Per the import maps spec, an import map is only honoured if no module
-        script has been "prepared" yet, and that step runs the moment the parser
-        reaches ANY module script's tag (inline scripts included — no fetch
-        needed, so it happens immediately), not when it executes. Putting this
-        after any earlier `type="module"` tag silently disables the whole import
-        map — the bare `from 'datastar'` specifier in datastar-persist.js then
-        fails to resolve, so that module (and every signal it was supposed to
-        persist) never loads, in every browser, regardless of cache state. The
-        two `defer` classic scripts above are fine to precede it: only module
-        scripts and modulepreload links trigger the restriction.
-    #}
-    <script type="importmap">{"imports": {"datastar": "{{ basePath }}js/datastar.js?v={{ assetVersion }}"}}</script>
-
-    <script type="module">
-        /**
-         * Returns true only when a filter-change event originated from inside
-         * the graph filters panel or the date range controls. Prevents spurious
-         * graph refreshes when the user changes flow / stats filters.
-         */
-        window.mayUpdateGraph = (function() {
-            let dateRangeNode = null;
-            let dateRangeControlsNode = null;
-            return function(evt, el) {
-                const target = evt.target;
-                if (el && el.contains(target)) return true;
-                if (!dateRangeNode) dateRangeNode = document.querySelector('nfsen-daterange');
-                if (dateRangeNode && dateRangeNode.contains(target)) return true;
-                if (!dateRangeControlsNode) dateRangeControlsNode = document.querySelector('.date-range-controls');
-                if (dateRangeControlsNode && dateRangeControlsNode.contains(target)) return true;
-                return false;
+{# Routing (1.1): on load the hash is compared with the page the server rendered. On <body>, not
+   <html>: the navigate post needs via_ctx, which the <head> seeds after <html> is processed. #}
+<body class="app" data-attr:data-sidebar="$_sidebarCollapsed ? 'collapsed' : 'expanded'" data-preserve-attr="data-sidebar"
+      data-server-page="{{ shell.activePage }}"
+      data-init="window.nfsenRouter.start(el.dataset.serverPage, (p) => { ${{ page.id() }} = p; @post('{{ navigate.url() }}') })">
+    {# Set before the first paint and seeds _sidebarCollapsed. Only the toggle stores it, so the
+       tablet default (2.6) holds until someone chooses otherwise. #}
+    <script>
+        (function () {
+            var KEY = 'nfsen-persist:_sidebarCollapsed';
+            var collapsed = null;
+            try { collapsed = JSON.parse(localStorage.getItem(KEY)); } catch (e) { /* none stored */ }
+            if (typeof collapsed !== 'boolean') collapsed = window.matchMedia('(max-width: 63.98em)').matches;
+            document.body.setAttribute('data-sidebar', collapsed ? 'collapsed' : 'expanded');
+            window.__nfsenSidebar = {
+                collapsed: collapsed,
+                remember: function (value) {
+                    try { localStorage.setItem(KEY, JSON.stringify(value)); } catch (e) { /* storage disabled */ }
+                },
             };
         })();
     </script>
+    {% include 'shell/sidebar.html.twig' %}
+
+    <div class="app-main">
+        {# On phones the sidebar is hidden, so its brand leads the controls row (2.7.11); on
+           wider screens this wrapper has no box and the controls bar is a child of .app-main. #}
+        <div class="app-top">
+            <a class="app-brand" href="#/{{ shell.defaults.view }}" title="nfsen-ng home" aria-label="nfsen-ng home">{{ icons.icon('logo') }}</a>
+            {% include 'shell/controls-bar.html.twig' %}
+        </div>
+
+        {# Shell notices (4.0.3): each level also has its glyph and says what happened in words. #}
+        <div class="shell-notices">
+            <div class="notice" data-level="warning" role="status"
+                 hidden data-attr:hidden="!$_disconnected" data-preserve-attr="hidden">
+                <span class="status-dot" data-level="warning" aria-hidden="true"></span>
+                <span>Reconnecting to server...</span>
+            </div>
+            {% if shell.fatalError %}
+                <div class="notice" data-level="error" role="alert">
+                    <span class="status-dot" data-level="error" aria-hidden="true"></span>
+                    <span><strong>Fatal error:</strong> {{ shell.fatalError }}</span>
+                </div>
+            {% endif %}
+            {# Server banner, pushed by the server and dismissed here only. #}
+            <div class="notice dismissible" data-level="error" role="alert"
+                 {% if _error.string() == '' %}hidden{% endif %}
+                 data-attr:hidden="!${{ _error.id() }}" data-preserve-attr="hidden">
+                <span class="status-dot" data-level="error" aria-hidden="true"></span>
+                <span data-text="${{ _error.id() }}">{{ _error.string() }}</span>
+                <button type="button" data-variant="close" aria-label="Dismiss this error" title="Dismiss"
+                        data-on:click="${{ _error.id() }} = ''"></button>
+            </div>
+        </div>
+
+        <main id="page-content">
+            {% include 'shell/page-header.html.twig' %}
+            {% include 'shell/traffic-graph.html.twig' %}
+            {% for meta in shell.pagesMeta %}
+                {% set p = pages[meta.id] %}
+                <section class="page" id="page-{{ meta.id }}" data-page="{{ meta.id }}"
+                         aria-labelledby="pageTitle"
+                         data-attr:hidden="${{ page.id() }} !== '{{ meta.id }}'" data-preserve-attr="hidden"
+                         {% if p.active %}data-ready{% else %}hidden{% endif %}>
+                    {% if p.active %}
+                        {% include 'pages/' ~ meta.id ~ '.html.twig' %}
+                    {% else %}
+                        {% include 'shell/page-skeleton.html.twig' with {meta: meta} %}
+                    {% endif %}
+                </section>
+            {% endfor %}
+        </main>
+
+        {% include 'shell/footer.html.twig' %}
+    </div>
+
+    {% include 'shell/bottom-tabs.html.twig' %}
+    {% include 'drawer/filter-drawer.html.twig' %}
+
+    {# The modal of this tab (D24): ip-info and the alert Test result, kept in ShellState and
+       rendered on every sync; the dialog preserves its open attribute across the morph. #}
+    <div id="modal-root">{{ shell.modalHtml|raw }}</div>
+    {# DOM that client code and tests add; data-ignore-morph keeps it across syncs. #}
+    <div id="client-root" data-ignore-morph></div>
+    <div id="alerts-toast-container" class="toast-stack" data-ignore-morph></div>
+    {# The first sync can run a server script (a fired alert) before nfsen-toast.js; it shows what queued here. #}
+    <script>
+        window.showMessage ??= Object.assign((...args) => { window.showMessage.queue.push(args); }, { queue: [] });
+    </script>
+    {# nfsen/clipboard announces copies here; a dialog that holds a copy button adds its own [data-announcer]. #}
+    <p id="nfsen-announcer" class="visually-hidden" role="status" data-ignore-morph></p>
+
+    <script src="{{ basePath }}js/echarts.min.js" defer></script>
 
     <script type="module">
-        import { tzOptions } from '{{ basePath }}js/components/tz-utils.js?v={{ assetVersion }}';
+        import { tzOptions } from 'nfsen/tz-utils';
         window.tzOptions = tzOptions;
     </script>
 
-    {#
-        alert-template-preview.js defines window.* helpers read by data-effect
-        attributes in alerts-settings.html.twig, which Datastar evaluates eagerly
-        during its initial DOM walk below -- it must load and run BEFORE
-        datastar.js, unlike the other components/* scripts here (which only need
-        to exist by the time a user later clicks something, not at parse time).
-        Execution order for external module scripts follows document order
-        regardless of the import map's position, so this still runs before
-        datastar.js below.
-    #}
-    <script type="module" src="{{ basePath }}js/components/alert-template-preview.js?v={{ assetVersion }}"></script>
-    <script type="module" src="{{ basePath }}js/datastar.js?v={{ assetVersion }}"></script>
-    <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ assetVersion }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-chart.js?v={{ assetVersion }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-sankey.js?v={{ assetVersion }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-table.js?v={{ assetVersion }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-daterange.js?v={{ assetVersion }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-toast.js?v={{ assetVersion }}"></script>
-    {# Tooltip popup container — data-ignore-morph prevents Datastar SSE from removing JS-appended tooltips #}
-    <div id="nfsen-tip-container" data-ignore-morph></div>
-    {# Placeholder for the server-rendered IP info modal fragment #}
-    <div id="ip-modal-placeholder"></div>
+    {# These define window.* helpers that data-init and data-effect expressions read while Datastar walks the DOM,
+       so they run before its bundle. chunks, like clipboard below, uses its import-map URL: one module instance. #}
+    <script type="module" src="{{ basePath }}js/components/nfsen-router.js?v={{ shell.assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/alert-template-preview.js?v={{ shell.assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/filter-drawer.js?v={{ shell.assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/chunks.js?v={{ shell.assetVersion }}"></script>
+    <script type="module" src="{{ basePath }}js/components/flows-list.js?v={{ shell.assetVersion }}"></script>
+    {{ via_foot() }}
+    <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ shell.assetVersion }}"></script>
+    {# clipboard is also an import-map target, so its tag uses the identical URL: one module instance. #}
+    {% for component in ['nfsen-chart', 'nfsen-sankey', 'nfsen-matrix', 'nfsen-table', 'nfsen-toast', 'nfsen-filter-editor', 'nfsen-controls', 'clipboard'] %}
+        <script type="module" src="{{ basePath }}js/components/{{ component }}.js?v={{ shell.assetVersion }}"></script>
+    {% endfor %}
+    {# Vendored Starbase components with "load": true in their lock; the folder name is the version. #}
+    {% for module in shell.starbaseModules %}
+        <script type="module" src="{{ basePath }}{{ module }}"></script>
+    {% endfor %}
 
-    <script type="module" src="{{ basePath }}js/components/nfsen-filter-manager.js?v={{ assetVersion }}"></script>
-    <script type="module" src="{{ basePath }}js/components/nfsen-tooltip.js?v={{ assetVersion }}"></script>
-
-    {# ── Alert-fired toast container ──────────────────────────────────────── #}
-    {# Fixed overlay (bottom-right). New toasts injected here when alerts fire  #}
-    {# or via window.showMessage(). data-ignore-morph keeps JS-appended toasts. #}
-    <div id="alerts-toast-container" data-ignore-morph>{{ alertFiredHtml|raw }}</div>
-
-    <script>window.withViewTransition = fn => document.startViewTransition ? document.startViewTransition(fn) : fn();</script>
-
+    {# A skipped or aborted transition still runs fn and only loses the animation, so its
+       rejections are expected; an error thrown by fn still surfaces through updateCallbackDone. #}
+    <script>
+        window.withViewTransition = (fn) => {
+            if (!document.startViewTransition) return fn();
+            const transition = document.startViewTransition(fn);
+            transition.ready.catch(() => {});
+            transition.finished.catch(() => {});
+            return transition;
+        };
+    </script>
 </body>
 </html>

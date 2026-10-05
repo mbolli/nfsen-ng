@@ -1,0 +1,95 @@
+{# Sidebar (4.0.1): real links, so middle click works; the current item follows $page on the
+   client, so a click switches it instantly. The macros are shared with the phone tab bar. #}
+{% import 'shell/icons.html.twig' as icons %}
+{% import _self as nav %}
+{% set groups = {analysis: 'Analysis', monitor: 'Monitor'} %}
+<aside class="sidebar" aria-label="Main">
+    <a class="sidebar-brand" href="#/{{ shell.defaults.view }}" title="nfsen-ng home">
+        {{ icons.icon('logo') }}
+        <span class="nav-label">nfsen-ng</span>
+        <small class="nav-label">{{ shell.version }}</small>
+    </a>
+
+    <nav class="sidebar-nav" id="sidebarNav" aria-label="Pages">
+        {% for group, groupLabel in groups %}
+            <p class="nav-group">{{ groupLabel }}</p>
+            {% for meta in shell.pagesMeta|filter(m => m.group == group) %}
+                {{ nav.item(meta, shell, page.id(), import_running.id()) }}
+            {% endfor %}
+        {% endfor %}
+        {% for meta in shell.pagesMeta|filter(m => m.group == 'system') %}
+            {{ nav.item(meta, shell, page.id(), import_running.id(), 'end') }}
+        {% endfor %}
+    </nav>
+
+    <div class="sidebar-footer">
+        {# Theme (4.0.7, D8): a choice for this browser, or the instance default. #}
+        <sb-popover id="themeMenu" class="theme-menu" label="Theme" placement="top-start">
+            <button type="button" slot="trigger" class="menu-toggle sidebar-action" title="Theme"
+                    data-preserve-attr="aria-expanded aria-haspopup">
+                <span class="theme-icon" data-theme-icon="light">{{ icons.icon('sun') }}</span>
+                <span class="theme-icon" data-theme-icon="dark">{{ icons.icon('moon') }}</span>
+                {# Client-derived text: ignore-morph keeps a sync from writing the server's back over it. #}
+                <span class="nav-label">Theme: <span data-ignore-morph data-text="{{ nav.choiceExpr() }}">Default</span></span>
+            </button>
+            <div class="popover-list" id="themeMenuList">
+                {{ nav.themeItems(shell.defaults.theme) }}
+            </div>
+        </sb-popover>
+        <button type="button" class="sidebar-action sidebar-toggle" aria-controls="sidebarNav"
+                aria-expanded="true" data-attr:aria-expanded="$_sidebarCollapsed ? 'false' : 'true'"
+                title="Collapse sidebar" data-attr:title="$_sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+                data-preserve-attr="aria-expanded title"
+                data-on:click="$_sidebarCollapsed = !$_sidebarCollapsed; window.__nfsenSidebar.remember($_sidebarCollapsed)">
+            {{ icons.icon('sidebar') }}
+            <span class="nav-label" data-ignore-morph data-text="$_sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">Collapse sidebar</span>
+        </button>
+    </div>
+</aside>
+
+{# One page link: the Alerts count and the Health glyph say in words what they show. #}
+{% macro item(meta, shell, pageSignal, importSignal, slot = '') %}
+    {% import 'shell/icons.html.twig' as icons %}
+    {% set firing = meta.id == 'alerts' ? shell.alertsFiring : 0 %}
+    {% set issues = shell.healthIssues %}
+    {% set healthText = {
+        ok: 'Health: all checks passed',
+        warning: 'Health: ' ~ issues ~ ' warning' ~ (issues == 1 ? '' : 's'),
+        error: 'Health: ' ~ issues ~ ' error' ~ (issues == 1 ? '' : 's'),
+    }[shell.healthLevel] ?? '' %}
+    {% set title = meta.title %}
+    {% if firing > 0 %}{% set title = meta.title ~ ': ' ~ firing ~ (firing == 1 ? ' rule' : ' rules') ~ ' firing' %}{% endif %}
+    {% if meta.id == 'health' and healthText %}{% set title = healthText %}{% endif %}
+    <a class="nav-item" href="#/{{ meta.id }}" title="{{ title }}" {% if slot %}data-slot="{{ slot }}"{% endif %}
+       data-attr:aria-current="${{ pageSignal }} === '{{ meta.id }}' ? 'page' : false"
+       data-preserve-attr="aria-current">
+        {{ icons.icon(meta.icon) }}
+        <span class="nav-label">{{ meta.title }}</span>
+        {% if firing > 0 %}
+            <span class="nav-badge" data-level="error">{{ firing }}<span class="visually-hidden"> {{ firing == 1 ? 'rule' : 'rules' }} firing</span></span>
+        {% endif %}
+        {% if meta.id == 'health' %}
+            {% if healthText %}
+                <span class="nav-dot" data-level="{{ shell.healthLevel == 'ok' ? 'success' : shell.healthLevel }}"><span class="visually-hidden">{{ healthText }}</span></span>
+            {% endif %}
+            <span class="nav-import" {% if not shell.import.running %}hidden{% endif %}
+                  data-attr:hidden="!${{ importSignal }}">{{ icons.icon('import') }}<span class="visually-hidden">Import running</span></span>
+        {% endif %}
+    </a>
+{% endmacro %}
+
+{# The instance default as a menu label: Settings stores 'auto' for System (D8). #}
+{% macro themeLabel(instance) %}{{ {light: 'Light', dark: 'Dark'}[instance] ?? 'System' }}{% endmacro %}
+
+{# The current choice, and for System and the default also the theme it resolves to. #}
+{% macro choiceExpr() %}({light: 'Light', dark: 'Dark'})[$_themeChoice] ?? (($_themeChoice === 'system' ? 'System' : 'Default') + ($_darkMode ? ' (dark)' : ' (light)')){% endmacro %}
+
+{# The four choices; the current one is pressed and carries the menu's check mark. #}
+{% macro themeItems(instance) %}
+    {% import _self as nav %}
+    {% for choice, label in {light: 'Light', dark: 'Dark', system: 'System', default: 'Use instance default (' ~ nav.themeLabel(instance) ~ ')'} %}
+        <button type="button" class="menu-item" data-theme-choice="{{ choice }}"
+                aria-pressed="false" data-attr:aria-pressed="$_themeChoice === '{{ choice }}' ? 'true' : 'false'" data-preserve-attr="aria-pressed"
+                data-on:click="window.__nfsenTheme.choose({{ choice == 'default' ? 'null' : "'" ~ choice ~ "'" }})">{{ label }}</button>
+    {% endfor %}
+{% endmacro %}

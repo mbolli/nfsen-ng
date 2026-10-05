@@ -10,9 +10,9 @@ declare(strict_types=1);
  * protocol breakdown, suitable for screenshot-quality graphs in nfsen-ng.
  *
  * Metric format matches VictoriaMetrics::write() exactly:
- *   nfsen_flows{source="all"}                                    — aggregate total
- *   nfsen_flows_tcp{source="all",protocol="tcp"}                 — per-protocol
- *   nfsen_flows_tcp{source="all",port="80",protocol="tcp"}       — per-port per-protocol
+ *   nfsen_flows{source="all"}                                    : aggregate total
+ *   nfsen_flows_tcp{source="all",protocol="tcp"}                 : per-protocol
+ *   nfsen_flows_tcp{source="all",port="80",protocol="tcp"}       : per-port per-protocol
  *   … (15 metrics per source + 15 per port per 5-min interval)
  *
  * Usage:
@@ -53,7 +53,7 @@ printf(
 
 // ─── Traffic model ───────────────────────────────────────────────────────────
 
-// Peak flows per 5-min interval at the busiest hour (Mon–Fri, ~13:00 UTC).
+// Peak flows per 5-min interval at the busiest hour (Mon to Fri, ~13:00 UTC).
 // Realistic enterprise uplink: ~25 k flows/5 min at peak.
 const PEAK_FLOWS = 25_000;
 
@@ -125,12 +125,12 @@ while ($dayStart < $now) {
         $sumBytes = array_sum($protoBytes);
         $tsMs = $ts * 1000;
 
-        // Aggregate totals — no port label (matches buildLabels($src, 0, null))
+        // Aggregate totals: no port label (matches buildLabels($src, 0, null))
         $lines[] = "nfsen_flows{source=\"{$source}\"} {$sumFlows} {$tsMs}";
         $lines[] = "nfsen_packets{source=\"{$source}\"} {$sumPackets} {$tsMs}";
         $lines[] = "nfsen_bytes{source=\"{$source}\"} {$sumBytes} {$tsMs}";
 
-        // Per-protocol series — matches buildLabels($src, 0, $proto) and buildMetricName($type, $proto)
+        // Per-protocol series: matches buildLabels($src, 0, $proto) and buildMetricName($type, $proto)
         foreach ($protoFlows as $proto => $flows) {
             $pkts = $protoPackets[$proto];
             $bytes = $protoBytes[$proto];
@@ -139,7 +139,7 @@ while ($dayStart < $now) {
             $lines[] = "nfsen_bytes_{$proto}{source=\"{$source}\",protocol=\"{$proto}\"} {$bytes} {$tsMs}";
         }
 
-        // Port data — each configured port gets ~10 % of source traffic with a TCP-dominant mix.
+        // Port data: each configured port gets ~10 % of source traffic with a TCP-dominant mix.
         $portRatios = ['tcp' => 0.82, 'udp' => 0.10, 'icmp' => 0.02, 'other' => 0.06];
         foreach ($ports as $portNum) {
             $portShare = max(0.01, gauss(0.10, 0.30));
@@ -195,7 +195,7 @@ while ($dayStart < $now) {
     printf("  %s  %4d intervals  %6d lines  %s\n", date('Y-m-d', $dayStart), $dayIntervals, count($lines), $status);
 
     if ($code !== 204) {
-        echo "  Aborting — check that VictoriaMetrics is reachable at {$writeUrl}\n";
+        echo "  Aborting, check that VictoriaMetrics is reachable at {$writeUrl}\n";
 
         exit(1);
     }

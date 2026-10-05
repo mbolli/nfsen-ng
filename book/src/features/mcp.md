@@ -10,7 +10,7 @@ It is **off by default**. Nothing listens, nothing runs, until you start it or t
 
 Triage, not mitigation. During an attack the response is already decided and usually
 automated, and a model in that path only adds latency. The value is in the minutes before and
-after, when someone is asking what this traffic actually *is* — the loop of filter, look,
+after, when someone is asking what this traffic actually *is*: the loop of filter, look,
 pivot, filter again, which is exactly what an agent is good at.
 
 ## Running it
@@ -89,34 +89,37 @@ cannot watch.
 
 ### Cheap
 
-- **`traffic_timeline`** — the series behind the Graphs tab, broken down by source, protocol or
+- **`traffic_timeline`**: the series behind the Overview graph, broken down by source, protocol or
   port, measured in flows, packets, bytes or bits.
-- **`current_load`** — the latest interval next to its rolling average, with the multiple
-  between them. A ratio of `0` means the average is zero, not that traffic stopped.
-- **`data_coverage`** — first sample, last sample and last import per source. An import that
+- **`current_load`**: the latest interval next to its rolling average, with the multiple
+  between them. The latest interval is each source's newest stored one, leaving out a source
+  more than one interval behind; the average covers the window before the newest complete
+  interval. A ratio of `0` means the average is zero, not that traffic stopped.
+- **`data_coverage`**: first sample, last sample and last import per source. An import that
   has not caught up looks exactly like a quiet network; this is how you tell them apart.
-- **`status`** — datasource reachability, capture collection and configuration checks, so an
-  infrastructure failure is not reported as a change in traffic.
-- **`estimate_cost`** — files, bytes and nfdump runs a window would cost.
-- **`lookup_address`** — geolocation and Netbox context for an address. Private addresses skip
-  the geolocation lookup entirely.
-- **`list_alerts`** — the configured rules, to say whether something you found is already
+- **`status`**: the checks of the Health page (datasource reachability, capture collection,
+  configuration, and the SQLite store, which it inspects read-only), so an infrastructure
+  failure is not reported as a change in traffic.
+- **`estimate_cost`**: files, bytes and nfdump runs a window would cost.
+- **`lookup_address`**: geolocation and Netbox context for an address, from the local MaxMind
+  database when `NFSEN_GEOIP_DB` is set. Private addresses skip the geolocation lookup entirely.
+- **`list_alerts`**: the configured rules, to say whether something you found is already
   covered.
 
 ### Expensive
 
-- **`top_talkers`** — top sources, destinations, ports or protocols, ranked by flows, packets,
+- **`top_talkers`**: top sources, destinations, ports or protocols, ranked by flows, packets,
   bytes or rate.
-- **`flow_matrix`** — source to destination pairs, optionally through a destination port. One
+- **`flow_matrix`**: source to destination pairs, optionally through a destination port. One
   loud host and a distributed flood look very different here.
-- **`list_flows`** — individual records, for when the aggregate is ambiguous.
+- **`list_flows`**: individual records, for when the aggregate is ambiguous.
 
 ## Limits
 
 These are enforced by the server, not suggested to the model:
 
-- **Time windows** are clamped to `NFSEN_MAX_STATS_WINDOW`, the same bound the Statistics and
-  Sankey panels apply. The answer says when it shortened your range. That setting defaults to
+- **Time windows** are clamped to `NFSEN_MAX_STATS_WINDOW`, the same bound the Top Talkers and
+  Conversations pages apply. The answer says when it shortened your range. That setting defaults to
   `0`, meaning unlimited, which is reasonable for a person clicking a button and not for an
   agent that can loop, so with no configured bound these tools fall back to seven days.
 - **Row limits** default to 20 and are capped at 500, whatever the caller asks for.

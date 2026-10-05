@@ -1,34 +1,46 @@
 # IP Info Lookup
 
-Clicking an IP address in the Flows or Statistics tables (rendered as
-`<a class="ip-link">` by `TableFormatter.php`) triggers the `ip-info` action
-(`UtilityActions.php`), which renders a modal fragment
-(`ip-info-modal.html.twig`) with:
+Every IP address rendered as a link (`<a class="ip-link">`, from `TableFormatter`
+in result tables, and from the Overview KPI cards and top-N table, the
+Conversations Sankey and IP pairs) posts the `ip-info?ip=` action
+(`UtilityActions.php`). It renders `partials/ip-info-modal.html.twig` into
+`ShellState::$modalHtml`, which the layout places in `#modal-root`, and opens it
+as a native `<dialog>`. The dialog carries `data-preserve-attr="open"` and its
+HTML stays in the tab's state, so live updates re-render it instead of
+closing it.
 
-- **Reverse DNS** — `gethostbyaddr()`, falling back to shelling out to `host`
-  and then to a "could not be resolved" label rather than showing the raw IP
-  back.
-- **Geolocation**, for public IPs only — a live lookup against
-  [ipapi.co](https://ipapi.co/) by default (city, region, country,
-  coordinates, timezone, ASN, org, currency — whatever it returns), with a
-  5-second timeout so a slow/unreachable external API can't hang the modal.
-  The endpoint is configurable via `NFSEN_IPINFO_URL` (plus
-  `NFSEN_IPINFO_TOKEN` for an API key), since ipapi.co rate-limits
-  anonymous callers — see
-  [Configuration](../deployment/configuration.md#geolocation-lookup).
-  A rate-limit or other error reply is shown as a message in the modal
-  rather than an empty table. The country flag is rendered server-side as a
-  regional-indicator emoji (`IpLookup::countryFlag()`), so the modal makes no
-  third-party request of its own and works without outbound internet access.
-- **Netbox data**, for private IPs only, if `NFSEN_NETBOX_URL`/
-  `NFSEN_NETBOX_TOKEN` are configured — whatever IPAM record Netbox has for
-  that address (`IpLookup::netbox()`).
+The dialog has:
 
-Private vs. public is decided once (`IpLookup::isPrivate()`) and picks
-exactly one of geolocation or Netbox — a private (RFC 1918) address is never
-sent to the public geolocation API, and a public address never triggers a
-Netbox lookup.
+- **Hostname**: `gethostbyaddr()`, falling back to shelling out to `host`, and then
+  to a "could not be resolved" label rather than echoing the IP back. With reverse
+  DNS turned off in Settings (`rdnsEnabled`), no lookup happens and the row says
+  *not looked up (reverse DNS is turned off)*.
+- **Location**, for public IPs only, from one of two sources:
+  - **A local MaxMind database**, when `NFSEN_GEOIP_DB` points at a GeoLite2 or
+    GeoIP2 City or Country `.mmdb` that opens. `GeoIpDatabase`
+    (`backend/common/GeoIpDatabase.php`) reads it with the pure-PHP
+    `maxmind-db/reader` package, opens it once per process and reopens it when the
+    file changes; a lookup takes microseconds and makes no network request. The
+    dialog says *Source: MaxMind database*. An address the database does not know
+    is reported as such, without asking the web service.
+  - **A web service**, otherwise: [ipapi.co](https://ipapi.co/) by default (city,
+    region, country, coordinates, timezone, ASN, organisation, whatever it
+    returns), with a five-second timeout so a slow or unreachable API can't hang
+    the dialog. The endpoint is configurable via `NFSEN_IPINFO_URL` (plus
+    `NFSEN_IPINFO_TOKEN` for an API key), since ipapi.co rate-limits anonymous
+    callers; see
+    [Configuration](../deployment/configuration.md#geolocation-lookup). The dialog
+    names the service's host. A configured `.mmdb` that cannot be opened also
+    lands here, and Settings > Integrations says why.
 
-The modal is a native `<dialog>` element
-pushed by the server as a Datastar patch — the same pattern as any other
-action, just targeting a fragment instead of the whole page.
+  A rate-limit or other error reply is shown as a message rather than an empty
+  table. The country flag is rendered server-side as a regional-indicator emoji
+  (`IpLookup::countryFlag()`), so the dialog makes no third-party request of its
+  own.
+- **Netbox data**, for private IPs only, if `NFSEN_NETBOX_URL` and
+  `NFSEN_NETBOX_TOKEN` are configured: whatever IPAM record Netbox has for the
+  address (`IpLookup::netbox()`).
+
+Private versus public is decided once (`IpLookup::isPrivate()`) and picks exactly
+one of geolocation or Netbox: a private (RFC 1918) address is never sent to a
+geolocation service, and a public address never triggers a Netbox lookup.

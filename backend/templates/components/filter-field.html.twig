@@ -1,0 +1,48 @@
+{# Filter field (2.5, 3.5.3). Params: target (a QueryKit target), signal (its filter signal), textareaId, label, rows.
+   Builder and Saved open the filter drawer (4.5.2), which shares the status macro below. #}
+{% import _self as ff %}
+{% set meta = querykit.targets[target] %}
+{% set flt = '$' ~ meta.filterId %}
+{% set text = "String($" ~ signal.id() ~ " ?? '')" %}
+{% set invalid = "(" ~ flt ~ ".checked === " ~ text ~ " && " ~ text ~ ".trim() !== '' && " ~ flt ~ ".status === 'invalid')" %}
+{% set validate = "@post('" ~ validateFilter.url() ~ "?target=" ~ target ~ "')" %}
+{% set statusId = textareaId ~ 'Status' %}
+<div class="filter-field" data-filter-field="{{ target }}">
+    <label class="visually-hidden" for="{{ textareaId }}">{{ label ?? 'nfdump filter' }}</label>
+    {# Typing is checked after the debounce; the effect checks other text and a revival's reset, blur an unanswered text. #}
+    <textarea id="{{ textareaId }}" {{ bind(signal) }} rows="{{ rows ?? 3 }}"
+              autocomplete="off" autocapitalize="off" spellcheck="false"
+              aria-describedby="{{ statusId }}"
+              data-attr:aria-invalid="{{ invalid }} ? 'true' : false" data-preserve-attr="aria-invalid"
+              data-on:input__debounce.300ms="{{ validate }}"
+              data-on:blur="const t = {{ text }}; t.trim() !== '' && {{ flt }}.checked !== t && {{ validate }}"
+              data-effect="const t = {{ text }}; const typed = el.qkText !== undefined && el.qkText !== t; el.qkText = t; window.nfsenChanged(el, t, {{ flt }}.checked, {{ flt }}.status) && t.trim() !== '' && {{ flt }}.checked !== t && (document.activeElement !== el || (!typed && {{ flt }}.checked === '')) && {{ validate }}"></textarea>
+    <div class="filter-field-bar">
+        {{ ff.status(target, flt, text, statusId, '.filter-field') }}
+        {% if drawer.targets[target] is defined %}
+            <div class="filter-field-actions cluster">
+                <button type="button" data-size="sm" data-open-drawer="builder" aria-label="Open the filter builder"
+                        data-on:click="window.dispatchEvent(new CustomEvent('nfsen-open-drawer', {detail: {target: '{{ target }}', tab: 'builder'}}))">Builder</button>
+                <button type="button" data-size="sm" data-open-drawer="saved" aria-label="Saved filters"
+                        data-on:click="window.dispatchEvent(new CustomEvent('nfsen-open-drawer', {detail: {target: '{{ target }}', tab: 'saved'}}))">Saved</button>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{# Only final answers are announced. The first edit from inside `scope` (the container whose focus
+   counts as the user's) or after an answer turns the region on; a loaded filter's answer stays silent. #}
+{% macro status(target, flt, text, statusId, scope) %}
+    {% set state = "(" ~ text ~ ".trim() === '' ? 'empty' : (" ~ flt ~ ".checked !== " ~ text ~ " ? 'checking' : (" ~ flt ~ ".status === 'invalid' ? 'invalid' : 'valid')))" %}
+    {% set announce = "const x = " ~ text ~ "; if (el.qkText !== undefined && el.qkText !== x && (el.qkAnswered || el.closest('" ~ scope ~ "')?.contains(document.activeElement))) el.parentElement.setAttribute('aria-live', 'polite'); el.qkText = x; "
+        ~ "const s = " ~ state ~ "; el.qkAnswered ||= s === 'valid' || s === 'invalid'; "
+        ~ "const t = s === 'valid' ? 'Valid filter' : (s === 'invalid' ? 'Invalid filter: ' + " ~ flt ~ ".message : (s === 'empty' ? '' : el.textContent)); if (el.textContent !== t) el.textContent = t" %}
+    <p class="filter-status" id="{{ statusId }}" role="status" aria-live="off"
+       data-filter-status="{{ target }}"
+       data-state="empty" data-attr:data-state="{{ state }}" data-preserve-attr="data-state aria-live">
+        <span class="filter-status-glyph" aria-hidden="true"></span>
+        <span class="filter-status-shown" aria-hidden="true"
+              data-text="{{ state }} === 'checking' ? 'Checking…' : ({{ state }} === 'valid' ? 'Valid filter' : ({{ state }} === 'invalid' ? {{ flt }}.message : ''))"></span>
+        <span class="visually-hidden" data-ignore-morph data-effect="{{ announce }}"></span>
+    </p>
+{% endmacro %}

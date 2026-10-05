@@ -5,6 +5,7 @@
          colors="true"
 >
     <php>
+        <ini name="memory_limit" value="512M"/>
         <ini name="log_errors" value="On"/>
         <ini name="display_errors" value="On"/>
         <ini name="error_log" value="/tmp/pest-error.log"/>

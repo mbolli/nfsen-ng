@@ -11,34 +11,34 @@ describe('TableFormatter', function (): void {
             expect($result)->toBe('0 B');
         });
 
-        test('formats bytes under 1KB', function (): void {
+        test('formats bytes under 1 KiB', function (): void {
             $result = TableFormatter::formatCellValue(512, 'bytes', ['linkIpAddresses' => false]);
             expect($result)->toContain('B');
         });
 
-        test('formats kilobytes', function (): void {
+        test('formats kibibytes', function (): void {
             $result = TableFormatter::formatCellValue(1024, 'bytes', ['linkIpAddresses' => false]);
-            expect($result)->toContain('KB');
+            expect($result)->toBe('1.000 KiB');
         });
 
-        test('formats megabytes', function (): void {
+        test('formats mebibytes', function (): void {
             $result = TableFormatter::formatCellValue(1048576, 'bytes', ['linkIpAddresses' => false]);
-            expect($result)->toContain('MB');
+            expect($result)->toBe('1.000 MiB');
         });
 
-        test('formats gigabytes', function (): void {
+        test('formats gibibytes', function (): void {
             $result = TableFormatter::formatCellValue(1073741824, 'bytes', ['linkIpAddresses' => false]);
-            expect($result)->toContain('GB');
+            expect($result)->toBe('1.000 GiB');
         });
 
-        test('formats terabytes', function (): void {
+        test('formats tebibytes', function (): void {
             $result = TableFormatter::formatCellValue(1099511627776, 'bytes', ['linkIpAddresses' => false]);
-            expect($result)->toContain('TB');
+            expect($result)->toBe('1.000 TiB');
         });
 
         test('formats bytes field variations', function (string $fieldName): void {
             $result = TableFormatter::formatCellValue(1024, $fieldName, ['linkIpAddresses' => false]);
-            expect($result)->toContain('KB');
+            expect($result)->toBe('1.000 KiB');
         })->with(['bytes', 'ibyt', 'obyt', 'in_bytes', 'out_bytes', 'octets']);
     });
 
@@ -84,7 +84,7 @@ describe('TableFormatter', function (): void {
         test('recognizes date field variations', function (string $fieldName): void {
             $result = TableFormatter::formatCellValue(1700000000, $fieldName, ['linkIpAddresses' => false]);
             expect($result)->toMatch('/\d{4}-\d{2}-\d{2}/');
-        })->with(['first', 'last', 'received', 't_first', 't_last', 'timestamp']);
+        })->with(['first', 'last', 'received', 't_first', 't_last', 'timestamp', 'firstSeen', 'lastSeen']);
     });
 
     describe('formatTcpFlags', function (): void {
@@ -174,10 +174,14 @@ describe('TableFormatter', function (): void {
             $result = TableFormatter::formatCellValue(10000000000, 'bps', ['linkIpAddresses' => false]);
             expect($result)->toContain('Gbps');
         });
+
+        test('formats bytes per packet as a size, not a rate', function (): void {
+            expect(TableFormatter::formatCellValue(100, 'bpp', ['linkIpAddresses' => false]))->toBe('100 B');
+        });
     });
 
     describe('IP address formatting', function (): void {
-        test('creates link for valid IPv4', function (): void {
+        test('creates link for valid IPv4, which the table element posts', function (): void {
             $result = TableFormatter::formatCellValue('192.168.1.1', 'srcip', ['linkIpAddresses' => true]);
             expect($result)
                 ->toContain('192.168.1.1')
@@ -283,44 +287,44 @@ describe('TableFormatter', function (): void {
     });
 
     describe('NSEL/NAT event formatting', function (): void {
-        test('formats numeric event code 1 (create) as success badge', function (): void {
+        test('formats numeric event code 1 (create) as a success badge', function (): void {
             $result = TableFormatter::formatCellValue(1, 'event', ['linkIpAddresses' => false]);
-            expect($result)->toContain('bg-success')->toContain('create');
+            expect($result)->toBe('<span class="badge" data-level="success">create</span>');
         });
 
-        test('formats numeric event code 2 (delete) as danger badge', function (): void {
+        test('formats numeric event code 2 (delete) as an error badge', function (): void {
             $result = TableFormatter::formatCellValue(2, 'event', ['linkIpAddresses' => false]);
-            expect($result)->toContain('bg-danger')->toContain('delete');
+            expect($result)->toBe('<span class="badge" data-level="error">delete</span>');
         });
 
-        test('formats numeric event code 4 (deny) as warning badge', function (): void {
+        test('formats numeric event code 4 (deny) as a warning badge', function (): void {
             $result = TableFormatter::formatCellValue(4, 'event', ['linkIpAddresses' => false]);
-            expect($result)->toContain('bg-warning')->toContain('deny');
+            expect($result)->toBe('<span class="badge" data-level="warning">deny</span>');
         });
 
-        test('formats numeric event code 0 (ignore) as secondary badge', function (): void {
+        test('formats numeric event code 0 (ignore) as a neutral badge', function (): void {
             $result = TableFormatter::formatCellValue(0, 'event', ['linkIpAddresses' => false]);
-            expect($result)->toContain('bg-secondary')->toContain('ignore');
+            expect($result)->toBe('<span class="badge">ignore</span>');
         });
 
         test('formats unknown numeric event code', function (): void {
             $result = TableFormatter::formatCellValue(99, 'event', ['linkIpAddresses' => false]);
-            expect($result)->toContain('badge')->toContain('99');
+            expect($result)->toBe('<span class="badge">event 99</span>');
         });
 
         test('formats string event name "create"', function (): void {
             $result = TableFormatter::formatCellValue('create', 'event', ['linkIpAddresses' => false]);
-            expect($result)->toContain('bg-success')->toContain('create');
+            expect($result)->toContain('data-level="success"')->toContain('create');
         });
 
         test('formats string event name "deny"', function (): void {
             $result = TableFormatter::formatCellValue('deny', 'event', ['linkIpAddresses' => false]);
-            expect($result)->toContain('bg-warning')->toContain('deny');
+            expect($result)->toContain('data-level="warning"')->toContain('deny');
         });
 
         test('formats nfdump no-event placeholder', function (): void {
             $result = TableFormatter::formatCellValue('<no-evt>', 'event', ['linkIpAddresses' => false]);
-            expect($result)->toContain('badge');
+            expect($result)->toBe('<span class="badge">no-event</span>');
         });
 
         test('formats event field for xevent field name', function (): void {
@@ -330,7 +334,114 @@ describe('TableFormatter', function (): void {
 
         test('formats event field for nevent (NEL) field name', function (): void {
             $result = TableFormatter::formatCellValue(2, 'nevent', ['linkIpAddresses' => false]);
-            expect($result)->toContain('bg-danger');
+            expect($result)->toContain('data-level="error"');
+        });
+
+        test('an unknown event name stays escaped text', function (): void {
+            $result = TableFormatter::formatCellValue('<b>odd</b>', 'event', ['linkIpAddresses' => false]);
+            expect($result)->toBe('&lt;b&gt;odd&lt;/b&gt;');
+        });
+    });
+
+    describe('status and secondary text (2.5)', function (): void {
+        test('never emits the old bootstrap or utility classes', function (mixed $value, string $field): void {
+            $result = TableFormatter::formatCellValue($value, $field, ['linkIpAddresses' => false]);
+
+            expect($result)->not->toMatch('/class="[^"]*\\b(muted|bg-\\w+|text-(danger|warning|success|info))\\b/');
+        })->with([
+            [65, 'fwd_status'],
+            [129, 'fwd_status'],
+            [193, 'fwd_status'],
+            [0, 'fwd_status'],
+            ['........', 'flags'],
+            ['....A...', 'flags'],
+            [0x12, 'tcp_flags'],
+            [184, 'tos'],
+            [8, 'icmp_type'],
+            [6, 'proto'],
+            [443, 'dst_port'],
+            [1, 'event'],
+        ]);
+
+        test('forwarding status is status text with its level', function (): void {
+            expect(TableFormatter::formatCellValue(65, 'fwd_status', ['linkIpAddresses' => false]))
+                ->toBe('<span class="status-text" data-level="success">Forwarded</span> <small>(65)</small>')
+                ->and(TableFormatter::formatCellValue(129, 'fwd_status', ['linkIpAddresses' => false]))
+                ->toContain('<span class="status-text" data-level="error">Dropped (ACL Deny)</span>')
+                ->and(TableFormatter::formatCellValue(193, 'fwd_status', ['linkIpAddresses' => false]))
+                ->toContain('data-level="info"')
+                ->and(TableFormatter::formatCellValue(0, 'fwd_status', ['linkIpAddresses' => false]))
+                ->toBe('<span class="status-text">Unknown</span> <small>(0)</small>')
+            ;
+        });
+
+        test('the number behind a name is small print', function (): void {
+            expect(TableFormatter::formatCellValue(6, 'proto', ['linkIpAddresses' => false]))->toBe('TCP <small>(6)</small>')
+                ->and(TableFormatter::formatCellValue('........', 'flags', ['linkIpAddresses' => false]))->toBe('<small>-</small>')
+            ;
+        });
+    });
+
+    describe('dates for the display timezone', function (): void {
+        test('a time carries its epoch, which nfsen-table.js localises', function (): void {
+            $before = date_default_timezone_get();
+            date_default_timezone_set('UTC');
+
+            try {
+                expect(TableFormatter::formatCellValue(1700000000, 'first', ['linkIpAddresses' => false]))
+                    ->toBe('<time data-epoch="1700000000">2023-11-14 22:13:20</time>')
+                    ->and(TableFormatter::formatCellValue('2026-08-29T05:17:53.000', 'last', ['linkIpAddresses' => false]))
+                    ->toContain('data-epoch="1787980673"')
+                ;
+            } finally {
+                date_default_timezone_set($before);
+            }
+        });
+
+        test('the firstSeen and lastSeen of aggregated and bi-directional output are times too', function (): void {
+            $before = date_default_timezone_get();
+            date_default_timezone_set('UTC');
+
+            try {
+                expect(TableFormatter::formatCellValue('2026-08-29 05:17:53.000', 'firstSeen', ['linkIpAddresses' => false]))
+                    ->toBe('<time data-epoch="1787980673">2026-08-29 05:17:53</time>')
+                    ->and(TableFormatter::getSortValue('2026-08-29 05:17:54.000', 'lastSeen'))->toBe(1_787_980_674)
+                    ->and([TableFormatter::cellKind('firstSeen'), TableFormatter::cellKind('lastSeen')])->toBe(['time', 'time'])
+                ;
+            } finally {
+                date_default_timezone_set($before);
+            }
+        });
+
+        test('a value that is not a date stays escaped text', function (): void {
+            expect(TableFormatter::formatCellValue('<soon>', 'first', ['linkIpAddresses' => false]))->toBe('&lt;soon&gt;');
+        });
+    });
+
+    describe('cellKind', function (): void {
+        test('names how each column is set', function (string $field, string $kind): void {
+            expect(TableFormatter::cellKind($field))->toBe($kind);
+        })->with([
+            ['bytes', 'num'],
+            ['in_bytes', 'num'],
+            ['packets', 'num'],
+            ['flows', 'num'],
+            ['bps', 'num'],
+            ['duration', 'num'],
+            ['first', 'time'],
+            ['t_last', 'time'],
+            ['src_addr', 'address'],
+            ['dstip', 'address'],
+            ['dst_port', ''],
+            ['proto', ''],
+        ]);
+    });
+
+    describe('values that are not scalars', function (): void {
+        test('are shown as escaped JSON and sort as empty', function (): void {
+            expect(TableFormatter::formatCellValue(['<a>' => 1], 'extra', ['linkIpAddresses' => false]))->toBe('{&quot;&lt;a&gt;&quot;:1}')
+                ->and(TableFormatter::getSortValue(['x'], 'extra'))->toBe('')
+            ;
         });
     });
 

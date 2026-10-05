@@ -1,8 +1,8 @@
 # nfsen-ng on Unraid
 
 Packaging for running nfsen-ng on [Unraid](https://unraid.net/). One Docker image
-(`ghcr.io/mbolli/nfsen-ng`) carries the whole stack — `nfdump`, the `nfcapd`
-collector, and the web app — so nothing extra is built. It runs in two roles that
+(`ghcr.io/mbolli/nfsen-ng`) carries the whole stack (`nfdump`, the `nfcapd`
+collector and the web app), so nothing extra is built. It runs in two roles that
 share one appdata directory: **nfcapd** writes flow files, the **UI** reads them.
 
 ## Files here
@@ -30,22 +30,44 @@ The **source name must match**: the last path segment of the collector's `-w`
 argument (default `flows` → `live/flows`) must be listed in the UI's
 `NFSEN_SOURCES`. Both default to `flows`, so leave them alone unless you rename.
 
-TLS is intentionally out of scope for the app — front the UI with SWAG, Nginx
+TLS is intentionally out of scope for the app: front the UI with SWAG, Nginx
 Proxy Manager, or Traefik.
 
-## Install — option A: two CA templates (one-click)
+## Install option A: two CA templates (one-click)
 
 Once these templates are published (see *Publishing* below), install **nfsen-ng**
 and **nfsen-ng-nfcapd** from Community Applications. Set both `Data (profiles)`
 paths to the same share (default `/mnt/user/appdata/nfsen-ng`), point your router
 at the collector port, done.
 
-## Install — option B: one Compose stack
+## Install option B: one Compose stack
 
 Install the **Compose Manager** plugin from Community Applications, add a new stack,
 and paste `docker-compose.unraid.yml`. It defines both roles and the shared volume
 already. Edit `NFSEN_SOURCES` / the collector `-w` path only if you want a name
 other than `flows`.
+
+## App data
+
+The UI template's **App data** path (default `/mnt/user/appdata/nfsen-ng-data`,
+mounted at `/var/lib/nfsen-ng`) holds everything nfsen-ng writes itself: the RRD
+database under `rrd/`, and under `state/` the preferences, the alert rule state and
+the SQLite store `nfsen-ng.sqlite` (saved filters, alert history and the per-interval
+top-N data behind the Overview tables). Without this mapping an image update starts
+all of that empty again.
+
+Unraid's user shares (`/mnt/user/...`) go through a FUSE filesystem that can refuse
+SQLite's WAL mode. nfsen-ng then falls back to the rollback journal: everything
+works, and reads wait while a write runs. The Health page shows which journal mode
+is in use. A path on a pool, such as `/mnt/cache/appdata/nfsen-ng-data`, bypasses
+FUSE.
+
+Two advanced variables in the UI template concern this directory:
+
+| Variable | Default | What it does |
+|----------|---------|--------------|
+| `NFSEN_TOPN_RETENTION_DAYS` | `31` | Days of per-interval top-N data kept for the Overview tables; `0` turns collection off. Budget about 12 MB per source and day. |
+| `NFSEN_GEOIP_DB` | _(empty)_ | Path to a MaxMind GeoLite2/GeoIP2 City or Country `.mmdb`. Copy the file into the App data share and enter its container path, e.g. `/var/lib/nfsen-ng/GeoLite2-City.mmdb`. |
 
 ## Publishing to Community Applications
 

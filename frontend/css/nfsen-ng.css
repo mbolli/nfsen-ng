@@ -1,441 +1,10 @@
-/* Header: the tab strip sits on this line, so it must not draw its own. */
-header {
-    border-block-end: 1px solid var(--border);
-}
-
-/* graph */
-
-/* View Transitions for chart updates: simple crossfade */
-@keyframes fade-out {
-    from {
-        opacity: 1;
-    }
-    to {
-        opacity: 0;
-    }
-}
-@keyframes fade-in {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
-}
-
-::view-transition-old(nfsen-chart) {
-    animation: 150ms ease-in both fade-out;
-}
-::view-transition-new(nfsen-chart) {
-    animation: 250ms ease-out both fade-in;
-}
-
-/* View Transitions for tab switching */
-main.tab-content {
-    view-transition-name: tab-content;
-}
-
-::view-transition-old(tab-content) {
-    animation: 100ms ease-in both fade-out;
-}
-::view-transition-new(tab-content) {
-    animation: 200ms ease-out both fade-in;
-}
-
-#legend span {
-    padding: 0.2rem;
-}
-
-#legend span.highlight {
-    background-color: var(--surface-4);
-}
-
-#series label {
-    display: block;
-}
-
-#viewList li h4 {
-    margin-left: 10px;
-}
-
-/* column selector */
-.column-selector {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 0.5rem;
-}
-
-.column-selector-menu {
-    min-width: 200px;
-}
-
-.column-selector-menu label {
-    margin-bottom: 0;
-    user-select: none;
-}
-
-.column-selector-menu label:hover {
-    background-color: var(--surface-3);
-}
-
-.column-selector-menu input[type='checkbox'] {
-    cursor: pointer;
-}
-
-/* LIVE badge — subtle breathing animation while live data is displayed */
-@keyframes live-pulse {
-    0%,
-    100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.6;
-    }
-}
-.live-badge {
-    animation: live-pulse 2s ease-in-out infinite;
-}
-
-/* Import dot on Admin nav tab — pulses while import is running */
-@keyframes import-dot-pulse {
-    0%,
-    100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.35;
-    }
-}
-/* A dot on the Settings tab while an import runs. Positioned by its list item rather
-   than by utilities, so nothing else has to know it is there. */
-.tabs li.has-indicator {
-    position: relative;
-}
-
-.import-indicator-dot {
-    position: absolute;
-    inset-block-start: 0;
-    inset-inline-end: 0;
-    inline-size: 0.55rem;
-    block-size: 0.55rem;
-    border-radius: 50%;
-    background: var(--warning);
-    animation: import-dot-pulse 1.2s ease-in-out infinite;
-}
-
-/* The tab strip's own bits: a home icon and the theme toggle read as icons, not links. */
-.tabs a.reload,
-.tabs a[title='Toggle dark mode'] {
-    color: inherit;
-}
-
-.brand {
-    flex-shrink: 0;
-    color: var(--text-2);
-    text-decoration: none;
-}
-
-.profile-select {
-    inline-size: auto;
-    flex-shrink: 0;
-}
-
-.spinner.reconnecting {
-    color: var(--warning);
-}
-
-/* sortable tables */
-th.sortable {
-    cursor: pointer;
-    user-select: none;
-    position: relative;
-    white-space: nowrap;
-}
-
-th.sortable:hover {
-    background-color: color-mix(in oklab, var(--text-1) 6%, transparent);
-}
-
-th.sortable .sort-icon {
-    display: inline-block;
-    margin-left: 0.25rem;
-    font-size: 0.75em;
-    opacity: 0.8;
-}
-
-th.sortable.sort-asc,
-th.sortable.sort-desc {
-    background-color: color-mix(in oklab, var(--text-1) 10%, transparent);
-    font-weight: 600;
-}
-
-.filter-bar .card-body {
-    --stack-gap: var(--size-2);
-}
-
-.card.loading .card-body {
-    animation: blur-in 0.3s ease-out forwards;
-}
-
-@keyframes blur-in {
-    from {
-        filter: blur(0px);
-    }
-    to {
-        filter: blur(5px);
-    }
-}
-
-/* The slider needs room for its pip labels below and its handle tooltips above. */
-.daterange-wrap {
-    margin-block-end: var(--size-4);
-}
-
-.date-range-controls {
-    margin-block-end: var(--size-4);
-}
-
-/* ── noUiSlider skin (replaces ion.rangeSlider / sprite-skin-nice) ─────────
-   Targets to match the previous "Nice" skin look-and-feel:
-   - Horizontal grey track, 8px tall
-   - Blue-grey filled bar between handles
-   - Circular white handles (22×22 px) with subtle shadow
-   - Small grid/pip labels below the track
-   - Floating tooltips above handles, styled like the old irs-from/irs-to bubbles
-──────────────────────────────────────────────────────────────────────────── */
-
-nfsen-daterange {
-    display: block;
-    width: 100%;
-    padding: 20px 12px 8px; /* top: tooltips above track; sides/bottom: breathing room */
-}
-
-nfsen-daterange .daterange-slider {
-    margin: 0 11px; /* compensate for handle overflow at track edges */
-}
-
-/* Base track */
-.noUi-target {
-    height: 8px;
-    border-radius: 4px;
-    background: var(--surface-4);
-    border: 1px solid var(--border);
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
-}
-
-.noUi-connects {
-    border-radius: 4px;
-    overflow: hidden; /* clip connect bar to track radius */
-}
-
-/* Filled bar between the two handles */
-.noUi-connect {
-    background: #8ca4b0; /* muted blue-grey, close to ion-slider bar colour */
-}
-
-/* Handles */
-.noUi-handle {
-    width: 22px !important;
-    height: 22px !important;
-    right: -11px !important;
-    top: -8px !important;
-    border-radius: 50%;
-    background: var(--surface-1);
-    border: 1px solid var(--border);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-    cursor: default;
-}
-/* Remove the default inner cross-hair lines */
-.noUi-handle::before,
-.noUi-handle::after {
-    display: none;
-}
-.noUi-handle:hover {
-    border-color: var(--text-1);
-    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
-}
-.noUi-handle:focus {
-    outline: 2px solid #86b7fe;
-    outline-offset: 1px;
-}
-
-/* Floating tooltips above handles */
-.noUi-tooltip {
-    background: var(--text-1);
-    color: var(--text-on-accent);
-    border: none;
-    border-radius: 3px;
-    font-size: 10px;
-    line-height: 1.333;
-    padding: 1px 5px;
-    white-space: nowrap;
-    bottom: 26px; /* position above the handle */
-}
-
-/* Pip grid below track */
-.noUi-pips-horizontal {
-    padding: 6px 0 0;
-    height: 30px;
-    top: 100%;
-}
-.noUi-marker-horizontal.noUi-marker {
-    height: 8px;
-    background: var(--text-2);
-    width: 1px;
-}
-.noUi-marker-horizontal.noUi-marker-large,
-.noUi-marker-horizontal.noUi-marker-normal {
-    height: 12px;
-}
-.noUi-marker-horizontal.noUi-marker-sub {
-    height: 6px;
-}
-.noUi-value {
-    color: var(--text-2);
-    font-size: 9px;
-    line-height: 1;
-    padding: 0 3px;
-}
-
-/* ── Tooltip component (paired with nfsen-tooltip.js) ────────────────────── */
-.nfsen-tip-popup {
-    background: var(--text-1);
-    color: var(--text-on-accent);
-    padding: 3px 8px;
-    border-radius: 3px;
-    font-size: 11px;
-    max-width: 260px;
-    white-space: normal;
-    line-height: 1.4;
-    pointer-events: none;
-}
-
-/* With the handles close together one label carries both ends (see
-   nfsen-daterange.js) and the other formats to nothing; an empty tooltip would
-   otherwise still draw its box and border. */
-.noUi-tooltip:empty {
-    display: none;
-}
-
-/* The /24 beside an IP aggregation select: wide enough for three digits, no wider. */
-.prefix-input {
-    inline-size: 4rem;
-    margin-block-start: var(--size-1);
-}
-
-/* The progress readout beside a submit button: takes the rest of the row, but not so
-   little that the status text wraps every few characters. */
-.query-progress {
-    flex: 1 1 12rem;
-    min-inline-size: 12rem;
-}
-
-.query-progress progress {
-    block-size: 6px;
-}
-
-.query-progress-line {
-    flex-wrap: nowrap;
-    gap: var(--size-2);
-    margin-block-start: var(--size-1);
-}
-
-.kill {
-    color: var(--danger);
-    border-color: color-mix(in oklab, var(--danger) 45%, var(--border));
-}
-
-.kill:hover {
-    background: var(--danger-subtle);
-    border-color: var(--danger);
-}
-
-/* Settings: a column of sections beside the section that is open. Collapses to one
-   column when there is no room for both, which is also when the section list is short
-   enough to sit above the content without costing much. */
-.settings-layout {
-    display: grid;
-    grid-template-columns: minmax(9rem, 11rem) minmax(0, 1fr);
-    gap: var(--size-5);
-    align-items: start;
-}
-
-@media (max-width: 47.98em) {
-    .settings-layout {
-        grid-template-columns: 1fr;
-    }
-}
-
 /*
- * Settings is a long form, and the markup already says what a field is: a label followed
- * by its control. :has() picks those up without a class on every one of the forty-odd
- * wrappers, stacks them, and gives them a common width, which is what stops the column of
- * controls from ending at a different place on every row.
+ * This app's own pieces that more than one page shares: the chart containers, the result
+ * tables of nfsen-table.js and nfdump's aggregation controls. Generic components live in
+ * ui.css, the shell's in shell.css, a single page's in pages/.
  */
-.settings-layout div:has(> label + :is(select, input, textarea, .input-group)) {
-    display: flex;
-    flex-direction: column;
-    gap: var(--size-1);
-    max-inline-size: 34rem;
-    margin-block-end: var(--size-4);
-}
 
-/* A field inside a row of them is sized by the row: the cap above is for a field that
-   stands alone, where a control stretched across the whole page reads worse. */
-.settings-layout .grid > div {
-    max-inline-size: none;
-    margin-block-end: 0;
-}
-
-/* A checkbox or radio reads the other way round: control first, label beside it. */
-.settings-layout :is(.choice, .switch) {
-    flex-direction: row;
-    align-items: center;
-    margin-block-end: var(--size-2);
-}
-
-/* Section headings need air above them, or a form reads as one undifferentiated column. */
-.settings-layout h6 {
-    margin-block: var(--size-5) var(--size-2);
-    font-size: var(--font-size-00);
-}
-
-.settings-layout .card-body > p:first-child {
-    margin-block-end: var(--size-4);
-}
-
-.settings-nav {
-    position: sticky;
-    inset-block-start: var(--size-2);
-}
-
-/* The import strip under the header, and the same bar inside Settings. */
-.import-strip {
-    cursor: pointer;
-    border-block-end: 1px solid var(--border);
-    margin-block-end: var(--size-2);
-}
-
-.import-strip progress {
-    block-size: 4px;
-    border-radius: 0;
-}
-
-.import-strip-line {
-    flex-wrap: nowrap;
-    padding: var(--size-1) var(--size-2);
-}
-
-.import-progress {
-    block-size: var(--size-4);
-}
-
-/* A block that reads as an inset panel rather than page background. */
-.surface {
-    background: var(--surface-3);
-    border-radius: var(--radius-2);
-    padding: var(--size-3);
-}
+/* ── Charts ─────────────────────────────────────────────────────────────── */
 
 /* The chart fills its panel; the component sets the height it needs. */
 .chart-container {
@@ -447,344 +16,185 @@ nfsen-daterange .daterange-slider {
     inline-size: 100%;
 }
 
-/* The filter bar: one surface under the header holding the date range and the panel
-   for whichever view is open. */
-.filter-bar {
-    background: var(--surface-3);
-    border-block-end: 1px solid var(--border);
-    padding-block: var(--size-5);
-    margin-block-end: var(--size-5);
+/* ── Result tables (nfsen-table.js, Table::generate()) ──────────────────── */
+
+nfsen-table {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-2);
+    min-inline-size: 0;
 }
 
-/* The saved-filter picker under the nfdump filter box: the select takes the row, the two
-   actions share the one below it. They are one control group, not three stacked blocks. */
-.filter-manager {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--size-1);
-    margin-block-start: var(--size-2);
-}
-
-.filter-manager select {
-    grid-column: 1 / -1;
-}
-
-/* The toolbar above a result table, and its export controls. */
 .table-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-2) var(--size-3);
     margin-block-end: var(--size-3);
 }
 
-.export-buttons .choice {
-    margin-inline-start: var(--size-2);
+.table-toolbar > .column-selector-placeholder {
+    margin-inline-start: auto;
 }
 
-/* Raw nfdump text, shown when a result cannot be read into columns. */
-.nfsen-raw-output,
-.original pre {
+sb-popover.column-selector {
+    display: flex;
+    justify-content: flex-end;
+    margin-block-end: var(--size-2);
+}
+
+/* The panel scrolls, not the list, so the component's edge stays around the items. */
+sb-popover.column-selector::part(panel) {
+    min-inline-size: 12.5rem;
+    max-block-size: min(20rem, 80dvh);
+}
+
+.column-selector-menu :is(label, input) {
+    cursor: pointer;
+    user-select: none;
+}
+
+/* A second horizontal scrollbar above a table wider than its card. */
+.table-scrollbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.table-scrollbar > div {
+    inline-size: var(--scroll-width, 100%);
+    block-size: 1px;
+}
+
+nfsen-table:not([data-overflow]) > .table-scrollbar,
+nfsen-table[data-view='original'] > :is(.table-scrollbar, .table-wrap, .table-pager),
+nfsen-table[data-view='original'] sb-popover.column-selector {
+    display: none;
+}
+
+.sort-button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-1);
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    white-space: nowrap;
+}
+
+.sort-button:hover:not(:disabled) {
+    background: none;
+    text-decoration: underline;
+}
+
+th[aria-sort] > .sort-button::after {
+    content: '\25B2' / '';
+    font-size: 0.7em;
+}
+
+th[aria-sort='descending'] > .sort-button::after {
+    content: '\25BC' / '';
+}
+
+/* A wide result scrolls sideways rather than folding every cell onto three lines. */
+:is(nfsen-table, .flows-protocols) :is(th, td) {
+    white-space: nowrap;
+}
+
+td[data-kind='rank'] {
+    inline-size: 1%;
+}
+
+/* nfdump's text, when a result cannot be read into columns or the Original view is open. */
+.table-raw pre,
+nfsen-table .original pre {
     max-block-size: 60vh;
     overflow: auto;
     font-size: var(--font-size-00);
     line-height: 1.35;
 }
 
-.ip-link {
-    text-decoration: none;
-}
-
-.ip-link:hover {
-    text-decoration: underline;
-}
-
-/* The column menu's own rows. */
-.column-checkbox-item,
-.menu-head {
+.table-pager {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--size-2);
-    padding: var(--size-1) var(--size-2);
-    border-radius: var(--radius-1);
+    justify-content: space-between;
+    gap: var(--size-2) var(--size-4);
     font-size: var(--font-size-0);
 }
 
-.menu-head {
-    border-block-end: 1px solid var(--border);
-    margin-block-end: var(--size-1);
-    padding-block-end: var(--size-2);
+.table-pager-status {
+    color: var(--text-2);
 }
 
-.column-checkbox-item:hover {
-    background: var(--surface-3);
+.table-pager-controls,
+.table-pager-pages {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-1);
 }
 
-/* ── Filter panel UX ─────────────────────────────────────────────────────── */
-
-/* One auto-fit grid per panel, rather than a column width picked per control at
-   some breakpoint. That guess was wrong in both directions: at 1100px the Sankey
-   "Top pairs" select rendered 50px wide showing nothing but its chevron, while
-   "Min bytes" kept a full column to hold four characters. Here the track count
-   follows the width that is there, and nothing drops below a readable minimum. */
-.filter-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
-    gap: 0.75rem;
-    align-items: start;
+.table-pager-pages {
+    padding: 0;
+    list-style: none;
 }
 
-/* Groups holding several controls side by side (the nfdump filter, aggregation)
-   take two tracks once the grid has two to give. Spanning is what needs a width
-   test, not the individual controls, so this is the only breakpoint left. */
-@media (min-width: 48em) {
-    .filter-grid > .filter-cell--wide {
-        grid-column: span 2;
-    }
+.table-pager-pages > li[aria-hidden] {
+    padding-inline: var(--size-1);
+    color: var(--text-2);
 }
 
-/* Submit and its file count sit below the controls across the whole width. */
-.filter-grid > .filter-submit {
-    grid-column: 1 / -1;
+.table-pager-pages button {
+    min-inline-size: 2.25rem;
+    justify-content: center;
+    font-variant-numeric: tabular-nums;
 }
 
-/* Groups that hold several labelled sub-sections (aggregation) lay them out the
-   same way one level down, so a sub-section is never squeezed either: the two IP
-   selects used to render as bare chevrons with the option text cut off. */
+/* The current page reads as a pressed button (2.5). */
+.table-pager-pages button[aria-current='page'] {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: var(--font-weight-semibold);
+}
+
+.table-pager-size {
+    margin-inline-start: var(--size-2);
+    color: var(--text-2);
+}
+
+.table-pager select {
+    inline-size: auto;
+}
+
+/* ── Aggregation controls (partials/aggregation-controls.html.twig) ────── */
+
+/* The two IP selects share a row and never shrink to a bare chevron. */
 .filter-subgrid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-    gap: 0.5rem;
+    gap: var(--size-2);
 }
 
 .filter-subgrid--tight {
     grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
-    gap: 0.25rem;
+    gap: var(--size-1);
 }
 
-/* Controls fill their card. A select left at its intrinsic width is what
-   clipped Sources to "Sou..." whenever its column came out narrow. */
-.filter-group select,
-.filter-group input[type='text'] {
-    width: 100%;
-    min-width: 0;
-}
-
-/* A multi-select grows one row per source, so a deployment with twenty of them
-   pushed everything else off the screen. */
-.filter-group select[multiple] {
-    max-height: 7.5rem;
-    overflow-y: auto;
-}
-
-/* Below this width the panel is taller than the screen (the Statistics one
-   measured 1448px at 414px wide), so the controls collapse behind a toggle and
-   the submit row stays put. The class is inert above it, which leaves resizing
-   to CSS rather than to a measured signal that has to be kept in sync. */
-.filter-toggle {
-    display: none;
-}
-
-@media (max-width: 47.98em) {
-    .filter-toggle {
-        display: inline-flex;
-    }
-
-    .filter-collapsed .filter-grid > .filter-cell {
-        display: none;
-    }
-}
-
-/* A segmented control in a narrow filter card wraps rather than overflowing it. */
-.filter-group .segmented {
-    flex-wrap: wrap;
-}
-
-/* Refined section header labels inside filter panels */
-.filter-label {
-    font-size: 0.6875rem; /* 11px — smaller than body, clearly subordinate */
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: var(--text-2);
-    margin-bottom: 0.5rem;
-    padding-bottom: 0.3rem;
-    border-block-end: 1px solid color-mix(in oklab, var(--text-1) 15%, transparent);
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    line-height: 1.4;
-}
-
-/* Card-like visual group for each filter section */
-.filter-group {
-    background: var(--surface-3);
-    border: 1px solid var(--border);
-    border-radius: 0.375rem;
-    padding: var(--size-3) var(--size-4);
-}
-
-/* Cards sit at a common minimum height rather than being stretched to the
-   tallest in the row: stretching aligned them but left a single select floating
-   in 250px of empty card next to the nfdump filter. The minimum is what makes a
-   row of one-control groups line up, which is the case that looked ragged. */
-.filter-cell > .filter-group {
-    min-height: 6.25rem;
-}
-
-/* Nested sub-section labels (e.g. Global / Port / IP Aggregation) */
 .filter-sublabel {
+    display: block;
+    margin-block-end: 0.375rem;
+    color: var(--text-2);
     font-size: 0.625rem;
     font-weight: 700;
-    text-transform: uppercase;
     letter-spacing: 0.09em;
-    color: var(--text-2);
-    margin-bottom: 0.375rem;
-    display: block;
+    text-transform: uppercase;
 }
 
-/* sankey */
-
-/* nfsen-sankey.js grows .sankey-canvas taller than its 500px default when a query
-   returns many nodes (see computeCanvasHeight) — scroll the card instead of letting
-   the page grow unbounded. */
-.sankey-container {
-    max-height: 80vh;
-    overflow-y: auto;
-}
-
-/* Graph options below the chart: the same auto-fit grid the filter panels use, so the
-   five controls sit beside each other and follow the width available rather than each
-   taking a full row of their own. */
-#graphOptions {
-    background: var(--surface-3);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-2);
-    padding: var(--size-4);
-    margin-block-start: var(--size-5);
-}
-
-/* ── Native <dialog> modal (ip-info-modal) ───────────────────────────────── */
-dialog#ip-modal-inner {
-    border: none;
-    border-radius: 8px;
-    padding: 24px;
-    min-width: 400px;
-    max-width: 92vw;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-    background-color: var(--surface-1);
-    color: var(--text-1);
-}
-dialog#ip-modal-inner::backdrop {
-    background: rgba(0, 0, 0, 0.5);
-}
-
-/* ── Toast notification overlay ──────────────────────────────────────────── */
-#alerts-toast-container {
-    position: fixed;
-    bottom: 1.25rem;
-    right: 1.25rem;
-    z-index: 1090;
-    display: flex;
-    flex-direction: column-reverse;
-    gap: 0.5rem;
-    min-width: 320px;
-    max-width: min(480px, calc(100vw - 2.5rem));
-    pointer-events: none; /* let clicks pass through empty space */
-}
-#alerts-toast-container nfsen-toast {
-    pointer-events: auto;
-}
-#alerts-toast-container .notice {
-    margin-bottom: 0;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-    overflow: hidden; /* contain the progress bar */
-}
-.toast-progress {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    height: 3px;
-    width: 100%;
-    background: currentColor;
-    opacity: 0.25;
-    transform-origin: left;
-    animation: toast-shrink linear forwards;
-}
-@keyframes toast-shrink {
-    from {
-        transform: scaleX(1);
-    }
-    to {
-        transform: scaleX(0);
-    }
-}
-
-/* ── Country flag emoji (IP info modal) ──────────────────────────────────── */
-
-/* Rendered server-side as a regional-indicator pair instead of loading a flag
-   image from a CDN. Name the colour emoji fonts explicitly: without them the
-   glyphs fall back to the body font, which on some Linux setups draws the two
-   letters in a monochrome box even where a colour font is installed. Windows
-   has no flag glyphs at all outside Firefox and shows the letters — still
-   readable, and the country name is a row below. */
-.flag-emoji {
-    font-family: 'Twemoji Mozilla', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', sans-serif;
-    font-size: 2rem;
-    line-height: 1;
-    vertical-align: -0.15em;
-    margin-left: 0.35rem;
-}
-
-/* ── Graph series controls with many series ──────────────────────────────── */
-
-/* A per-port graph carries one series per configured port, and a real port list runs to
-   sixty. One column of sixty checkboxes measured ~1500px and pushed the graph off the top of
-   the screen, and the hover legend did the same beside it. Both scroll instead, at a height
-   that leaves the chart visible. */
-/* Attribute selectors only, so the scoped ids a second chart uses (flowsGraph-series) are
-   covered by the same rules, and so specificity stays flat: mixing #id and [attr] forms put a
-   lower-specificity rule after a higher one, which the linter flags and which breaks the
-   moment someone reorders the file. */
-[id='series'],
-[id='legend'],
-[id$='-series'],
-[id$='-legend'] {
-    max-height: 13rem;
-    overflow-y: auto;
-}
-
-/* One line per series, ellipsised rather than wrapped. Two columns were tried first and
-   truncated the names to nothing: the panel is a narrow grid column, so half of it cannot
-   hold "27017_bits_any". The list scrolls instead. */
-[id='series'] .form-check,
-[id$='-series'] .form-check {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    margin-bottom: 0.1rem;
-    min-height: auto;
-    padding-left: 0;
-}
-
-[id='series'] .form-check-input,
-[id$='-series'] .form-check-input {
-    flex: 0 0 auto;
-    margin: 0;
-}
-
-[id='series'] .form-check-label,
-[id$='-series'] .form-check-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* The colour ECharts drew this series in. Without it a legend of sixty names says nothing
-   about which line is which. */
-.series-swatch {
-    display: inline-block;
-    width: 0.65rem;
-    height: 0.65rem;
-    margin-right: 0.35rem;
-    border-radius: 2px;
-    vertical-align: baseline;
+/* The /24 beside an IP aggregation select: wide enough for three digits, no wider. */
+.prefix-input {
+    inline-size: 4rem;
+    margin-block-start: var(--size-1);
 }

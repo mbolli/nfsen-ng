@@ -8,8 +8,8 @@ namespace mbolli\nfsen_ng\common;
  * The single source of truth for every environment variable nfsen-ng reads.
  *
  * Each variable is one {@see EnvVar} record describing its type, default,
- * validation, deprecation alias, and documentation. All consumers —
- * {@see Settings}, the bootstrap in app.php, {@see Config}, {@see AppStartup} —
+ * validation, deprecation alias, and documentation. All consumers
+ * ({@see Settings}, the bootstrap in app.php, {@see Config}, {@see AppStartup})
  * resolve values through {@see value()} instead of calling getenv() directly,
  * which removes the duplicate reads and the per-code-path default drift that
  * accumulated while these vars were scattered across the codebase.
@@ -21,6 +21,12 @@ namespace mbolli\nfsen_ng\common;
  * @phpstan-type EnvIssue array{name: string, level: 'warning', message: string}
  */
 final class EnvRegistry {
+    /** Variables that also accept `auto`, which they read as 0. */
+    private const array AUTO = ['NFSEN_NFDUMP_MAX_PROCESSES'];
+
+    /** The process budget, whose clamped values are reported: upper bound by variable, null for none. */
+    private const array BOUNDED = ['NFSEN_NFDUMP_MAX_PROCESSES' => null, 'NFSEN_NFDUMP_WORKERS' => CpuBudget::MAX_WORKERS];
+
     /** @var null|array<string, EnvVar> memoized name → record table */
     private static ?array $table = null;
 
@@ -56,7 +62,8 @@ final class EnvRegistry {
             new EnvVar('NFSEN_NFDUMP_BINARY', 'nfdump', 'string', '/usr/local/nfdump/bin/nfdump', 'Path to the nfdump binary.', format: 'path'),
             new EnvVar('NFSEN_NFDUMP_PROFILES', 'nfdump', 'string', '/var/nfdump/profiles-data', 'nfdump profiles-data directory.', format: 'path'),
             new EnvVar('NFSEN_NFDUMP_PROFILE', 'nfdump', 'string', 'live', 'nfdump profile name.'),
-            new EnvVar('NFSEN_NFDUMP_MAX_PROCESSES', 'nfdump', 'int', 2, 'Max concurrent nfdump processes.', min: 1),
+            new EnvVar('NFSEN_NFDUMP_MAX_PROCESSES', 'nfdump', 'int', 0, 'Parallel nfdump processes (each uses about 2 to 3 CPU cores). 0 or auto = a third of the CPU cores, between 2 and 8.', min: 0),
+            new EnvVar('NFSEN_NFDUMP_WORKERS', 'nfdump', 'int', 2, 'Filter threads per nfdump process, passed as -W (0 = nfdump\'s own default, up to 16).', min: 0),
             new EnvVar('NFSEN_PORT_DIRECTION', 'nfdump', 'enum', 'dst', 'Which side of a flow a per-port graph counts: dst (default), src, or any (either direction).', enum: ['any', 'dst', 'src']),
 
             // ── Integrations ──────────────────────────────────────────────────
@@ -65,13 +72,15 @@ final class EnvRegistry {
             new EnvVar('NFSEN_ALERT_EMAIL_FROM', 'integrations', 'string', '', 'From address for alert emails.', format: 'email'),
             new EnvVar('NFSEN_IPINFO_URL', 'integrations', 'string', IpLookup::DEFAULT_GEO_URL, 'Geolocation API endpoint for public IPs. {ip} is replaced with the address, {token} with NFSEN_IPINFO_TOKEN.', format: 'url'),
             new EnvVar('NFSEN_IPINFO_TOKEN', 'integrations', 'string', '', 'API key for the geolocation service, substituted for {token} in NFSEN_IPINFO_URL.', secret: true),
+            new EnvVar('NFSEN_GEOIP_DB', 'integrations', 'string', '', 'Path to a MaxMind GeoLite2/GeoIP2 City or Country .mmdb. When set, IP lookups use it locally instead of the web service.', format: 'path'),
 
             // ── Import daemon ─────────────────────────────────────────────────
             new EnvVar('NFSEN_SKIP_DAEMON', 'daemon', 'bool', false, 'Disable the embedded import daemon.'),
             new EnvVar('NFSEN_SKIP_INITIAL_IMPORT', 'daemon', 'bool', false, 'Skip startup catch-up import; only set up inotify watches.'),
+            new EnvVar('NFSEN_TOPN_RETENTION_DAYS', 'daemon', 'int', 31, 'Days of per-interval top-N data kept in SQLite for the Overview tables. 0 disables collection.', min: 0),
 
             // ── State & config file paths ─────────────────────────────────────
-            new EnvVar('NFSEN_STATE_DIR', 'files', 'string', '', 'Directory for mutable runtime state (preferences.json + alert rules/state/log). Empty = backend/settings. Mount a volume here in Docker so it survives upgrades.', format: 'path'),
+            new EnvVar('NFSEN_STATE_DIR', 'files', 'string', '', 'Directory for mutable runtime state: preferences.json, alert rule state and the SQLite store nfsen-ng.sqlite (saved filters, alert history, top-N data). Empty = backend/settings. Mount a volume here in Docker so it survives upgrades.', format: 'path'),
             new EnvVar('NFSEN_SETTINGS_FILE', 'files', 'string', '', 'Override path to settings.php (deprecated file-based config).', format: 'path'),
             new EnvVar('NFSEN_PREFERENCES_FILE', 'files', 'string', '', 'Override path to preferences.json (default: <state dir>/preferences.json).', format: 'path'),
 
@@ -99,7 +108,7 @@ final class EnvRegistry {
      * @throws \InvalidArgumentException if $name is not a registered variable (a programming error)
      */
     public static function value(string $name): mixed {
-        $var = self::table()[$name] ?? throw new \InvalidArgumentException("Unknown env var '{$name}' — not in EnvRegistry.");
+        $var = self::table()[$name] ?? throw new \InvalidArgumentException("Unknown env var '{$name}': not in EnvRegistry.");
 
         return $var->parse(self::raw($var)[0]);
     }
@@ -107,14 +116,19 @@ final class EnvRegistry {
     /**
      * Whether the variable (or its deprecated alias) is set to a non-empty value.
      * Lets callers distinguish "explicitly configured" from "using the default"
-     * — e.g. to let an env override win over a settings.php value.
+     * (e.g. to let an env override win over a settings.php value).
      *
      * @throws \InvalidArgumentException if $name is not a registered variable (a programming error)
      */
     public static function isSet(string $name): bool {
-        $var = self::table()[$name] ?? throw new \InvalidArgumentException("Unknown env var '{$name}' — not in EnvRegistry.");
+        $var = self::table()[$name] ?? throw new \InvalidArgumentException("Unknown env var '{$name}': not in EnvRegistry.");
 
         return self::raw($var)[0] !== null;
+    }
+
+    /** Whether the variable reads `auto` as 0, which it then derives at start. */
+    public static function acceptsAuto(string $name): bool {
+        return \in_array($name, self::AUTO, true);
     }
 
     /** @return list<string> canonical variable names */
@@ -151,11 +165,15 @@ final class EnvRegistry {
                 $issues[] = [
                     'name' => $var->alias ?? '',
                     'level' => 'warning',
-                    'message' => "{$var->alias} is deprecated — rename it to {$var->name} (still honoured for now).",
+                    'message' => "{$var->alias} is deprecated. Rename it to {$var->name} (still honoured for now).",
                 ];
             }
 
             $error = $var->validationError($raw);
+            if ($error !== null && self::acceptsAuto($var->name)) {
+                $error = 'invalid value ' . $var->display((string) $raw) . ' (expected auto or a whole number), falling back to auto';
+            }
+            $error ??= self::outOfRange($var, $raw);
             if ($error !== null) {
                 $issues[] = ['name' => $var->name, 'level' => 'warning', 'message' => "{$var->name}: {$error}"];
             }
@@ -169,7 +187,7 @@ final class EnvRegistry {
                 $issues[] = [
                     'name' => $key,
                     'level' => 'warning',
-                    'message' => "{$key} is not a recognised nfsen-ng variable — possible typo; it has no effect.",
+                    'message' => "{$key} is not a recognised nfsen-ng variable, possibly a typo; it has no effect.",
                 ];
             }
         }
@@ -185,16 +203,36 @@ final class EnvRegistry {
     private static function raw(EnvVar $var): array {
         $value = getenv($var->name);
         if ($value !== false && $value !== '') {
-            return [$value, 'name'];
+            return [self::autoAsZero($var, $value), 'name'];
         }
         if ($var->alias !== null) {
             $aliasValue = getenv($var->alias);
             if ($aliasValue !== false && $aliasValue !== '') {
-                return [$aliasValue, 'alias'];
+                return [self::autoAsZero($var, $aliasValue), 'alias'];
             }
         }
 
         return [null, null];
+    }
+
+    /** Why a bounded variable's number is not used as set, null when it is. */
+    private static function outOfRange(EnvVar $var, ?string $raw): ?string {
+        if (!\array_key_exists($var->name, self::BOUNDED) || $raw === null || !is_numeric($raw)) {
+            return null;
+        }
+        $n = (int) $raw;
+        $max = self::BOUNDED[$var->name];
+        $min = $var->min;
+
+        return match (true) {
+            $max !== null && $n > $max => "{$n} is above {$max}, using {$max}",
+            $min !== null && $n < $min => "{$n} is below {$min}, using " . ($min === 0 && self::acceptsAuto($var->name) ? 'auto' : $min),
+            default => null,
+        };
+    }
+
+    private static function autoAsZero(EnvVar $var, string $value): string {
+        return self::acceptsAuto($var->name) && strtolower(trim($value)) === 'auto' ? '0' : $value;
     }
 
     /** @return array<string, string> the full process environment (seam for testing/typo scan) */

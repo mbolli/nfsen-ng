@@ -22,7 +22,7 @@ final class AlertRule {
         /** absolute|percent_of_avg */
         public readonly string $thresholdType,
         public readonly float $thresholdValue,
-        /** 10m|30m|1h|6h|12h|24h — only for percent_of_avg */
+        /** 10m|30m|1h|6h|12h|24h, only for percent_of_avg */
         public readonly string $avgWindow,
         /** Number of 5-min slots to suppress re-triggering after a fire */
         public readonly int $cooldownSlots,
@@ -83,6 +83,19 @@ final class AlertRule {
             'webhookTitleTemplate' => $this->webhookTitleTemplate,
             'webhookMessageTemplate' => $this->webhookMessageTemplate,
         ];
+    }
+
+    /**
+     * Names the traffic the rule's values count: profile, sources, filter and metric. A filtered
+     * rule's recorded values of another fingerprint belong to it before an edit and never count.
+     *
+     * @param list<string> $sources the sources the rule covers, every configured one when it names none
+     */
+    public function sampleFingerprint(array $sources): string {
+        sort($sources);
+        $filter = (string) preg_replace('/\s+/', ' ', trim((string) $this->nfdumpFilter));
+
+        return hash('xxh3', json_encode([$this->profile, $sources, $filter, $this->metric], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
     }
 
     public function withEnabled(bool $enabled): self {

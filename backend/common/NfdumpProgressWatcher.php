@@ -10,7 +10,7 @@ use mbolli\nfsen_ng\processor\NfdumpSlots;
  * Estimates how far a single long-running nfdump has got.
  *
  * The Flows and Statistics tabs run one nfdump over the whole window, so unlike the
- * filtered-graph build there is no bin counter to report — nfdump itself emits no
+ * filtered-graph build there is no bin counter to report: nfdump itself emits no
  * progress. What can be observed is how much it has read: /proc/<pid>/io's `rchar`
  * against the total size of the nfcapd files the range covers.
  *
@@ -42,8 +42,8 @@ final class NfdumpProgressWatcher {
      * Build a watcher wired to one query's nfdump process and procfs.
      *
      * Keyed by query handle rather than reading the process-global pid: with the process cap
-     * defaulting to two, a panel's bar would otherwise sample whichever run started last —
-     * another tab's, the import daemon's, or an MCP call's — and freeze when that one exited.
+     * defaulting to two, a panel's bar would otherwise sample whichever run started last
+     * (another tab's, the import daemon's, or an MCP call's) and freeze when that one exited.
      */
     public static function forRunningNfdump(QueryProgress $progress, int $totalBytes, string $handle = 'default'): self {
         return new self(
@@ -57,7 +57,7 @@ final class NfdumpProgressWatcher {
     /**
      * Sample once and report.
      *
-     * @return bool false once there is no point sampling again — either this platform
+     * @return bool false once there is no point sampling again: either this platform
      *              cannot answer, or the total is unknown, so the caller should stop
      *              polling and leave the UI on its indeterminate indicator
      */
@@ -68,7 +68,7 @@ final class NfdumpProgressWatcher {
 
         $pid = ($this->pidProvider)();
         if ($pid === null) {
-            // nfdump has not started yet (or already exited) — nothing to sample, but
+            // nfdump has not started yet (or already exited): nothing to sample, but
             // that is not a reason to give up on the next tick.
             return true;
         }

@@ -6,44 +6,6 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\common\Settings;
 
-/**
- * Builds a throwaway nfcapd tree: <root>/live/<source>/YYYY/MM/DD/nfcapd.YYYYMMDDHHII.
- *
- * @param list<string> $sources
- * @param list<int>    $timestamps
- */
-function makeCaptureTree(array $sources, array $timestamps, int $bytesPerFile = 100): string {
-    $root = sys_get_temp_dir() . '/nfsen-ng-test-' . bin2hex(random_bytes(6));
-
-    foreach ($sources as $source) {
-        foreach ($timestamps as $ts) {
-            $dt = (new DateTime('', new DateTimeZone('UTC')))->setTimestamp($ts);
-            $dir = implode('/', [$root, 'live', $source, $dt->format('Y'), $dt->format('m'), $dt->format('d')]);
-            if (!is_dir($dir)) {
-                mkdir($dir, 0o777, true);
-            }
-            file_put_contents($dir . '/nfcapd.' . $dt->format('YmdHi'), str_repeat('x', $bytesPerFile));
-        }
-    }
-
-    return $root;
-}
-
-function removeTree(string $dir): void {
-    if (!is_dir($dir)) {
-        return;
-    }
-    $it = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST
-    );
-    foreach ($it as $entry) {
-        /** @var SplFileInfo $entry */
-        $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
-    }
-    rmdir($dir);
-}
-
 /** Point Config at a capture tree. Returns the root so the caller can clean it up. */
 function useCaptureTree(string $root): void {
     Config::$settings = Settings::fromArray([
@@ -168,5 +130,144 @@ describe('NfcapdFiles::list', function (): void {
 
     test('totalSize of an empty list is zero', function (): void {
         expect(NfcapdFiles::totalSize([]))->toBe(0);
+    });
+});
+
+/** Writes one rotated capture file under the day directory of $ts in the nfcapd timezone. */
+function writeCaptureFile(string $root, string $source, int $ts, string $name = ''): string {
+    $dt = (new DateTimeImmutable('@' . $ts))->setTimezone(Config::nfcapdTimezone());
+    $dir = implode('/', [$root, 'live', $source, $dt->format('Y'), $dt->format('m'), $dt->format('d')]);
+    if (!is_dir($dir)) {
+        mkdir($dir, 0o777, true);
+    }
+    $path = $dir . '/' . ($name !== '' ? $name : 'nfcapd.' . $dt->format('YmdHi'));
+    file_put_contents($path, 'x');
+
+    return $path;
+}
+
+describe('NfcapdFiles::newest', function (): void {
+    // 2024-01-03 12:00 UTC
+    $now = 1704283200;
+
+    beforeEach(function (): void {
+        $this->root = sys_get_temp_dir() . '/nfsen-ng-test-' . bin2hex(random_bytes(6));
+        useCaptureTree($this->root);
+    });
+
+    afterEach(function (): void {
+        removeTree($this->root);
+    });
+
+    test('takes the newest file of today', function () use ($now): void {
+        writeCaptureFile($this->root, 'gateway', $now - 900);
+        $path = writeCaptureFile($this->root, 'gateway', $now - 300);
+        writeCaptureFile($this->root, 'gateway', $now - 86400);
+
+        expect(NfcapdFiles::newest('live', 'gateway', 7, $now))
+            ->toBe(['ts' => $now - 300, 'name' => basename($path), 'path' => $path])
+        ;
+    });
+
+    test('falls back to earlier day directories in the nfcapd timezone', function () use ($now): void {
+        writeCaptureFile($this->root, 'gateway', $now - 3 * 86400);
+        writeCaptureFile($this->root, 'gateway', $now - 2 * 86400 - 600);
+
+        expect(NfcapdFiles::newest('live', 'gateway', 7, $now)['ts'] ?? null)->toBe($now - 2 * 86400 - 600);
+    });
+
+    test('ignores nfcapd.current.* and other names', function () use ($now): void {
+        $rotated = writeCaptureFile($this->root, 'gateway', $now - 600);
+        file_put_contents(dirname($rotated) . '/nfcapd.current.12345', 'x');
+        file_put_contents(dirname($rotated) . '/nfcapd.209912312355.tmp', 'x');
+
+        expect(NfcapdFiles::newest('live', 'gateway', 7, $now)['ts'] ?? null)->toBe($now - 600);
+    });
+
+    test('looks back no further than maxDaysBack', function () use ($now): void {
+        writeCaptureFile($this->root, 'gateway', $now - 3 * 86400);
+
+        expect(NfcapdFiles::newest('live', 'gateway', 2, $now))->toBeNull()
+            ->and(NfcapdFiles::newest('live', 'gateway', 3, $now))->not->toBeNull()
+            ->and(NfcapdFiles::newest('live', 'gateway', 0, $now + 3 * 86400))->toBeNull()
+        ;
+    });
+
+    test('is null for a source without a directory', function () use ($now): void {
+        expect(NfcapdFiles::newest('live', 'nonexistent', 7, $now))->toBeNull();
+    });
+});
+
+describe('NfcapdFiles::names', function (): void {
+    $base = 1704067200; // 2024-01-01 00:00 UTC
+
+    beforeEach(function (): void {
+        $this->root = sys_get_temp_dir() . '/nfsen-ng-test-' . bin2hex(random_bytes(6));
+        useCaptureTree($this->root);
+    });
+
+    afterEach(function (): void {
+        removeTree($this->root);
+    });
+
+    test('returns the timestamps within the window, ascending, across days', function () use ($base): void {
+        foreach ([$base + 86400 + 300, $base - 300, $base, $base + 300, $base + 2 * 86400] as $ts) {
+            writeCaptureFile($this->root, 'gateway', $ts);
+        }
+
+        expect(NfcapdFiles::names($base, $base + 86400 + 300, 'gateway', 'live'))
+            ->toBe([$base, $base + 300, $base + 86400 + 300])
+        ;
+    });
+
+    test('reads timestamps from the names alone', function () use ($base): void {
+        $file = writeCaptureFile($this->root, 'gateway', $base);
+        // A dangling link has no size to stat; the name is still a capture interval.
+        $name = 'nfcapd.' . (new DateTimeImmutable('@' . ($base + 300)))->setTimezone(Config::nfcapdTimezone())->format('YmdHi');
+        symlink($this->root . '/does-not-exist', dirname($file) . '/' . $name);
+        file_put_contents(dirname($file) . '/nfcapd.current.999', 'x');
+
+        expect(NfcapdFiles::names($base, $base + 600, 'gateway', 'live'))->toBe([$base, $base + 300]);
+    });
+
+    test('is empty for an inverted window or a missing source', function () use ($base): void {
+        writeCaptureFile($this->root, 'gateway', $base);
+
+        expect(NfcapdFiles::names($base + 600, $base, 'gateway', 'live'))->toBe([])
+            ->and(NfcapdFiles::names($base, $base + 600, 'nonexistent', 'live'))->toBe([])
+        ;
+    });
+
+    test('an empty profile means the configured default', function () use ($base): void {
+        writeCaptureFile($this->root, 'gateway', $base);
+
+        expect(NfcapdFiles::names($base, $base, 'gateway', ''))->toBe([$base]);
+    });
+});
+
+describe('NfcapdFiles::stop', function (): void {
+    $base = 1704067200; // 2024-01-01 00:00 UTC
+
+    beforeEach(function (): void {
+        $this->root = sys_get_temp_dir() . '/nfsen-ng-test-' . bin2hex(random_bytes(6));
+        useCaptureTree($this->root);
+    });
+
+    afterEach(function (): void {
+        NfcapdFiles::stop(false);
+        removeTree($this->root);
+    });
+
+    // A stopping worker must not sit out max_wait_time sizing a year of captures.
+    test('a walk throws once the worker stops, and walks again when it resumes', function () use ($base): void {
+        writeCaptureFile($this->root, 'gateway', $base);
+        NfcapdFiles::stop();
+
+        expect(fn () => NfcapdFiles::list($base, $base + 86400, ['gateway'], 'live'))->toThrow(RuntimeException::class, 'stopping')
+            ->and(fn () => NfcapdFiles::names($base, $base, 'gateway', 'live'))->toThrow(RuntimeException::class, 'stopping')
+        ;
+
+        NfcapdFiles::stop(false);
+        expect(NfcapdFiles::names($base, $base, 'gateway', 'live'))->toBe([$base]);
     });
 });

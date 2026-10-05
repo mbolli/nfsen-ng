@@ -2,7 +2,7 @@
 
 nfsen-ng sits on top of an existing [nfdump](https://github.com/phaag/nfdump)
 capture setup: `nfcapd` writes rotated flow files, and nfsen-ng reads, imports,
-and visualises them. It does **not** capture traffic itself — you need a working
+and visualises them. It does **not** capture traffic itself: you need a working
 `nfcapd` (or an equivalent NetFlow/sFlow/IPFIX collector) writing files before
 nfsen-ng has anything to show.
 
@@ -15,18 +15,18 @@ Two ways to install: **Docker** (recommended) or **bare-metal**. For a local
 development setup with source-mounted auto-reload, see
 [Getting Started](../development/getting-started.md) instead.
 
-## Option A — Docker
+## Option A: Docker
 
 ### Prerequisites
 
 - Docker and Docker Compose
 - `nfcapd` writing files under a directory you can bind-mount (default
-  `/var/nfdump/profiles-data`), in the `-S 1` subdirectory layout — see
-  [nfcapd setup](#nfcapd-setup) below
+  `/var/nfdump/profiles-data`), in the `-S 1` subdirectory layout (see
+  [nfcapd setup](#nfcapd-setup) below)
 
 ### Quick start
 
-No clone needed — grab the compose file and edit it:
+No clone needed: grab the compose file and edit it:
 
 ```bash
 curl -O https://raw.githubusercontent.com/mbolli/nfsen-ng/master/deploy/docker-compose.yml
@@ -34,30 +34,31 @@ curl -O https://raw.githubusercontent.com/mbolli/nfsen-ng/master/deploy/docker-c
 
 At minimum set `NFSEN_SOURCES` and `NFSEN_PORTS`, and make sure the bind-mount
 and `NFSEN_NFDUMP_PROFILES` point at your capture directory. For standard setups
-the environment variables are all you need — no `settings.php`. The full list of
+the environment variables are all you need, no `settings.php`. The full list of
 variables lives in [Configuration](configuration.md).
 
 > **A Docker deployment needs two persistent volumes** (the shipped compose files
-> wire up both — don't drop either):
+> wire up both; don't drop either):
 >
-> 1. **Capture data** — the `nfcapd` flow-file tree, mounted at `/data/nfsen-ng`
+> 1. **Capture data**: the `nfcapd` flow-file tree, mounted at `/data/nfsen-ng`
 >    (`NFSEN_NFDUMP_PROFILES`). This is the directory your collector writes to and
 >    nfsen-ng reads; you point it at your existing capture output.
-> 2. **nfsen-ng's own data** — the RRD database plus saved preferences and alerts,
->    on the `nfsen-data` named volume at `/var/lib/nfsen-ng`.
+> 2. **nfsen-ng's own data**: the RRD database, the preferences and alert rules,
+>    and the SQLite store `nfsen-ng.sqlite` (saved filters, alert history, the
+>    Overview top-N), on the `nfsen-data` named volume at `/var/lib/nfsen-ng`.
 >
 > They're separate on purpose (the collector owns the capture tree; it grows with
 > traffic and has its own retention). Skipping volume 2 means a container
-> recreation — **every image upgrade** — wipes your graphs, preferences, and
-> alerts. See [State & persistence](configuration.md#state--persistence).
+> recreation (**every image upgrade**) wipes your graphs, preferences, saved
+> filters and alerts. See [State & persistence](configuration.md#state--persistence).
 
-> **When you *do* want a `settings.php`** (custom filter presets, many sources,
-> a bare-metal path layout): copy `backend/settings/settings.php.dist` to
+> **When you *do* want a `settings.php`** (many sources, a bare-metal path
+> layout): copy `backend/settings/settings.php.dist` to
 > `backend/settings/settings.php`, edit it, and mount it read-only. It is a
-> **deprecated** overlay on the environment — any key it omits still falls back
+> **deprecated** overlay on the environment: any key it omits still falls back
 > to the matching `NFSEN_*` variable. See
-> [Configuration → Settings file](configuration.md#settings-file-deprecated).
-> Note it must assign the global `$nfsen_config` array — a file that `return`s an
+> [Configuration: Settings file](configuration.md#settings-file-deprecated).
+> Note it must assign the global `$nfsen_config` array; a file that `return`s an
 > array is silently ignored.
 
 ### Deployment modes
@@ -65,7 +66,7 @@ variables lives in [Configuration](configuration.md).
 The app container (`nfsen`) listens on **port 9000** inside the Docker network
 only. How you expose it is the choice:
 
-#### Mode 1 — bundled Caddy (simplest public setup)
+#### Mode 1: bundled Caddy (simplest public setup)
 
 `deploy/docker-compose.yml` ships an optional `caddy` service gated behind the
 `proxy` compose profile. It terminates TLS (automatic HTTPS via Let's Encrypt,
@@ -79,7 +80,7 @@ docker compose -f deploy/docker-compose.yml --profile proxy up -d
 Access at `https://<your-domain>` (ports 80, 443, and 443/udp are published).
 
 > **Caddy here is a pure reverse proxy.** It does *not* compress responses or
-> serve static files — the app does that itself. php-via serves and
+> serve static files; the app does that itself. php-via serves and
 > Brotli-compresses `/frontend/*` from inside OpenSwoole (`withStaticDir()` /
 > `withBrotli()` in `backend/app.php`). The provided `Caddyfile.prod` therefore
 > has **no** `encode` directive on purpose: SSE streams (the live-update
@@ -87,7 +88,7 @@ Access at `https://<your-domain>` (ports 80, 443, and 443/udp are published).
 > `handle_errors 5xx { abort }` so Datastar's SSE client reconnects cleanly
 > across a server restart instead of seeing an error page.
 
-#### Mode 2 — behind your own reverse proxy
+#### Mode 2: behind your own reverse proxy
 
 If you already run Traefik, nginx, or your own Caddy, start only the app:
 
@@ -99,7 +100,7 @@ Point your proxy at `http://nfsen:9000` if it shares the Docker network, or
 uncomment the `ports` entry in the compose file to publish 9000 on the host:
 
 ```yaml
-# deploy/docker-compose.yml — nfsen service
+# deploy/docker-compose.yml, nfsen service
 # ports:
 #   - "9000:9000"
 ```
@@ -115,8 +116,12 @@ Requirements for any fronting proxy:
   (`proxy_buffering off` / `X-Accel-Buffering: no` / `flush_interval -1`).
 - **Pass 5xx through as a connection abort** (or equivalent) so the Datastar SSE
   client retries on server restart rather than rendering an error page.
+- **Pass the original `Host` header on.** php-via refuses an action POST whose
+  `Origin` names another host than the request's `Host`
+  (`403 Forbidden: untrusted origin`). Caddy and Traefik keep the header; nginx
+  needs `proxy_set_header Host $host;`.
 
-#### Mode 3 — hardened production (read-only capture, bundled Caddy)
+#### Mode 3: hardened production (read-only capture, bundled Caddy)
 
 `deploy/docker-compose.prod.yml` is a variant that always starts Caddy (no
 profile), mounts the capture directory **read-only**, and keeps RRD files and app
@@ -127,9 +132,10 @@ can skip that and configure via `NFSEN_*` variables alone.
 ### Images and tags
 
 Only one image is published: **`ghcr.io/mbolli/nfsen-ng`**, built from
-`deploy/Dockerfile` (PHP 8.4 CLI + OpenSwoole + a source-compiled nfdump 1.7.8 +
-the `rrd`, `inotify`, and `brotli` extensions). The Caddy service uses the stock
-[`caddy:latest`](https://hub.docker.com/_/caddy) image — there is no custom Caddy
+`deploy/Dockerfile` (PHP 8.4 CLI + OpenSwoole + a source-compiled nfdump 1.7.10 +
+the `rrd`, `inotify`, and `brotli` extensions; `pdo_sqlite` ships with the PHP
+base image). The Caddy service uses the stock
+[`caddy:latest`](https://hub.docker.com/_/caddy) image; there is no custom Caddy
 image to build.
 
 | Tag | Tracks |
@@ -147,13 +153,16 @@ docker compose -f deploy/docker-compose.yml ps              # container status
 
 ---
 
-## Option B — Bare-metal (Ubuntu / Debian)
+## Option B: Bare-metal (Ubuntu / Debian)
 
 The Docker image is the reference install; the steps below reproduce it by hand.
-nfsen-ng needs **PHP 8.4** with the `openswoole`, `inotify`, `brotli`, and `rrd`
-extensions, plus an `nfdump` binary. On a rolling or recent distribution, also
-read [libcurl 8.20 and OpenSwoole](#libcurl-820-and-openswoole) below — the
-Docker image pins its libcurl, a bare-metal host does not.
+nfsen-ng needs **PHP 8.4** with the `openswoole`, `inotify`, `brotli`, `rrd` and
+`pdo_sqlite` extensions, plus an `nfdump` binary. The SQLite library behind
+`pdo_sqlite` must be 3.33 or later: the top-N rollups use `UPDATE ... FROM`, so
+with an older library the Overview top-N never gets past *Collecting*. The Health
+page's **Storage (SQLite)** group shows the version. On a rolling or recent
+distribution, also read [libcurl 8.20 and OpenSwoole](#libcurl-820-and-openswoole)
+below: the Docker image pins its libcurl, a bare-metal host does not.
 
 ### nfcapd setup
 
@@ -161,26 +170,28 @@ nfsen-ng expects `nfcapd` files in the `-S 1` subdirectory layout
 (`YYYY/MM/DD/`). A typical invocation for nfdump ≥ 1.7.x:
 
 ```bash
-nfcapd -w /var/nfdump/profiles-data/live/<source> -z=lz4 -S 1 -T all -p <port> -D
+nfcapd -w /var/nfdump/profiles-data/live/<source> -z=lz4 -S 1 -p <port> -D
 ```
 
 | Flag | Meaning |
 |------|---------|
 | `-w <path>` | Output directory. Must be `<profiles-data>/<profile>/<source>` (e.g. `.../live/gw1`). |
-| `-z=lz4` | Compress capture files (also `=lzo`, `=zstd`). The legacy bare `-z` was removed in nfdump 1.8.x — use the explicit `=<algo>` form. |
+| `-z=lz4` | Compress capture files (also `=lzo`, `=zstd`). The legacy bare `-z` was removed in nfdump 1.8.x; use the explicit `=<algo>` form. |
 | `-S 1` | `YYYY/MM/DD/` subdirectory structure. **Required** for nfsen-ng to locate files. |
-| `-T all` | Capture all flow extensions (recommended). |
 | `-p <port>` | UDP listen port (e.g. `9995`). |
 | `-D` | Daemonize. |
 
 > **Timezone:** `nfcapd` names files from the host's *local* time. If nfsen-ng
 > then runs in a container at `TZ=UTC`, set `NFCAPD_TZ` to the capture host's
-> timezone (e.g. `Europe/Berlin`) so filenames parse to the correct epoch —
+> timezone (e.g. `Europe/Berlin`) so filenames parse to the correct epoch;
 > otherwise RRD timestamps and chart labels are off by the UTC offset. See
 > [Configuration](configuration.md#timezones).
 
 The ready-to-use `deploy/systemd/nfcapd.service` unit already uses
-`-z=lz4 -S 1`.
+`-z=lz4 -S 1`. Its `ExecStart` has to name the `nfcapd` you want to run. It
+names `/usr/bin/nfcapd`, where a distribution package installs it; with the
+source build above, the [systemd step](#systemd-services) below points it at
+`/usr/local/nfdump/bin`.
 
 ### Install the stack
 
@@ -193,7 +204,7 @@ The ready-to-use `deploy/systemd/nfcapd.service` unit already uses
 ```bash
 # As root.
 
-# --- PHP 8.4 repository (Sury — Debian and Ubuntu alike) ---
+# --- PHP 8.4 repository (Sury, Debian and Ubuntu alike) ---
 apt install -y apt-transport-https lsb-release ca-certificates curl gpg
 echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list
 curl -fsSL https://packages.sury.org/php/apt.gpg | gpg --dearmor > /etc/apt/trusted.gpg.d/sury-php.gpg
@@ -201,13 +212,13 @@ apt update
 
 # --- Packages ---
 apt install -y git pkg-config brotli \
-    php8.4 php8.4-dev php8.4-xml php8.4-mbstring php8.4-curl \
+    php8.4 php8.4-dev php8.4-xml php8.4-mbstring php8.4-curl php8.4-sqlite3 \
     rrdtool \
     flex bison libbz2-dev zlib1g-dev build-essential autoconf automake libtool unzip wget
 
-# --- nfdump 1.7.8 from source (matches the Docker image) ---
-wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.8.zip
-unzip v1.7.8.zip && cd nfdump-1.7.8
+# --- nfdump 1.7.10 from source (matches the Docker image) ---
+wget https://github.com/phaag/nfdump/archive/refs/tags/v1.7.10.zip
+unzip v1.7.10.zip && cd nfdump-1.7.10
 ./autogen.sh && ./configure --prefix=/usr/local/nfdump && make && make install && ldconfig
 cd ..
 # binary is now /usr/local/nfdump/bin/nfdump
@@ -218,7 +229,7 @@ apt install -y php8.4-openswoole php8.4-inotify php8.4-rrd
 # brotli has no Sury package: build ext-brotli
 # (https://github.com/kjdev/php-ext-brotli), then:
 echo "extension=brotli.so" > /etc/php/8.4/mods-available/brotli.ini
-phpenmod brotli mbstring curl xml
+phpenmod brotli mbstring curl xml pdo_sqlite
 
 # --- nfsen-ng ---
 cd /var/www
@@ -229,14 +240,33 @@ cd nfsen-ng
 # Composer (https://getcomposer.org/download/):
 php composer.phar install --no-dev --optimize-autoloader
 
-# Optional (deprecated) settings file — or set the same NFSEN_* env vars instead,
+# Optional (deprecated) settings file, or set the same NFSEN_* env vars instead,
 # e.g. via a systemd EnvironmentFile:
 cp backend/settings/settings.php.dist backend/settings/settings.php
 $EDITOR backend/settings/settings.php   # set sources, ports, nfdump.binary, profiles-data
 
-# Start the HTTP server (listens on port 9000):
-sudo -u www-data php backend/app.php
+# Start the HTTP server (listens on port 9000), with the images' memory limit:
+sudo -u www-data php -d memory_limit=512M backend/app.php
 ```
+
+> **Which nfdump.** nfsen-ng needs nfdump 1.7.2 or later, and the Health page
+> warns below 1.7.10. Release 1.7.9 fixed remotely triggerable crashes in the
+> collectors (IPFIX and NetFlow v9 option templates in `nfcapd`, the sFlow
+> decoder in `sfcapd`) and out-of-bounds reads in the file parsers. Build 1.7.10:
+> gcc builds of 1.7.8 and 1.7.9 (nfdump's configure picks `-O3`) do not pair
+> bidirectional flows, so `-b`/`-B` list each direction as its own row with an
+> empty *Out* side. The **Bi-directional** aggregation on Top Talkers and Flows
+> runs `-B`, and the 1.7.8 in earlier nfsen-ng images has this fault too. Most
+> distribution packages lag behind: Debian 12 ships 1.7.1 and Ubuntu 22.04
+> ships 1.6.23, both below the minimum. Debian 13 (1.7.5), Ubuntu 24.04 (1.7.3)
+> and Ubuntu 26.04 (1.7.6) run but get the Health warning. Debian testing has
+> 1.7.10.
+>
+> To upgrade an existing source build, rerun the nfdump lines above with the new
+> version number; `make install` replaces the binaries under `/usr/local/nfdump`.
+> Capture files written by 1.7.8 read unchanged. Restart `nfcapd`, since most of
+> the fixes are in the collectors, and restart nfsen-ng, which reads the nfdump
+> version once per worker.
 
 > **Where the extensions come from.** Sury builds `php8.4-openswoole` from the
 > same 26.2.0 release the Docker image uses, with openssl, c-ares, curl and
@@ -250,16 +280,29 @@ sudo -u www-data php backend/app.php
 
 On a bare-metal install point `nfdump.binary` (or `NFSEN_NFDUMP_BINARY`) at
 `/usr/local/nfdump/bin/nfdump` if you compiled it as above. On first start the
-database is empty — trigger the first import from the web UI (see
+database is empty: trigger the first import from the web UI (see
 [First import](#first-import)).
+
+The server runs every tab in one PHP process, so give it the memory limit the
+Docker images use, 512M: the command above and `deploy/systemd/nfsen-ng.service`
+pass `-d memory_limit=512M`. The CLI `php.ini` of Debian and Ubuntu usually says
+`-1`, no limit, which also turns off the check that a large Flows listing fits.
+See [PHP memory limit](configuration.md#php-memory-limit).
+
+The state directory (`NFSEN_STATE_DIR`, by default `backend/settings`) must be
+writable by the user the server runs as, because the SQLite store
+`nfsen-ng.sqlite` and its journal live there. The `chown` above covers the
+default location. Without `php8.4-sqlite3` the server still starts, but saved
+filters, the alert history and the Overview top-N stay unavailable, and the
+Health page's **Storage (SQLite)** group says so.
 
 ### Front it with a reverse proxy
 
 The app serves and compresses its own static assets, so a fronting proxy only
-needs to terminate TLS and forward everything to port 9000 — no static-file root,
+needs to terminate TLS and forward everything to port 9000: no static-file root,
 no `encode`. The provided `deploy/Caddyfile.prod` is a complete example; replace
 `yourdomain.com`, then point Caddy at it. Any proxy must follow the SSE rules in
-[Mode 2](#mode-2--behind-your-own-reverse-proxy) above (no compression, no
+[Mode 2](#mode-2-behind-your-own-reverse-proxy) above (no compression, no
 buffering, pass 5xx through).
 
 ---
@@ -267,12 +310,12 @@ buffering, pass 5xx through).
 ## systemd services
 
 Pre-built units are in `deploy/systemd/`. They reference `/var/www/nfsen-ng` and
-`eth0` as placeholders — `sed`-replace those for your host.
+`eth0` as placeholders; `sed`-replace those for your host.
 
 | File | Purpose |
 |------|---------|
 | `nfsen-ng-docker.service` | Run nfsen-ng via `docker compose … --profile proxy up -d` (recommended) |
-| `nfsen-ng.service` | Run the app directly on bare metal (`php backend/app.php`, as `www-data`) |
+| `nfsen-ng.service` | Run the app directly on bare metal (`php -d memory_limit=512M backend/app.php`, as `www-data`) |
 | `nfcapd.service` | NetFlow capture daemon (`-z=lz4 -S 1`) |
 | `softflowd.service` | Software NetFlow exporter for testing/dev |
 
@@ -290,6 +333,8 @@ sudo systemctl enable --now nfsen-ng.service
 
 # Capture on the same host (edit eth0 first):
 sed -i 's/eth0/YOUR_INTERFACE/g' deploy/systemd/softflowd.service
+# Only with the source build above; a packaged nfcapd stays at /usr/bin/nfcapd:
+sed -i 's|/usr/bin/nfcapd|/usr/local/nfdump/bin/nfcapd|' deploy/systemd/nfcapd.service
 sudo cp deploy/systemd/nfcapd.service deploy/systemd/softflowd.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now nfcapd.service softflowd.service
@@ -309,13 +354,13 @@ include the collector's source name (both default to `flows`).
 
 ## First import
 
-nfsen-ng embeds its import daemon inside the server process — there is **no
+nfsen-ng embeds its import daemon inside the server process; there is **no
 separate CLI binary**. On a fresh install with no data yet, nothing is imported
-automatically: open the app, go to the **Settings → Import** panel, and click
-**Trigger Import**. That scans every `nfcapd` file back to `NFSEN_IMPORT_YEARS`
-and builds the database. Once data exists, each server start does an incremental
-gap-fill for the files written while it was offline. See
-[Health & Admin](../features/health-admin.md) for the full panel.
+automatically: open the app, go to the **Health** page, and click **Trigger** in
+the profile's row of the **Import** card. That scans every `nfcapd` file back to
+`NFSEN_IMPORT_YEARS` and builds the database. Once data exists, each server start
+does an incremental gap-fill for the files written while it was offline. See
+[Health](../guide/health.md) for the page.
 
 ## libcurl 8.20 and OpenSwoole
 
@@ -324,7 +369,7 @@ needs a name lookup, with any libcurl from **8.20.0** onwards. libcurl 8.20.0
 changed how its threaded resolver drives `curl_multi_socket_action`
 ([curl#21558](https://github.com/curl/curl/issues/21558)) and OpenSwoole's
 reactor bridge doesn't cope, so the worker dies on a hostname whether or not
-it resolves — a literal IP is fine. Bisected against OpenSwoole 26.2.0:
+it resolves; a literal IP is fine. Bisected against OpenSwoole 26.2.0:
 8.19.0 and earlier are unaffected, 8.20.0 and later are not.
 
 **nfsen-ng handles this itself.** It reads the running libcurl at startup and
@@ -350,20 +395,21 @@ docker exec nfsen-ng php -r 'echo curl_version()["version"], PHP_EOL;'
 
 If you are on 8.20.0 or newer and want the non-blocking behaviour back, the
 only real options today are to run an older libcurl or to wait for an
-OpenSwoole fix — the hook cannot be made safe from PHP.
+OpenSwoole fix; the hook cannot be made safe from PHP.
 
 ## Troubleshooting
 
 **No data showing**
 - Verify the file layout: `<profiles-data>/<profile>/<source>/YYYY/MM/DD/nfcapd.*`
 - Confirm the container mount and `NFSEN_NFDUMP_PROFILES` point at the same tree.
-- Trigger the first import: **Settings → Import → Trigger Import**.
+- Trigger the first import: **Trigger** on the **Health** page.
 - Check RRD files were created under `backend/datasources/data/<profile>/`.
 
 **nfdump warnings: `appendix offset error` or `read() error … Success`**
 
-These surface in the Statistics/Flows warning toast when nfdump reads a truncated
-`nfcapd` file — usually one killed mid-write (container restart, OOM, power loss).
+These surface as warnings beside a Top Talkers or Flows result when nfdump reads a
+truncated `nfcapd` file, usually one killed mid-write (container restart, OOM,
+power loss).
 nfdump still processes every other file in the range; nothing already imported is
 lost. To find corrupt files:
 
@@ -375,16 +421,16 @@ docker exec nfsen-ng sh -c 'find /data/nfsen-ng/live -name "nfcapd.*" | \
 Delete the listed files; already-imported RRD/VictoriaMetrics data is unaffected.
 
 **SSE not connecting**
-- DevTools → Network → filter `_sse` should show one persistent connection.
+- DevTools, Network tab, filter `_sse`: it should show one persistent connection.
 - Confirm the proxy isn't buffering or compressing the stream (see the proxy
   requirements above).
 
 **Rebuild all data from scratch**
 
-Use **Settings → Import → Force Rescan** in the web UI. This wipes the selected
-profile's datasource and re-imports from the capture files. (There is no
-force-import environment variable; the rescan is a UI action.)
+Use **Rescan** on the **Health** page. This wipes the selected profile's
+datasource and re-imports from the capture files. (There is no force-import
+environment variable; the rescan is a UI action.)
 
-On VictoriaMetrics the button is **Backfill** instead, and it deletes nothing —
-old samples are simply rewritten in place. See
+On VictoriaMetrics the button is **Backfill** instead, and it deletes nothing:
+old samples are rewritten in place. See
 [VictoriaMetrics](victoriametrics.md#importing-captures-older-than-the-install).

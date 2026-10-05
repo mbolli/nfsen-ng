@@ -71,10 +71,8 @@ final readonly class CostEstimate {
      */
     public static function runsForFilteredSeries(TimeWindow $window, int $targetPoints, int $groupCount = 1): int {
         $groupCount = max(1, $groupCount);
-        $step = FilteredSeries::binWidth($window->start, $window->end, $targetPoints, $groupCount);
-        $bins = (int) ceil(max(1, $window->duration()) / $step);
 
-        return $bins * $groupCount;
+        return FilteredSeries::binCount($window->start, $window->end, $targetPoints, $groupCount) * $groupCount;
     }
 
     /**

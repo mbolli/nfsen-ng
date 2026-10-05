@@ -1,0 +1,3 @@
+#!/bin/sh
+# A check that never finishes, like a DNS lookup that hangs. exec, so a timeout reaches it.
+exec sleep 10

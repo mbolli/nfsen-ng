@@ -411,12 +411,18 @@ async function keysRightAway() {
                     if (Date.now() - start > 3000) throw new Error(`before any sync, ${label} posted no apply-globals`);
                 }
             };
-            await tick(`unticking ${untick.value}`);
-            const gsAfter = await page.signalValue('graph_sources');
             if (untick.alone) {
-                assert.equal(await page.evaluate(`document.activeElement.checked`), true, 'before any sync, the last source stays ticked');
-                assert.deepEqual(gsAfter, gs, 'before any sync, graph_sources keeps its last source');
+                // The last source may go too (#176): nothing posts until one is ticked again.
+                const posted = log.count('apply-globals');
+                await press(page, ' ', 'Space', 32);
+                await sleep(700);
+                assert.equal(await page.evaluate(`document.activeElement.checked`), false, 'before any sync, the last source can be unticked');
+                assert.deepEqual(await page.signalValue('graph_sources'), [], 'before any sync, graph_sources is empty');
+                assert.equal(log.count('apply-globals'), posted, 'before any sync, an empty pick posts nothing');
+                await tick(`ticking ${untick.value} again`);
             } else {
+                await tick(`unticking ${untick.value}`);
+                const gsAfter = await page.signalValue('graph_sources');
                 assert.ok(!gsAfter.includes(untick.value) && gsAfter.length >= 1, `before any sync, ${untick.value} left graph_sources`);
                 await tick(`ticking ${untick.value} again`);
             }
@@ -852,7 +858,7 @@ export default async function controlsTest() {
         });
         await page.setRangePreset('24h');
 
-        // Sources: at least one stays checked, whatever is unticked; ticking keeps the popover open.
+        // Sources: every box can be unticked (#176), an empty pick posts nothing, ticking keeps the popover open.
         await page.evaluate(`${SOURCES_TOGGLE}.click()`);
         await page.waitFor(
             `${SOURCES}.open === true && document.querySelector('#sourcesMenuList input[name=globalSource]')?.checkVisibility()`,
@@ -869,7 +875,12 @@ export default async function controlsTest() {
         const left = await page.evaluate(
             `[...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')].filter(function(b){ return b.checked; }).length`
         );
-        assert.ok(left >= 1, 'one source stays checked');
+        assert.equal(left, 0, 'every source can be unticked');
+        await sleep(700);
+        assert.equal(log.count('apply-globals'), 0, 'an empty pick posts nothing');
+        assert.equal(await page.evaluate(`${SOURCES_TOGGLE}.textContent.trim()`), 'No sources', 'the toggle says no source is picked');
+        assert.equal(await page.evaluate(`document.querySelector('#sourcesMenuList .sources-hint')?.checkVisibility() ?? true`), true, 'the menu says how to go on');
+        await page.evaluate(`document.querySelector('#sourcesMenuList input[name=globalSource]').click()`);
         await sleep(700);
         assert.ok(log.count('apply-globals') >= 1, 'a sources change posts apply-globals once the ticking stops');
         assert.equal(await page.evaluate(`${SOURCES}.open`), true, 'ticking the sources keeps the popover open');
@@ -906,6 +917,23 @@ export default async function controlsTest() {
             (await page.signalValue('graph_sources')).slice().sort(),
             before.includes('any') ? after.slice().sort() : before.slice().sort()
         );
+
+        // Closing the sources with none ticked picks all again and posts it (#176).
+        await page.evaluate(`${SOURCES_TOGGLE}.click()`);
+        await page.waitFor(`${SOURCES}.open === true`, { label: 'the sources list again' });
+        await page.evaluate(`(function(){
+            var all = document.getElementById('sourcesAll');
+            if (all) { if (all.checked) all.click(); return; }
+            [...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')].forEach(function(box){ if (box.checked) box.click(); });
+        })()`);
+        assert.deepEqual(await page.signalValue('graph_sources'), [], 'unticking All sources leaves none picked');
+        log.clear();
+        await press(page, 'Escape', 'Escape', 27);
+        await page.waitFor(`${SOURCES}.open === false`, { label: 'Escape with no source picked' });
+        await sleep(700);
+        const configured = await page.evaluate(`[...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')].map(function(b){ return b.value; })`);
+        assert.deepEqual((await page.signalValue('graph_sources')).slice().sort(), configured.slice().sort(), 'closing with none picks every source');
+        assert.equal(log.count('apply-globals'), 1, 'closing with none posts the full pick once');
 
         // Protocol and unit post apply-globals, and the unit follows the arrow keys.
         log.clear();

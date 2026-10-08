@@ -3,6 +3,12 @@
 All notable changes to nfsen-ng are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **All sources could not be unticked** ([#176](https://github.com/mbolli/nfsen-ng/issues/176), reported by [@hawk128](https://github.com/hawk128)), so picking a few of many sources meant unticking the rest one by one. Unticking it now clears the list to pick from; nothing is queried while no source is ticked, and closing the menu with none picks all again.
+
 ## [1.0.0-beta.6] - 2026-10-05
 
 ### Added

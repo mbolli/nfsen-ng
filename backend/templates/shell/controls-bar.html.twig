@@ -114,27 +114,30 @@
             </div>
         </sb-popover>
 
-        {# At least one source stays checked; the post waits until the ticking stops. #}
-        <sb-popover id="sourcesMenu" class="sources-menu" label="Sources" placement="bottom-start">
+        {# Unticking All sources starts an empty pick (#176): nothing posts while no source is ticked, and
+           closing the menu with none picks all again. Every post goes through the list's debounced change. #}
+        <sb-popover id="sourcesMenu" class="sources-menu" label="Sources" placement="bottom-start"
+                    data-on:sb-close="!{{ gs }}.length && ({{ gs }} = {{ allSources }}, document.getElementById('sourcesMenuList').dispatchEvent(new Event('change')))">
             <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
                     data-preserve-attr="aria-expanded aria-haspopup" title="Sources">
-                <span data-ignore-morph data-text="{{ allPicked }} ? 'All sources' : {{ allSources }}.filter(s => {{ gs }}.includes(s)).length + ' of {{ sources|length }} sources'">All sources</span>
+                <span data-ignore-morph data-text="{{ allPicked }} ? 'All sources' : {{ gs }}.length ? {{ allSources }}.filter(s => {{ gs }}.includes(s)).length + ' of {{ sources|length }} sources' : 'No sources'">All sources</span>
             </button>
             <div class="popover-list sources-list" id="sourcesMenuList"
-                 data-on:change__debounce.400ms="@post('{{ applyGlobals.url() }}')">
+                 data-on:change__debounce.400ms="{{ gs }}.length && @post('{{ applyGlobals.url() }}')">
                 {% if sources|length > 1 %}
                     <label class="menu-item choice">
                         <input type="checkbox" id="sourcesAll" data-effect="el.checked = {{ allPicked }}"
-                               data-on:change="el.checked ? ({{ gs }} = {{ allSources }}) : (el.checked = true)">
+                               data-on:change="{{ gs }} = el.checked ? {{ allSources }} : []">
                         All sources
                     </label>
                     <div class="menu-sep" role="separator"></div>
+                    <p class="help sources-hint" data-show="!{{ gs }}.length" style="display: none">Tick the sources to show. Closing with none picks all.</p>
                 {% endif %}
                 {% for source in sources %}
                     <label class="menu-item choice">
                         <input type="checkbox" name="globalSource" value="{{ source }}"
                                data-effect="el.checked = {{ allPicked }} || {{ gs }}.includes(el.value)"
-                               data-on:change="const all = {{ allSources }}; const picked = {{ gs }}.includes('any') ? all : all.filter(s => {{ gs }}.includes(s)); const next = el.checked ? all.filter(s => s === el.value || picked.includes(s)) : picked.filter(s => s !== el.value); next.length ? ({{ gs }} = next) : (el.checked = true)">
+                               data-on:change="const all = {{ allSources }}; const picked = {{ gs }}.includes('any') ? all : all.filter(s => {{ gs }}.includes(s)); const next = el.checked ? all.filter(s => s === el.value || picked.includes(s)) : picked.filter(s => s !== el.value); {{ gs }} = next">
                         {{ source }}
                     </label>
                 {% endfor %}

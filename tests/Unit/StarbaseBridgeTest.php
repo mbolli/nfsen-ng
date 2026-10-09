@@ -180,7 +180,6 @@ final class StarbaseBridgeTest {
         $hits = [];
         $line = static fn (int $offset): int => substr_count($code, "\n", 0, $offset) + 1;
         $patterns = [
-            'steps()' => '/\bsteps\(/',
             'pixelated' => '/\bpixelated\b/',
             'crisp edges' => '/\bcrisp-?edges\b/i',
             'uppercase' => '/text-transform\s*:\s*uppercase\b/i',
@@ -192,6 +191,13 @@ final class StarbaseBridgeTest {
             }
         }
         $declared = self::declarations($code);
+        // Stepped motion counts unless its step count follows the notch (sb-select's spinner: thousands of steps at 0).
+        preg_match_all('/\bsteps\(/', $code, $m, PREG_OFFSET_CAPTURE);
+        foreach ($m[0] as [$match, $offset]) {
+            if (!self::followsNotch(self::balanced($code, $offset + strlen($match)), $declared)) {
+                $hits['steps()'][] = $line($offset);
+            }
+        }
         $fixed = static fn (string $args): bool => self::hasPx($args, $declared) && !self::followsNotch($args, $declared);
         preg_match_all('/\bpolygon\(/', $code, $m, PREG_OFFSET_CAPTURE);
         foreach ($m[0] as [$match, $offset]) {
@@ -414,15 +420,16 @@ describe('Starbase theming bridge', function (): void {
             .status { clip-path: polygon(var(--_n) 0, var(--_m) 0, 12px var(--_n), 0 var(--_m)); }
             .knob { clip-path: polygon(var(--_u) 0, 100% var(--_u), 0 100%); }
             .tip { clip-path: polygon(0 0, 100% 0, 50% 100%); }
+            .spin { animation: spin 0.6s steps(calc(4 + 996 * (1 - var(--_notch)))) infinite; }
             `
             const star = '<svg viewBox="0 0 7 7" shape-rendering="crispEdges"></svg>'
             JS;
 
         expect(StarbaseBridgeTest::pixelTraits($code))->toBe([
-            'steps()' => [4],
             'pixelated' => [6],
-            'crisp edges' => [7, 15],
+            'crisp edges' => [7, 16],
             'uppercase' => [8],
+            'steps()' => [4],
             'fixed polygon' => [4, 5, 12],
         ]);
     });

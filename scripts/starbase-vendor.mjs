@@ -477,7 +477,6 @@ function pull(args) {
 
         const status = check();
         console.log(`\nStarbase ${describe} (${commit}), catalog ${lock.catalog}, ${datastar}`);
-        for (const p of patchNotes) console.log(`note: same bundle bytes, but ${p}`);
         for (const line of report) console.log(line);
         return status;
     } finally {

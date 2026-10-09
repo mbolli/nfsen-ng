@@ -65,6 +65,11 @@
 
 /* ── Popover contents ───────────────────────────────────────────────────── */
 
+/* The date picker (calendar, a start and an end row, Apply) is taller than the panel's default 24rem. */
+sb-popover.range-display::part(panel) {
+    max-block-size: min(36rem, 85dvb);
+}
+
 sb-popover.range-menu::part(panel) {
     min-inline-size: 15rem;
 }

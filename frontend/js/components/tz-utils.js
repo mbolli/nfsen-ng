@@ -39,8 +39,6 @@ export function formatDate(d, displayTz, serverTz, extra = {}) {
     return date.toLocaleString(undefined, { ...tzOptions(displayTz, serverTz), ...extra });
 }
 
-const pad = (n, width = 2) => String(n).padStart(width, '0');
-
 /** Wall-clock fields of `ms` in `zone`, or in the browser's timezone when `zone` is empty. */
 function wallClock(ms, zone) {
     if (!zone) {
@@ -69,49 +67,6 @@ function wallClock(ms, zone) {
         if (type !== 'literal') fields[type] = Number(value);
     }
     return fields;
-}
-
-/** How far `zone` is ahead of UTC at the instant `ms`, in milliseconds. */
-function zoneOffset(ms, zone) {
-    const w = wallClock(ms, zone);
-    return Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second) - Math.floor(ms / 1000) * 1000;
-}
-
-/**
- * The value of a datetime-local input ("YYYY-MM-DDTHH:MM") showing `epoch` in the display timezone.
- *
- * @param {number} epoch - seconds
- * @param {string} displayTz
- * @param {string} serverTz
- * @returns {string}
- */
-export function toLocalInput(epoch, displayTz, serverTz) {
-    const w = wallClock(epoch * 1000, tzOptions(displayTz, serverTz).timeZone ?? '');
-    return `${pad(w.year, 4)}-${pad(w.month)}-${pad(w.day)}T${pad(w.hour)}:${pad(w.minute)}`;
-}
-
-/**
- * Epoch seconds of a datetime-local value read as wall-clock time in the display timezone.
- * A time a DST change skips resolves to the same wall time after the change.
- *
- * @param {string} localString - "YYYY-MM-DDTHH:MM" or with ":SS"
- * @param {string} displayTz
- * @param {string} serverTz
- * @returns {number} NaN when the value is not a date and time
- */
-export function toEpoch(localString, displayTz, serverTz) {
-    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(localString ?? '').trim());
-    if (!m) return Number.NaN;
-    const [year, month, day, hour, minute] = m.slice(1, 6).map(Number);
-    const second = Number(m[6] ?? 0);
-    const zone = tzOptions(displayTz, serverTz).timeZone ?? '';
-    if (!zone) {
-        return Math.floor(new Date(year, month - 1, day, hour, minute, second).getTime() / 1000);
-    }
-    const wall = Date.UTC(year, month - 1, day, hour, minute, second);
-    // The offset at a first guess, then at the corrected instant, which settles a DST edge.
-    const guess = wall - zoneOffset(wall, zone);
-    return Math.floor((wall - zoneOffset(guess, zone)) / 1000);
 }
 
 /**
@@ -202,4 +157,4 @@ export function restoreQuery(previous, now = Math.floor(Date.now() / 1000)) {
     return `?op=abs&from=${now - width}&to=${now}`;
 }
 
-window.nfsenTime = { tzOptions, formatDate, toLocalInput, toEpoch, formatRange, formatDuration, rangeLabel, restoreQuery };
+window.nfsenTime = { tzOptions, formatDate, formatRange, formatDuration, rangeLabel, restoreQuery };

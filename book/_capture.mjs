@@ -218,14 +218,10 @@ async function setAbsolute(page, from, to, { clamp = false } = {}) {
     await page.evaluate(
         `(function(){ var t = document.querySelector('#rangeDisplay .menu-toggle'); if (t.getAttribute('aria-expanded') !== 'true') t.click(); })()`
     );
-    await page.waitFor(`!!document.getElementById('rangeFrom')?.getClientRects().length`, { label: 'range entry' });
-    const { displayTz, nfcapdTz } = await page.signalValues(['displayTz', 'nfcapdTz']);
-    await page.evaluate(`(function(){
-        var t = window.nfsenTime;
-        document.getElementById('rangeFrom').value = t.toLocalInput(${from}, ${js(displayTz)}, ${js(nfcapdTz)});
-        document.getElementById('rangeTo').value = t.toLocalInput(${to}, ${js(displayTz)}, ${js(nfcapdTz)});
-        document.getElementById('rangeApply').click();
-    })()`);
+    await page.waitFor(`!!document.getElementById('rangePicker')?.getClientRects().length`, { label: 'range entry' });
+    // The window as the picker's Apply sends it: exact instants, so no wall time to convert.
+    await page.evaluate(`document.getElementById('rangePicker').dispatchEvent(new CustomEvent('sb-change', { bubbles: true, composed: true,
+        detail: { name: '', value: { start: new Date(${from} * 1000).toISOString(), end: new Date(${to} * 1000).toISOString() } } })), true`);
     for (let i = 0; ; i++) {
         const { datestart, dateend } = await page.signalValues(['datestart', 'dateend']);
         if ((Math.abs(datestart - from) <= 300 || (clamp && datestart > from)) && Math.abs(dateend - to) <= 300) break;

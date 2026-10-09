@@ -22,6 +22,18 @@
   },
   "license": "sha384-NOQoztcPboJQkR9KJWoodw+NuS/EUnH50jN20qG6Al+prs+NVtshJGGK4JL5pwCL",
   "components": {
+    "date-picker": {
+      "tag": "sb-date-picker",
+      "version": "4dd9598ab25b",
+      "entry": "date-picker.js",
+      "load": true,
+      "files": {
+        "README.md": "sha384-T7XZlOTaW/o037sCKZnwrLtkbeELQFjvC04YyiTq+gKg4x5dSZl+Uy+f+THQ2ofw",
+        "date-picker.js": "sha384-T9mzvrf6gpw5A9DZER/ixSpgt3dwY+eWMS3JEeqkixacH6aTl2Qxvl8fCqtBjUZz",
+        "date-picker.ts": "sha384-DTPyUfFgbI8vxTS8O9GKWA56d8wRkXDvCmx47shHqzPXgNUFCJNlcYaMj8UCEzrI",
+        "manifest.json": "sha384-zEIh5ZaHhtpFhvcRYf/KJCu96OvsH2inkzi6tC3mfT8jtioFzGgQDgs326wCydXi"
+      }
+    },
     "popover": {
       "tag": "sb-popover",
       "version": "798252374afc",

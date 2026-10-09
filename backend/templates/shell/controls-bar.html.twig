@@ -17,7 +17,7 @@
 {% set chip = range.importChip %}
 
 <div class="controls-bar" role="region" aria-label="Range and filters"
-     data-signals__ifmissing="{_controlsMore: false, _rangeEntryError: ''}"
+     data-signals__ifmissing="{_controlsMore: false}"
      data-more="closed" data-attr:data-more="$_controlsMore ? 'open' : 'closed'" data-preserve-attr="data-more">
 
     {% if available_profiles.array()|length > 1 %}
@@ -87,30 +87,25 @@
                     data-on:click="{{ remember }}; @post('{{ setRange.url() }}?op=now')">{{ icons.icon('now') }}</button>
         </div>
 
-        {# Where the window is, in the display timezone, and an entry for an absolute one. #}
+        {# Where the window is, in the display timezone, and an entry for an absolute one: sb-date-picker inline, in
+           five-minute steps, in that timezone, 24-hour like the rest. Opening fills it with the window, rounded out to the
+           steps, so a live update keeps a pick in progress. #}
+        {% set pickerZone = '(' ~ '$' ~ displayTz.id() ~ " === 'server' ? " ~ '$' ~ nfcapdTz.id() ~ " : 'local')" %}
         <sb-popover id="rangeDisplay" class="range-display" label="Set a start and an end" placement="bottom-start">
             {# Runs before sb-popover's own click handler, so aria-expanded still says whether this click opens it. #}
             <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
                     data-preserve-attr="aria-expanded aria-haspopup" title="Set a start and an end"
-                    data-on:click="el.getAttribute('aria-expanded') !== 'true' && (document.getElementById('rangeFrom').value = window.nfsenTime.toLocalInput({{ ds }}, {{ tz }}), document.getElementById('rangeTo').value = window.nfsenTime.toLocalInput({{ de }}, {{ tz }}), $_rangeEntryError = '')">
+                    data-on:click="el.getAttribute('aria-expanded') !== 'true' && (document.getElementById('rangePicker').value = {start: new Date(Math.floor({{ ds }} / 300) * 300000).toISOString(), end: new Date(Math.ceil({{ de }} / 300) * 300000).toISOString()})">
                 <span data-ignore-morph data-text="window.nfsenTime.formatRange({{ ds }}, {{ de }}, {{ tz }})">{{ datestart.int()|date('M j, H:i', nfcapdTz.string()) }} to {{ dateend.int()|date('M j, H:i', nfcapdTz.string()) }}</span>
             </button>
             <div class="range-entry" id="rangeDisplayList">
-                {# preventDefault: the Enter would otherwise also press the trigger that Apply's close focuses. #}
-                <div class="field">
-                    <label for="rangeFrom">From</label>
-                    <input type="datetime-local" id="rangeFrom" step="60"
-                           data-on:keydown="evt.key === 'Enter' && (evt.preventDefault(), document.getElementById('rangeApply').click())">
-                </div>
-                <div class="field">
-                    <label for="rangeTo">To</label>
-                    <input type="datetime-local" id="rangeTo" step="60"
-                           data-on:keydown="evt.key === 'Enter' && (evt.preventDefault(), document.getElementById('rangeApply').click())">
-                </div>
+                <sb-date-picker id="rangePicker" inline mode="range" time step="300" label="Range" lang="en-GB"
+                                data-attr:time-zone="{{ pickerZone }}"
+                                data-attr:min="{{ '$' ~ data_range_min.id() }} > 0 ? new Date({{ '$' ~ data_range_min.id() }} * 1000).toISOString() : ''"
+                                data-attr:max="{{ '$' ~ data_range_max.id() }} > 0 ? new Date(Math.ceil(Math.max({{ '$' ~ data_range_max.id() }}, Date.now() / 1000) / 300) * 300000).toISOString() : ''"
+                                data-preserve-attr="time-zone min max"
+                                data-on:sb-change="const from = Math.floor(Date.parse(evt.detail.value.start) / 1000); const to = Math.floor(Date.parse(evt.detail.value.end) / 1000); from < to && ({{ remember }}, @post('{{ setRange.url() }}?op=abs&from=' + from + '&to=' + to), document.getElementById('rangeDisplay').open = false)"></sb-date-picker>
                 <p class="help" data-ignore-morph data-text="{{ '$' ~ displayTz.id() }} === 'server' ? 'Times in ' + {{ '$' ~ nfcapdTz.id() }} + ', the capture timezone.' : 'Times in this browser\'s timezone.'">Times in this browser's timezone.</p>
-                <p class="status-text" data-level="error" role="alert" data-ignore-morph data-text="$_rangeEntryError"></p>
-                <button type="button" id="rangeApply" data-variant="primary" data-size="sm"
-                        data-on:click="const from = window.nfsenTime.toEpoch(document.getElementById('rangeFrom').value, {{ tz }}); const to = window.nfsenTime.toEpoch(document.getElementById('rangeTo').value, {{ tz }}); from < to ? ({{ remember }}, $_rangeEntryError = '', @post('{{ setRange.url() }}?op=abs&from=' + from + '&to=' + to)) : (evt.stopPropagation(), $_rangeEntryError = Number.isNaN(from) || Number.isNaN(to) ? 'Enter a start and an end.' : 'The range has to end after it starts.')">Apply</button>
             </div>
         </sb-popover>
 

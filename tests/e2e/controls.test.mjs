@@ -71,6 +71,19 @@ async function tapAt(page, expr) {
 }
 
 /** A popover's state and where the focus is: 'trigger', a preset id, or the focused element's id. */
+// The absolute range is an inline sb-date-picker in the rangeDisplay popover.
+const PICKER = "document.getElementById('rangePicker')";
+/** What the bar does when the picker commits {start, end}: the event Apply sends, with exact instants. */
+const commitRange = (page, from, to) =>
+    page.evaluate(
+        `${PICKER}.dispatchEvent(new CustomEvent('sb-change', { bubbles: true, composed: true, detail: { name: '', value: { start: new Date(${from} * 1000).toISOString(), end: new Date(${to} * 1000).toISOString() } } })), true`
+    );
+/** The picker's time rows as shown: ['HH:MM', 'HH:MM'] for the start and the end. */
+const pickerTimes = (page) =>
+    page.evaluate(`[...${PICKER}.shadowRoot.querySelectorAll('[part~="time"]')].map(function(row){
+        return [...row.querySelectorAll('[part~="segment"]')].filter(function(i){ return i.checkVisibility(); }).map(function(i){ return i.value; }).join(':');
+    })`);
+
 const popoverState = (id) => `(function(){
     var host = document.getElementById(${JSON.stringify(id)});
     var trigger = host.querySelector('[slot="trigger"]');
@@ -211,7 +224,7 @@ async function beforeDefinition() {
                     height: Math.round(document.querySelector('.controls-bar').getBoundingClientRect().height),
                     chip: !status.hidden,
                     triggers: ${JSON.stringify(POPOVERS)}.filter(function(id){ return document.querySelector('#' + id + ' [slot="trigger"]').checkVisibility(); }),
-                    shown: ['#rangeMenuList', '#rangeDisplayList', '#rangeFrom', '#customDurationValue', '[data-range-preset]']
+                    shown: ['#rangeMenuList', '#rangeDisplayList', '#rangePicker', '#customDurationValue', '[data-range-preset]']
                         .filter(function(sel){ return document.querySelector(sel).checkVisibility(); }),
                 };
             })()`;
@@ -269,17 +282,15 @@ async function presetRightAway() {
                         var ready = function(el){ return typeof el.show === 'function' && !!el.shadowRoot; };
                         if (!ready(host) || !ready(entry)) return requestAnimationFrame(poll);
                         var pick = ['7d', '24h'].find(function(id){ return document.querySelector('[data-range-preset="' + id + '"]').getAttribute('aria-pressed') !== 'true'; });
-                        var from = document.getElementById('rangeFrom');
+                        var picker = document.getElementById('rangePicker');
                         Object.assign(window.__e2eEarly, { ready: performance.now(), pick: pick });
                         painted(function(){
-                            // Empty whatever the browser restored, so only the trigger's prefill can fill it.
-                            from.value = '';
                             entry.querySelector('[slot="trigger"]').click();
                             painted(function(){
                                 Object.assign(window.__e2eEarly, {
                                     entryOpen: entry.open === true,
-                                    entryFocus: document.activeElement === from,
-                                    prefill: from.value,
+                                    entryFocus: document.activeElement === picker,
+                                    prefill: JSON.stringify(picker.value),
                                     entryUnsynced: bar.hasAttribute('data-e2e-unsynced'),
                                 });
                                 entry.querySelector('[slot="trigger"]').click();
@@ -321,7 +332,7 @@ async function presetRightAway() {
             { open: true, focus: true, closed: true, unsynced: true },
             'before any sync, the absolute range trigger opened its entry on From and closed it again'
         );
-        assert.match(early.prefill ?? '', /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'before any sync, the trigger prefilled From');
+        assert.match(early.prefill ?? '', /"start":"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, 'before any sync, the trigger prefilled the picker');
         assert.deepEqual(
             { open: early.open, first: early.first, closed: early.closed, unsynced: early.unsynced },
             { open: true, first: true, closed: true, unsynced: true },
@@ -361,18 +372,16 @@ async function keysRightAway() {
             await page.waitFor(`${POPOVERS.map((id) => `typeof document.getElementById('${id}').show === 'function'`).join(' && ')}`, {
                 label: 'the three popovers right after the reload',
             });
-            // Enter opens the absolute range on From with its prefill.
-            await page.evaluate(`document.getElementById('rangeFrom').value = ''; ${DISPLAY_TOGGLE}.focus()`);
+            // Enter opens the absolute range in the picker, prefilled with the window.
+            await page.evaluate(`${DISPLAY_TOGGLE}.focus()`);
             await press(page, 'Enter', 'Enter', 13);
-            const entry = await page.evaluate(
-                `({ state: ${popoverState('rangeDisplay')}, from: document.getElementById('rangeFrom').value })`
-            );
+            const entry = await page.evaluate(`({ state: ${popoverState('rangeDisplay')}, value: JSON.stringify(${PICKER}.value) })`);
             assert.deepEqual(
                 entry.state,
-                { open: true, expanded: 'true', focus: 'rangeFrom' },
+                { open: true, expanded: 'true', focus: 'rangePicker' },
                 'before any sync, Enter opens the absolute range'
             );
-            assert.match(entry.from, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'before any sync, Enter prefilled From');
+            assert.match(entry.value, /"start":"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, 'before any sync, Enter prefilled the picker');
             await press(page, 'Escape', 'Escape', 27);
             assert.deepEqual(await page.evaluate(popoverState('rangeDisplay')), { open: false, expanded: 'false', focus: 'trigger' });
 
@@ -423,23 +432,9 @@ async function onPhone() {
                     `${label}: the panel lies inside the viewport: ${JSON.stringify({ panel, view })}`
                 );
                 if (id === 'rangeDisplay') {
-                    const from = await page.evaluate(`(function(){
-                        var field = document.getElementById('rangeFrom');
-                        return { focused: document.activeElement === field, picker: field.matches(':open'), value: field.value };
-                    })()`);
-                    assert.equal(from.focused, true, 'opening the absolute range focuses its From field');
-                    assert.equal(from.picker, false, 'the focus alone opens no date picker');
-                    assert.match(from.value, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'the tap prefilled the entry');
-                    // The check above means something: a tap on the field does open the picker.
-                    await tapAt(page, `document.getElementById('rangeFrom')`);
-                    assert.equal(
-                        await page.evaluate(`document.getElementById('rangeFrom').matches(':open')`),
-                        true,
-                        'a tap on From opens its picker'
-                    );
-                    assert.equal(await page.evaluate(`${DISPLAY}.open`), true, 'the picker keeps the popover open');
-                    await press(page, 'Escape', 'Escape', 27);
-                    await page.waitFor(`!document.getElementById('rangeFrom').matches(':open')`, { label: 'Escape to close the picker' });
+                    const picker = await page.evaluate(`({ focused: document.activeElement === ${PICKER}, value: JSON.stringify(${PICKER}.value) })`);
+                    assert.equal(picker.focused, true, 'opening the absolute range focuses the picker');
+                    assert.match(picker.value, /"start":"\d{4}-\d{2}-\d{2}T/, 'the tap prefilled the picker');
                 }
                 await press(page, 'Escape', 'Escape', 27);
                 await page.waitFor(`!${popoverBoxes(id)}.open`, { label: `${label}: Escape to close it` });
@@ -561,23 +556,19 @@ export default async function controlsTest() {
         assert.ok(Math.abs(r.to - r.from - 604800) <= 1 && Math.abs(r.to - Date.now() / 1000) < 120, 'now keeps the width and ends now');
         await page.waitFor(`${RANGE_TOGGLE}.textContent.trim() === 'Last 7 days'`, { label: 'trigger back to the preset' });
 
-        // Absolute range in the browser's timezone (emulated Asia/Kolkata, UTC+05:30).
+        // Absolute range in the browser's timezone (emulated Asia/Kolkata, UTC+05:30), through the inline picker.
         const openEntry = async () => {
             await page.evaluate(`${DISPLAY}.open || ${DISPLAY_TOGGLE}.click()`);
-            await page.waitFor(`${DISPLAY}.open === true && document.getElementById('rangeFrom').checkVisibility()`, {
+            await page.waitFor(`${DISPLAY}.open === true && ${PICKER}.checkVisibility() && !!${PICKER}.shadowRoot?.querySelector('[part~="apply"]')`, {
                 label: 'absolute range entry',
             });
         };
 
-        // An entry that reaches now is live, and Previous range brings it back live at its width,
-        // not rounded to whole hours.
+        // A range that reaches now is live, and Previous range brings it back live at its width, not rounded to whole hours.
         await openEntry();
-        assert.equal(await page.evaluate(`document.activeElement.id`), 'rangeFrom', 'opening the entry focuses From');
+        assert.equal(await page.evaluate(`document.activeElement.id`), 'rangePicker', 'opening the entry focuses the picker');
         const nowS = Math.floor(Date.now() / 1000);
-        const localAt = (epoch) => page.evaluate(`window.nfsenTime.toLocalInput(${epoch}, 'browser', '')`);
-        await page.setInputValue('#rangeFrom', await localAt(nowS - 2700));
-        await page.setInputValue('#rangeTo', await localAt(nowS + 60));
-        await click('#rangeApply');
+        await commitRange(page, nowS - 2700, nowS + 60);
         const shortLive = await until('a live 45 minute window', (x) => x.live && x.preset === 'custom' && x.to - x.from < 3600);
         assert.deepEqual(await page.evaluate(popoverState('rangeDisplay')), closedOnTrigger, 'Apply closed the entry onto its trigger');
         await page.setRangePreset('24h');
@@ -590,29 +581,31 @@ export default async function controlsTest() {
             restoredWidth >= shortWidth && restoredWidth - shortWidth < 300 && restoredWidth < 3600,
             `Previous range keeps ${shortWidth} s, got ${restoredWidth} s`
         );
+
+        // Opening fills the picker with the window, rounded out to its five-minute steps.
         await openEntry();
-        const prefilled = await page.evaluate(`document.getElementById('rangeTo').value`);
-        assert.match(prefilled, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'the entry is prefilled from the window');
+        const prefilled = await page.evaluate(`(function(){ var v = ${PICKER}.value; return v && [Date.parse(v.start) / 1000, Date.parse(v.end) / 1000]; })()`);
+        assert.deepEqual(prefilled, [Math.floor(r.from / 300) * 300, Math.ceil(r.to / 300) * 300], 'the picker is prefilled from the window');
+        await press(page, 'Escape', 'Escape', 27);
+
+        // The browser's zone: the display and the picker's time rows show the wall time there.
         const browserFrom = wallTime(3, 10, 'Asia/Kolkata');
         const browserTo = wallTime(3, 16, 'Asia/Kolkata');
-        await page.setInputValue('#rangeFrom', browserFrom.local);
-        await page.setInputValue('#rangeTo', browserTo.local);
-        // Enter in a field applies like Apply, and the closed entry stays closed on its trigger.
+        await openEntry();
         log.clear();
-        await page.evaluate(`document.getElementById('rangeTo').focus()`);
-        await press(page, 'Enter', 'Enter', 13);
+        await commitRange(page, browserFrom.epoch, browserTo.epoch);
         r = await until('absolute range', (x) => x.from === browserFrom.epoch && x.to === browserTo.epoch);
         assert.equal(r.live, false);
-        assert.deepEqual(
-            await page.evaluate(popoverState('rangeDisplay')),
-            closedOnTrigger,
-            'Enter in To closed the entry onto its trigger'
-        );
-        assert.equal(log.count('set-range'), 1, 'Enter in To posted set-range once');
+        assert.deepEqual(await page.evaluate(popoverState('rangeDisplay')), closedOnTrigger, 'Apply closed the entry onto its trigger');
+        assert.equal(log.count('set-range'), 1, 'Apply posted set-range once');
         const shown = await page.evaluate(`${DISPLAY_TOGGLE}.textContent`);
         assert.ok(shown.includes('10:00') && shown.includes('16:00'), `the display shows the entered times, got "${shown.trim()}"`);
+        await openEntry();
+        assert.equal(await page.evaluate(`${PICKER}.getAttribute('time-zone')`), 'local', 'the picker reads the browser\'s zone');
+        assert.deepEqual(await pickerTimes(page), ['10:00', '16:00'], 'the picker shows the window in the browser\'s zone');
+        await press(page, 'Escape', 'Escape', 27);
 
-        // The same entry in the capture timezone once the display is set to server time.
+        // The capture timezone once the display is set to server time.
         const serverTz = await page.signalValue('nfcapdTz');
         await page.evaluate(`(async function(){
             var root = (await import('datastar')).root;
@@ -620,62 +613,46 @@ export default async function controlsTest() {
             root[key] = 'server';
         })()`);
         await openEntry();
-        assert.match(
-            await page.evaluate(`document.querySelector('.range-entry .help').textContent`),
-            new RegExp(serverTz.replace('/', '\\/'))
-        );
+        assert.match(await page.evaluate(`document.querySelector('.range-entry .help').textContent`), new RegExp(serverTz.replace('/', '\\/')));
+        assert.equal(await page.evaluate(`${PICKER}.getAttribute('time-zone')`), serverTz, 'the picker reads the capture zone');
         const serverFrom = wallTime(2, 9, serverTz);
         const serverTo = wallTime(2, 12, serverTz);
-        await page.setInputValue('#rangeFrom', serverFrom.local);
-        await page.setInputValue('#rangeTo', serverTo.local);
-        await page.evaluate(`document.getElementById('rangeFrom').focus()`);
-        await press(page, 'Enter', 'Enter', 13);
+        await commitRange(page, serverFrom.epoch, serverTo.epoch);
         await until('absolute range in server time', (x) => x.from === serverFrom.epoch && x.to === serverTo.epoch);
-        assert.deepEqual(
-            await page.evaluate(popoverState('rangeDisplay')),
-            closedOnTrigger,
-            'Enter in From closed the entry onto its trigger'
-        );
-
-        // An end before the start stays in the popover with a message.
         await openEntry();
-        log.clear();
-        await page.setInputValue('#rangeFrom', serverTo.local);
-        await page.setInputValue('#rangeTo', serverFrom.local);
-        await click('#rangeApply');
-        await page.waitFor(`document.querySelector('.range-entry [role=alert]').textContent.includes('end after it starts')`, {
-            label: 'the entry error',
-        });
-        assert.equal(log.count('set-range'), 0, 'a backwards range posts nothing');
-        assert.equal(await page.evaluate(`${DISPLAY}.open`), true, 'the entry stays open with its error');
+        assert.deepEqual(await pickerTimes(page), ['09:00', '12:00'], 'the picker shows the window in the capture zone');
 
-        // Escape closes the popover and gives the focus back to its trigger.
-        await page.evaluate(`document.getElementById('rangeFrom').focus()`);
+        // An end before the start posts nothing and leaves the entry open (the picker itself sends them in order).
+        log.clear();
+        await commitRange(page, serverTo.epoch, serverFrom.epoch);
+        await sleep(600);
+        assert.equal(log.count('set-range'), 0, 'a backwards range posts nothing');
+        assert.equal(await page.evaluate(`${DISPLAY}.open`), true, 'the entry stays open');
+
+        // A pick in the calendar itself: two days, then Apply.
+        log.clear();
+        const days = await page.evaluate(`(function(){
+            var cells = [...${PICKER}.shadowRoot.querySelectorAll('td')].filter(function(c){ return c.textContent.trim() !== '' && c.getAttribute('aria-disabled') !== 'true'; });
+            var pair = cells.slice(-2);
+            pair.forEach(function(c){ c.click(); });
+            return pair.map(function(c){ return c.textContent.trim(); });
+        })()`);
+        assert.equal(days.length, 2, 'two days to pick');
+        await page.evaluate(`${PICKER}.shadowRoot.querySelector('[part~="apply"]').click(), true`);
+        await page.waitFor(`${DISPLAY}.open === false`, { label: 'Apply in the calendar closes the entry' });
+        await sleep(600);
+        assert.equal(log.count('set-range'), 1, `picking ${days.join(' to ')} and Apply posted set-range once`);
+
+        // Escape closes the popover and gives the focus back to its trigger; Space opens it again, prefilled.
+        await openEntry();
         await press(page, 'Escape', 'Escape', 27);
         await page.waitFor(`document.activeElement === ${DISPLAY_TOGGLE}`, { label: 'focus back on the range display trigger' });
         assert.deepEqual(await page.evaluate(popoverState('rangeDisplay')), closedOnTrigger);
-
-        // Space opens the absolute range on From with its prefill; Enter runs before any sync, in presetRightAway.
-        for (const [label, host, toggle, first, key, code, keyCode] of [
-            ['absolute range', DISPLAY, DISPLAY_TOGGLE, `document.getElementById('rangeFrom')`, ' ', 'Space', 32],
-        ]) {
-            await page.evaluate(`document.getElementById('rangeFrom').value = ''; ${toggle}.focus()`);
-            await press(page, key, code, keyCode);
-            await page.waitFor(`${host}.open === true && document.activeElement === ${first}`, {
-                label: `${code} on the ${label} trigger to open it on its first field`,
-            });
-            if (host === DISPLAY) {
-                assert.match(
-                    await page.evaluate(`document.getElementById('rangeFrom').value`),
-                    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/,
-                    `${code} prefilled From`
-                );
-            }
-            await press(page, 'Escape', 'Escape', 27);
-            await page.waitFor(`${host}.open === false && document.activeElement === ${toggle}`, {
-                label: `Escape after ${code} on the ${label} trigger`,
-            });
-        }
+        await press(page, ' ', 'Space', 32);
+        await page.waitFor(`${DISPLAY}.open === true && document.activeElement === ${PICKER}`, { label: 'Space on the absolute range trigger opens it' });
+        assert.match(await page.evaluate(`JSON.stringify(${PICKER}.value)`), /"start":"\d{4}-\d{2}-\d{2}T/, 'Space prefilled the picker');
+        await press(page, 'Escape', 'Escape', 27);
+        await page.waitFor(`${DISPLAY}.open === false && document.activeElement === ${DISPLAY_TOGGLE}`, { label: 'Escape after Space' });
 
         // Keyboard: Enter and Space open the range popover on the first preset, Escape closes it again.
         const presets = await page.evaluate(
@@ -778,25 +755,32 @@ export default async function controlsTest() {
         await press(page, 'Escape', 'Escape', 27);
         await page.waitFor(`${RANGE}.open === false && document.activeElement === ${RANGE_TOGGLE}`, { label: 'Escape after the sync' });
 
-        // The same for the absolute range: both fields filled, the focus in From after a key changed it.
+        // The same for the absolute range: a day picked in the calendar, not applied yet, survives a sync.
         await openEntry();
-        await page.setInputValue('#rangeFrom', '2026-03-14T09:30');
-        await page.setInputValue('#rangeTo', '2026-03-15T18:45');
-        await page.evaluate(`(function(){ var f = document.getElementById('rangeFrom'); f.focus(); window.__e2eFrom = f; })()`);
-        await press(page, 'ArrowUp', 'ArrowUp', 38);
-        const typedFrom = await page.evaluate(`document.getElementById('rangeFrom').value`);
-        assert.notEqual(typedFrom, '2026-03-14T09:30', 'ArrowUp changed a part of From');
-        assert.match(typedFrom, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+        const picked = await page.evaluate(`(function(){
+            window.__e2ePicker = ${PICKER};
+            var cell = [...${PICKER}.shadowRoot.querySelectorAll('td')].filter(function(c){ return c.textContent.trim() !== '' && c.getAttribute('aria-disabled') !== 'true'; })[0];
+            cell.click();
+            return cell.textContent.trim();
+        })()`);
+        const selected = () =>
+            page.evaluate(`[...${PICKER}.shadowRoot.querySelectorAll('td[aria-selected="true"]')].map(function(c){ return c.textContent.trim(); })`);
+        const before = await selected();
+        assert.ok(before.includes(picked), `the picked day ${picked} is selected`);
         await syncMorphing('rangeDisplayList');
         assert.deepEqual(
             await page.evaluate(`(function(){
                 var s = ${popoverState('rangeDisplay')};
-                var f = document.getElementById('rangeFrom');
-                return { open: s.open, expanded: s.expanded, same: document.activeElement === window.__e2eFrom && f === window.__e2eFrom, from: f.value, to: document.getElementById('rangeTo').value };
+                return { open: s.open, expanded: s.expanded, same: ${PICKER} === window.__e2ePicker };
             })()`),
-            { open: true, expanded: 'true', same: true, from: typedFrom, to: '2026-03-15T18:45' },
-            'a sync keeps the absolute range open with both dates and the focus in From'
+            { open: true, expanded: 'true', same: true },
+            'a sync keeps the absolute range open with the same picker'
         );
+        assert.deepEqual(await selected(), before, 'a sync keeps the pick in progress');
+        // The first Escape drops the pick in progress, the second closes the popover onto its trigger.
+        await press(page, 'Escape', 'Escape', 27);
+        assert.equal(await page.evaluate(`${DISPLAY}.open`), true, 'the first Escape keeps the entry open');
+        assert.notDeepEqual(await selected(), before, 'the first Escape drops the pick in progress');
         await press(page, 'Escape', 'Escape', 27);
         await page.waitFor(`${DISPLAY}.open === false && document.activeElement === ${DISPLAY_TOGGLE}`, {
             label: 'Escape after the sync of the absolute range',

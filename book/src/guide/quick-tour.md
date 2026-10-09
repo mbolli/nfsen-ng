@@ -47,9 +47,9 @@ The bar at the top sets the time range and the scope for every page at once:
   own width; **Jump to now** moves it to end now. Previous period is disabled at
   the start of the stored data.
 - **The start and end** of the window are shown next to the step buttons, in the
-  timezone Settings asks for. Click them to type an exact **From** and **To**.
+  timezone Settings asks for. Click them to pick a start and an end in the
+  calendar, in five-minute steps, then **Apply**.
 - **Sources** picks which exporters count, as *All sources* or *2 of 5 sources*. Type to find one by its name or source; **Select all** and **Clear** both go back to every source. A source can carry a name to show (`NFSEN_SOURCES=10-20-100-3:dc1rt310`).
-  At least one stays checked.
 - **Protocol** narrows everything to **TCP**, **UDP**, **ICMP** or **Other**, or
   leaves it at **Any protocol**.
 - **Bits** or **Bytes** sets the unit for rates and volumes in the graphs and key

@@ -1,0 +1,230 @@
+{
+  "tag": "sb-date-picker",
+  "props": [
+    {
+      "name": "value",
+      "attribute": "value",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "The date, ISO: 2026-09-29. With time, a local date-time as datetime-local submits it: 2026-09-29T14:30 (seconds only when not zero), and with time-zone an instant with its offset: 2026-09-29T14:30+02:00 (any RFC 3339 instant is read). With mode=\"range\", JSON: {\"start\":\"2026-09-29\",\"end\":\"2026-10-03\"}. A new value from the server replaces it (value=\"\" clears); the live value is the value property."
+      }
+    },
+    {
+      "name": "mode",
+      "attribute": "mode",
+      "type": "oneOf",
+      "default": "single",
+      "required": false,
+      "values": [
+        "single",
+        "range"
+      ],
+      "docs": {
+        "description": "One date, or a start and an end, committed together as one value."
+      }
+    },
+    {
+      "name": "time",
+      "attribute": "time",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "The value includes a time of day. The calendar and a time row below it edit a draft, and Apply (or Enter in the time row) commits the date and the time together."
+      }
+    },
+    {
+      "name": "step",
+      "attribute": "step",
+      "type": "number",
+      "default": 60,
+      "required": false,
+      "docs": {
+        "description": "With time: the time's granularity in whole seconds up to 3600, as on datetime-local (60: minutes, 900: quarter hours, 1: seconds shown); a step that isn't a positive number means 60. Up and Down move by it; typed values off the step are kept."
+      }
+    },
+    {
+      "name": "timeZone",
+      "attribute": "time-zone",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "With time: an IANA time zone (Europe/Zurich), or local for the viewer's. The picker shows and reads the wall clock there, and the value is an RFC 3339 instant with the zone's offset: 2026-09-29T14:30+02:00. A zone the browser can't read means the viewer's. Without it, the value is a local date-time."
+      }
+    },
+    {
+      "name": "min",
+      "attribute": "min",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Earliest date that can be picked (ISO). With time, a date (from the start of that day) or a date-time, with time-zone with or without an offset."
+      }
+    },
+    {
+      "name": "max",
+      "attribute": "max",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Latest date that can be picked (ISO). With time, a date (to the end of that day) or a date-time, with time-zone with or without an offset."
+      }
+    },
+    {
+      "name": "disabledDates",
+      "attribute": "disabled-dates",
+      "type": "json",
+      "default": [],
+      "required": false,
+      "docs": {
+        "description": "Server data: dates that can't be picked, as a JSON array of ISO dates (e.g. booked days). They can still be focused and read."
+      }
+    },
+    {
+      "name": "month",
+      "attribute": "month",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "The month shown, YYYY-MM (view state). A changed attribute from the server moves the calendar there; the user paging months emits sb-month."
+      }
+    },
+    {
+      "name": "open",
+      "attribute": "open",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "The calendar popover is open. View state: a changed attribute from the server opens or closes it (open=\"false\" closes); local toggling never reflects it."
+      }
+    },
+    {
+      "name": "inline",
+      "attribute": "inline",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Show the calendar on the page, always visible, without the text field."
+      }
+    },
+    {
+      "name": "label",
+      "attribute": "label",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Visible label, and the accessible name of the calendar."
+      }
+    },
+    {
+      "name": "placeholder",
+      "attribute": "placeholder",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Placeholder text (default: the locale's date pattern, e.g. dd.mm.yyyy, or with time dd.mm.yyyy, hh:mm)."
+      }
+    },
+    {
+      "name": "applyLabel",
+      "attribute": "apply-label",
+      "type": "string",
+      "default": "Apply",
+      "required": false,
+      "docs": {
+        "description": "With time: the text of the button that commits the calendar's date and time."
+      }
+    },
+    {
+      "name": "error",
+      "attribute": "error",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Message shown when the typed text is not a date that can be picked."
+      }
+    },
+    {
+      "name": "lang",
+      "attribute": "lang",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Locale for month and weekday names, the first day of the week and the typed format (default: the page's lang, then the browser's)."
+      }
+    },
+    {
+      "name": "disabled",
+      "attribute": "disabled",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Disable the field and the calendar. A form leaves it out."
+      }
+    },
+    {
+      "name": "confirm",
+      "attribute": "confirm",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Server-confirmed value: :state(pending) while the local value differs from the server's value attribute (see revert())."
+      }
+    },
+    {
+      "name": "name",
+      "attribute": "name",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Name reported in sb-change, sb-month and sb-toggle (e.g. the field of a command), and submitted with its form."
+      }
+    }
+  ],
+  "slots": [],
+  "events": [
+    {
+      "kind": "event",
+      "name": "change",
+      "bubbles": true,
+      "composed": true,
+      "description": "The value changed."
+    },
+    {
+      "kind": "custom-event",
+      "name": "sb-change",
+      "bubbles": true,
+      "composed": true,
+      "description": "A date was picked or typed (with time: applied or typed). detail: { name, value }: an ISO date, with time a date-time (with time-zone, with its offset) (\"\" when cleared), or with mode=\"range\" { start, end } (null when cleared). Ready for a command."
+    },
+    {
+      "kind": "custom-event",
+      "name": "sb-month",
+      "bubbles": true,
+      "composed": true,
+      "description": "The user moved the calendar to another month. detail: { name, year, month } (month from 1): the moment to send that month's disabled-dates."
+    },
+    {
+      "kind": "custom-event",
+      "name": "sb-toggle",
+      "bubbles": true,
+      "composed": true,
+      "description": "The popover opened or closed. detail: { name, open }. View state: not emitted for a change the server made."
+    }
+  ]
+}

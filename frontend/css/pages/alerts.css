@@ -250,7 +250,7 @@
 
 /* ── Test result dialog ─────────────────────────────────────────────────── */
 
-.alert-test-result {
+sb-modal.alert-test-result::part(panel) {
     inline-size: min(40rem, 100vw - 2rem);
 }
 

@@ -537,6 +537,7 @@ async function step(page, names, fn, { optional = false } = {}) {
             }
             await page.evaluate(`(function(){
                 document.querySelectorAll('dialog[open]').forEach(function(d){ d.close(); });
+                document.querySelectorAll('sb-modal').forEach(function(m){ if (m.isOpen) m.close(); });
                 document.querySelectorAll('sb-popover').forEach(function(p){ if (p.open) p.hide(); });
             })()`);
             await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
@@ -828,11 +829,11 @@ async function desktop(page) {
                 label: 'an address',
             });
             await click(page, '#ovTopnTable .ip-link, #overviewKpis .ip-link');
-            await page.waitFor(`document.getElementById('ip-modal-inner')?.open === true`, { timeout: 20000, label: 'IP info modal' });
+            await page.waitFor(`document.getElementById('ip-modal-inner')?.isOpen === true`, { timeout: 20000, label: 'IP info modal' });
             // As a mouse click leaves it: no focus ring on Close.
             await page.evaluate('document.activeElement?.blur()');
             await sleep(800);
-            await shot(page, 'guide-ip-info-modal', '#ip-modal-inner', { margin: 0 });
+            await shot(page, 'guide-ip-info-modal', `document.getElementById('ip-modal-inner').shadowRoot.querySelector('[part~="panel"]')`, { margin: 0 });
         } finally {
             await leaveOverview(page);
         }

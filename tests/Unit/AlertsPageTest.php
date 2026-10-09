@@ -808,7 +808,7 @@ describe('templates', function (): void {
             $rows[trim($term->textContent)] = [trim((string) $term->nextElementSibling?->textContent), $term->nextElementSibling?->querySelector('.status-dot')?->getAttribute('data-level')];
         }
 
-        expect($html)->toContain('id="alertTestResult"', 'data-preserve-attr="open"', 'Test: High traffic', 'Would fire', 'Webhook title', 'Email subject', '&lt;img src=x onerror=alert(1)&gt;')
+        expect($html)->toContain('<sb-modal id="alertTestResult"', 'Test: High traffic', 'Would fire', 'Webhook title', 'Email subject', '&lt;img src=x onerror=alert(1)&gt;')
             ->and($html)->not->toContain('<img', '<b>')
             ->and($rows)->toBe(['Webhook' => ['Failed: <b>HTTP 500</b>', 'error'], 'Email' => ['Not configured', null]])
         ;

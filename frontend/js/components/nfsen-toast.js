@@ -149,7 +149,7 @@ window.showMessage = (type, message, autoDismiss = false, containerSelector = nu
     toast.message = String(message ?? '');
     toast.autoDismiss = !!autoDismiss;
 
-    const modal = [...document.querySelectorAll('dialog:modal')].pop();
+    const modal = [...document.querySelectorAll('dialog:modal, sb-modal')].filter((d) => d.localName === 'dialog' || d.isOpen).pop();
     const container =
         (containerSelector && document.querySelector(containerSelector)) ||
         modal?.querySelector(':scope > .toast-stack') ||

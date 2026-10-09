@@ -148,18 +148,18 @@ async function testRule(page, name, settled = null) {
     for (let attempt = 1; ; attempt++) {
         await page.evaluate(`(function(){
             var d = document.getElementById('alertTestResult');
-            if (d) { d.dataset.e2eStale = '1'; if (d.open) d.close(); }
+            if (d) { d.dataset.e2eStale = '1'; if (d.isOpen) d.close(); }
         })()`);
         await page.evaluate(`${rowButtonExpr(name, 'Test')}.focus()`);
         await press(page, 'Enter');
         await page.waitFor(
-            `(function(){ var d = document.getElementById('alertTestResult'); return !!d && d.open && !d.dataset.e2eStale; })()`,
+            `(function(){ var d = document.getElementById('alertTestResult'); return !!d && d.isOpen && !d.dataset.e2eStale; })()`,
             { label: 'the Test dialog to open', timeout: 20000 }
         );
         const dialog = await page.evaluate(`(function(){
             var d = document.getElementById('alertTestResult');
             return {
-                title: d.querySelector('h2').textContent.trim(),
+                title: d.getAttribute('heading'),
                 headline: d.querySelector('.alert-test-outcome').textContent.trim(),
                 terms: [...d.querySelectorAll('.alert-test-templates dt')].map(function(t){ return t.textContent.trim(); }),
                 channels: [...d.querySelectorAll('.alert-test-channels dt')].map(function(t){ return [t.textContent.trim(), t.nextElementSibling.textContent.trim()]; }),
@@ -175,7 +175,7 @@ async function testRule(page, name, settled = null) {
 /** Escape closes the Test dialog and focus goes back to the row's Test button. */
 async function closeTestDialog(page, name) {
     await press(page, 'Escape');
-    await page.waitFor(`document.getElementById('alertTestResult')?.open === false`, { label: 'Escape to close the dialog' });
+    await page.waitFor(`document.getElementById('alertTestResult')?.isOpen === false`, { label: 'Escape to close the dialog' });
     assert.equal(await focusedLabel(page), `Test ${name}`, 'closing the dialog returns focus to the Test button');
 }
 
@@ -561,7 +561,7 @@ export default async function alertsTest() {
                 await clickRowButton(page, ruleName, 'Edit');
                 await clickButtonText(page, 'Cancel edit');
                 await sleep(300);
-                assert.equal(await page.evaluate(`document.getElementById('alertTestResult').open`), true, 'the dialog stays open');
+                assert.equal(await page.evaluate(`document.getElementById('alertTestResult').isOpen`), true, 'the dialog stays open');
                 await closeTestDialog(page, ruleName);
 
                 // Delivery per channel: the app's own port answers the webhook, port 9 refuses it.

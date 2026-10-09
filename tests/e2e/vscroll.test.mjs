@@ -512,7 +512,7 @@ export default async function vscrollTest() {
 
         // ── V5 an IP link ───────────────────────────────────────────────────────
         await clickAt(page, `${HOST}.querySelector('[role="row"]:not([slot]) a.ip-link')`);
-        await page.waitFor(`document.getElementById('ip-modal-inner')?.open`, { timeout: 15000, label: 'V5: the IP info dialog' });
+        await page.waitFor(`document.getElementById('ip-modal-inner')?.isOpen`, { timeout: 15000, label: 'V5: the IP info dialog' });
         await page.evaluate(`document.getElementById('ip-modal-inner').close()`);
 
         // ── V4 sorts: stable, empty keys last, in the export and in the list ────

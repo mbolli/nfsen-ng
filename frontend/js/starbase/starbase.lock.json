@@ -34,6 +34,17 @@
         "manifest.json": "sha384-zEIh5ZaHhtpFhvcRYf/KJCu96OvsH2inkzi6tC3mfT8jtioFzGgQDgs326wCydXi"
       }
     },
+    "modal": {
+      "tag": "sb-modal",
+      "version": "51981771c7b3",
+      "entry": "modal.js",
+      "load": true,
+      "files": {
+        "README.md": "sha384-0sXLTH+DyDhz2gN1hHsMRTNgxu6CIpUx47Zq61VhXoTZem2uJ2nO2yk8xhMY13T0",
+        "manifest.json": "sha384-pUynnUi5589lMfOX6o5RvxC+OwAJdjI6oNuHT0IydQzwN61dUPz1pfF4KMnQcl08",
+        "modal.js": "sha384-3qDsOwIggT2l+Er0M5SC/mOmf2MNCOaaDQqXa8DsEDsOHjCYeIfBGcgtxxDL0Y4c"
+      }
+    },
     "popover": {
       "tag": "sb-popover",
       "version": "798252374afc",

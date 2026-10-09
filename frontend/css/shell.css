@@ -392,24 +392,8 @@ body.app[data-sidebar='collapsed'] .nav-badge {
 
 /* The tab's modal root (D24): IP info and the alert Test result. A column lets the body scroll
    under a fixed header and footer. */
-[id='modal-root'] > dialog[open] {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-[id='modal-root'] > dialog > :is(.dialog-content, form) {
-    flex: 1 1 auto;
-    min-block-size: 0;
-    max-block-size: none;
-}
-
-[id='modal-root'] > dialog .dialog-body {
-    flex: 1 1 auto;
-    min-block-size: 0;
-}
-
-dialog.ip-info {
+/* The modals (sb-modal): their width; the component draws the panel, heading and close button. */
+sb-modal.ip-info::part(panel) {
     inline-size: min(32rem, 100vw - 2rem);
 }
 
@@ -469,7 +453,7 @@ dialog.ip-info {
     vertical-align: -0.15em;
 }
 
-dialog.ip-info .dialog-body {
+.ip-info-body {
     --stack-gap: var(--size-4);
 }
 

@@ -193,7 +193,8 @@ final class Shell {
             'content' => '<div id="modal-root">' . $html . '</div>',
         ]);
         $id = json_encode($dialogId, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
-        $c->execScript("(() => { const d = document.getElementById({$id}); if (d && !d.open) d.showModal(); })()");
+        // An sb-modal opens with show(), once its module has defined it; a plain <dialog> with showModal().
+        $c->execScript("(() => { const d = document.getElementById({$id}); if (!d) return; d.localName === 'dialog' ? d.open || d.showModal() : customElements.whenDefined(d.localName).then(() => d.isOpen || d.show()); })()");
     }
 
     /** Config failed to initialise: renders show the banner and touch no datasource. */

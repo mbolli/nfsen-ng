@@ -371,17 +371,17 @@ export default async function smokeTest() {
         await page.runQuery('flows', { timeout: 30000 });
         await page.waitFor(`!!document.querySelector('#page-flows .ip-link')`, { timeout: 20000, label: 'an IP link in the Flows result' });
         await page.evaluate(`document.querySelector('#page-flows .ip-link').click()`);
-        await page.waitFor(`document.getElementById('ip-modal-inner')?.open`, { timeout: 15000, label: 'the IP modal to open' });
+        await page.waitFor(`document.getElementById('ip-modal-inner')?.isOpen`, { timeout: 15000, label: 'the IP modal to open' });
         const modal = await page.evaluate(`({
             inRoot: !!document.querySelector('#modal-root > #ip-modal-inner'),
-            modal: document.getElementById('ip-modal-inner').matches(':modal'),
-            title: document.getElementById('ipModalLabel').textContent.trim(),
+            modal: document.getElementById('ip-modal-inner').shadowRoot.querySelector('dialog').matches(':modal'),
+            title: document.getElementById('ip-modal-inner').getAttribute('heading'),
             hostname: !!document.querySelector('#ip-modal-inner dt'),
         })`);
         assert.ok(modal.inRoot && modal.modal && modal.hostname, `the modal is the tab's modal: ${JSON.stringify(modal)}`);
         assert.match(modal.title, /^IP info: /);
         assert.equal(await page.evaluate(syncAs('flows')), 'synced', 'a sync arrived while the modal was open');
-        assert.equal(await page.evaluate(`document.getElementById('ip-modal-inner')?.open`), true, 'the modal survives the sync');
+        assert.equal(await page.evaluate(`document.getElementById('ip-modal-inner')?.isOpen`), true, 'the modal survives the sync');
 
         // A toast shown while the modal is open lands in the modal's own stack, where it is not
         // inert: a real click on its close button dismisses it.
@@ -414,9 +414,9 @@ export default async function smokeTest() {
         }
         await page.waitFor(`!document.querySelector('#ip-modal-inner nfsen-toast')`, { label: 'the toast to be dismissed by a click' });
         await press(page, 'Escape');
-        await page.waitFor(`!document.getElementById('ip-modal-inner').open`, { label: 'Escape to close the modal' });
+        await page.waitFor(`!document.getElementById('ip-modal-inner').isOpen`, { label: 'Escape to close the modal' });
         assert.equal(await page.evaluate(syncAs('flows')), 'synced');
-        assert.equal(await page.evaluate(`document.getElementById('ip-modal-inner').open`), false, 'a closed modal stays closed');
+        assert.equal(await page.evaluate(`document.getElementById('ip-modal-inner').isOpen`), false, 'a closed modal stays closed');
 
         // A reload keeps the page.
         await page.gotoPage('flows');

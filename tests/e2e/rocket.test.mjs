@@ -314,7 +314,7 @@ async function openTestDialog(page, cleanups) {
         });
     }
     await page.evaluate(`${testButton}.click()`);
-    await page.waitFor(`document.getElementById('alertTestResult')?.open`, { timeout: 20000, label: 'the Test dialog to open' });
+    await page.waitFor(`document.getElementById('alertTestResult')?.isOpen`, { timeout: 20000, label: 'the Test dialog to open' });
 }
 
 async function gc(page) {
@@ -807,7 +807,7 @@ async function pageCases(page, requests, consoleText) {
             label: 'an IP link in the Flows result',
         });
         await page.evaluate(`document.querySelector('#page-flows .ip-link').click()`);
-        await page.waitFor(`document.getElementById('ip-modal-inner')?.open`, { timeout: 15000, label: 'the IP modal to open' });
+        await page.waitFor(`document.getElementById('ip-modal-inner')?.isOpen`, { timeout: 15000, label: 'the IP modal to open' });
         await page.evaluate(`document.getElementById('ip-modal-inner').__keep = 1`);
         await page.evaluate(`window.showMessage('error', 'kept by the modal', false).__e2e = 'modal-sync'`);
         assert.equal(await page.evaluate(syncAs('flows')), 'synced', 'a sync arrives while the IP modal is open');
@@ -822,7 +822,7 @@ async function pageCases(page, requests, consoleText) {
         await page.evaluate(`${tagged('modal-sync')}.dismiss()`);
         await toastIn(page, '#ip-modal-inner > .toast-stack', 'ip-modal');
         await press(page, 'Escape');
-        await page.waitFor(`!document.getElementById('ip-modal-inner').open`, { label: 'Escape to close the IP modal' });
+        await page.waitFor(`!document.getElementById('ip-modal-inner').isOpen`, { label: 'Escape to close the IP modal' });
 
         // ── The drawer's stack; its editor across a sync ──
         await page.evaluate(
@@ -850,7 +850,7 @@ async function pageCases(page, requests, consoleText) {
             await openTestDialog(page, cleanups);
             await toastIn(page, '#alertTestResult > .toast-stack', 'alert-test');
             await press(page, 'Escape');
-            await page.waitFor(`!document.getElementById('alertTestResult').open`, { label: 'Escape to close the Test dialog' });
+            await page.waitFor(`!document.getElementById('alertTestResult').isOpen`, { label: 'Escape to close the Test dialog' });
         }
 
         assert.deepEqual(page.realErrors(), [], 'no console errors');

@@ -728,11 +728,11 @@ export default async function conversationsTest() {
         // A click on a source node opens the IP info of its address, through the onClick the reconnect above defined again.
         await inEachMode(page, async (mode) => {
             assert.equal(await clickNode(page, 0), `src:${first.pairs[0].src}`, `the first node is the top source in ${mode}`);
-            await page.waitFor(`!!document.getElementById('ip-modal-inner')?.open`, {
+            await page.waitFor(`!!document.getElementById('ip-modal-inner')?.isOpen`, {
                 label: `the IP info of a clicked node in ${mode}`,
                 timeout: 40000,
             });
-            assert.ok((await page.evaluate(`document.getElementById('ip-modal-inner').textContent`)).includes(first.pairs[0].src));
+            assert.ok((await page.evaluate(`document.getElementById('ip-modal-inner').getAttribute('heading')`)).includes(first.pairs[0].src));
             await page.evaluate(`document.getElementById('ip-modal-inner').close()`);
         });
 

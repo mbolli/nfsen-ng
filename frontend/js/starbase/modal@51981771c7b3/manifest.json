@@ -1,0 +1,71 @@
+{
+  "tag": "sb-modal",
+  "props": [
+    {
+      "name": "heading",
+      "attribute": "heading",
+      "type": "string",
+      "default": "Dialog",
+      "required": false,
+      "docs": {
+        "description": "Title of the dialog."
+      }
+    },
+    {
+      "name": "open",
+      "attribute": "open",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "The server's word: a changed attribute wins (open=\"false\" closes it, also after show()); a removed one is ignored. Emits no sb-open or sb-close. The property returns this word; isOpen tells whether it is showing."
+      }
+    },
+    {
+      "name": "inline",
+      "attribute": "inline",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Render in place, always visible, without an overlay or close button (previews, docs)."
+      }
+    },
+    {
+      "name": "closable",
+      "attribute": "closable",
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "docs": {
+        "description": "Show the close button (not on inline panels)."
+      }
+    }
+  ],
+  "slots": [
+    {
+      "name": "default",
+      "description": "Dialog body."
+    },
+    {
+      "name": "footer",
+      "description": "Action buttons. Elements with data-sb-close close the dialog; sb-close reports the attribute's value (or the element's text) as detail.value."
+    }
+  ],
+  "events": [
+    {
+      "kind": "custom-event",
+      "name": "sb-open",
+      "bubbles": true,
+      "composed": true,
+      "description": "After show() opened it (not when the server opens it)."
+    },
+    {
+      "kind": "custom-event",
+      "name": "sb-close",
+      "bubbles": true,
+      "composed": true,
+      "description": "After the user or close() closed it (not when the server closes it). detail: { reason: button | escape | backdrop | action | api, value }."
+    }
+  ]
+}

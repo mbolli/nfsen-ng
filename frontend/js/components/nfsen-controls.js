@@ -201,6 +201,14 @@ function onDialogToggleCapture(event) {
     }
 }
 
+// An sb-modal's <dialog> is in its shadow root, so its toggle never reaches the document: it says sb-open.
+function onModalOpen(event) {
+    if (event.target.localName !== 'sb-modal') return;
+    for (const host of openPopovers()) {
+        if (!event.target.contains(host)) host.hide();
+    }
+}
+
 function onKeydown(event) {
     if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     if (onPopoverKeydown(event)) return;
@@ -218,6 +226,7 @@ if (!window.__nfsenControls) {
     document.addEventListener('keydown', endPress, true);
     document.addEventListener('click', () => setTimeout(endPress), true);
     document.addEventListener('toggle', onDialogToggleCapture, true);
+    document.addEventListener('sb-open', onModalOpen);
     document.addEventListener('focusin', onTabFocusin);
     document.addEventListener('focusout', onPopoverFocusout);
     document.addEventListener('click', onTabClick);

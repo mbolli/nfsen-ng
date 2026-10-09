@@ -8,8 +8,9 @@ const FLASH_MS = 1500;
 const flashes = new WeakMap();
 const clearTimers = new WeakMap();
 
-/** A modal dialog makes the rest of the page inert, so its own regions and body are used. */
-const openModal = () => [...document.querySelectorAll('dialog:modal')].pop() ?? null;
+/** A modal makes the rest of the page inert, so the top one's regions and body are used: a native dialog or an open sb-modal. */
+const openModal = () =>
+    [...document.querySelectorAll('dialog:modal, sb-modal')].filter((d) => d.localName === 'dialog' || d.isOpen).pop() ?? null;
 
 /** Copies `text`; false when both the Clipboard API and the textarea fallback failed. */
 export async function copyText(text) {

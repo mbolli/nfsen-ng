@@ -16,7 +16,7 @@ playground:
   values: {placeholder: "Pick a planet", searchable: true}
   props:
     maxChips: {min: -1, max: 6}
-  exclude: [options, value, delay, minChars, loading, name, remote, total, selectAllLabel, matchesLabel, clearLabel]
+  exclude: [options, value, delay, minChars, name, remote, total, selectAllLabel, matchesLabel, clearLabel]
 ---
 
 A select for one or several values:
@@ -168,6 +168,40 @@ With many options, chips don't fit a toolbar. `summary` shows a text in their pl
 </div>
 ```
 
+### A chevron to match a toolbar button
+
+Beside an `sb-button` with a `caret`, the select can take the button's look: its box through `::part(control)` (height, edge, hover), its text through `::part(input)` (weight), and the arrow through `::part(arrow)`. Here the arrow is a chevron stroked in the text's colour, as thick as the caret, and it turns over while the list is open (`:state(open)`):
+
+```html preview
+<style>
+  .tb-select { inline-size: 11rem; }
+  .tb-select::part(control) { min-block-size: 2rem; padding-block: 0; border-color: var(--sb-brand-light); background: transparent; cursor: pointer; }
+  .tb-select::part(control):hover { background: var(--sb-brand-subtle); }
+  .tb-select::part(input) { block-size: 1.875rem; font-size: 0.8125rem; font-weight: 600; }
+  .tb-select::part(arrow) {
+    box-sizing: border-box;
+    inline-size: 7px;
+    block-size: 7px;
+    color: inherit;
+    background: none;
+    clip-path: none;
+    border: solid currentColor;
+    border-width: 0 2px 2px 0;
+    translate: 0 -75%;
+    rotate: 45deg;
+    transition: rotate 120ms, translate 120ms;
+  }
+  .tb-select:state(open)::part(arrow) { translate: 0 -25%; rotate: 225deg; }
+</style>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+  <sb-button variant="outline" size="sm" caret>Export</sb-button>
+  <sb-select class="tb-select" value="7d"
+    options='[{"value":"24h","label":"Last 24 hours"},{"value":"7d","label":"Last 7 days"},{"value":"30d","label":"Last 30 days"}]'></sb-select>
+</div>
+```
+
+The page's `::part(arrow)` rules win over the component's own whatever their specificity, so a `rotate` set there replaces the default flip in both states: give the open one too, with `:state(open)`. Rules that leave `rotate` alone keep the flip.
+
 ## Compact closed state and list actions
 
 These work with `multiple`.
@@ -201,7 +235,9 @@ Style it from your page's CSS, without changing the component or importing anyth
 - **Fonts:** the label, the text you type, the chips and the options use your page's font.
 - **Colours:** the control is `--sb-control-bg` with a `--sb-control-border` edge (`--sb-control-border-hover` on hover) and `--sb-control-text`; the placeholder and the arrow are `--sb-control-placeholder`, the label `--sb-text-2`. Focus draws a `--sb-brand-light` edge with a `--sb-brand-subtle` glow, and chips are `--sb-brand-subtle`. The list is `--sb-surface-raised`; the active option is `--sb-surface-hover` with a `--sb-brand` edge, a selected one `--sb-brand-light`, descriptions `--sb-text-muted`. Corners are `--sb-control-radius`.
 - **Shadow:** `--sb-shadow-overlay` sets the list's drop shadow: one shadow without spread, such as `0 8px 16px rgb(0 0 0 / 0.3)`, or `none`.
-- **Parts:** `label`, `control` (the box), `input`, `chip` (each chip, with `multiple`), `more` (the "+K" chip), `summary`, `clear` and `listbox` (the list). Your page's `::part()` rules win over the component's own, without `!important`.
+- **Parts:** `label`, `control` (the box), `input`, `chip` (each chip, with `multiple`), `more` (the "+K" chip), `summary`, `clear`, `arrow` and `listbox` (the list). Your page's `::part()` rules win over the component's own, without `!important`.
+- **Arrow:** a block filled with its `color` (`--sb-control-placeholder`) and cut by a `clip-path`: a pixel staircase, or a plain triangle at `--sb-notch: 0`. It turns 180° while the list is open. Replace the look with `background`, `clip-path`, `mask` or `border` on `::part(arrow)`, as in [A chevron to match a toolbar button](#a-chevron-to-match-a-toolbar-button).
+- **States:** `:state(open)` while the list is open, and `:state(pending)` with `confirm` (see [With commands](#with-commands)). Both work from the page: `sb-select:state(open)::part(control)`.
 
 ```html preview
 <style>

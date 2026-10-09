@@ -161,8 +161,8 @@ sb-popover.range-menu::part(panel) {
     }
 }
 
-/* The sources picker (sb-select) at the height of the bar's other controls. Nothing picked means every
-   source, so its placeholder "All sources" is a state, not a hint, and reads like a value. */
+/* The sources picker (sb-select) dressed as the bar's buttons: their box, weight, hover and chevron (ui.css,
+   button and .menu-toggle). Nothing picked means every source, so "All sources" reads like a value. */
 .controls-bar .sources-select {
     inline-size: 13rem;
     font-size: var(--font-size-00);
@@ -177,6 +177,23 @@ sb-popover.range-menu::part(panel) {
 .sources-select::part(control) {
     min-block-size: 1.625rem;
     padding-block: 0;
+    padding-inline: var(--size-2) 1.75rem;
+    border-color: var(--control-border);
+    border-radius: var(--radius-2);
+    background: var(--surface-2);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+}
+
+.sources-select::part(control):hover {
+    border-color: var(--control-border);
+    background: var(--surface-3);
+}
+
+.sources-select::part(input),
+.sources-select::part(summary) {
+    color: var(--text-1);
+    font-weight: var(--font-weight-medium);
 }
 
 .sources-select::part(input) {
@@ -185,6 +202,27 @@ sb-popover.range-menu::part(panel) {
 
 .sources-select::part(input)::placeholder {
     color: var(--text-1);
+}
+
+.sources-select::part(arrow) {
+    box-sizing: border-box;
+    inline-size: 0.4em;
+    block-size: 0.4em;
+    color: var(--text-1);
+    background: none;
+    clip-path: none;
+    border: solid currentcolor;
+    border-width: 0 1.5px 1.5px 0;
+    translate: 0 -75%;
+    rotate: 45deg;
+    transition:
+        rotate var(--duration-fast) var(--ease-out),
+        translate var(--duration-fast) var(--ease-out);
+}
+
+.sources-select:state(open)::part(arrow) {
+    translate: 0 -25%;
+    rotate: 225deg;
 }
 
 .sources-select::part(listbox) {

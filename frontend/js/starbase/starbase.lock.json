@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/zweiundeins/starbase.git",
-  "commit": "dcee915f365d1d7345a5c96ca047c646a1e3953d",
-  "describe": "v0.7.0-17-gdcee915",
-  "catalog": "3ab67576715a",
+  "commit": "7560b33b415835773047e36b5f47193f2b63283a",
+  "describe": "v0.7.0-21-g7560b33",
+  "catalog": "0416db834f08",
   "minFormat": "min2",
   "datastar": "Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)",
   "datastarSha256": "f602fbe19d74e4c16c2f28b3a92c4934072400337372787561089c26a8b3e1db",
@@ -24,13 +24,13 @@
   "components": {
     "date-picker": {
       "tag": "sb-date-picker",
-      "version": "4dd9598ab25b",
+      "version": "3a87dd8cf4f2",
       "entry": "date-picker.js",
       "load": true,
       "files": {
-        "README.md": "sha384-T7XZlOTaW/o037sCKZnwrLtkbeELQFjvC04YyiTq+gKg4x5dSZl+Uy+f+THQ2ofw",
-        "date-picker.js": "sha384-T9mzvrf6gpw5A9DZER/ixSpgt3dwY+eWMS3JEeqkixacH6aTl2Qxvl8fCqtBjUZz",
-        "date-picker.ts": "sha384-DTPyUfFgbI8vxTS8O9GKWA56d8wRkXDvCmx47shHqzPXgNUFCJNlcYaMj8UCEzrI",
+        "README.md": "sha384-2Zicv8M8sjn3MNekdpkbnez07hk7MCYMfvaodJWQoOVSVmgMJzB7XpLkZwaJ43XV",
+        "date-picker.js": "sha384-xbxGHU7cXdKyvWC3tE7TELhUw3V3wn7Po6tnCwaAqra0Bh/HE2z7Q71o3wsnjwzj",
+        "date-picker.ts": "sha384-BRCOp6n5SXimlijQXskI8bPXQ33VmQd1OVkXU6Ow/sSS4pLxLvNx8ouZC3t2stFW",
         "manifest.json": "sha384-zEIh5ZaHhtpFhvcRYf/KJCu96OvsH2inkzi6tC3mfT8jtioFzGgQDgs326wCydXi"
       }
     },
@@ -58,14 +58,14 @@
     },
     "select": {
       "tag": "sb-select",
-      "version": "45f09c8ea0b1",
+      "version": "bbf35da5d096",
       "entry": "select.js",
       "load": true,
       "files": {
-        "README.md": "sha384-K0MA8CyoqNEVrrA5jn9xW5MZLOwTMZOmpauTCWoxXbeyhsuli0XtP/16bLtl57aU",
+        "README.md": "sha384-ceiKHhleiZtDUvO/WrNpTJbFmgzr0Mv3ZyvTsl1em7ULhVAHBfZ5cq8h5ac1vJJq",
         "manifest.json": "sha384-G3lWudzwLQE69vU6tf03usYyieSyFy1nKwxZrN2z84nQ+GBnuGlt6DsHRxqLyca1",
-        "select.js": "sha384-XyRAc68SawLESql8dkQnYfmjQ4OWoNVSvTXqoOmBWt+EogvKsfyx/2+K8Jteuo2x",
-        "select.ts": "sha384-8XfnTJSq81vXMy4hCoP7s41/adZK7An0+0ADGM6FFE9oXJ8k9z10Bd8jY/GxveVg"
+        "select.js": "sha384-EpMLlNEeQxHJ2MdPpLRsvSCw9nIgu0zi8rLMBL4r8Y4fjqYWAM7NW+VdgZru5sZQ",
+        "select.ts": "sha384-jnAtGIvqZoPJWeUd8Xd2oxuPxgg7CrJPmYLP0rxN/GU5ujHbLjSwxAx3pa8vegUB"
       }
     },
     "virtual-scroll": {

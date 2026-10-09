@@ -70,18 +70,19 @@ const styles = /* css */ `
 }
 .control:hover { border-color: var(--_border-hover); }
 .control:focus-within { border-color: var(--_brand-light); box-shadow: 0 0 0 3px var(--_brand-subtle); outline: 2px solid transparent; }
-.control::after {
-	content: "";
+/* The arrow (part="arrow"): a page's ::part(arrow) rules win over these, :state(open) included. */
+.arrow {
 	position: absolute;
 	inset-inline-end: 0.85rem;
 	inset-block-start: 50%;
 	inline-size: 8px;
 	block-size: 6px;
 	translate: 0 -50%;
-	background: var(--_placeholder);
+	color: var(--_placeholder);
+	background: currentColor;
 	clip-path: polygon(0px 0px, 8px 0px, calc(6.667px + 1.333px * var(--_notch)) 2px, calc(6.667px + -0.667px * var(--_notch)) 2px, calc(5.333px + 0.667px * var(--_notch)) 4px, calc(5.333px + -0.333px * var(--_notch)) 4px, calc(4px + 1px * var(--_notch)) 6px, calc(4px + -1px * var(--_notch)) 6px, calc(2.667px + 0.333px * var(--_notch)) 4px, calc(2.667px + -0.667px * var(--_notch)) 4px, calc(1.333px + 0.667px * var(--_notch)) 2px, calc(1.333px + -1.333px * var(--_notch)) 2px); /* stepped at notch 1, a triangle at 0 */
 }
-.open .control::after { rotate: 180deg; }
+.open .arrow { rotate: 180deg; }
 .chip {
 	display: inline-flex;
 	align-items: center;
@@ -154,7 +155,7 @@ input[readonly] { cursor: pointer; }
 .note { padding: 0.6rem; color: var(--_muted); font-size: 0.8125rem; }
 .note:empty { padding: 0; }
 @media (prefers-reduced-motion: reduce) { .spin, .ring { animation: none; } }
-@media (forced-colors: active) { .control::after, .spin { forced-color-adjust: none; background: CanvasText; } .ring { border-color: CanvasText; border-inline-end-color: transparent; } }
+@media (forced-colors: active) { .arrow, .spin { forced-color-adjust: none; background: CanvasText; } .ring { border-color: CanvasText; border-inline-end-color: transparent; } }
 `;
 rocket('sb-select', {
     props: ({ bool, json, number, string }) => ({
@@ -297,6 +298,9 @@ rocket('sb-select', {
         const sync = () => peek(() => (props.confirm && JSON.stringify($$.selected) !== JSON.stringify(parseValue(props.value)) ? states.add('pending') : states.delete('pending')));
         effect(() => (JSON.stringify($$.selected), sync()));
         observeProps(sync);
+        // :state(open) follows the list, whichever way it opens or closes.
+        effect(() => states[$$.open ? 'add' : 'delete']('open'));
+        cleanup(() => states.delete('open'));
         // A new value attribute from the server wins, value="" included. Watched on
         // the attribute: observeProps stays silent when the decoded value did not
         // change (value="" on an element that never had one). A removed attribute
@@ -545,6 +549,7 @@ rocket('sb-select', {
 					data-on:blur="@blur()"/>
 				<span class="spin" aria-hidden="true" data-show="$$loading || $$pending"></span>
 				<span class="ring" aria-hidden="true" data-show="$$loading || $$pending"></span>
+				<span class="arrow" part="arrow" aria-hidden="true"></span>
 				<button type="button" class="clear" part="clear" data-attr:aria-label="$$clearLabel" tabindex="-1"
 					data-show="$$clearable && $$chips?.length && !$$loading && !$$pending" data-on:click="@clear()">×</button>
 			</div>

@@ -195,8 +195,8 @@ svg { inline-size: 1rem; block-size: 1rem; }
 }
 .head { display: flex; align-items: center; gap: 2px; }
 .title { flex: 1; text-align: center; font-size: 0.875rem; font-weight: 600; }
-/* Pixel arrows, pointing to the inline start (back) or end (on). */
-i { inline-size: 4px; block-size: 7px; background: currentColor; clip-path: polygon(0 0, 1px 0, 1px 1px, 2px 1px, 2px 2px, 3px 2px, 3px 3px, 4px 3px, 4px 4px, 3px 4px, 3px 5px, 2px 5px, 2px 6px, 1px 6px, 1px 7px, 0 7px); scale: var(--_dir) 1; }
+/* Arrows pointing to the inline start (back) or end (on): stepped at notch 1, a triangle at 0. */
+i { inline-size: 4px; block-size: 7px; background: currentColor; clip-path: polygon(0px 0px, calc(0px + 1px * var(--_notch)) 0px, calc(1.143px + -0.143px * var(--_notch)) 1px, calc(1.143px + 0.857px * var(--_notch)) 1px, calc(2.286px + -0.286px * var(--_notch)) 2px, calc(2.286px + 0.714px * var(--_notch)) 2px, calc(3.429px + -0.429px * var(--_notch)) 3px, 4px calc(3.5px + -0.5px * var(--_notch)), 4px calc(3.5px + 0.5px * var(--_notch)), calc(3.429px + -0.429px * var(--_notch)) 4px, calc(2.286px + 0.714px * var(--_notch)) 5px, calc(2.286px + -0.286px * var(--_notch)) 5px, calc(1.143px + 0.857px * var(--_notch)) 6px, calc(1.143px + -0.143px * var(--_notch)) 6px, calc(0px + 1px * var(--_notch)) 7px, 0px 7px); scale: var(--_dir) 1; }
 .back i { scale: calc(-1 * var(--_dir)) 1; }
 table { border-collapse: collapse; table-layout: fixed; inline-size: 15.75rem; margin-block-start: 0.25rem; }
 th { block-size: 1.75rem; padding: 0; overflow: hidden; color: var(--_muted); font-size: 0.6875rem; font-weight: 600; }
@@ -386,6 +386,9 @@ rocket('sb-date-picker', {
         const { control, button, cal, days } = refs;
         adoptStyles(host, styles);
         const states = internalsOf(host).states;
+        // :state(open) follows the popover: set before it shows, and checked again
+        // after a toggle and a prop change (inline drops the popover without events).
+        const opened = (o = cal.matches(':popover-open')) => states[o ? 'add' : 'delete']('open');
         const range = () => props.mode === 'range';
         // A value's ends are points: days, or with time date-times (see clock()),
         // with a zone instants. A time of day is in seconds.
@@ -789,11 +792,13 @@ rocket('sb-date-picker', {
             if (!format && has('lang', 'label'))
                 draw();
             sync();
+            opened();
         }));
         // The popover (auto: light dismiss and Escape are the browser's). $$.open
         // follows it, and the server's open drives it through the data-effect: a
         // toggle that finds $$.open already there is the server's, and quiet.
         action('before', ({ evt }) => peek(() => {
+            opened(evt.newState === 'open');
             pick1 = null;
             // Closing with the focus inside: it goes back to the button.
             if (evt.newState !== 'open')
@@ -810,6 +815,7 @@ rocket('sb-date-picker', {
         }));
         action('toggled', ({ evt }) => peek(() => {
             const o = evt.newState === 'open';
+            opened();
             if (o === !!$$.open)
                 return;
             $$.open = o;
@@ -860,6 +866,7 @@ rocket('sb-date-picker', {
             root.removeEventListener('formdata', onData);
             root.removeEventListener('reset', onReset);
             watch.disconnect();
+            states.delete('open');
         });
         const choose = (n) => {
             if (!ok(n) || props.disabled)

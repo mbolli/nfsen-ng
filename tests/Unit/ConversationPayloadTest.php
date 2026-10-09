@@ -576,7 +576,7 @@ describe('ConversationsPage', function (): void {
         $second = $c->render('pages/conversations.html.twig', Shell::render($c, $app, $states, true));
         $id = $states->conversations->resultId;
 
-        expect($first)->toContain('id="convView-sankey"', 'id="convView-matrix"', 'id="convView-pairs"', '<nfsen-sankey data-conversation="', '<nfsen-matrix data-conversation="', 'id="conversationsTable"', 'Top pair = 60% of bytes', 'id="convExportMenu"')
+        expect($first)->toContain('id="convView-sankey"', 'id="convView-matrix"', 'id="convView-pairs"', '<nfsen-sankey data-conversation="', '<nfsen-matrix data-conversation="', 'id="conversationsTable"', 'Top pair = 60% of bytes', '<sb-dropdown class="conv-export" id="convExport"')
             ->and($first)->toContain(
                 'role="img" aria-label="Sankey of the top pair by bytes, and the rest as Others. The IP pairs view lists the same pairs as a table."',
                 'role="img" aria-label="Matrix of the top pair by bytes, sources against destinations. The IP pairs view lists the same pairs as a table."',

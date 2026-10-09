@@ -1,10 +1,11 @@
 // Conversations (4.4): one run shown as a Sankey, a Matrix and ranked IP pairs; switching views
 // posts nothing; Kill cancels a run and keeps the result; a filter applied from the drawer marks
 // the result stale; group by /24 labels subnets; Both is disabled for the port grouping; a second
-// run replaces the charts; the Export popover, the keyboard walk and a forced-colors screenshot.
+// run replaces the charts; the Export menu, the keyboard walk and a forced-colors screenshot.
 // Needs flows in the last year of the dev stack.
 import assert from 'node:assert/strict';
 import { BASE, withPage } from './lib/cdp.mjs';
+import { ddChoose, ddLabels, ddOpen, ddRows, ddTrigger } from './lib/dropdown.mjs';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -115,20 +116,6 @@ async function key(page, name, code = name, keyCode = 0) {
     const text = name === 'Enter' ? '\r' : undefined;
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: name, code, windowsVirtualKeyCode: keyCode, text });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code, windowsVirtualKeyCode: keyCode });
-}
-
-/** A mouse click on the middle of `selector`, so the press goes through sb-popover's outside-press listener. */
-async function press(page, selector) {
-    const at = await page.evaluate(`(function(){
-        var el = document.querySelector(${JSON.stringify(selector)});
-        var r = el.getBoundingClientRect();
-        var x = r.left + r.width / 2, y = r.top + r.height / 2;
-        return { x: x, y: y, hit: el.contains(document.elementFromPoint(x, y)) };
-    })()`);
-    assert.ok(at.hit, `${selector} is on top at ${at.x}, ${at.y}`);
-    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
-        await page.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 });
-    }
 }
 
 /** Clicks node `index` of the shown Sankey with the mouse, so the chart's own click handler runs; returns its name. */
@@ -609,70 +596,51 @@ export default async function conversationsTest() {
         });
         assert.equal(log.count('conversations-run'), 1, 'switching views posts no run');
 
-        // ── Export popover ───────────────────────────────────────────────────
-        const exportState = `(function(){
-            var host = document.getElementById('convExport'), trigger = document.getElementById('convExportToggle');
-            return { open: host.open, expanded: trigger.getAttribute('aria-expanded'), active: document.activeElement.id || document.activeElement.dataset.export || document.activeElement.localName };
-        })()`;
-        const closedOnTrigger = { open: false, expanded: 'false', active: 'convExportToggle' };
+        // ── Export menu ──────────────────────────────────────────────────────
+        const EXPORT = `document.getElementById('convExport')`;
+        const TRIGGER = ddTrigger('convExport');
+        const OPEN = ddOpen('convExport');
+        const FOCUSED_ROW = `${EXPORT}.shadowRoot.activeElement?.textContent.trim()`;
+        const exportState = `({ open: ${OPEN}, active: document.activeElement.id || document.activeElement.localName })`;
+        const closedOnHost = { open: false, active: 'convExport' };
+        const SANKEY_LABELS = ['CSV of the IP pairs', 'JSON of the IP pairs', 'PNG of the Sankey', 'Copy nfdump command'];
         assert.deepEqual(
-            await page.evaluate(`(function(){
-                var host = document.getElementById('convExport');
-                var trigger = document.getElementById('convExportToggle');
-                return { popover: host.localName, rocket: typeof host.rocketInstanceId === 'string', slotted: host.shadowRoot.querySelector('slot[name=trigger]').assignedElements().length,
-                         trigger: trigger.getAttribute('slot') + '|' + trigger.getAttribute('aria-haspopup') + '|' + trigger.hasAttribute('aria-controls'),
-                         items: [...document.querySelectorAll('#convExportMenu [data-export]')].map(function(b){ return b.dataset.export; }),
-                         menuMarkup: document.querySelectorAll('#convExportMenu :is([role], [tabindex], [data-command])').length,
-                         command: host.contains(document.getElementById('convCommand')) ? 'inside' : document.getElementById('convCommand').hidden ? 'hidden outside' : 'shown' };
-            })()`),
-            {
-                popover: 'sb-popover',
-                rocket: true,
-                slotted: 1,
-                trigger: 'trigger|dialog|false',
-                items: ['csv', 'json', 'png', 'command'],
-                menuMarkup: 0,
-                command: 'hidden outside',
-            },
-            'Export is an sb-popover with the slotted trigger, four plain items and the command outside it'
+            await page.evaluate(`({ dropdown: ${EXPORT}.localName, haspopup: ${TRIGGER}.getAttribute('aria-haspopup'),
+                command: ${EXPORT}.contains(document.getElementById('convCommand')) ? 'inside' : document.getElementById('convCommand').hidden ? 'hidden outside' : 'shown' })`),
+            { dropdown: 'sb-dropdown', haspopup: 'menu', command: 'hidden outside' },
+            'Export is an sb-dropdown menu with the command outside it'
         );
         await page.evaluate(`window.__downloads.length = 0`);
-        await page.evaluate(`document.getElementById('convExportToggle').focus()`);
+        await page.evaluate(`${TRIGGER}.focus()`);
         await key(page, 'Enter', 'Enter', 13);
-        await page.waitFor(`document.getElementById('convExport').open === true && document.activeElement.dataset.export === 'csv'`, {
-            label: 'Enter to open Export on its first item',
-        });
-        assert.equal(await page.evaluate(`document.getElementById('convExportToggle').getAttribute('aria-expanded')`), 'true');
+        await page.waitFor(`${OPEN} && ${FOCUSED_ROW} === 'CSV of the IP pairs'`, { label: 'Enter to open Export on its first item' });
+        assert.deepEqual(await page.evaluate(ddLabels('convExport')), SANKEY_LABELS, 'four items, the PNG one named for the Sankey');
         await key(page, 'ArrowDown', 'ArrowDown', 40);
-        assert.equal(await page.evaluate(`document.activeElement.dataset.export`), 'json', 'ArrowDown moves to JSON');
-        // A sync morphs the page around the open popover.
+        await page.waitFor(`${FOCUSED_ROW} === 'JSON of the IP pairs'`, { label: 'ArrowDown to move to JSON' });
+        // A sync morphs the page around the open menu.
         await page.syncNow('conversations');
-        assert.deepEqual(
-            await page.evaluate(exportState),
-            { open: true, expanded: 'true', active: 'json' },
-            'a sync keeps Export open with the focus on JSON'
-        );
+        assert.equal(await page.evaluate(OPEN), true, 'a sync keeps Export open');
+        assert.equal(await page.evaluate(FOCUSED_ROW), 'JSON of the IP pairs', 'a sync keeps the focus on JSON');
+        assert.deepEqual(await page.evaluate(ddLabels('convExport')), SANKEY_LABELS, 'a sync keeps the items');
         await key(page, 'Escape', 'Escape', 27);
-        assert.deepEqual(await page.evaluate(exportState), closedOnTrigger, 'Escape closes Export and returns to the trigger');
-        await key(page, 'ArrowUp', 'ArrowUp', 38);
-        await page.waitFor(`document.getElementById('convExport').open === true && document.activeElement.dataset.export === 'command'`, {
-            label: 'ArrowUp to open Export on its last item',
-        });
-        await key(page, 'Home', 'Home', 36);
-        assert.equal(await page.evaluate(`document.activeElement.dataset.export`), 'csv', 'Home moves to the first item');
+        await page.waitFor(`!${OPEN}`, { label: 'Escape to close Export' });
+        assert.deepEqual(await page.evaluate(exportState), closedOnHost, 'Escape closes Export and returns to it');
+        await page.evaluate(`${TRIGGER}.focus()`);
+        await key(page, 'Enter', 'Enter', 13);
+        await page.waitFor(`${OPEN} && ${FOCUSED_ROW} === 'CSV of the IP pairs'`, { label: 'Enter to open Export again' });
         await key(page, 'Enter', 'Enter', 13);
         await page.waitFor(`window.__downloads.some(function(d){ return d.download === 'conversations-pairs.csv'; })`, {
             label: 'Enter on CSV to export',
         });
-        assert.deepEqual(await page.evaluate(exportState), closedOnTrigger, 'choosing CSV closes Export and returns to the trigger');
+        assert.deepEqual(await page.evaluate(exportState), closedOnHost, 'choosing CSV closes Export and returns to it');
 
         await page.evaluate(`window.__downloads.length = 0`);
-        for (const kind of ['csv', 'json', 'png', 'command']) {
-            await page.evaluate(`document.getElementById('convExportToggle').click()`);
-            await page.waitFor(`document.getElementById('convExport').open === true`, { label: `Export open for ${kind}` });
-            await page.evaluate(`document.querySelector('#convExportMenu [data-export="${kind}"]').click()`);
+        for (const label of SANKEY_LABELS) {
+            await page.evaluate(`${TRIGGER}.click()`);
+            await page.waitFor(OPEN, { label: `Export open for ${label}` });
+            assert.equal(await page.evaluate(ddChoose('convExport', label)), true, `Export has ${label}`);
             await sleep(300);
-            assert.deepEqual(await page.evaluate(exportState), closedOnTrigger, `${kind} closes Export and returns to the trigger`);
+            assert.deepEqual(await page.evaluate(exportState), closedOnHost, `${label} closes Export and returns to it`);
         }
         const downloads = await page.evaluate(`window.__downloads`);
         const byName = Object.fromEntries(downloads.map((d) => [d.download, d]));
@@ -687,41 +655,36 @@ export default async function conversationsTest() {
         );
         const copyToast = `[...document.querySelectorAll('nfsen-toast')].some(function(t){ return t.message === 'Copied the nfdump command.'; })`;
         await page.waitFor(copyToast, { label: 'the copy toast' });
-        // With the Matrix shown, the popover saves the Matrix.
+        // With the Matrix shown, the menu saves the Matrix.
         await page.evaluate(`document.getElementById('convView-matrix').click()`);
         await page.waitFor(`${visible('#convPanel-matrix')} && !!document.querySelector('nfsen-matrix').chart`, {
             label: 'the Matrix view',
         });
-        await page.evaluate(`document.getElementById('convExportToggle').click()`);
-        await page.waitFor(`document.querySelector('#convExportMenu [data-export="png"]').textContent === 'PNG of the Matrix'`, {
+        await page.evaluate(`${TRIGGER}.click()`);
+        await page.waitFor(`${OPEN} && ${ddLabels('convExport')}.includes('PNG of the Matrix')`, {
             label: 'the PNG item named for the Matrix',
         });
-        await page.evaluate(`document.querySelector('#convExportMenu [data-export="png"]').click()`);
+        await page.evaluate(ddChoose('convExport', 'PNG of the Matrix'));
         await page.waitFor(
             `window.__downloads.some(function(d){ return d.download === 'conversations-matrix.png' && d.href.startsWith(${JSON.stringify(PNG_URL)}); })`,
-            { label: 'the PNG of the Matrix from the popover' }
+            { label: 'the PNG of the Matrix from the menu' }
         );
         // The IP pairs view has no chart: the PNG item is disabled, a press saves nothing and Export stays open.
         await show(page, 'pairs');
         await page.evaluate(`window.__downloads.length = 0`);
-        await page.evaluate(`document.getElementById('convExportToggle').click()`);
-        await page.waitFor(
-            `document.getElementById('convExport').open === true && document.querySelector('#convExportMenu [data-export="png"]').getAttribute('aria-disabled') === 'true'`,
-            { label: 'Export open with the PNG item disabled' }
-        );
-        assert.equal(
-            await page.evaluate(`document.querySelector('#convExportMenu [data-export="png"]').textContent`),
-            'PNG of a chart (open Sankey or Matrix)'
-        );
-        await press(page, '#convExportMenu [data-export="png"]');
+        await page.evaluate(`${TRIGGER}.click()`);
+        const PNG_ROW = `${ddRows('convExport')}.find(function(r){ return r.textContent.trim().startsWith('PNG'); })`;
+        await page.waitFor(`${OPEN} && ${PNG_ROW}?.getAttribute('aria-disabled') === 'true'`, { label: 'Export open with the PNG item disabled' });
+        assert.equal(await page.evaluate(`${PNG_ROW}.textContent.trim()`), 'PNG of a chart (open Sankey or Matrix)');
+        await page.evaluate(`${PNG_ROW}.click()`);
         await sleep(300);
         assert.deepEqual(
-            await page.evaluate(`({ open: document.getElementById('convExport').open, downloads: window.__downloads.length })`),
+            await page.evaluate(`({ open: ${OPEN}, downloads: window.__downloads.length })`),
             { open: true, downloads: 0 },
             'the disabled PNG item saves nothing and keeps Export open'
         );
         await key(page, 'Escape', 'Escape', 27);
-        assert.deepEqual(await page.evaluate(exportState), closedOnTrigger, 'and Escape closes it');
+        await page.waitFor(`!${OPEN}`, { label: 'and Escape closes it' });
         await page.evaluate(`document.getElementById('convView-sankey').click()`);
         await page.waitFor(visible('#convPanel-sankey'), { label: 'the Sankey view' });
 
@@ -867,9 +830,9 @@ export default async function conversationsTest() {
         const withComment = await run(page);
         assert.ok(withComment?.meta.command.includes(commented), `the run's command holds the comment, got ${withComment?.meta.command}`);
         await page.evaluate('window.__copied = null');
-        await page.evaluate(`document.getElementById('convExportToggle').click()`);
-        await page.waitFor(`document.getElementById('convExport').open === true`, { label: 'Export open for the command' });
-        await page.evaluate(`document.querySelector('#convExportMenu [data-export="command"]').click()`);
+        await page.evaluate(`${ddTrigger('convExport')}.click()`);
+        await page.waitFor(ddOpen('convExport'), { label: 'Export open for the command' });
+        await page.evaluate(ddChoose('convExport', 'Copy nfdump command'));
         await page.waitFor(`typeof window.__copied === 'string'`, { label: 'the command with the comment copied' });
         assert.equal(await page.evaluate('window.__copied'), withComment.meta.command, 'the copied command is the one the run returned');
         await applyFromDrawer(page, '');

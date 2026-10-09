@@ -12,6 +12,7 @@ const STARBASE_DIR = process.env.STARBASE_DIR || '';
 const THEMES = ['light', 'dark'];
 const NOT_COLOUR = [
     '--sb-notch',
+    '--sb-display-case',
     '--sb-frame-step',
     '--sb-control-radius',
     '--sb-radius',

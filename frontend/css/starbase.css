@@ -4,6 +4,8 @@
    (no host tokens on a slotting one), make states differ in more than weight, and use -emphasis for warn and danger text. */
 :root {
     --sb-notch: 0;
+    /* Starbase uppercases display text unless the page opts out; nfsen-ng keeps sentence case. */
+    --sb-display-case: none;
     --sb-frame-step: 1px;
     --sb-frame-color: var(--border-strong);
 
@@ -85,4 +87,49 @@ sb-popover::part(panel) {
 /* The Flows list. It reads --sb-surface-hover and --sb-brand-light, both mapped above. */
 sb-virtual-scroll:state(loading)::part(scroller) {
     cursor: progress;
+}
+
+/* sb-dropdown */
+/* The Export menus: the trigger dressed as the other buttons (ui.css, button[data-size='sm'] and .menu-toggle). */
+sb-dropdown::part(trigger) {
+    min-block-size: 0;
+    gap: var(--size-2);
+    padding: var(--size-1) var(--size-2);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-2);
+    box-shadow: none;
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-size: var(--font-size-00);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-tight);
+}
+
+sb-dropdown::part(trigger):hover {
+    background: var(--surface-3);
+}
+
+sb-dropdown::part(trigger):focus-visible {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+    box-shadow: var(--focus-halo);
+}
+
+sb-dropdown::part(caret) {
+    box-sizing: border-box;
+    inline-size: 0.4em;
+    block-size: 0.4em;
+    margin-block-start: -0.2em;
+    color: inherit;
+    background: none;
+    clip-path: none;
+    border: solid currentcolor;
+    border-width: 0 1.5px 1.5px 0;
+    rotate: 45deg;
+    transition: rotate var(--duration-fast) var(--ease-out);
+}
+
+sb-dropdown:state(open)::part(caret) {
+    margin-block: 0.2em 0;
+    rotate: 225deg;
 }

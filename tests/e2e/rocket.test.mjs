@@ -29,12 +29,13 @@ const PLUGINS = [
 ];
 // K1's exception: the plugin attributes an sb-popover's light DOM may carry, value forms that read page signals.
 const POPOVER_ALLOWED = '^data-((on|attr|class|style):|(effect|text|show|bind)(__|$))';
-// The lists of each result page's Export menu and Columns picker; they keep their ids as popovers.
-const RESULT_LISTS = {
-    flows: ['flowsExportMenu', 'flowTable-columns'],
-    talkers: ['statsExportMenu', 'statsTable-columns'],
-    conversations: ['convExportMenu'],
+// What each result page shows with a result: its Export menu and, in an sb-popover, its Columns list.
+const RESULT_IDS = {
+    flows: ['flowsExport', 'flowTable-columns'],
+    talkers: ['statsExport', 'statsTable-columns'],
+    conversations: ['convExport'],
 };
+const RESULT_LISTS = { flows: ['flowTable-columns'], talkers: ['statsTable-columns'] };
 const ENGINE = /\/(js\/)?datastar(-rocket)?\.js(\?|$)/;
 // Markup, a Rocket signal and a Rocket action: all of it must stay text.
 const TRICKY = `<b>bold</b> $$count @post('/nope') \${1}`;
@@ -306,7 +307,7 @@ async function openTestDialog(page, cleanups) {
         const deleteButton = `[...document.querySelectorAll('#page-alerts #alertRules button')].find(function(b){ return b.getAttribute('aria-label') === ${JSON.stringify(`Delete ${name}`)}; })`;
         cleanups.push(async () => {
             page.autoAcceptDialogs();
-            if (await page.evaluate(`!!document.querySelector('dialog:modal')`)) await press(page, 'Escape');
+            if (await page.evaluate(`!!document.querySelector('dialog:modal') || [...document.querySelectorAll('sb-modal')].some(function(m){ return m.isOpen; })`)) await press(page, 'Escape');
             await page.gotoPage('alerts');
             await page.waitFor(`!!${deleteButton}`, { timeout: 10000, label: `the Delete button of ${name}` });
             await page.evaluate(`${deleteButton}.click()`);
@@ -722,7 +723,7 @@ async function pageCases(page, requests, consoleText) {
         await page.evaluate(`window.showMessage('info', ${JSON.stringify(`walk: ${TRICKY}`)}, false).__e2e = 'walk'`);
         const walkStart = requests.length;
         await page.runQuery('flows', { timeout: 60000 });
-        // A result on every result page, so the walk scans their Export and Columns popovers too.
+        // A result on every result page, so the walk scans their Export menus and Columns popovers too.
         for (const id of ['talkers', 'conversations']) {
             await page.gotoPage(id);
             await page.runQuery(id, { timeout: 60000 });
@@ -731,10 +732,10 @@ async function pageCases(page, requests, consoleText) {
         for (let pass = 1; pass <= 2; pass++) {
             for (const id of [...PAGES.filter((p) => p !== 'flows'), 'flows']) {
                 await page.gotoPage(id);
-                if (RESULT_LISTS[id]) {
-                    await page.waitFor(`${JSON.stringify(RESULT_LISTS[id])}.every(function(l){ return !!document.getElementById(l); })`, {
+                if (RESULT_IDS[id]) {
+                    await page.waitFor(`${JSON.stringify(RESULT_IDS[id])}.every(function(l){ return !!document.getElementById(l); })`, {
                         timeout: 15000,
-                        label: `${id}: the result with ${RESULT_LISTS[id].join(' and ')}`,
+                        label: `${id}: the result with ${RESULT_IDS[id].join(' and ')}`,
                     });
                 }
                 await sleep(400);
@@ -748,7 +749,7 @@ async function pageCases(page, requests, consoleText) {
                         `${id}: the popover ${popover} around #${list} is a Rocket host the scan checked`
                     );
                 }
-                if (pass === 1 && RESULT_LISTS[id]) {
+                if (pass === 1 && RESULT_IDS[id]) {
                     console.log(`  rocket: ${id} scanned with a result; popovers: ${scan.popovers.join(', ') || 'none'}`);
                 }
                 roles += scan.roles;
@@ -956,8 +957,8 @@ async function measureRoundTrips(page) {
     await page.waitForPage('flows');
     await page.setRangePreset('1y');
     await page.runQuery('flows', { timeout: 60000 });
-    const ready = `${JSON.stringify(RESULT_LISTS.flows)}.every(function(id){ return !!document.getElementById(id); })`;
-    await page.waitFor(ready, { timeout: 30000, label: 'the Flows result with its Export and Columns lists' });
+    const ready = `${JSON.stringify(RESULT_IDS.flows)}.every(function(id){ return !!document.getElementById(id); })`;
+    await page.waitFor(ready, { timeout: 30000, label: 'the Flows result with its Export menu and Columns list' });
     await page.evaluate(HEAP_HELPERS);
     await page.evaluate('window.__snap()');
     const popovers = await page.evaluate(`document.querySelectorAll('#page-flows sb-popover').length`);

@@ -1,7 +1,8 @@
-// Top Talkers (4.2): picker, direction, per-statistic results, the Export popover, side panels, brush, keyboard walk and forced colors.
+// Top Talkers (4.2): picker, direction, per-statistic results, the Export menu, side panels, brush, keyboard walk and forced colors.
 // NFDUMP_HAS_NEL=1 is for an nfdump that computes the NEL statistics; the dev image's 1.7.10 does not.
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
+import { ddBoxes, ddChoose, ddLabels, ddOpen, ddTrigger } from './lib/dropdown.mjs';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const visible = (selector) =>
@@ -21,30 +22,13 @@ async function key(page, name, code = name, keyCode = 0, { shift = false } = {})
 
 const tab = (page, opts) => key(page, 'Tab', 'Tab', 9, opts);
 const FOCUSED = `(() => { const a = document.activeElement; return a?.id || a?.getAttribute('aria-label') || a?.textContent.trim().slice(0, 40) || a?.tagName || ''; })()`;
-const EXPORT_TOGGLE = '.talkers-export [slot="trigger"]';
 const EXPORT = `document.getElementById('statsExport')`;
-const TOGGLE = `document.querySelector(${JSON.stringify(EXPORT_TOGGLE)})`;
-const exportItem = (kind) => `document.querySelector('#statsExportMenu [data-export="${kind}"]')`;
-const ON_TOGGLE = `document.activeElement === ${TOGGLE}`;
-
-/** Whether the Export popover is open; throws when its open property and its top-layer panel disagree. */
-const exportOpen = (page) =>
-    page.evaluate(`(() => {
-        const host = ${EXPORT};
-        const shown = host.shadowRoot.querySelector('.pop').matches(':popover-open');
-        if (host.open !== shown) throw new Error('#statsExport: open is ' + host.open + ' but the panel is ' + (shown ? 'shown' : 'hidden'));
-        return shown;
-    })()`);
-
-/** The rounded viewport boxes of the Export trigger and panel. */
-const EXPORT_BOXES = `(() => {
-    const round = (r) => ({ top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right) });
-    return {
-        trigger: round(${TOGGLE}.getBoundingClientRect()),
-        panel: round(${EXPORT}.shadowRoot.querySelector('.pop').getBoundingClientRect()),
-        view: { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight },
-    };
-})()`;
+const TOGGLE = ddTrigger('statsExport');
+const EXPORT_OPEN = ddOpen('statsExport');
+const ON_TOGGLE = `document.activeElement === ${EXPORT}`;
+const exportOpen = (page) => page.evaluate(EXPORT_OPEN);
+/** The label of the focused row in the open Export menu. */
+const FOCUSED_ROW = `${EXPORT}.shadowRoot.activeElement?.textContent.trim()`;
 
 /** Presses Tab until the focus is on `selector`; returns the stops on the way, the last included. */
 async function tabTo(page, selector, max = 30) {
@@ -183,9 +167,9 @@ export default async function talkersTest() {
                     setTimeout(function(){
                         ${TOGGLE}.click();
                         setTimeout(function(){
-                            var open = ${EXPORT}.open === true;
-                            ${exportItem('csv')}.click();
-                            resolve({ open: open, closed: ${EXPORT}.open === false, after: Math.round(performance.now() - at) });
+                            var open = ${EXPORT_OPEN};
+                            ${ddChoose('statsExport', 'CSV')};
+                            resolve({ open: open, closed: !${EXPORT_OPEN}, after: Math.round(performance.now() - at) });
                         }, 100);
                     }, 250);
                 }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
@@ -254,7 +238,7 @@ export default async function talkersTest() {
 
         // Export is open when another statistic is picked: the press closes it, the pick hides its host.
         await clickAt(page, TOGGLE);
-        await page.waitFor(`${EXPORT}.open === true`, { label: 'a click opens Export' });
+        await page.waitFor(EXPORT_OPEN, { label: 'a click opens Export' });
         await clickAt(page, `document.querySelector('label[for="talkersTab-ports"]')`);
         await page.waitFor(`${FOR_SELECT} === 'srcport'`, { label: 'Src port' });
         await page.waitFor(visible('#statsResults .empty-state'), { label: 'the empty state for a statistic without a run' });
@@ -264,7 +248,7 @@ export default async function talkersTest() {
         assert.deepEqual(
             await page.evaluate(`[${EXPORT}.hidden, ${TOGGLE}.checkVisibility()]`),
             [true, false],
-            'another statistic hides the Export popover'
+            'another statistic hides the Export menu'
         );
 
         await page.evaluate(`document.getElementById('talkersTab-talkers').click()`);
@@ -273,6 +257,10 @@ export default async function talkersTest() {
         assert.equal(log.count('stats-actions'), ran, 'switching back ran nothing');
         assert.deepEqual(await page.evaluate(`[${EXPORT}.hidden, ${TOGGLE}.checkVisibility()]`), [false, true], 'Export is back');
         assert.equal(await exportOpen(page), false, 'and closed');
+        const [exportHeight, columnsHeight] = await page.evaluate(
+            `[${TOGGLE}, document.querySelector('#statsTable-columnsPopover [slot="trigger"]')].map((b) => Math.round(b.getBoundingClientRect().height))`
+        );
+        assert.equal(exportHeight, columnsHeight, 'the Export trigger is as tall as the Columns button');
 
         // Changing an input the run used marks it stale without posting; undoing it clears that.
         await page.setSelectValue('#statsCount', '20');
@@ -325,7 +313,7 @@ export default async function talkersTest() {
         assert.equal(await page.evaluate(FOCUSED), 'talkersTab-talkers', 'Shift+Tab walks back to the checked statistic');
 
         await page.evaluate(`document.getElementById('statsCount').focus()`);
-        const walk = await tabTo(page, EXPORT_TOGGLE);
+        const walk = await tabTo(page, '#statsExport');
         const runs = ['statsRunSubmit', 'talkersPanelRun-protoSubmit', 'talkersPanelRun-asSubmit'].map((id) => walk.indexOf(id));
         assert.ok(
             runs.every((at, i) => at >= 0 && (i === 0 || at > runs[i - 1])),
@@ -338,65 +326,36 @@ export default async function talkersTest() {
         await tab(page, { shift: true });
         assert.equal(await page.evaluate(ON_TOGGLE), true, 'Shift+Tab is back on Export');
 
-        // Enter opens the popover on CSV; the component names it a dialog and never draws its own trigger.
+        // Enter opens the menu on CSV; the trigger says it opens a menu.
         const queriesBefore = queries(log).length;
+        assert.equal(await page.evaluate(`${TOGGLE}.getAttribute('aria-haspopup')`), 'menu', 'Export opens a menu');
         await key(page, 'Enter', 'Enter', 13);
-        await page.waitFor(`document.activeElement?.dataset.export === 'csv'`, { label: 'Enter opens Export with the focus on CSV' });
-        assert.equal(await exportOpen(page), true, 'Enter opens Export');
-        assert.deepEqual(
-            await page.evaluate(`(() => {
-                const t = ${TOGGLE};
-                return [t.getAttribute('aria-haspopup'), t.getAttribute('aria-expanded'), ${EXPORT}.shadowRoot.querySelector('slot[name=trigger]').assignedElements().length];
-            })()`),
-            ['dialog', 'true', 1],
-            'the slotted trigger says dialog and expanded'
-        );
-        const PANEL_NAME = `(() => { const pop = ${EXPORT}.shadowRoot.querySelector('.pop'); return [pop.getAttribute('role'), pop.getAttribute('aria-label')]; })()`;
-        const caption = title.split(' · ')[0];
-        assert.deepEqual(await page.evaluate(PANEL_NAME), ['dialog', `Export ${caption}`], 'the panel is a dialog named after the result');
-        assert.deepEqual(
-            await page.evaluate(`[...document.querySelectorAll('#statsExportMenu [data-export]')].map((b) => b.textContent.trim())`),
-            ['CSV', 'JSON', 'Print']
-        );
+        await page.waitFor(`${EXPORT_OPEN} && ${FOCUSED_ROW} === 'CSV'`, { label: 'Enter opens Export with the focus on CSV' });
+        assert.deepEqual(await page.evaluate(ddLabels('statsExport')), ['CSV', 'JSON', 'Print']);
         await key(page, 'ArrowDown', 'ArrowDown', 40);
-        assert.equal(await page.evaluate(`document.activeElement.dataset.export`), 'json', 'ArrowDown moves to JSON');
+        assert.equal(await page.evaluate(FOCUSED_ROW), 'JSON', 'ArrowDown moves to JSON');
 
-        // A sync morphs the page around the open popover: it stays open, the focus on JSON.
+        // A sync morphs the page around the open menu: it stays open, the focus on JSON.
         await page.syncNow('talkers');
         assert.equal(await exportOpen(page), true, 'Export stays open across a sync');
-        assert.equal(await page.evaluate(`document.activeElement.dataset.export`), 'json', 'the focus stays on JSON across a sync');
-        assert.equal(await page.evaluate(`${TOGGLE}.getAttribute('aria-expanded')`), 'true', 'the trigger still says expanded');
-        assert.deepEqual(await page.evaluate(PANEL_NAME), ['dialog', `Export ${caption}`], 'the panel keeps its name across a sync');
+        assert.equal(await page.evaluate(FOCUSED_ROW), 'JSON', 'the focus stays on JSON across a sync');
+        assert.deepEqual(await page.evaluate(ddLabels('statsExport')), ['CSV', 'JSON', 'Print'], 'a sync keeps its rows');
 
         await key(page, 'Escape', 'Escape', 27);
-        assert.equal(await page.evaluate(ON_TOGGLE), true, 'Escape returns the focus to the Export trigger');
-        assert.equal(await exportOpen(page), false, 'Escape closes Export');
+        await page.waitFor(`!${EXPORT_OPEN}`, { label: 'Escape closes Export' });
+        assert.equal(await page.evaluate(ON_TOGGLE), true, 'Escape returns the focus to Export');
 
-        // Space opens on CSV as Enter does; ArrowDown on the trigger opens on the first item (N3).
-        await key(page, ' ', 'Space', 32);
-        await page.waitFor(`document.activeElement?.dataset.export === 'csv'`, { label: 'Space opens Export with the focus on CSV' });
-        assert.equal(await exportOpen(page), true, 'Space opens Export');
-        await key(page, 'Escape', 'Escape', 27);
-        assert.equal(await page.evaluate(ON_TOGGLE), true, 'Escape after Space returns the focus to the trigger');
-        assert.equal(await exportOpen(page), false, 'Escape after Space closes Export');
-        await key(page, 'ArrowDown', 'ArrowDown', 40);
-        await page.waitFor(`document.activeElement?.dataset.export === 'csv'`, { label: 'ArrowDown on the trigger opens Export on CSV' });
-        assert.equal(await exportOpen(page), true, 'ArrowDown on the trigger opens Export');
-        await key(page, 'Escape', 'Escape', 27);
-        assert.equal(await page.evaluate(ON_TOGGLE), true, 'Escape after ArrowDown returns the focus to the trigger');
-        assert.equal(await exportOpen(page), false, 'Escape after ArrowDown closes Export');
-
-        // Choosing an item exports, closes the popover and returns the focus to its trigger.
+        // Choosing an item exports, closes the menu and returns the focus to Export.
         await page.evaluate(`(function(){
             window.__downloads = [];
             HTMLAnchorElement.prototype.click = function(){ window.__downloads.push(this.download); };
         })()`);
-        for (const [n, kind] of ['csv', 'json'].entries()) {
+        for (const [n, kind] of ['CSV', 'JSON'].entries()) {
             await clickAt(page, TOGGLE);
-            await page.waitFor(`${EXPORT}.open === true && ${exportItem(kind)}.checkVisibility()`, { label: `Export open for ${kind}` });
-            await clickAt(page, exportItem(kind), { scroll: false });
+            await page.waitFor(EXPORT_OPEN, { label: `Export open for ${kind}` });
+            assert.equal(await page.evaluate(ddChoose('statsExport', kind)), true, `Export has ${kind}`);
             await page.waitFor(`window.__downloads.length === ${n + 1}`, { label: `the ${kind} download` });
-            await page.waitFor(`${EXPORT}.open === false`, { label: `choosing ${kind} closes Export` });
+            await page.waitFor(`!${EXPORT_OPEN}`, { label: `choosing ${kind} closes Export` });
             assert.equal(await page.evaluate(ON_TOGGLE), true, `choosing ${kind} returns the focus to the trigger`);
         }
         const files = await page.evaluate('window.__downloads');
@@ -404,7 +363,7 @@ export default async function talkersTest() {
         assert.match(files[1], /^top-talkers-\w+\.json$/, 'JSON exports the table');
         assert.deepEqual(queries(log).slice(queriesBefore), [], 'opening Export and exporting ran no query');
 
-        // At 390 x 844 the panel lies inside the viewport and the trigger does not move.
+        // At 390 x 844 the menu lies inside the viewport and the trigger does not move.
         await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
         try {
             // The page reflows for a while after the resize: scroll until two looks agree.
@@ -419,16 +378,16 @@ export default async function talkersTest() {
                 })()`,
                 { interval: 250, label: 'the Export trigger to settle in view at 390 px' }
             );
-            const before = await page.evaluate(EXPORT_BOXES);
+            const before = await page.evaluate(ddBoxes('statsExport'));
             await clickAt(page, TOGGLE, { scroll: false });
-            await page.waitFor(`${EXPORT}.open === true`, { label: 'Export opens at 390 px' });
-            const { trigger, panel, view } = await page.evaluate(EXPORT_BOXES);
+            await page.waitFor(EXPORT_OPEN, { label: 'Export opens at 390 px' });
+            const { trigger, panel, view } = await page.evaluate(ddBoxes('statsExport'));
             assert.equal(view.width, 390, 'a 390 px viewport');
             assert.deepEqual(trigger, before.trigger, 'the Export trigger stays where it was');
             const inside = panel.left >= 0 && panel.top >= 0 && panel.right <= view.width && panel.bottom <= view.height;
-            assert.ok(inside && panel.bottom > panel.top, `the Export panel lies inside the viewport: ${JSON.stringify({ panel, view })}`);
+            assert.ok(inside && panel.bottom > panel.top, `the Export menu lies inside the viewport: ${JSON.stringify({ panel, view })}`);
             await key(page, 'Escape', 'Escape', 27);
-            assert.equal(await exportOpen(page), false, 'Escape closes Export at 390 px');
+            await page.waitFor(`!${EXPORT_OPEN}`, { label: 'Escape closes Export at 390 px' });
         } finally {
             await page.send('Emulation.clearDeviceMetricsOverride');
         }
@@ -450,24 +409,15 @@ export default async function talkersTest() {
         await page.evaluate(`window.scrollTo(0, document.querySelector('.stat-bar').getBoundingClientRect().top + window.scrollY - 16)`);
         await page.withForcedColors(() => page.screenshot('/tmp/nfsen-talkers-forced-colors.png'));
 
-        // Forced colours keep the open panel's edge and the focused item's ring.
+        // Forced colours: the open menu, for a look (Starbase tests its own edges and rings).
         await page.evaluate(`${TOGGLE}.scrollIntoView({ block: 'center' }); ${TOGGLE}.focus()`);
-        const forced = await page.withForcedColors(async () => {
+        await page.withForcedColors(async () => {
             await key(page, 'Enter', 'Enter', 13);
-            await page.waitFor(`document.activeElement?.dataset.export === 'csv'`, { label: 'Export open on CSV in forced colours' });
+            await page.waitFor(EXPORT_OPEN, { label: 'Export open in forced colours' });
             await page.screenshot('/tmp/nfsen-talkers-export-forced-colors.png');
-            return page.evaluate(`(() => {
-                const item = ${exportItem('csv')};
-                return {
-                    edge: getComputedStyle(${EXPORT}.shadowRoot.querySelector('.panel')).outlineStyle,
-                    ring: item.matches(':focus-visible') ? getComputedStyle(item).outlineStyle : 'no :focus-visible',
-                };
-            })()`);
         });
         await key(page, 'Escape', 'Escape', 27);
-        assert.notEqual(forced.edge, 'none', 'the Export panel keeps an edge in forced colours');
-        assert.ok(!['none', 'no :focus-visible'].includes(forced.ring), `CSV shows its focus ring in forced colours, got ${forced.ring}`);
-        assert.equal(await exportOpen(page), false, 'Escape closes Export');
+        await page.waitFor(`!${EXPORT_OPEN}`, { label: 'Escape closes Export in forced colours' });
 
         // A brush on the picker graph (dispatched as ECharts reports one) sets the range and runs nothing (1.8).
         const GRAPH = "document.getElementById('trafficGraph')";

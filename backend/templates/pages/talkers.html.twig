@@ -266,19 +266,14 @@
             <h2 id="statsResultsTitle" aria-live="polite"
                 {% if r %}data-text="{{ current }} ? {{ r.title|json_encode }} : 'Results'"{% endif %}>{{ r ? r.title : 'Results' }}</h2>
             {% if r and r.rows > 0 %}
-                <sb-popover class="talkers-export" id="statsExport" label="Export {{ r.caption }}" placement="bottom-end"
-                            data-attr:hidden="!({{ current }})" data-preserve-attr="hidden">
-                    <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
-                            data-preserve-attr="aria-expanded aria-haspopup">Export</button>
-                    <ul class="popover-list" id="statsExportMenu">
-                        {% for item in [{id: 'csv', label: 'CSV', method: 'exportCsv'},
-                                        {id: 'json', label: 'JSON', method: 'exportJson'},
-                                        {id: 'print', label: 'Print', method: 'print'}] %}
-                            <li><button type="button" class="menu-item" data-export="{{ item.id }}"
-                                        data-on:click="document.getElementById('statsTable')?.{{ item.method }}()">{{ item.label }}</button></li>
-                        {% endfor %}
-                    </ul>
-                </sb-popover>
+                <sb-dropdown class="talkers-export" id="statsExport" label="Export {{ r.caption }}" placement="bottom-end"
+                             data-attr:hidden="!({{ current }})" data-preserve-attr="hidden"
+                             data-on:sb-select="const t = document.getElementById('statsTable'); ({csv: () => t?.exportCsv(), json: () => t?.exportJson(), print: () => t?.print()})[evt.detail.value]?.()">
+                    <span slot="trigger">Export</span>
+                    <button type="button" slot="item" value="csv">CSV</button>
+                    <button type="button" slot="item" value="json">JSON</button>
+                    <button type="button" slot="item" value="print">Print</button>
+                </sb-dropdown>
             {% endif %}
         </header>
         <div class="card-body stack">

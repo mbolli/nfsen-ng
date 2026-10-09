@@ -124,10 +124,10 @@ Playwright-managed Chromium under `~/.cache/ms-playwright`
 | `router` | Hash routing: the default page, old bookmarks, reload and history |
 | `controls` | The controls bar: presets, custom duration, step buttons, sources, protocol, unit, profile |
 | `graphs`, `graphs-ports`, `overview` | The traffic graph, the Ports display, and the Overview KPI and top-N |
-| `talkers`, `statistics`, `statistics-aggregation` | Top Talkers: the picker, a real run, the Export popover, Flow Records aggregation |
-| `flows`, `columns` | Flows: run, the list, tabs, exports from the server, a new result's list, 10,000 rows in three tabs; the Export popover and the Columns popover of the Flows list and the Top Talkers table: keys, a sync while open, a second run, an export right after the result arrives, a phone screen |
+| `talkers`, `statistics`, `statistics-aggregation` | Top Talkers: the picker, a real run, the Export menu, Flow Records aggregation |
+| `flows`, `columns` | Flows: run, the list, tabs, exports from the server, a new result's list, 10,000 rows in three tabs; the Export menu, and the Columns popover of the Flows list and the Top Talkers table: keys, a sync while open, a second run, an export right after the result arrives, a phone screen |
 | `vscroll` | The Flows list of 10,000 rows against the server's own exports: windows, the last and seeded rows, stable sorts, syncs and other result tabs that leave it alone, Tab and Shift+Tab through 200 rows, the header, the Columns picker kept across a Run and a reload, CSV, JSON and Print, a new result's list collected, themes, densities, and a context revived by a window request (`tests/e2e/lib/vscroll.mjs` holds the shared helpers; mutating) |
-| `conversations` | One run as Sankey, Matrix and IP pairs, and the Export popover, with the PNG item disabled in IP pairs and the nfdump command copied unchanged |
+| `conversations` | One run as Sankey, Matrix and IP pairs, and the Export menu, with the PNG item disabled in IP pairs and the nfdump command copied unchanged |
 | `filter-validation`, `drawer` | Live validation and estimates; the filter builder and saved filters |
 | `alerts`, `health`, `settings` | The monitor and settings pages |
 | `mobile` | The phone and tablet shell |

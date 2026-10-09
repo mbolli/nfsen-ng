@@ -13,6 +13,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **IP info and the alert Test result open in Starbase's `sb-modal`**, the same dialog the rest of Starbase's components use, with its heading, close button and focus handling. A toast shown while one is open still lands inside it.
 
+- **The Export menus of Top Talkers, Flows and Conversations are Starbase's `sb-dropdown`**: a real menu, opened and walked with the keyboard like one, with a caret that turns while it is open.
+
 - **The start and end of the range are picked in a calendar** (Starbase's `sb-date-picker`): both days and both times in one place, in five-minute steps like the capture files, in the display timezone, with the days outside the stored data struck out. **Apply** sets the range. It replaces the two date-time fields.
 
 ### Fixed

@@ -150,24 +150,14 @@
             {% if hasPairs %}
                 {# The command stays out of the popover's data-* values: Rocket rewrites $$ and @name( in them (PC4). #}
                 <code id="convCommand" hidden>{{ info.command }}</code>
-                <sb-popover class="conv-export" id="convExport" label="Export" placement="bottom-end">
-                    <button type="button" slot="trigger" class="menu-toggle" data-size="sm" id="convExportToggle"
-                            data-preserve-attr="aria-expanded aria-haspopup">Export</button>
-                    <ul class="popover-list" id="convExportMenu">
-                        <li><button type="button" class="menu-item" data-export="csv"
-                                    data-on:click="window.nfsenConversations.exportPairs('csv')">CSV of the IP pairs</button></li>
-                        <li><button type="button" class="menu-item" data-export="json"
-                                    data-on:click="window.nfsenConversations.exportPairs('json')">JSON of the IP pairs</button></li>
-                        <li><button type="button" class="menu-item" data-export="png"
-                                    aria-disabled="false" data-attr:aria-disabled="$_conv_view === 'pairs' ? 'true' : 'false'"
-                                    data-preserve-attr="aria-disabled"
-                                    data-on:click="el.getAttribute('aria-disabled') !== 'true' && window.nfsenConversations.exportPng($_conv_view)"
-                                    data-text="$_conv_view === 'matrix' ? 'PNG of the Matrix' : ($_conv_view === 'pairs' ? 'PNG of a chart (open Sankey or Matrix)' : 'PNG of the Sankey')">PNG of the Sankey</button></li>
-                        {# Closes first, so the focus is on the trigger when the copy's fallback moves it and puts it back. #}
-                        <li><button type="button" class="menu-item" data-export="command"
-                                    data-on:click="el.closest('sb-popover').hide(); window.nfsenConversations.copy(document.getElementById('convCommand').textContent, 'nfdump command')">Copy nfdump command</button></li>
-                    </ul>
-                </sb-popover>
+                {# The PNG item follows the view: its label, and disabled on the IP pairs, which have no chart. #}
+                {% set convItems = "[{value: 'csv', label: 'CSV of the IP pairs'}, {value: 'json', label: 'JSON of the IP pairs'}, {value: 'png', label: $_conv_view === 'matrix' ? 'PNG of the Matrix' : ($_conv_view === 'pairs' ? 'PNG of a chart (open Sankey or Matrix)' : 'PNG of the Sankey'), disabled: $_conv_view === 'pairs'}, {value: 'command', label: 'Copy nfdump command'}]" %}
+                <sb-dropdown class="conv-export" id="convExport" label="Export" placement="bottom-end"
+                             items="{{ [{value: 'csv', label: 'CSV of the IP pairs'}, {value: 'json', label: 'JSON of the IP pairs'}, {value: 'png', label: 'PNG of the Sankey'}, {value: 'command', label: 'Copy nfdump command'}]|json_encode }}"
+                             data-attr:items="JSON.stringify({{ convItems }})" data-preserve-attr="items"
+                             data-on:sb-select="const v = evt.detail.value; v === 'png' ? window.nfsenConversations.exportPng($_conv_view) : v === 'command' ? window.nfsenConversations.copy(document.getElementById('convCommand').textContent, 'nfdump command') : window.nfsenConversations.exportPairs(v)">
+                    <span slot="trigger">Export</span>
+                </sb-dropdown>
             {% endif %}
         {% if cv.has %}</header>{% endif %}
 

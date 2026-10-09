@@ -15,10 +15,15 @@ const peek = (fn) => {
 // border-radius takes over).
 const notch = (p) => `polygon(${p} 0, calc(100% - ${p}) 0, calc(100% - ${p}) ${p}, 100% ${p}, 100% calc(100% - ${p}), calc(100% - ${p}) calc(100% - ${p}), calc(100% - ${p}) 100%, ${p} 100%, ${p} calc(100% - ${p}), 0 calc(100% - ${p}), 0 ${p}, ${p} ${p})`
 
-// A pixel arrow in the 8px gap between trigger and panel: pointing up in a
-// 12×8 box, turned by f for the other sides.
-const tip = [[4, 2], [8, 2], [8, 4], [10, 4], [10, 6], [12, 6], [12, 8], [0, 8], [0, 6], [2, 6], [2, 4], [4, 4]]
-const arrow = (f) => `polygon(${tip.map(([x, y]) => f(x, y).join('px ') + 'px')})`
+// An arrow in the 8px gap between trigger and panel: pointing up in a 12×8
+// box, turned by f for the other sides. Each corner is [pixel, smooth]: a
+// staircase at --sb-notch 1, a triangle at 0.
+const tip = [
+	[[4, 2], [6, 2]], [[8, 2], [6, 2]], [[8, 4], [8, 4]], [[10, 4], [8, 4]], [[10, 6], [10, 6]], [[12, 6], [10, 6]],
+	[[12, 8], [12, 8]], [[0, 8], [0, 8]], [[0, 6], [2, 6]], [[2, 6], [2, 6]], [[2, 4], [4, 4]], [[4, 4], [4, 4]],
+]
+const at = (px, sm) => (px === sm ? `${px}px` : `calc(${sm}px + ${px - sm}px * var(--_notch))`)
+const arrow = (f) => `polygon(${tip.map(([p, s]) => f(...p).map((v, k) => at(v, f(...s)[k])).join(' '))})`
 const UP = arrow((x, y) => [x, y])
 const DOWN = arrow((x, y) => [x, 8 - y])
 const LEFT = arrow((x, y) => [y, x])
@@ -166,7 +171,7 @@ rocket('sb-popover', {
 		label: string.trim.default('Details').docs({ description: 'Text of the default trigger, and the accessible name of the panel (an aria-label on the element wins).' }),
 		mode: oneOf('click', 'hover').default('click').docs({ description: 'click: a dialog that opens on click and closes on an outside click or Escape. hover: a hover card that opens after a short delay on hover or keyboard focus and describes the trigger.' }),
 		placement: oneOf('bottom', 'bottom-start', 'bottom-end', 'top', 'top-start', 'top-end', 'start', 'start-start', 'start-end', 'end', 'end-start', 'end-end').default('bottom').docs({ description: 'Side of the trigger, and the alignment along it. start and end are logical, so they mirror in right-to-left text. The panel flips and shifts to stay on screen.' }),
-		arrow: bool.docs({ description: 'Draw a pixel arrow that points at the middle of the trigger.' }),
+		arrow: bool.docs({ description: 'Draw an arrow that points at the middle of the trigger.' }),
 		open: bool.docs({ description: 'Open. View state the server may own: a changed attribute wins (open="false" closes), a removed one is ignored. Never reflected: use the open property, show() and hide() from the client.' }),
 		name: string.trim.docs({ description: 'Name reported in sb-open and sb-close (e.g. the field of a command).' }),
 	}),

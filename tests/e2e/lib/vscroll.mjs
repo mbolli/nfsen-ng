@@ -1,6 +1,7 @@
 // The Flows list for the browser tests: the 10,000-row query, the list host and its coverage, the server's exports
 // caught before they are saved, and the instance settings the runs need.
 import { BASE } from './cdp.mjs';
+import { ddChoose, ddOpen, ddTrigger } from './dropdown.mjs';
 
 /** The dev captures' day of flows: exactly 10,000 rows at limit 10,000. */
 export const RANGE = { from: 1787875200, to: 1787961600 };
@@ -129,10 +130,12 @@ export const TITLES = `[...${HOST}.querySelectorAll('[slot="header"] button[data
 /** Column keys of the list's header, in order. */
 export const KEYS = `[...${HOST}.querySelectorAll('[slot="header"] button[data-sort-key]')].map(function(b){ return b.dataset.sortKey; })`;
 
-const EXPORT = `document.getElementById('flowsExport')`;
+const EXPORT_TRIGGER = ddTrigger('flowsExport');
+const EXPORT_OPEN = ddOpen('flowsExport');
+const EXPORT_LABELS = { csv: 'CSV', json: 'JSON', print: 'Print' };
 
 /**
- * Exports the list through the Export popover in `format` (csv, json or print) with Enhanced data on or off.
+ * Exports the list through the Export menu in `format` (csv, json or print) with Enhanced data on or off.
  * CSV and JSON: the file as the browser would save it, caught before it is; Print: the rows of the print frame.
  */
 export async function exportList(page, format, { enhanced = true, timeout = 60000 } = {}) {
@@ -147,9 +150,9 @@ export async function exportList(page, format, { enhanced = true, timeout = 6000
         HTMLAnchorElement.prototype.click = function () { window.__download = this.download; };
         document.querySelector('iframe[title="Flows to print"]')?.remove();
     })()`);
-    await page.evaluate(`${EXPORT}.open || document.querySelector('#flowsExport [slot="trigger"]').click()`);
-    await page.waitFor(`${EXPORT}.open === true`, { label: `Export to open for ${format}` });
-    await page.evaluate(`document.querySelector('#flowsExportMenu [data-export="${format}"]').click()`);
+    await page.evaluate(`${EXPORT_OPEN} || ${EXPORT_TRIGGER}.click()`);
+    await page.waitFor(EXPORT_OPEN, { label: `Export to open for ${format}` });
+    await page.evaluate(ddChoose('flowsExport', EXPORT_LABELS[format]));
     try {
         if (format === 'print') {
             await page.waitFor(`document.querySelector('iframe[title="Flows to print"]')?.contentDocument?.querySelector('tbody tr')`, {

@@ -1,6 +1,7 @@
-// Flows (4.3, 5.4): run, the list, tabs, exports from the server and the Export popover, a new result's list, 10,000
+// Flows (4.3, 5.4): run, the list, tabs, exports from the server and the Export menu, a new result's list, 10,000
 // rows in three tabs without a worker crash, keyboard walk and forced-colors screenshots to E2E_SHOTS (V-A11Y).
 // vscroll.test.mjs covers the list itself: windows, sorts, columns, the keyboard, revival.
+import { ddBoxes, ddChoose, ddLabels, ddOpen, ddTrigger } from './lib/dropdown.mjs';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { BASE, withPage } from './lib/cdp.mjs';
@@ -8,8 +9,11 @@ import { BASE, withPage } from './lib/cdp.mjs';
 const SHOTS = process.env.E2E_SHOTS || '/tmp';
 const HOST = `document.querySelector('sb-virtual-scroll[id^="flowRows-"]')`;
 const COLUMNS = `document.getElementById('flowTable-columnsPopover')`;
+// Export is an sb-dropdown: its trigger and rows are in its shadow root (lib/dropdown.mjs).
 const EXPORT = `document.getElementById('flowsExport')`;
-const EXPORT_TRIGGER = `document.querySelector('#flowsExport [slot="trigger"]')`;
+const EXPORT_TRIGGER = ddTrigger('flowsExport');
+const EXPORT_OPEN = ddOpen('flowsExport');
+const EXPORT_LABELS = { csv: 'CSV', json: 'JSON', print: 'Print' };
 // The Flows page's actions that run nfdump over capture files (no-auto-query.test.mjs's READS_CAPTURE_FILES).
 const READS_CAPTURE_FILES = ['flow-actions', 'flows-summary-run', 'build-flows-graph'];
 const captureReads = (log) => log.names().filter((name) => READS_CAPTURE_FILES.includes(name));
@@ -63,13 +67,13 @@ async function caughtExport(page, label) {
     return JSON.parse(result);
 }
 
-/** Opens the Export popover, chooses `format` (csv or json) and returns the file; choosing closes the popover. */
+/** Opens the Export menu, chooses `format` (csv or json) and returns the file; choosing closes the menu. */
 async function captureExport(page, format) {
     await catchExport(page);
-    await page.evaluate(`${EXPORT}.open || ${EXPORT_TRIGGER}.click()`);
-    await page.waitFor(`${EXPORT}.open === true`, { label: `Export to open for ${format}` });
-    await page.evaluate(`document.querySelector('#flowsExportMenu [data-export="${format}"]').click()`);
-    assert.equal(await page.evaluate(`${EXPORT}.open`), false, `choosing ${format} closes Export`);
+    await page.evaluate(`${EXPORT_OPEN} || ${EXPORT_TRIGGER}.click()`);
+    await page.waitFor(EXPORT_OPEN, { label: `Export to open for ${format}` });
+    assert.equal(await page.evaluate(ddChoose('flowsExport', EXPORT_LABELS[format])), true, `Export has ${format}`);
+    assert.equal(await page.evaluate(EXPORT_OPEN), false, `choosing ${format} closes Export`);
     return caughtExport(page, `${format} export`);
 }
 
@@ -203,10 +207,10 @@ async function exportRightAway() {
                 painted(function(){
                     ${EXPORT_TRIGGER}.click();
                     painted(function(){
-                        var open = ${EXPORT}.open === true;
+                        var open = ${EXPORT_OPEN};
                         var unsynced = content.isConnected && content.hasAttribute('data-e2e-unsynced');
-                        document.querySelector('#flowsExportMenu [data-export="csv"]').click();
-                        var closed = ${EXPORT}.open === false;
+                        ${ddChoose('flowsExport', 'CSV')};
+                        var closed = !${EXPORT_OPEN};
                         Object.assign(window.__e2eEarly, { open: open, unsynced: unsynced, closed: closed, chosen: true });
                     });
                 });
@@ -247,17 +251,17 @@ async function popoversOnPhone() {
             await page.runQuery('flows', { timeout: 60000 });
             await page.waitFor(`${listTotal} > 0`, { timeout: 15000, label: 'the flow rows on a phone' });
             const log = await page.requestLog();
-            for (const [label, host] of [
-                ['Export', '#flowsExport'],
-                ['Columns', '#flowTable-columnsPopover'],
+            for (const [label, trigger, boxes] of [
+                ['Export', EXPORT_TRIGGER, ddBoxes('flowsExport')],
+                ['Columns', `document.querySelector('#flowTable-columnsPopover [slot="trigger"]')`, popoverBoxes('#flowTable-columnsPopover')],
             ]) {
-                const trigger = `document.querySelector(${JSON.stringify(`${host} [slot="trigger"]`)})`;
                 await page.waitFor(`!!${trigger}`, { label: `${label}: the trigger on a phone` });
                 await page.evaluate(`${trigger}.scrollIntoView({ block: 'center' })`);
                 await sleep(300);
-                const before = await page.evaluate(popoverBoxes(host));
+                const before = await page.evaluate(boxes);
                 await tapAt(page, trigger);
-                const { open, trigger: moved, panel, view } = await page.evaluate(popoverBoxes(host));
+                await sleep(300);
+                const { open, trigger: moved, panel, view } = await page.evaluate(boxes);
                 assert.equal(open, true, `a tap opens ${label}`);
                 assert.equal(view.width, 390);
                 assert.deepEqual(moved, before.trigger, `${label}: the trigger stays where it was`);
@@ -267,7 +271,7 @@ async function popoversOnPhone() {
                     `${label}: the panel lies inside the viewport: ${JSON.stringify({ panel, view })}`
                 );
                 await press(page, 'Escape', 'Escape', 27);
-                await page.waitFor(`!${popoverBoxes(host)}.open`, { label: `${label}: Escape to close it` });
+                await page.waitFor(`!${boxes}.open`, { label: `${label}: Escape to close it` });
             }
             assert.deepEqual(captureReads(log), [], 'tapping Export and Columns ran no capture-file query');
             const errors = page.realErrors();
@@ -335,7 +339,7 @@ export default async function flowsTest() {
             'every row is in order'
         );
 
-        // Exports hold the shown columns and every row. From here the popovers run no capture-file query.
+        // Exports hold the shown columns and every row. From here the menus run no capture-file query.
         log.clear();
         await page.evaluate(`${COLUMNS}.querySelector('[slot="trigger"]').click()`);
         await page.evaluate(`document.getElementById('flowTable-col-received').click()`);
@@ -358,96 +362,35 @@ export default async function flowsTest() {
         await page.waitFor(`!!${HOST}.querySelector('button[data-sort-key="received"]')`, { label: 'Received back in the header' });
         await page.evaluate(`${COLUMNS}.hide()`);
 
-        // The Export popover by keyboard (POPOVER-SPEC 4.2): ArrowDown on the trigger opens it on CSV, Escape returns.
-        const exportFocus = `({ open: ${EXPORT}.open, focus: document.activeElement === ${EXPORT_TRIGGER} ? 'trigger' : document.activeElement?.dataset.export ?? document.activeElement?.tagName })`;
-        assert.deepEqual(
-            await page.evaluate(
-                `[${EXPORT}.shadowRoot.querySelector('slot[name="trigger"]').assignedElements().length, ${EXPORT_TRIGGER}.getAttribute('aria-haspopup')]`
-            ),
-            [1, 'dialog'],
-            'Export has its own trigger, which sb-popover marks as opening a dialog'
-        );
-        assert.deepEqual(
-            await page.evaluate(
-                `[...document.querySelectorAll('#flowsExportMenu [data-export]')].map(function(b){ return b.textContent.trim(); })`
-            ),
-            ['CSV', 'JSON', 'Print']
-        );
+        // The Export menu (sb-dropdown): its rows, a choice that exports and closes it, a sync that keeps it open, and an
+        // outside press that closes it. The menu's own keyboard handling is the component's.
+        assert.equal(await page.evaluate(`${EXPORT_TRIGGER}.getAttribute('aria-haspopup')`), 'menu', 'Export opens a menu');
         await page.evaluate(`${EXPORT_TRIGGER}.focus()`);
-        await press(page, 'ArrowDown', 'ArrowDown', 40);
-        await page.waitFor(`${EXPORT}.open === true && document.activeElement?.dataset.export === 'csv'`, {
-            label: 'ArrowDown to open Export on CSV',
-        });
-        assert.equal(await page.evaluate(`${EXPORT_TRIGGER}.getAttribute('aria-expanded')`), 'true');
-        for (const [key, code, keyCode, to] of [
-            ['ArrowDown', 'ArrowDown', 40, 'json'],
-            ['End', 'End', 35, 'print'],
-            ['ArrowDown', 'ArrowDown', 40, 'csv'],
-            ['ArrowUp', 'ArrowUp', 38, 'print'],
-            ['Home', 'Home', 36, 'csv'],
-        ]) {
-            await press(page, key, code, keyCode);
-            assert.deepEqual(await page.evaluate(exportFocus), { open: true, focus: to }, `${key} moves to ${to} and wraps`);
-        }
-        await press(page, 'Escape', 'Escape', 27);
-        await page.waitFor(`document.activeElement === ${EXPORT_TRIGGER} && ${EXPORT}.open === false`, {
-            label: 'Escape to close Export onto its trigger',
-        });
-        assert.equal(await page.evaluate(`${EXPORT_TRIGGER}.getAttribute('aria-expanded')`), 'false');
-        for (const [key, code, keyCode] of [
-            ['Enter', 'Enter', 13],
-            [' ', 'Space', 32],
-        ]) {
-            await press(page, key, code, keyCode);
-            await page.waitFor(`${EXPORT}.open === true && document.activeElement?.dataset.export === 'csv'`, {
-                label: `${code} on the trigger to open Export on CSV`,
-            });
-            await press(page, 'Escape', 'Escape', 27);
-            await page.waitFor(`document.activeElement === ${EXPORT_TRIGGER} && ${EXPORT}.open === false`, {
-                label: `Escape after ${code}`,
-            });
-        }
-
-        // Enter on an item exports, closes the popover and gives the focus back to the trigger.
-        await catchExport(page);
-        await press(page, 'ArrowDown', 'ArrowDown', 40);
-        await press(page, 'ArrowDown', 'ArrowDown', 40);
-        assert.deepEqual(await page.evaluate(exportFocus), { open: true, focus: 'json' });
         await press(page, 'Enter', 'Enter', 13);
-        const byKey = await caughtExport(page, 'the JSON export by Enter');
-        assert.equal(JSON.parse(byKey.text).length, total, 'Enter on JSON exported every row');
-        assert.match(byKey.name, /^flows-\d{12}-\d{12}\.json$/, `export file name: ${byKey.name}`);
-        assert.deepEqual(await page.evaluate(exportFocus), { open: false, focus: 'trigger' }, 'choosing closed Export onto its trigger');
+        await page.waitFor(EXPORT_OPEN, { label: 'Enter on the trigger to open Export' });
+        assert.deepEqual(await page.evaluate(ddLabels('flowsExport')), ['CSV', 'JSON', 'Print']);
+        await catchExport(page);
+        assert.equal(await page.evaluate(ddChoose('flowsExport', 'JSON')), true);
+        const byChoice = await caughtExport(page, 'the JSON export');
+        assert.equal(JSON.parse(byChoice.text).length, total, 'JSON exported every row');
+        assert.match(byChoice.name, /^flows-\d{12}-\d{12}\.json$/, `export file name: ${byChoice.name}`);
+        assert.equal(await page.evaluate(EXPORT_OPEN), false, 'choosing closed Export');
+        assert.equal(await page.evaluate(`document.activeElement === ${EXPORT}`), true, 'choosing gave the focus back to Export');
 
-        // A sync morph keeps it open with the focus on the same item; an outside press closes it.
-        await press(page, 'ArrowDown', 'ArrowDown', 40);
-        await press(page, 'ArrowDown', 'ArrowDown', 40);
-        await page.evaluate('window.__e2eExportItem = document.activeElement');
+        await page.evaluate(`${EXPORT_TRIGGER}.click()`);
+        await page.waitFor(EXPORT_OPEN, { label: 'Export open before a sync' });
         await page.syncNow('flows');
         await sleep(300);
-        assert.deepEqual(
-            await page.evaluate(
-                `({ state: ${popoverBoxes('#flowsExport')}.open, same: document.activeElement === window.__e2eExportItem && window.__e2eExportItem.isConnected, focus: document.activeElement?.dataset.export, expanded: ${EXPORT_TRIGGER}.getAttribute('aria-expanded') })`
-            ),
-            { state: true, same: true, focus: 'json', expanded: 'true' },
-            'a sync keeps Export open with the focus on JSON'
-        );
+        assert.equal(await page.evaluate(EXPORT_OPEN), true, 'a sync keeps Export open');
+        assert.deepEqual(await page.evaluate(ddLabels('flowsExport')), ['CSV', 'JSON', 'Print'], 'a sync keeps its rows');
         await clickAt(page, `document.querySelector('#flowResults > header > .card-meta')`);
-        await page.waitFor(`${EXPORT}.open === false`, { label: 'an outside press to close Export' });
-        assert.equal(await page.evaluate(`${EXPORT_TRIGGER}.getAttribute('aria-expanded')`), 'false');
+        await page.waitFor(`!${EXPORT_OPEN}`, { label: 'an outside press to close Export' });
 
-        // Compact tables change nothing about the popover (POPOVER-SPEC section 6, item 12).
+        // Compact tables change nothing about the menu (POPOVER-SPEC section 6, item 12).
         const exportLook = `(function(){
-            var b = ${popoverBoxes('#flowsExport')};
+            var b = ${ddBoxes('flowsExport')};
             var size = function(r){ return [r.right - r.left, r.bottom - r.top]; };
-            return {
-                open: b.open,
-                slotted: ${EXPORT}.shadowRoot.querySelector('slot[name="trigger"]').assignedElements().length,
-                trigger: size(b.trigger),
-                panel: size(b.panel),
-                items: [...document.querySelectorAll('#flowsExportMenu [data-export]')].map(function(i){ return Math.round(i.getBoundingClientRect().height); }),
-                inside: b.panel.left >= 0 && b.panel.top >= 0 && b.panel.right <= b.view.width && b.panel.bottom <= b.view.height,
-            };
+            return { open: b.open, trigger: size(b.trigger), panel: size(b.panel), inside: b.panel.left >= 0 && b.panel.top >= 0 && b.panel.right <= b.view.width && b.panel.bottom <= b.view.height };
         })()`;
         const density = await page.evaluate('document.documentElement.dataset.density');
         const looks = {};
@@ -455,19 +398,15 @@ export default async function flowsTest() {
         for (const d of ['comfortable', 'compact']) {
             await page.evaluate(`document.documentElement.dataset.density = '${d}'`);
             await page.evaluate(`${EXPORT_TRIGGER}.click()`);
-            await page.waitFor(`${EXPORT}.open === true`, { label: `Export open with ${d} tables` });
+            await page.waitFor(EXPORT_OPEN, { label: `Export open with ${d} tables` });
             await sleep(200);
             looks[d] = await page.evaluate(exportLook);
             await press(page, 'Escape', 'Escape', 27);
-            await page.waitFor(`${EXPORT}.open === false`, { label: `Escape to close Export with ${d} tables` });
+            await page.waitFor(`!${EXPORT_OPEN}`, { label: `Escape to close Export with ${d} tables` });
         }
         await page.evaluate(`document.documentElement.dataset.density = ${JSON.stringify(density)}`);
-        assert.deepEqual(
-            [looks.compact.open, looks.compact.slotted, looks.compact.inside],
-            [true, 1, true],
-            'Export opens with compact tables'
-        );
-        assert.deepEqual(looks.compact, looks.comfortable, 'compact tables leave the Export trigger, panel and items as they were');
+        assert.deepEqual([looks.compact.open, looks.compact.inside], [true, true], 'Export opens with compact tables');
+        assert.deepEqual(looks.compact, looks.comfortable, 'compact tables leave the Export trigger and menu as they were');
         assert.deepEqual(captureReads(log), [], 'using Export and Columns ran no capture-file query (POPOVER-SPEC section 6, item 6)');
 
         // Result tabs: arrow keys move and select (automatic activation).
@@ -538,26 +477,13 @@ export default async function flowsTest() {
             await sleep(300);
             await shot(page, `${SHOTS}/flows-results-forced-colors.png`, '#flowResults');
             await shot(page, `${SHOTS}/flows-query-forced-colors.png`, '.flows-query');
-            // The open Export keeps its panel edge and the focused item's ring (POPOVER-SPEC section 6, item 10).
-            await page.evaluate(`${EXPORT_TRIGGER}.scrollIntoView({ block: 'center' }); ${EXPORT_TRIGGER}.focus()`);
-            await press(page, 'ArrowDown', 'ArrowDown', 40);
-            await page.waitFor(`${EXPORT}.open === true && document.activeElement?.dataset.export === 'csv'`, {
-                label: 'Export open in forced colors',
-            });
+            // The open Export menu in forced colors; its edges and rings are the component's (Starbase).
+            await page.evaluate(`${EXPORT_TRIGGER}.scrollIntoView({ block: 'center' }); ${EXPORT_TRIGGER}.click()`);
+            await page.waitFor(EXPORT_OPEN, { label: 'Export open in forced colors' });
             await sleep(300);
-            const edges = await page.evaluate(`(function(){
-                var panel = getComputedStyle(${EXPORT}.shadowRoot.querySelector('.panel'));
-                var item = getComputedStyle(document.activeElement);
-                return { panel: panel.outlineStyle + ' ' + panel.outlineWidth, ring: item.outlineStyle + ' ' + item.outlineWidth };
-            })()`);
-            assert.equal(edges.panel, 'solid 1px', `the Export panel keeps its edge in forced colors: ${edges.panel}`);
-            assert.ok(
-                !edges.ring.startsWith('none') && parseFloat(edges.ring.split(' ')[1]) >= 2,
-                `the focused item shows a ring: ${edges.ring}`
-            );
             await page.screenshot(`${SHOTS}/flows-export-forced-colors.png`);
             await press(page, 'Escape', 'Escape', 27);
-            await page.waitFor(`${EXPORT}.open === false`, { label: 'Escape to close Export in forced colors' });
+            await page.waitFor(`!${EXPORT_OPEN}`, { label: 'Escape to close Export in forced colors' });
         });
         await page.evaluate(`document.getElementById('flowsTab-flows').click()`);
 
@@ -593,7 +519,7 @@ export default async function flowsTest() {
 
         // An address opens the IP info modal through the list's one click handler.
         await page.evaluate(`${HOST}.querySelector('.ip-link').click()`);
-        await page.waitFor(`!!document.querySelector('#modal-root dialog[open]')`, { timeout: 15000, label: 'the IP info modal' });
+        await page.waitFor(`!!document.getElementById('ip-modal-inner')?.isOpen`, { timeout: 15000, label: 'the IP info modal' });
         await press(page, 'Escape', 'Escape', 27);
 
         // The Raw output of the 10,000 row result comes in pieces; the worker survives it.

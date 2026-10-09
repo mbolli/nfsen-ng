@@ -175,11 +175,11 @@ describe('sb-popover markup in backend/templates', function (): void {
         ;
     });
 
-    test('the Flows template writes both of its popovers as literal markup, so the scan reaches them', function (): void {
+    test('the Flows template writes its popover as literal markup, so the scan reaches it', function (): void {
         $source = (string) file_get_contents(__DIR__ . '/../../backend/templates/pages/flows.html.twig');
         preg_match_all('/<sb-popover\b[^>]*\sid="([^"]+)"/', $source, $ids);
 
-        expect($ids[1])->toBe(['flowsExport', 'flowTable-columnsPopover']);
+        expect($ids[1])->toBe(['flowTable-columnsPopover']);
     });
 
     test('the rendered Flows page with a list keeps to K1, the values its Twig writes included', function (): void {
@@ -224,7 +224,7 @@ describe('sb-popover markup in backend/templates', function (): void {
 
         expect(popoverMarkupProblems($html, 'rendered pages/flows.html.twig'))->toBe([])
             ->and($html)->toContain('id="flowTable-columnsPopover"', 'id="flowTable-col-in_bytes"', 'filterSignals: { include: /^via_ctx$/ }')
-            ->and(substr_count($html, 'id="flowsExport"'))->toBe(1)
+            ->and(substr_count($html, '<sb-dropdown class="flows-export" id="flowsExport"'))->toBe(1)
         ;
     });
 });

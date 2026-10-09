@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/zweiundeins/starbase.git",
-  "commit": "7560b33b415835773047e36b5f47193f2b63283a",
-  "describe": "v0.7.0-21-g7560b33",
-  "catalog": "0416db834f08",
+  "commit": "8fc0d1e38f4a26c448282d8e73f5569f6e437389",
+  "describe": "v0.7.0-32-g8fc0d1e",
+  "catalog": "cbcf893f3cc1",
   "minFormat": "min2",
   "datastar": "Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)",
   "datastarSha256": "f602fbe19d74e4c16c2f28b3a92c4934072400337372787561089c26a8b3e1db",
@@ -34,6 +34,18 @@
         "manifest.json": "sha384-zEIh5ZaHhtpFhvcRYf/KJCu96OvsH2inkzi6tC3mfT8jtioFzGgQDgs326wCydXi"
       }
     },
+    "dropdown": {
+      "tag": "sb-dropdown",
+      "version": "e461cd778acd",
+      "entry": "dropdown.js",
+      "load": true,
+      "files": {
+        "README.md": "sha384-8fFQpkTJk78z+LdLFtx0xI7WCYyHQCaJ3ZAopkb9ehiulakYNmrqUjpKDBk7tkuK",
+        "dropdown.js": "sha384-JA8Y5IAoOQ2VADQfgJhy0oYhYJ1xYmOeiSBawYAdQt2Cnihrpv1NxxSag89DHz/X",
+        "dropdown.ts": "sha384-yBZWp1844OahIRgYnK+8ByT3kBPxeNCY3gA0ynxuoNMo1nesr1c3eilZOWDWSkMl",
+        "manifest.json": "sha384-ndocS0rT+IOSEWEZSnUZE1PEtGfEXrhrWlEIcYbMfmYRbCFJvf+MmP0En8QaZ7w4"
+      }
+    },
     "modal": {
       "tag": "sb-modal",
       "version": "51981771c7b3",
@@ -47,13 +59,13 @@
     },
     "popover": {
       "tag": "sb-popover",
-      "version": "798252374afc",
+      "version": "fdf46eafcb1e",
       "entry": "popover.js",
       "load": true,
       "files": {
-        "README.md": "sha384-aSo0iNAUwSdlLJwt7oeZOFszU0Y/1KohCsl21iculZvomstT2lpnBIiThldzSHzz",
-        "manifest.json": "sha384-MDCjh79+o7syZ3l3+S4ac8xdjG6Yn4f/qSVaxYWIBDtDZ+FCciTNOz78tn1uqLiF",
-        "popover.js": "sha384-dCUuz89wqUDIwSnisA+RkLt7LNzVnAimVyrx9P7d9OCl//uyI8VWnJmacVCm8j5n"
+        "README.md": "sha384-g1n1v8V5CgkUbwO4JgwKDbJvGjujGtXnW1S7B2zQFw5yn1M80N5VgCYC8UoPz3Nk",
+        "manifest.json": "sha384-0qdmMFgqAmLqOuSueUjoHSK9l3SHVv/DsjH4cEsI6cupT+WPUi6rOSsN/P/S+14z",
+        "popover.js": "sha384-AaKeLIT5tGRrUfHkFiYcQYFsBN90wAncHQassY45APAqxfXAno0uxgNS4N7nCQ9P"
       }
     },
     "relative-time": {

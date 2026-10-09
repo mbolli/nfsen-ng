@@ -233,18 +233,13 @@
                     {%- elseif f.limitReached %}, the limit of {{ f.limit|number_format }}{% endif -%}
                 </span>
                 {% set exportUrl = flowsExport.url() ~ '?result=' ~ f.result.id|url_encode ~ '&format=' %}
-                <sb-popover class="flows-export" id="flowsExport" label="Export the flows" placement="bottom-end">
-                    <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
-                            data-preserve-attr="aria-expanded aria-haspopup" {{ f.count == 0 or f.result.lost or f.list is null ? 'disabled' }}>Export</button>
-                    <ul class="popover-list" id="flowsExportMenu">
-                        <li><button type="button" class="menu-item" data-export="csv"
-                                    data-on:click="@post('{{ exportUrl }}csv&enhanced=' + ($_flows_enhanced ? 1 : 0), {{ slim }})">CSV</button></li>
-                        <li><button type="button" class="menu-item" data-export="json"
-                                    data-on:click="@post('{{ exportUrl }}json&enhanced=' + ($_flows_enhanced ? 1 : 0), {{ slim }})">JSON</button></li>
-                        <li><button type="button" class="menu-item" data-export="print"
-                                    data-on:click="window.nfsenFlowsList?.openPrint(); @post('{{ exportUrl }}print&enhanced=1', {{ slim }})">Print</button></li>
-                    </ul>
-                </sb-popover>
+                <sb-dropdown class="flows-export" id="flowsExport" label="Export the flows" placement="bottom-end"{{ f.count == 0 or f.result.lost or f.list is null ? ' disabled' }}
+                             data-on:sb-select="evt.detail.value === 'print' ? (window.nfsenFlowsList?.openPrint(), @post('{{ exportUrl }}print&enhanced=1', {{ slim }})) : @post('{{ exportUrl }}' + evt.detail.value + '&enhanced=' + ($_flows_enhanced ? 1 : 0), {{ slim }})">
+                    <span slot="trigger">Export</span>
+                    <button type="button" slot="item" value="csv">CSV</button>
+                    <button type="button" slot="item" value="json">JSON</button>
+                    <button type="button" slot="item" value="print">Print</button>
+                </sb-dropdown>
             {% endif %}
         </header>
         <div class="card-body stack">

@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/zweiundeins/starbase.git",
-  "commit": "3f2f6477d63f467acb2bc2ec37f823b311d0fbb2",
-  "describe": "v0.5.0-31-g3f2f647",
-  "catalog": "89e5b6091ff0",
+  "commit": "dcee915f365d1d7345a5c96ca047c646a1e3953d",
+  "describe": "v0.7.0-17-gdcee915",
+  "catalog": "3ab67576715a",
   "minFormat": "min2",
   "datastar": "Datastar v1.0.4 + Rocket beta.2 (patched: patches/rocket)",
   "datastarSha256": "f602fbe19d74e4c16c2f28b3a92c4934072400337372787561089c26a8b3e1db",
@@ -35,24 +35,37 @@
     },
     "relative-time": {
       "tag": "sb-relative-time",
-      "version": "bddc4ee86bf4",
+      "version": "57ef094449cb",
       "entry": "relative-time.js",
       "load": true,
       "files": {
         "README.md": "sha384-JoltUdu6EAw1L5ZiQh5Y83+HHGOOuZz8Uz32IcKcik5pDhtWMjPzLyXlBnwdyOA5",
         "manifest.json": "sha384-Gaz/jgDjnFrmanIAvATrEI5RBlptmLVz4cxhGHL1RmozDoGdG2Y7fnD8zzTSEUiI",
-        "relative-time.js": "sha384-IM7iFA38izpbFABDjeKZ6TQfnjHHLB5Oej+q9wAnba1BSSP6Pd+XzGyQq+Q2nH+S"
+        "relative-time.js": "sha384-xVnwOlWnUI9BqR4/ypr1W95di4eXSmfqY8BnhCaeAAgrdHiw0hI2oxAZYA0qEJCV"
+      }
+    },
+    "select": {
+      "tag": "sb-select",
+      "version": "45f09c8ea0b1",
+      "entry": "select.js",
+      "load": true,
+      "files": {
+        "README.md": "sha384-K0MA8CyoqNEVrrA5jn9xW5MZLOwTMZOmpauTCWoxXbeyhsuli0XtP/16bLtl57aU",
+        "manifest.json": "sha384-G3lWudzwLQE69vU6tf03usYyieSyFy1nKwxZrN2z84nQ+GBnuGlt6DsHRxqLyca1",
+        "select.js": "sha384-XyRAc68SawLESql8dkQnYfmjQ4OWoNVSvTXqoOmBWt+EogvKsfyx/2+K8Jteuo2x",
+        "select.ts": "sha384-8XfnTJSq81vXMy4hCoP7s41/adZK7An0+0ADGM6FFE9oXJ8k9z10Bd8jY/GxveVg"
       }
     },
     "virtual-scroll": {
       "tag": "sb-virtual-scroll",
-      "version": "75a2de30c7de",
+      "version": "a96851b69407",
       "entry": "virtual-scroll.js",
       "load": true,
       "files": {
         "README.md": "sha384-sFEg8OhJ27Yn25Fk3erGlHIefvaXnyc1+A+yFZ6UwenmiJYW65Z0BRXlV3A5468d",
         "manifest.json": "sha384-MSPoxwWUS17xpB4VEg+IPUgEJH5GQRXFEdRKzXf8gfkz3Xnpg8/ExoAra8ZTRPmm",
-        "virtual-scroll.js": "sha384-UKij9Z+27W7N1Cw7vQ1O+GEENY6p44mZH04JvV0ipfDi6N3mMbKvntiaq94eETog"
+        "virtual-scroll.js": "sha384-hLHFhyi62Xq5RPui61ijIuNhbTcrLbWM6XzTHqbqmfr7ZY0lpTpBngrks5rKreJB",
+        "virtual-scroll.ts": "sha384-rWWGQIOEdtUacsFfemXcsGIUQMpVIL0u1BU6W97PLi1gJ1KUuFJweiaAQAtXpVjd"
       }
     }
   }

@@ -1,7 +1,7 @@
 import { rocket, startPeeking, stopPeeking } from 'datastar'
 
 // A host method may be called from an effect: its reads must not subscribe it.
-const peek = (fn) => {
+const peek = <T>(fn: () => T): T => {
 	startPeeking()
 	try {
 		return fn()
@@ -13,11 +13,16 @@ const peek = (fn) => {
 // One ElementInternals per element: attachInternals() works once, and
 // onFirstRender runs again when the element is re-attached. Its custom state
 // (:state(loading)) survives morphs.
-const internals = new WeakMap()
-const internalsOf = (host) => internals.get(host) ?? internals.set(host, host.attachInternals()).get(host)
+const internals = new WeakMap<HTMLElement, ElementInternals>()
+const internalsOf = (host: HTMLElement) => internals.get(host) ?? internals.set(host, host.attachInternals()).get(host)!
 
 // Items with something to focus take Tab themselves; otherwise the scroller does.
 const FOCUSABLE = 'a[href], button, input, select, textarea, summary, [tabindex], [contenteditable]'
+
+// sb-window's detail: the window of items to send, from the item at offset.
+type WindowRequest = { offset: number; count: number }
+// scrollToIndex's options: where the item ends up in the view.
+type ScrollOptions = { block?: 'start' | 'nearest' | 'end' }
 
 // Notes on the styles, kept here where the minifier drops them:
 // - The scroller is contained (strict): a new window never lays out the page.
@@ -104,7 +109,8 @@ rocket('sb-virtual-scroll', {
 			</div>
 		</div>
 	`,
-	onFirstRender: ({ $$, action, adoptStyles, cleanup, defineHostProp, emit, host, props, refs: { scroller, header, items } }) => {
+	onFirstRender: ({ $$, action, adoptStyles, cleanup, defineHostProp, emit, host, props, refs }) => {
+		const { scroller, header, items } = refs as { scroller: HTMLElement; header: HTMLElement; items: HTMLSlotElement }
 		adoptStyles(host, styles)
 		const states = internalsOf(host).states
 		// view: the height the rows get (the scroller minus the header). have: the
@@ -112,10 +118,10 @@ rocket('sb-virtual-scroll', {
 		// at `sent`. cap: the most items the server sends at once, once it sent
 		// fewer than asked for before the end of the list (0: no cap seen).
 		let view = 0, have = 0, last = '', lastCount = 0, sent = 0, wait = false, timer = 0, cap = 0
-		const rows = (n) => Math.ceil(n / props.columns)
+		const rows = (n: number) => Math.ceil(n / props.columns)
 		// Buffer rows on each side of v rows in view: with a cap, as many as fit
 		// in it around the view, so a window still covers the view.
-		const buffer = (v) => {
+		const buffer = (v: number) => {
 			const b = Math.ceil(props.buffer / props.itemSize)
 			return cap ? Math.min(b, Math.max(0, Math.floor((rows(cap) - v) / 2))) : b
 		}
@@ -126,13 +132,13 @@ rocket('sb-virtual-scroll', {
 		// A <template data-for> that renders the items is no item.
 		const kids = () => items.assignedElements().filter((el) => el.localName != 'template')
 		// In order, also those in components' open shadow roots (sb-checkbox's box).
-		const focusables = (el, out = []) => {
+		const focusables = (el: Element, out: Element[] = []) => {
 			if (el.matches(FOCUSABLE)) out.push(el)
 			for (const c of el.shadowRoot ? [...el.shadowRoot.children, ...el.children] : el.children) focusables(c, out)
 			return out
 		}
 		const holds = () => {
-			const a = host.getRootNode().activeElement
+			const a = (host.getRootNode() as Document | ShadowRoot).activeElement
 			return a === host || host.contains(a)
 		}
 		const tab = () => (host.querySelector(FOCUSABLE) ? parked && -1 : 0)
@@ -154,7 +160,7 @@ rocket('sb-virtual-scroll', {
 
 		// The window for the scroll position: the visible rows plus the buffer on
 		// both sides, clamped to the list.
-		const want = () => {
+		const want = (): [number, number] => {
 			const size = props.itemSize, v = Math.ceil(view / size) + 1, b = buffer(v)
 			const r = Math.max(0, Math.min(Math.round(scroller.scrollTop / size) - b, rows(props.total) - v - 2 * b))
 			return [r * props.columns, (v + 2 * b) * props.columns]
@@ -182,11 +188,11 @@ rocket('sb-virtual-scroll', {
 			wait = true
 			sent = performance.now()
 			states.add('loading')
-			emit('sb-window', { offset, count: n })
+			emit<WindowRequest>('sb-window', { offset, count: n })
 		}
 
 		const park = () => parked || ((parked = true), ($$.tab = tab()), scroller.focus({ preventScroll: true }))
-		const takes = (el) => (el.focus({ preventScroll: true }), el.getRootNode().activeElement === el)
+		const takes = (el: Element) => ((el as HTMLElement).focus({ preventScroll: true }), (el.getRootNode() as Document | ShadowRoot).activeElement === el)
 		// A frame after a window, so a page that moves the focus itself (sb-data-table) goes first:
 		// back to the same place in the item now at that index, or to the scroller while none is.
 		const refocus = () => {
@@ -199,11 +205,11 @@ rocket('sb-virtual-scroll', {
 			const item = kids()[at - props.offset]
 			if (!item) return park()
 			// The focus is in that item already: where it was, or where the page put it.
-			if (item.contains(host.getRootNode().activeElement)) return
+			if (item.contains((host.getRootNode() as Document | ShadowRoot).activeElement)) return
 			// The same place, or the nearest element before it, then after it, that takes the focus.
 			const all = focusables(item), i = Math.max(0, Math.min(place, all.length - 1))
 			// Nothing there takes it: the scroller, not an element the morph left showing another item.
-			if (![...all.slice(0, i + 1).reverse(), ...all.slice(i + 1)].some(takes)) (at = -1), item.contains(host.getRootNode().activeElement) || park()
+			if (![...all.slice(0, i + 1).reverse(), ...all.slice(i + 1)].some(takes)) (at = -1), item.contains((host.getRootNode() as Document | ShadowRoot).activeElement) || park()
 		}
 
 		sync()
@@ -211,22 +217,22 @@ rocket('sb-virtual-scroll', {
 		// Named apart from what a page may bind on the host: an action there
 		// finds the host's own actions first.
 		action('trackFocus', ({ evt }) => {
-			const path = evt.composedPath(), k = path.indexOf(items)
+			const path = evt!.composedPath(), k = path.indexOf(items)
 			if (path[0] === scroller) return
-			const item = path[k - 1], i = k > 0 ? kids().indexOf(item) : -1
+			const item = path[k - 1] as Element, i = k > 0 ? kids().indexOf(item) : -1
 			at = i < 0 ? -1 : props.offset + i
 			if (i < 0) return
 			// The innermost one on the path: the link, not a row around it with a tabindex.
 			const all = focusables(item)
-			place = all.indexOf(path.find((el) => all.includes(el)))
+			place = all.indexOf(path.find((el) => all.includes(el as Element)) as Element)
 		})
 		// Tab between a window and its refocus would move on from an element now showing another item.
-		action('keyFirst', ({ evt }) => evt.key === 'Tab' && frame && refocus())
+		action('keyFirst', ({ evt }) => (evt as KeyboardEvent).key === 'Tab' && frame && refocus())
 		action('leaveFocus', ({ evt }) => {
-			const t = evt.target, to = evt.relatedTarget
-			const unpark = () => parked && host.shadowRoot.activeElement !== scroller && ((parked = false), ($$.tab = tab()))
+			const t = evt!.target as Element, to = (evt as FocusEvent).relatedTarget as Node | null
+			const unpark = () => parked && host.shadowRoot!.activeElement !== scroller && ((parked = false), ($$.tab = tab()))
 			if (t === scroller && to) unpark()
-			if (to) return void (host.contains(to) || host.shadowRoot.contains(to) || (at = -1))
+			if (to) return void (host.contains(to) || host.shadowRoot!.contains(to) || (at = -1))
 			// No related target: a click on the page, a window switch (the focus stays), or the morph removing
 			// the element. Gone once the morph is done: keep the item and refocus, also when the morph left the host as it was.
 			queueMicrotask(() => (t === scroller && unpark(), t.isConnected ? holds() || (at = -1) : host.isConnected && (frame ||= requestAnimationFrame(refocus))))
@@ -263,7 +269,7 @@ rocket('sb-virtual-scroll', {
 		})
 
 		defineHostProp('scrollToIndex', {
-			value: (i, { block = 'start' } = {}) =>
+			value: (i: number, { block = 'start' }: ScrollOptions = {}) =>
 				peek(() => {
 					const size = props.itemSize, y = Math.floor(i / props.columns) * size, top = scroller.scrollTop, end = y + size - view
 					scroller.scrollTo({ top: block === 'end' ? end : block !== 'nearest' || y < top ? y : Math.max(top, end) })

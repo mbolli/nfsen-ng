@@ -155,3 +155,33 @@ sb-popover.range-menu::part(panel) {
         display: none;
     }
 }
+
+/* The sources picker (sb-select) at the height of the bar's other controls. Nothing picked means every
+   source, so its placeholder "All sources" is a state, not a hint, and reads like a value. */
+.controls-bar .sources-select {
+    inline-size: 13rem;
+    font-size: var(--font-size-00);
+}
+
+/* 1.625rem is the bar's other controls; reserved before the component loads, so the bar keeps its height. */
+.controls-bar .sources-select:not(:defined) {
+    display: inline-block;
+    block-size: 1.625rem;
+}
+
+.sources-select::part(control) {
+    min-block-size: 1.625rem;
+    padding-block: 0;
+}
+
+.sources-select::part(input) {
+    block-size: 1.5rem;
+}
+
+.sources-select::part(input)::placeholder {
+    color: var(--text-1);
+}
+
+.sources-select::part(listbox) {
+    min-inline-size: 18rem;
+}

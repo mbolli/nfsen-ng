@@ -52,25 +52,26 @@ async function recordedRuns(after = null) {
     }
 }
 
-/** A real change of the source set: one box less with two sources or more, else 'any' for the list and back. */
+/**
+ * A real change of the source set: with two sources or more, a pick of the last one in the sources picker (an
+ * sb-select); else 'any' for the list and back, posted the way the bar posts it.
+ */
 async function changeSources(page) {
-    const boxes = await page.evaluate(`document.querySelectorAll('#sourcesMenuList input[name=globalSource]').length`);
-    if (boxes > 1) {
-        await page.evaluate(`document.querySelector('#sourcesMenu .menu-toggle').click()`);
-        await page.waitFor(`!!document.querySelector('#sourcesMenuList input[name=globalSource]')?.getClientRects().length`, {
-            label: 'the sources menu',
-        });
-        await page.evaluate(`[...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')].at(-1).click()`);
-        await page.evaluate(`document.querySelector('#sourcesMenu .menu-toggle').click()`);
+    const select = "document.getElementById('sourcesSelect')";
+    const configured = JSON.parse(await page.evaluate(`${select}.getAttribute('options')`)).map((o) => o.value);
+    if (configured.length > 1) {
+        await page.evaluate(`${select}.shadowRoot.querySelector('input').click()`);
+        await page.waitFor(`${select}.shadowRoot.querySelector('[role=listbox]').matches(':popover-open')`, { label: 'the sources list' });
+        await page.evaluate(`[...${select}.shadowRoot.querySelectorAll('[role=option]')].at(-1).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })), true`);
+        await page.evaluate(`${select}.shadowRoot.querySelector('input').blur()`);
         return;
     }
     const change = await page.evaluate(`(async function(){
         var root = (await import('datastar')).root;
         var key = Object.keys(root).find(function(k){ return k.startsWith('graph_sources____'); });
         var before = JSON.stringify(root[key]);
-        var configured = [...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')].map(function(b){ return b.value; });
-        root[key] = root[key].includes('any') ? configured : ['any'];
-        document.getElementById('sourcesMenuList').dispatchEvent(new Event('change', { bubbles: true }));
+        root[key] = root[key].includes('any') ? ${JSON.stringify(configured)} : ['any'];
+        document.getElementById('protocolSelect').dispatchEvent(new Event('change', { bubbles: true }));
         return [before, JSON.stringify(root[key])];
     })()`);
     assert.notEqual(change[1], change[0], `graph_sources changed: ${change.join(' -> ')}`);

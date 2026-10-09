@@ -114,35 +114,15 @@
             </div>
         </sb-popover>
 
-        {# Unticking All sources starts an empty pick (#176): nothing posts while no source is ticked, and
-           closing the menu with none picks all again. Every post goes through the list's debounced change. #}
-        <sb-popover id="sourcesMenu" class="sources-menu" label="Sources" placement="bottom-start"
-                    data-on:sb-close="!{{ gs }}.length && ({{ gs }} = {{ allSources }}, document.getElementById('sourcesMenuList').dispatchEvent(new Event('change')))">
-            <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
-                    data-preserve-attr="aria-expanded aria-haspopup" title="Sources">
-                <span data-ignore-morph data-text="{{ allPicked }} ? 'All sources' : {{ gs }}.length ? {{ allSources }}.filter(s => {{ gs }}.includes(s)).length + ' of {{ sources|length }} sources' : 'No sources'">All sources</span>
-            </button>
-            <div class="popover-list sources-list" id="sourcesMenuList"
-                 data-on:change__debounce.400ms="{{ gs }}.length && @post('{{ applyGlobals.url() }}')">
-                {% if sources|length > 1 %}
-                    <label class="menu-item choice">
-                        <input type="checkbox" id="sourcesAll" data-effect="el.checked = {{ allPicked }}"
-                               data-on:change="{{ gs }} = el.checked ? {{ allSources }} : []">
-                        All sources
-                    </label>
-                    <div class="menu-sep" role="separator"></div>
-                    <p class="help sources-hint" data-show="!{{ gs }}.length" style="display: none">Tick the sources to show. Closing with none picks all.</p>
-                {% endif %}
-                {% for source in sources %}
-                    <label class="menu-item choice"{% if shell.sourceNames[source] is defined %} title="{{ source }}"{% endif %}>
-                        <input type="checkbox" name="globalSource" value="{{ source }}"
-                               data-effect="el.checked = {{ allPicked }} || {{ gs }}.includes(el.value)"
-                               data-on:change="const all = {{ allSources }}; const picked = {{ gs }}.includes('any') ? all : all.filter(s => {{ gs }}.includes(s)); const next = el.checked ? all.filter(s => s === el.value || picked.includes(s)) : picked.filter(s => s !== el.value); {{ gs }} = next">
-                        {{ shell.sourceNames[source] ?? source }}
-                    </label>
-                {% endfor %}
-            </div>
-        </sb-popover>
+        {# Sources (#176, #177): nothing picked means every source, so Select all and Clear both send [], and the
+           server keeps that as all. Every source picked is shown as none, since an unchanged value attribute won't. A named source shows its name, with the source as the text search also matches. #}
+        {% set sourceOptions = sources|map(s => shell.sourceNames[s] is defined ? {value: s, label: shell.sourceNames[s], description: s} : {value: s, label: s}) %}
+        <sb-select id="sourcesSelect" class="sources-select" multiple searchable clearable actions
+                   placeholder="All sources" summary="{count} of {total} sources" title="Sources"
+                   options="{{ sourceOptions|json_encode }}"
+                   data-attr:value="{{ allPicked }} ? '[]' : JSON.stringify({{ allSources }}.filter(s => {{ gs }}.includes(s)))"
+                   data-preserve-attr="value"
+                   data-on:sb-change__debounce.400ms="const all = evt.detail.value.length === {{ sources|length }}; all && (el.value = []); {{ gs }} = all ? [] : evt.detail.value; @post('{{ applyGlobals.url() }}')"></sb-select>
 
         <select id="protocolSelect" class="protocol-select" aria-label="Protocol" title="Protocol"
                 {{ bind(protocol) }} data-on:change="@post('{{ applyGlobals.url() }}')">

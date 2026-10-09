@@ -1,4 +1,15 @@
-import { rocket } from 'datastar'
+import { rocket, startPeeking, stopPeeking } from 'datastar'
+
+// observeProps callbacks run inside the effect that set the attribute (a
+// data-attr binding): reads in them must not subscribe it.
+const peek = (fn) => {
+	startPeeking()
+	try {
+		return fn()
+	} finally {
+		stopPeeking()
+	}
+}
 
 // One ticker for every instance on the page: each registers when its text
 // next changes, and only those are recomputed.
@@ -152,7 +163,7 @@ rocket('sb-relative-time', {
 			w.next = props.sync ? next : Infinity
 		}
 		w.update()
-		observeProps(() => w.update())
+		observeProps(() => peek(() => w.update()))
 		cleanup(watch(w))
 	},
 	render: ({ html }) => html`<time part="time" data-attr:datetime="$$iso || null" data-attr:title="$$title || null" data-text="$$text"></time>`,

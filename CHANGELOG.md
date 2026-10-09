@@ -7,11 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Sources can have names** ([#177](https://github.com/mbolli/nfsen-ng/issues/177), requested by [@hawk128](https://github.com/hawk128)). `NFSEN_SOURCES=10-20-100-3:dc1rt310,...` (or `'source' => 'name'` in `settings.php`) shows the name in the sources menu, the graph legend, the alert rules and notifications, Health and Settings, which is what makes the directories `nfcapd -M` names after exporter addresses readable. The source itself stays what queries and stored data use.
+- **Sources can have names, and a searchable picker** ([#177](https://github.com/mbolli/nfsen-ng/issues/177), requested by [@hawk128](https://github.com/hawk128)). `NFSEN_SOURCES=10-20-100-3:dc1rt310,...` (or `'source' => 'name'` in `settings.php`) shows the name in the sources picker, the graph legend, the alert rules and notifications, Health and Settings, which is what makes the directories `nfcapd -M` names after exporter addresses readable. The source itself stays what queries and stored data use. The sources menu is now a picker you can type in: it finds a source by name or by source, picks several, has **Select all** and **Clear**, and reads *All sources* or *3 of 84 sources* when closed.
 
 ### Fixed
 
-- **All sources could not be unticked** ([#176](https://github.com/mbolli/nfsen-ng/issues/176), reported by [@hawk128](https://github.com/hawk128)), so picking a few of many sources meant unticking the rest one by one. Unticking it now clears the list to pick from; nothing is queried while no source is ticked, and closing the menu with none picks all again.
+- **All sources could not be unticked** ([#176](https://github.com/mbolli/nfsen-ng/issues/176), reported by [@hawk128](https://github.com/hawk128)), so picking a few of many sources meant unticking the rest one by one. The new sources picker starts from all and picks only what you choose; **Clear** goes back to every source.
 
 ## [1.0.0-beta.6] - 2026-10-05
 

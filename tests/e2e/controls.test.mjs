@@ -9,13 +9,15 @@ import { BASE, withPage } from './lib/cdp.mjs';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const SKIP_MUTATING = ['1', 'true', 'yes'].includes(String(process.env.E2E_SKIP_MUTATING ?? '').toLowerCase());
 
-const POPOVERS = ['rangeMenu', 'rangeDisplay', 'sourcesMenu'];
+const POPOVERS = ['rangeMenu', 'rangeDisplay'];
 const RANGE = "document.getElementById('rangeMenu')";
 const RANGE_TOGGLE = "document.querySelector('#rangeMenu .menu-toggle')";
 const DISPLAY = "document.getElementById('rangeDisplay')";
 const DISPLAY_TOGGLE = "document.querySelector('#rangeDisplay .menu-toggle')";
-const SOURCES = "document.getElementById('sourcesMenu')";
-const SOURCES_TOGGLE = "document.querySelector('#sourcesMenu .menu-toggle')";
+// The sources picker is an sb-select (#177): its field, list and rows live in its shadow root.
+const SOURCES = "document.getElementById('sourcesSelect')";
+const SOURCES_INPUT = `${SOURCES}.shadowRoot.querySelector('input')`;
+const SOURCES_ROWS = `[...${SOURCES}.shadowRoot.querySelectorAll('[role=option]')]`;
 // Actions that read capture files; opening a popover or changing the range posts none of them.
 const CAPTURE_READS = ['stats-actions', 'flow-actions', 'conversations-run', 'run-filtered-graph', 'talkers-panel', 'overview-topn-run'];
 
@@ -142,9 +144,9 @@ async function oneRow() {
             );
             assert.deepEqual(
                 await page.evaluate(
-                    `['rangeMenuList', 'rangeDisplayList', 'sourcesMenuList'].map(function(id){ var el = document.getElementById(id); return el.parentElement.localName + ' ' + el.hasAttribute('popover'); })`
+                    `['rangeMenuList', 'rangeDisplayList'].map(function(id){ var el = document.getElementById(id); return el.parentElement.localName + ' ' + el.hasAttribute('popover'); })`
                 ),
-                ['sb-popover false', 'sb-popover false', 'sb-popover false'],
+                ['sb-popover false', 'sb-popover false'],
                 'the lists keep their ids in the popovers, without a popover attribute of their own'
             );
 
@@ -198,7 +200,7 @@ async function hold(page, urlPattern) {
     };
 }
 
-/** Until sb-popover is defined, the bar shows the three triggers and none of their panels, at its final height. */
+/** Until sb-popover is defined, the bar shows the two triggers and none of their panels, at its final height. */
 async function beforeDefinition() {
     await withPage(
         async (page) => {
@@ -209,7 +211,7 @@ async function beforeDefinition() {
                     height: Math.round(document.querySelector('.controls-bar').getBoundingClientRect().height),
                     chip: !status.hidden,
                     triggers: ${JSON.stringify(POPOVERS)}.filter(function(id){ return document.querySelector('#' + id + ' [slot="trigger"]').checkVisibility(); }),
-                    shown: ['#rangeMenuList', '#rangeDisplayList', '#sourcesMenuList', '#rangeFrom', '#customDurationValue', '[data-range-preset]', '#sourcesMenuList input']
+                    shown: ['#rangeMenuList', '#rangeDisplayList', '#rangeFrom', '#customDurationValue', '[data-range-preset]']
                         .filter(function(sel){ return document.querySelector(sel).checkVisibility(); }),
                 };
             })()`;
@@ -233,7 +235,7 @@ async function beforeDefinition() {
             );
             await page.waitForBoot();
             await page.waitFor(`${POPOVERS.map((id) => `typeof document.getElementById('${id}').show === 'function'`).join(' && ')}`, {
-                label: 'the three popovers to be defined',
+                label: 'the two popovers to be defined',
             });
             const late = await page.evaluate(looks);
             if (late.chip === early.chip) assert.equal(late.height, early.height, 'the bar keeps its height once sb-popover is defined');
@@ -374,60 +376,6 @@ async function keysRightAway() {
             await press(page, 'Escape', 'Escape', 27);
             assert.deepEqual(await page.evaluate(popoverState('rangeDisplay')), { open: false, expanded: 'false', focus: 'trigger' });
 
-            // Space opens the sources on their first box, and every box shows graph_sources.
-            await page.evaluate(`${SOURCES_TOGGLE}.focus()`);
-            await press(page, ' ', 'Space', 32);
-            const boxes = `[...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')]`;
-            const sources = await page.evaluate(`({
-                state: ${popoverState('sourcesMenu')},
-                first: document.activeElement === document.querySelector('#sourcesMenuList input'),
-                boxes: ${boxes}.map(function(b){ return [b.value, b.checked]; }),
-            })`);
-            assert.deepEqual(
-                { open: sources.state.open, expanded: sources.state.expanded, first: sources.first },
-                { open: true, expanded: 'true', first: true },
-                'before any sync, Space opens the sources on their first box'
-            );
-            const gs = await page.signalValue('graph_sources');
-            const all = sources.boxes.map(([value]) => value);
-            const every = gs.includes('any') || all.every((s) => gs.includes(s));
-            assert.deepEqual(
-                sources.boxes,
-                all.map((s) => [s, every || gs.includes(s)]),
-                `before any sync, the boxes show graph_sources ${JSON.stringify(gs)}`
-            );
-
-            // Unticking the last ticked box runs its own handler, and the list posts once the ticking stops.
-            const untick = await page.evaluate(`(function(){
-                var ticked = ${boxes}.filter(function(b){ return b.checked; });
-                var box = ticked[ticked.length - 1];
-                box.focus();
-                return { value: box.value, alone: ticked.length === 1 };
-            })()`);
-            const tick = async (label) => {
-                const posted = log.count('apply-globals');
-                await press(page, ' ', 'Space', 32);
-                for (const start = Date.now(); log.count('apply-globals') === posted; await sleep(100)) {
-                    if (Date.now() - start > 3000) throw new Error(`before any sync, ${label} posted no apply-globals`);
-                }
-            };
-            if (untick.alone) {
-                // The last source may go too (#176): nothing posts until one is ticked again.
-                const posted = log.count('apply-globals');
-                await press(page, ' ', 'Space', 32);
-                await sleep(700);
-                assert.equal(await page.evaluate(`document.activeElement.checked`), false, 'before any sync, the last source can be unticked');
-                assert.deepEqual(await page.signalValue('graph_sources'), [], 'before any sync, graph_sources is empty');
-                assert.equal(log.count('apply-globals'), posted, 'before any sync, an empty pick posts nothing');
-                await tick(`ticking ${untick.value} again`);
-            } else {
-                await tick(`unticking ${untick.value}`);
-                const gsAfter = await page.signalValue('graph_sources');
-                assert.ok(!gsAfter.includes(untick.value) && gsAfter.length >= 1, `before any sync, ${untick.value} left graph_sources`);
-                await tick(`ticking ${untick.value} again`);
-            }
-            await press(page, 'Escape', 'Escape', 27);
-            assert.deepEqual(await page.evaluate(popoverState('sourcesMenu')), { open: false, expanded: 'false', focus: 'trigger' });
             assert.equal(
                 await page.evaluate(`document.querySelector('.controls-bar').hasAttribute('data-e2e-unsynced')`),
                 true,
@@ -455,13 +403,12 @@ async function onPhone() {
             await page.waitFor(
                 `document.querySelector('.controls-bar').dataset.more === 'open' && ${DISPLAY_TOGGLE}.getClientRects().length > 0`,
                 {
-                    label: 'More controls to show the absolute range and the sources',
+                    label: 'More controls to show the absolute range',
                 }
             );
             for (const [label, id] of [
                 ['Range', 'rangeMenu'],
                 ['Absolute range', 'rangeDisplay'],
-                ['Sources', 'sourcesMenu'],
             ]) {
                 const trigger = `document.querySelector('#${id} [slot="trigger"]')`;
                 const before = await page.evaluate(popoverBoxes(id));
@@ -708,11 +655,9 @@ export default async function controlsTest() {
         await page.waitFor(`document.activeElement === ${DISPLAY_TOGGLE}`, { label: 'focus back on the range display trigger' });
         assert.deepEqual(await page.evaluate(popoverState('rangeDisplay')), closedOnTrigger);
 
-        // Space opens the absolute range on From with its prefill, Enter the sources on their first box; the
-        // other key of each runs before any sync, in presetRightAway.
+        // Space opens the absolute range on From with its prefill; Enter runs before any sync, in presetRightAway.
         for (const [label, host, toggle, first, key, code, keyCode] of [
             ['absolute range', DISPLAY, DISPLAY_TOGGLE, `document.getElementById('rangeFrom')`, ' ', 'Space', 32],
-            ['sources', SOURCES, SOURCES_TOGGLE, `document.querySelector('#sourcesMenuList input')`, 'Enter', 'Enter', 13],
         ]) {
             await page.evaluate(`document.getElementById('rangeFrom').value = ''; ${toggle}.focus()`);
             await press(page, key, code, keyCode);
@@ -858,82 +803,45 @@ export default async function controlsTest() {
         });
         await page.setRangePreset('24h');
 
-        // Sources: every box can be unticked (#176), an empty pick posts nothing, ticking keeps the popover open.
-        await page.evaluate(`${SOURCES_TOGGLE}.click()`);
-        await page.waitFor(
-            `${SOURCES}.open === true && document.querySelector('#sourcesMenuList input[name=globalSource]')?.checkVisibility()`,
-            {
-                label: 'the sources list',
-            }
-        );
-        assert.equal(await page.evaluate(`document.activeElement.type`), 'checkbox', 'the focus is on the first source box');
-        const before = await page.signalValue('graph_sources');
-        log.clear();
-        await page.evaluate(
-            `[...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')].forEach(function(box){ if (box.checked) box.click(); })`
-        );
-        const left = await page.evaluate(
-            `[...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')].filter(function(b){ return b.checked; }).length`
-        );
-        assert.equal(left, 0, 'every source can be unticked');
-        await sleep(700);
-        assert.equal(log.count('apply-globals'), 0, 'an empty pick posts nothing');
-        assert.equal(await page.evaluate(`${SOURCES_TOGGLE}.textContent.trim()`), 'No sources', 'the toggle says no source is picked');
-        assert.equal(await page.evaluate(`document.querySelector('#sourcesMenuList .sources-hint')?.checkVisibility() ?? true`), true, 'the menu says how to go on');
-        await page.evaluate(`document.querySelector('#sourcesMenuList input[name=globalSource]').click()`);
-        await sleep(700);
-        assert.ok(log.count('apply-globals') >= 1, 'a sources change posts apply-globals once the ticking stops');
-        assert.equal(await page.evaluate(`${SOURCES}.open`), true, 'ticking the sources keeps the popover open');
-        const after = await page.signalValue('graph_sources');
-        assert.ok(Array.isArray(after) && after.length >= 1, `graph_sources keeps a source, got ${JSON.stringify(after)}`);
-        // A sync keeps the sources open, the boxes as they were and the focus on the last one.
-        const boxes = `[...document.querySelectorAll('#sourcesMenuList input[type=checkbox]')]`;
-        const ticked = await page.evaluate(`(function(){
-            var all = ${boxes};
-            window.__e2eBox = all[all.length - 1];
-            window.__e2eBox.focus();
-            return all.map(function(b){ return b.checked; });
-        })()`);
-        await syncMorphing('sourcesMenuList');
-        assert.deepEqual(
-            await page.evaluate(`(function(){
-                var s = ${popoverState('sourcesMenu')};
-                return { open: s.open, expanded: s.expanded, same: document.activeElement === window.__e2eBox && window.__e2eBox.isConnected, ticked: ${boxes}.map(function(b){ return b.checked; }) };
-            })()`),
-            { open: true, expanded: 'true', same: true, ticked },
-            'a sync keeps the sources open with their boxes and the focus'
-        );
-        await page.evaluate(`(function(){
-            var all = document.getElementById('sourcesAll');
-            if (all) { if (!all.checked) all.click(); return; }
-            [...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')].forEach(function(box){ if (!box.checked) box.click(); });
-        })()`);
+        // Sources (#176, #177): an sb-select. Nothing picked means every source; a pick posts once, and Clear and
+        // Select all both go back to every source.
+        const configured = JSON.parse(await page.evaluate(`${SOURCES}.getAttribute('options')`)).map((o) => o.value);
+        const isAll = (v) => v.length === 0 || v.includes('any') || configured.every((s) => v.includes(s));
+        const picker = () =>
+            page.evaluate(`({
+                placeholder: ${SOURCES_INPUT}.placeholder,
+                summary: ${SOURCES}.shadowRoot.querySelector('[part~="summary"]')?.textContent.trim() ?? '',
+                open: ${SOURCES}.shadowRoot.querySelector('[role=listbox]').matches(':popover-open'),
+            })`);
+        const choose = async (index, label) => {
+            log.clear();
+            await page.evaluate(`${SOURCES_ROWS}[${index}].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })), true`);
+            await sleep(800);
+            assert.equal(log.count('apply-globals'), 1, `${label} posts apply-globals once`);
+        };
+        assert.ok(isAll(await page.signalValue('graph_sources')), 'every source to start with');
+        assert.equal((await picker()).placeholder, 'All sources', 'nothing picked reads All sources');
+        await page.evaluate(`${SOURCES_INPUT}.click()`);
+        await page.waitFor(`${SOURCES}.shadowRoot.querySelector('[role=listbox]').matches(':popover-open')`, { label: 'the sources list' });
+        const rows = await page.evaluate(`${SOURCES_ROWS}.map(function(r){ return r.textContent.trim().replace(/\\s+/g, ' '); })`);
+        assert.equal(rows.length, configured.length + 2, `Select all, Clear and one row per source: ${JSON.stringify(rows)}`);
+        assert.deepEqual(rows.slice(0, 2), ['Select all', 'Clear']);
+        await choose(2, 'a pick');
+        if (configured.length > 1) {
+            assert.deepEqual(await page.signalValue('graph_sources'), [configured[0]], 'the pick is the source set');
+            assert.equal((await picker()).summary, `1 of ${configured.length} sources`, 'the closed field counts the picks');
+            await choose(1, 'Clear');
+            assert.ok(isAll(await page.signalValue('graph_sources')), 'Clear picks every source again');
+            await choose(2, 'a pick');
+            await choose(0, 'Select all');
+            assert.ok(isAll(await page.signalValue('graph_sources')), 'Select all picks every source');
+        } else {
+            assert.ok(isAll(await page.signalValue('graph_sources')), 'the only source picked is every source');
+        }
+        assert.equal((await picker()).open, true, 'picking keeps the list open');
         await press(page, 'Escape', 'Escape', 27);
-        await page.waitFor(`${SOURCES}.open === false && document.activeElement === ${SOURCES_TOGGLE}`, {
-            label: 'Escape to close the sources onto their trigger',
-        });
-        await sleep(700);
-        assert.deepEqual(
-            (await page.signalValue('graph_sources')).slice().sort(),
-            before.includes('any') ? after.slice().sort() : before.slice().sort()
-        );
-
-        // Closing the sources with none ticked picks all again and posts it (#176).
-        await page.evaluate(`${SOURCES_TOGGLE}.click()`);
-        await page.waitFor(`${SOURCES}.open === true`, { label: 'the sources list again' });
-        await page.evaluate(`(function(){
-            var all = document.getElementById('sourcesAll');
-            if (all) { if (all.checked) all.click(); return; }
-            [...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')].forEach(function(box){ if (box.checked) box.click(); });
-        })()`);
-        assert.deepEqual(await page.signalValue('graph_sources'), [], 'unticking All sources leaves none picked');
-        log.clear();
-        await press(page, 'Escape', 'Escape', 27);
-        await page.waitFor(`${SOURCES}.open === false`, { label: 'Escape with no source picked' });
-        await sleep(700);
-        const configured = await page.evaluate(`[...document.querySelectorAll('#sourcesMenuList input[name=globalSource]')].map(function(b){ return b.value; })`);
-        assert.deepEqual((await page.signalValue('graph_sources')).slice().sort(), configured.slice().sort(), 'closing with none picks every source');
-        assert.equal(log.count('apply-globals'), 1, 'closing with none posts the full pick once');
+        await page.waitFor(`!${SOURCES}.shadowRoot.querySelector('[role=listbox]').matches(':popover-open')`, { label: 'Escape closes the sources list' });
+        await page.waitFor(`${SOURCES_INPUT}.placeholder === 'All sources' && ${SOURCES_INPUT}.value === ''`, { label: 'All sources once the server agrees' });
 
         // Protocol and unit post apply-globals, and the unit follows the arrow keys.
         log.clear();

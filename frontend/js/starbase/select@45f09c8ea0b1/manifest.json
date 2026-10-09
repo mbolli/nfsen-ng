@@ -1,0 +1,249 @@
+{
+  "tag": "sb-select",
+  "props": [
+    {
+      "name": "options",
+      "attribute": "options",
+      "type": "json",
+      "default": [],
+      "required": false,
+      "docs": {
+        "description": "Choices: [\"A\", \"B\"] or [{value, label, description?, disabled?}]."
+      }
+    },
+    {
+      "name": "results",
+      "attribute": "results",
+      "type": "json",
+      "default": [],
+      "required": false,
+      "docs": {
+        "description": "Remote: the results of the current search, in the same shape. The server sets it (a signal patch through data-attr, or a morph)."
+      }
+    },
+    {
+      "name": "value",
+      "attribute": "value",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "The value; for multiple, a JSON array or values separated by commas. A new value from the server replaces it; the live value is the value property."
+      }
+    },
+    {
+      "name": "label",
+      "attribute": "label",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Visible label."
+      }
+    },
+    {
+      "name": "placeholder",
+      "attribute": "placeholder",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Placeholder text."
+      }
+    },
+    {
+      "name": "multiple",
+      "attribute": "multiple",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Pick several; they show as chips."
+      }
+    },
+    {
+      "name": "searchable",
+      "attribute": "searchable",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Type to filter the options (in the browser)."
+      }
+    },
+    {
+      "name": "remote",
+      "attribute": "remote",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Type to search on the server: emits sb-search; the server answers with results."
+      }
+    },
+    {
+      "name": "delay",
+      "attribute": "delay",
+      "type": "number",
+      "default": 250,
+      "required": false,
+      "docs": {
+        "description": "Remote: debounce before sb-search, in ms."
+      }
+    },
+    {
+      "name": "minChars",
+      "attribute": "min-chars",
+      "type": "number",
+      "default": 1,
+      "required": false,
+      "docs": {
+        "description": "Remote: characters needed before searching."
+      }
+    },
+    {
+      "name": "loading",
+      "attribute": "loading",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Show that results are on their way (bind it to data-indicator)."
+      }
+    },
+    {
+      "name": "clearable",
+      "attribute": "clearable",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Show a button that clears the value."
+      }
+    },
+    {
+      "name": "disabled",
+      "attribute": "disabled",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Disable the control."
+      }
+    },
+    {
+      "name": "name",
+      "attribute": "name",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Name reported in sb-change (e.g. the field of a command) and submitted with its form."
+      }
+    },
+    {
+      "name": "summary",
+      "attribute": "summary",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Multiple: a text shown instead of chips, e.g. \"{count} of {total} sources\". {count} is the number picked, {more} those not shown as chips, {total} the options (or the total prop). With max-chips, it shows only beyond that many picks, after the chips."
+      }
+    },
+    {
+      "name": "maxChips",
+      "attribute": "max-chips",
+      "type": "number",
+      "default": -1,
+      "required": false,
+      "docs": {
+        "description": "Multiple: show at most this many chips on one line, then a \"+K\" chip (or the summary). 0 shows only the count; -1 (the default) shows every chip and wraps."
+      }
+    },
+    {
+      "name": "total",
+      "attribute": "total",
+      "type": "number",
+      "default": -1,
+      "required": false,
+      "docs": {
+        "description": "Summary: what {total} stands for, e.g. the number of results a remote search can reach. -1 (the default): the options it knows (remote: every option it has been offered)."
+      }
+    },
+    {
+      "name": "actions",
+      "attribute": "actions",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Multiple: \"Select all\" (while a search filters: \"Select the N matches\") and \"Clear\" rows at the top of the list."
+      }
+    },
+    {
+      "name": "selectAllLabel",
+      "attribute": "select-all-label",
+      "type": "string",
+      "default": "Select all",
+      "required": false,
+      "docs": {
+        "description": "Actions: the text of \"Select all\"."
+      }
+    },
+    {
+      "name": "matchesLabel",
+      "attribute": "matches-label",
+      "type": "string",
+      "default": "Select the match|Select the {count} matches",
+      "required": false,
+      "docs": {
+        "description": "Actions: the text of \"Select the N matches\" while a search filters the list. Text before a | is for one match."
+      }
+    },
+    {
+      "name": "clearLabel",
+      "attribute": "clear-label",
+      "type": "string",
+      "default": "Clear",
+      "required": false,
+      "docs": {
+        "description": "Actions: the text of \"Clear\", also the clear button's accessible name."
+      }
+    },
+    {
+      "name": "confirm",
+      "attribute": "confirm",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Server-confirmed value: :state(pending) while the local value differs from the server's value attribute (see revert())."
+      }
+    }
+  ],
+  "slots": [],
+  "events": [
+    {
+      "kind": "custom-event",
+      "name": "sb-search",
+      "bubbles": true,
+      "composed": true,
+      "description": "Remote: the query changed (debounced). detail: { query }. Answer by setting results."
+    },
+    {
+      "kind": "event",
+      "name": "change",
+      "bubbles": true,
+      "composed": true,
+      "description": "The value changed."
+    },
+    {
+      "kind": "custom-event",
+      "name": "sb-change",
+      "bubbles": true,
+      "composed": true,
+      "description": "The value changed. detail: { name, value } (a string, or an array for multiple): ready for a command."
+    }
+  ]
+}

@@ -28,7 +28,7 @@ whether it was set or defaulted.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NFSEN_SOURCES` | _(none)_ | Comma-separated source names, e.g. `gw1,router`. |
+| `NFSEN_SOURCES` | _(none)_ | Comma-separated sources, e.g. `gw1,router`. `source:name` shows a name for a source wherever the interface lists it, e.g. `10-20-100-3:dc1rt310` for a directory `nfcapd -M` named after the exporter's address; the source stays what queries and stored data use. |
 | `NFSEN_PORTS` | _(none)_ | Comma-separated port numbers to track, e.g. `80,443,22`. |
 | `NFSEN_FILTERS` | _(none)_ | JSON array of filter presets, e.g. `["proto tcp","dst port 80"]`. Each one is added to the saved filters once, marked as a preset. A preset you delete in the filter drawer stays deleted. |
 
@@ -405,7 +405,7 @@ matching `NFSEN_*` variable, then the built-in default.
 <?php
 $nfsen_config = [
     'general' => [
-        'sources' => ['gw1', 'router'],   // nfcapd source names
+        'sources' => ['gw1', 'router'],   // nfcapd sources; ['gw1' => 'Main office', ...] adds names
         'ports'   => [80, 443, 22],        // ports to track in RRD
         'filters' => ['proto tcp', 'dst port 80'], // presets for the saved filters
         'db'      => 'RRD',                // 'RRD' or 'VictoriaMetrics'

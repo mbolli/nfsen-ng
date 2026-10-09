@@ -87,6 +87,9 @@ final class Settings {
     /** The theme settings.php or NFSEN_DEFAULT_THEME chose; withDefaultTheme() leaves it alone. */
     public private(set) string $deploymentTheme;
 
+    /** @var array<string, string> source => the name the interface shows for it, where one is configured (#177) */
+    public private(set) array $sourceNames = [];
+
     /**
      * @param list<string>         $sources               Configured NetFlow source names
      * @param list<int>            $ports                 Configured port numbers
@@ -175,8 +178,10 @@ final class Settings {
         $datatype = $raw['frontend']['defaults']['graphs']['datatype'] ?? 'traffic';
         [$maxProcesses, $maxProcessesAuto] = self::resolveMaxProcesses($raw['nfdump']['max-processes'] ?? EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'));
 
-        return new self(
-            sources: self::stringList($raw['general']['sources'] ?? EnvRegistry::value('NFSEN_SOURCES')),
+        [$sources, $sourceNames] = self::sourceEntries($raw['general']['sources'] ?? EnvRegistry::value('NFSEN_SOURCES'));
+
+        $settings = new self(
+            sources: $sources,
             ports: self::intList($raw['general']['ports'] ?? EnvRegistry::value('NFSEN_PORTS')),
             filters: self::stringList($raw['general']['filters'] ?? EnvRegistry::value('NFSEN_FILTERS')),
             datasourceName: $datasourceName,
@@ -218,6 +223,9 @@ final class Settings {
             topnRetentionDays: max(0, (int) EnvRegistry::value('NFSEN_TOPN_RETENTION_DAYS')),
             geoipDb: (string) EnvRegistry::value('NFSEN_GEOIP_DB'),
         );
+        $settings->sourceNames = $sourceNames;
+
+        return $settings;
     }
 
     /**
@@ -229,8 +237,10 @@ final class Settings {
         $datasourceConfigs = self::envDatasourceConfigs();
         [$maxProcesses, $maxProcessesAuto] = self::resolveMaxProcesses(EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'));
 
-        return new self(
-            sources: self::stringList(EnvRegistry::value('NFSEN_SOURCES')),
+        [$sources, $sourceNames] = self::sourceEntries(EnvRegistry::value('NFSEN_SOURCES'));
+
+        $settings = new self(
+            sources: $sources,
             ports: self::intList(EnvRegistry::value('NFSEN_PORTS')),
             filters: self::stringList(EnvRegistry::value('NFSEN_FILTERS')),
             datasourceName: (string) EnvRegistry::value('NFSEN_DATASOURCE'),
@@ -271,6 +281,9 @@ final class Settings {
             topnRetentionDays: max(0, (int) EnvRegistry::value('NFSEN_TOPN_RETENTION_DAYS')),
             geoipDb: (string) EnvRegistry::value('NFSEN_GEOIP_DB'),
         );
+        $settings->sourceNames = $sourceNames;
+
+        return $settings;
     }
 
     // ── Computed properties ───────────────────────────────────────────────────
@@ -349,6 +362,7 @@ final class Settings {
     public function withSources(array $sources): self {
         $clone = clone $this;
         $clone->sources = $sources;
+        $clone->sourceNames = array_intersect_key($this->sourceNames, array_flip($sources));
 
         return $clone;
     }
@@ -672,6 +686,13 @@ final class Settings {
         return $flip[$priority] ?? 'info';
     }
 
+    // ── Factories ─────────────────────────────────────────────────────────────
+
+    /** The name the interface shows for a source: the configured one, else the source itself. */
+    public function sourceName(string $source): string {
+        return $this->sourceNames[$source] ?? $source;
+    }
+
     /**
      * The datasources' connection details from the environment. import_years is a shared top-level
      * setting, so only datasource-specific details go here.
@@ -694,7 +715,33 @@ final class Settings {
         ];
     }
 
-    // ── Factories ─────────────────────────────────────────────────────────────
+    /**
+     * Sources and their names from `source` or `source:Name` entries (NFSEN_SOURCES=10-20-100-3:dc1rt310),
+     * or from a settings.php map of source => name. The source stays the key on disk and in every query.
+     *
+     * @return array{list<string>, array<string, string>}
+     */
+    private static function sourceEntries(mixed $value): array {
+        $sources = [];
+        $names = [];
+        foreach ((array) $value as $key => $item) {
+            if (!\is_scalar($item)) {
+                continue;
+            }
+            [$source, $name] = \is_string($key) ? [$key, (string) $item] : array_pad(explode(':', (string) $item, 2), 2, '');
+            $source = trim($source);
+            $name = trim($name);
+            if ($source === '' || \in_array($source, $sources, true)) {
+                continue;
+            }
+            $sources[] = $source;
+            if ($name !== '' && $name !== $source) {
+                $names[$source] = $name;
+            }
+        }
+
+        return [$sources, $names];
+    }
 
     /**
      * Coerce a raw config value into a list of strings.

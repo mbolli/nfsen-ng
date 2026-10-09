@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Sources can have names** ([#177](https://github.com/mbolli/nfsen-ng/issues/177), requested by [@hawk128](https://github.com/hawk128)). `NFSEN_SOURCES=10-20-100-3:dc1rt310,...` (or `'source' => 'name'` in `settings.php`) shows the name in the sources menu, the graph legend, the alert rules and notifications, Health and Settings, which is what makes the directories `nfcapd -M` names after exporter addresses readable. The source itself stays what queries and stored data use.
+
 ### Fixed
 
 - **All sources could not be unticked** ([#176](https://github.com/mbolli/nfsen-ng/issues/176), reported by [@hawk128](https://github.com/hawk128)), so picking a few of many sources meant unticking the rest one by one. Unticking it now clears the list to pick from; nothing is queried while no source is ticked, and closing the menu with none picks all again.

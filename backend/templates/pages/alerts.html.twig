@@ -209,7 +209,7 @@
                     <select id="alertFormSources" multiple size="{{ min(max(f.sources|length, 2), 6) }}"
                             aria-describedby="alertFormSourcesHelp" {{ bind(alert_form_sources) }}>
                         {% for source in f.sources %}
-                            <option value="{{ source }}" {{ source in alert_form_sources.array() ? 'selected' }}>{{ source }}</option>
+                            <option value="{{ source }}" {{ source in alert_form_sources.array() ? 'selected' }}>{{ shell.sourceNames[source] ?? source }}</option>
                         {% endfor %}
                     </select>
                     <p class="help" id="alertFormSourcesHelp">With none selected the rule covers every source, including ones added later.</p>

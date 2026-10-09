@@ -2407,6 +2407,18 @@ describe('AlertManager::buildTemplateVars()', function (): void {
         expect($vars['{sources}'])->toBe('gw1, gw2');
     });
 
+    test('{sources} uses the names configured for the sources (#177)', function (): void {
+        $before = Config::$settings;
+        Config::$settings = Settings::fromArray(['general' => ['sources' => ['gw1:Main office', 'gw2']]]);
+
+        try {
+            $vars = AlertManager::buildTemplateVars(makeRule(['sources' => ['gw1']]), ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0], 1.0, 1700000000);
+            expect($vars['{sources}'])->toBe('Main office');
+        } finally {
+            Config::$settings = $before;
+        }
+    });
+
     test('threshold shows infinity symbol for the cold-start sentinel', function (): void {
         $rule = makeRule();
         $vars = AlertManager::buildTemplateVars($rule, ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0], PHP_FLOAT_MAX, 1700000000);

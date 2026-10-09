@@ -301,7 +301,7 @@
                         {% set badge = stateBadge[s.state] %}
                         <tr>
                             <td><code>{{ s.profile }}</code></td>
-                            <th scope="row">{{ s.source }}</th>
+                            <th scope="row">{{ shell.sourceNames[s.source] ?? s.source }}{% if shell.sourceNames[s.source] is defined %} <code>{{ s.source }}</code>{% endif %}</th>
                             <td>{% if s.newestFile %}<code>{{ s.newestFile }}</code>{% else %}none{% endif %}</td>
                             <td data-kind="time">{{ health.when(s.dataUntil ?? 0, tz, 'none') }}</td>
                             <td data-kind="time">{{ health.when(s.imported, tz) }}</td>

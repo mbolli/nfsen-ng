@@ -791,6 +791,19 @@ describe('TrafficGraph', function (): void {
         ;
     });
 
+    test('a graph series of a source shows its name, and two equal names fall back to the keys (#177)', function (): void {
+        $before = Config::$settings;
+        Config::$settings = Settings::fromArray(['general' => ['sources' => ['10-20-100-3:dc1rt310', '10-60-119-66', 'a:Edge', 'b:Edge']]]);
+
+        try {
+            expect(TrafficGraph::seriesNames('sources', ['10-20-100-3_bits_any', '10-60-119-66_bits_any']))->toBe(['dc1rt310', '10-60-119-66'])
+                ->and(TrafficGraph::seriesNames('sources', ['a_bits_any', 'b_bits_any']))->toBe(['a_bits_any', 'b_bits_any'])
+            ;
+        } finally {
+            Config::$settings = $before;
+        }
+    });
+
     test('colour follows the entity: configured order, and TCP, UDP, ICMP, Other (2.3)', function (): void {
         Config::$settings = Config::$settings->withSources(['gw', 'gw_backup', 'core'])->withPorts([80, 443, 53]);
 

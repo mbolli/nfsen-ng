@@ -219,7 +219,7 @@ final class TrafficGraph implements ShellModule {
             }
         }
 
-        return $best === null ? ['slot' => 0, 'name' => $key] : ['slot' => $best + 1, 'name' => Config::$settings->sources[$best]];
+        return $best === null ? ['slot' => 0, 'name' => $key] : ['slot' => $best + 1, 'name' => Config::$settings->sourceName(Config::$settings->sources[$best])];
     }
 
     /** @return array{key: string, failed: string, totalsKey: string, totals: null|Totals, totalsError: string} */

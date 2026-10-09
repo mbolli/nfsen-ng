@@ -248,6 +248,17 @@ describe('labels', function (): void {
         ;
     });
 
+    test('a source with a name shows the name (#177)', function (): void {
+        $before = Config::$settings;
+        Config::$settings = Settings::fromArray(['general' => ['sources' => ['gw1:Main office', 'gw2']]]);
+
+        try {
+            expect(AlertsPage::sourcesLabel(['gw1', 'gw2']))->toBe('Main office, gw2');
+        } finally {
+            Config::$settings = $before;
+        }
+    });
+
     // Each text is what the vendored sb-relative-time (format long, numeric auto) shows in Chromium
     // for the same moments and zone. 1_790_686_800 is 2026-09-29 13:00 UTC.
     test('relative times read as sb-relative-time writes them', function (int $now, int $age, string $zone, string $expected): void {

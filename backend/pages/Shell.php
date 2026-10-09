@@ -101,6 +101,7 @@ final class Shell {
                     'density' => Config::$settings->compactTables ? 'compact' : 'comfortable',
                 ],
                 'sources' => Config::$settings->sources,
+                'sourceNames' => Config::$settings->sourceNames,
                 'ports' => Config::$settings->ports,
                 'status' => [
                     'captureLevel' => $capture['level'],

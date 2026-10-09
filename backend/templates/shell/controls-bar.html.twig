@@ -134,11 +134,11 @@
                     <p class="help sources-hint" data-show="!{{ gs }}.length" style="display: none">Tick the sources to show. Closing with none picks all.</p>
                 {% endif %}
                 {% for source in sources %}
-                    <label class="menu-item choice">
+                    <label class="menu-item choice"{% if shell.sourceNames[source] is defined %} title="{{ source }}"{% endif %}>
                         <input type="checkbox" name="globalSource" value="{{ source }}"
                                data-effect="el.checked = {{ allPicked }} || {{ gs }}.includes(el.value)"
                                data-on:change="const all = {{ allSources }}; const picked = {{ gs }}.includes('any') ? all : all.filter(s => {{ gs }}.includes(s)); const next = el.checked ? all.filter(s => s === el.value || picked.includes(s)) : picked.filter(s => s !== el.value); {{ gs }} = next">
-                        {{ source }}
+                        {{ shell.sourceNames[source] ?? source }}
                     </label>
                 {% endfor %}
             </div>

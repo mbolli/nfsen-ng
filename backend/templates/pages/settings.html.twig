@@ -163,7 +163,7 @@
                     <dt>Sources</dt>
                     <dd>
                         {% if src.sources is empty %}None configured{% else %}
-                            <ul class="settings-values">{% for source in src.sources %}<li><code>{{ source }}</code></li>{% endfor %}</ul>
+                            <ul class="settings-values">{% for source in src.sources %}<li><code>{{ source }}</code>{% if shell.sourceNames[source] is defined %} {{ shell.sourceNames[source] }}{% endif %}</li>{% endfor %}</ul>
                         {% endif %}
                         {{ ui.origin(src.sourcesOrigin) }}
                     </dd>
@@ -205,7 +205,7 @@
                                 {% for dir in src.captureDirs %}
                                     <tr{% if not dir.exists %} data-level="error"{% endif %}>
                                         <td><code>{{ dir.profile }}</code></td>
-                                        <td><code>{{ dir.source }}</code></td>
+                                        <td><code>{{ dir.source }}</code>{% if shell.sourceNames[dir.source] is defined %} {{ shell.sourceNames[dir.source] }}{% endif %}</td>
                                         <td data-kind="address">{{ dir.path }}</td>
                                         <td>
                                             <span class="status-dot" data-level="{{ dir.exists ? 'success' : 'error' }}"></span>

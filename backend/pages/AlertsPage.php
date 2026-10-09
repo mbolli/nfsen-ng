@@ -413,7 +413,7 @@ final class AlertsPage implements Page {
 
     /** @param array<string> $sources */
     public static function sourcesLabel(array $sources): string {
-        return $sources === [] ? 'All' : implode(', ', $sources);
+        return $sources === [] ? 'All' : implode(', ', array_map(Config::$settings->sourceName(...), $sources));
     }
 
     public static function windowLabel(string $window): string {

@@ -35,6 +35,7 @@ $nfsen_config = [
         ],
         'sources' => [
             'source1', 'source2',
+            // A name to show instead of the source: 'source1:Main office', or a map ['source1' => 'Main office'].
         ],
         'filters' => [
             // Protocol filters

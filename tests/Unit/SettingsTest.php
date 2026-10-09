@@ -21,6 +21,22 @@ beforeEach(function (): void {
 });
 
 describe('Settings::fromArray()', function (): void {
+    // #177: nfcapd -M names a source after its exporter's address, so a source may carry a name to show.
+    test('sources may carry a name: source:name in NFSEN_SOURCES, and a map in settings.php', function (): void {
+        putenv('NFSEN_SOURCES=10-20-100-3:dc1rt310, 10-60-119-66 ,gw:Main: office,10-20-100-3:again');
+        $env = Settings::fromEnv();
+
+        expect($env->sources)->toBe(['10-20-100-3', '10-60-119-66', 'gw'])
+            ->and($env->sourceNames)->toBe(['10-20-100-3' => 'dc1rt310', 'gw' => 'Main: office'])
+            ->and($env->sourceName('10-20-100-3'))->toBe('dc1rt310')
+            ->and($env->sourceName('10-60-119-66'))->toBe('10-60-119-66')
+            ->and($env->withSources(['gw'])->sourceNames)->toBe(['gw' => 'Main: office'])
+            ->and(Settings::fromArray(['general' => ['sources' => ['gw1' => 'Main office', 'gw2' => '']]])->sources)->toBe(['gw1', 'gw2'])
+            ->and(Settings::fromArray(['general' => ['sources' => ['gw1' => 'Main office', 'gw2' => '']]])->sourceNames)->toBe(['gw1' => 'Main office'])
+            ->and(Settings::fromArray(['general' => ['sources' => ['gw1:Main office', 'gw2']]])->sourceNames)->toBe(['gw1' => 'Main office'])
+        ;
+    });
+
     test('parses all typed fields correctly', function (): void {
         $raw = [
             'general' => [

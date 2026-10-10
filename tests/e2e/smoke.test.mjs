@@ -397,18 +397,27 @@ export default async function smokeTest() {
             { rocket: true, name: 'Dismiss notification' },
             'the toast in the modal is a Rocket host with a named close button'
         );
-        const close = await page.evaluate(`(function(){
+        const CLOSE_AT = `(function(){
             var b = document.querySelector('#ip-modal-inner > .toast-stack nfsen-toast button[data-variant=close]').getBoundingClientRect();
             var x = b.x + b.width / 2, y = b.y + b.height / 2;
             return { x: x, y: y, hit: document.elementFromPoint(x, y)?.matches('button[data-variant=close]') ?? false };
-        })()`);
-        assert.ok(close.hit, 'the toast close button is on top and hit-testable');
+        })()`;
+        const before = await page.evaluate(CLOSE_AT);
+        assert.ok(before.hit, 'the toast close button is on top and hit-testable');
         assert.equal(await page.evaluate(syncAs('flows')), 'synced', 'a sync arrived while the toast was shown');
         assert.equal(
             await page.evaluate(`document.querySelectorAll('#ip-modal-inner nfsen-toast').length`),
             1,
             'the toast survives the sync'
         );
+        // Measured again once still: the click goes where the button is after the sync.
+        await page.waitFor(
+            `(function(){ var at = JSON.stringify(${CLOSE_AT}); var still = window.__closeAt === at; window.__closeAt = at; return still; })()`,
+            { interval: 100, label: 'the toast close button to hold still after the sync' }
+        );
+        const close = await page.evaluate(CLOSE_AT);
+        assert.ok(close.hit, 'the toast close button is still on top after the sync');
+        if (close.x !== before.x || close.y !== before.y) console.log(`  (smoke: the toast close button moved across the sync, ${JSON.stringify([before, close])})`);
         for (const type of ['mousePressed', 'mouseReleased']) {
             await page.send('Input.dispatchMouseEvent', { type, x: close.x, y: close.y, button: 'left', clickCount: 1 });
         }

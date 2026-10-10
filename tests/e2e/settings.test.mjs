@@ -2,6 +2,7 @@
 // through the real save-settings action and restores every preference it changed.
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
+import { CLEAR_TOASTS, toasts } from './lib/toasts.mjs';
 
 export const MUTATING = true;
 
@@ -73,17 +74,17 @@ async function fillForm(page, values) {
 
 /** Submit a Settings form with its button and wait for the server's toast. */
 async function save(page, button = 'settingsSave') {
-    await page.evaluate(`document.querySelectorAll('#alerts-toast-container nfsen-toast').forEach(function(t){ t.remove(); })`);
+    await page.evaluate(CLEAR_TOASTS);
     await page.evaluate(`document.getElementById('${button}').click()`);
     await page.waitFor(
-        `[...document.querySelectorAll('#alerts-toast-container nfsen-toast')].some(function(t){ return t.level === 'error' || t.message === 'Settings saved.'; })`,
+        `${toasts('#alerts-toast-container')}.some(function(t){ return t.variant === 'danger' || t.text === 'Settings saved.'; })`,
         {
             timeout: 10000,
             label: 'the save to answer',
         }
     );
     const error = await page.evaluate(
-        `[...document.querySelectorAll('#alerts-toast-container nfsen-toast')].filter(function(t){ return t.level === 'error'; }).map(function(t){ return t.message; }).join(' ')`
+        `${toasts('#alerts-toast-container')}.filter(function(t){ return t.variant === 'danger'; }).map(function(t){ return t.text; }).join(' ')`
     );
     assert.equal(error, '', 'the save succeeds');
 }

@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { BASE, withPage } from './lib/cdp.mjs';
 import { ddChoose, ddLabels, ddOpen, ddRows, ddTrigger } from './lib/dropdown.mjs';
+import { toasts } from './lib/toasts.mjs';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -653,7 +654,7 @@ export default async function conversationsTest() {
             await page.evaluate(`document.getElementById('convCommand').textContent`),
             'the copy is the text of #convCommand'
         );
-        const copyToast = `[...document.querySelectorAll('nfsen-toast')].some(function(t){ return t.message === 'Copied the nfdump command.'; })`;
+        const copyToast = `${toasts()}.some(function(t){ return t.text === 'Copied the nfdump command.'; })`;
         await page.waitFor(copyToast, { label: 'the copy toast' });
         // With the Matrix shown, the menu saves the Matrix.
         await page.evaluate(`document.getElementById('convView-matrix').click()`);

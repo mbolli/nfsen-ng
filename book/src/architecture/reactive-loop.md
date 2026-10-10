@@ -199,8 +199,8 @@ rows, the order, the hidden columns and the zone come from the tab's `FlowsState
 
 - **No client build step.** The frontend is server-rendered Twig plus hand-written
   modules in `frontend/js/components/`. The pieces that need real client-side
-  behaviour (the charts, the result table, the Sankey and Matrix, the filter
-  editor and the toasts) are Rocket elements, Datastar's component system:
+  behaviour (the charts, the result table, the Sankey and Matrix and the
+  filter editor) are Rocket elements, Datastar's component system:
   typed props from attributes, a `setup` and a `cleanup`. The server markup
   stays in their light DOM, where the page CSS and a morph reach it; a
   chart or table host holds only a `<slot>` in its shadow root. The router, the

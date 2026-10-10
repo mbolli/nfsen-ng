@@ -102,6 +102,17 @@
         "select.ts": "sha384-jnAtGIvqZoPJWeUd8Xd2oxuPxgg7CrJPmYLP0rxN/GU5ujHbLjSwxAx3pa8vegUB"
       }
     },
+    "toast": {
+      "tag": "sb-toast",
+      "version": "704563c120eb",
+      "entry": "toast.js",
+      "load": true,
+      "files": {
+        "README.md": "sha384-3kz9XW3CvLS7IWcBgZ93NrqcnuJpLxdV3EOHYd5p1SIVDeVR2Y4nEaWei2GMx87y",
+        "manifest.json": "sha384-GuXk4h6rKsLKP0e9MYQlmvLOKXR2cJV1Ktlt5a3NfOgKlBKPbc3o7ivlppX6oipQ",
+        "toast.js": "sha384-clZS5kgwkt7AQUT/sZz1smhFil7Gm1KJN8c5k7FrjQITvC3zzWDv7GXBASzNMy+W"
+      }
+    },
     "virtual-scroll": {
       "tag": "sb-virtual-scroll",
       "version": "a96851b69407",

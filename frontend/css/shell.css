@@ -459,63 +459,9 @@ sb-modal.ip-info::part(panel) {
 
 /* ── Toasts (4.0.6) ─────────────────────────────────────────────────────── */
 
+/* sb-toast draws the stack in the corner; its container only keeps the list across syncs. */
 .toast-stack {
-    position: fixed;
-    z-index: var(--layer-toast);
-    inset-block-end: var(--size-4);
-    inset-inline-end: var(--size-4);
-    display: flex;
-    flex-direction: column-reverse;
-    gap: var(--size-2);
-    inline-size: min(28rem, 100vw - 2 * var(--size-4));
-    pointer-events: none;
-}
-
-.toast-stack > nfsen-toast {
-    display: block;
-    pointer-events: auto;
-}
-
-.toast-stack .notice {
-    position: relative;
-    overflow: hidden;
-    box-shadow: var(--shadow-2);
-}
-
-.toast-message {
-    overflow-wrap: anywhere;
-}
-
-/* Time left before an auto-dismiss; it pauses while the pointer or focus is on the toast. */
-.toast-progress {
-    position: absolute;
-    inset-inline: 0;
-    inset-block-end: 0;
-    block-size: 3px;
-    background: currentcolor;
-    opacity: 0.25;
-    transform-origin: left;
-    animation: toast-shrink var(--toast-duration, 5s) linear forwards;
-}
-
-.toast-progress:dir(rtl) {
-    transform-origin: right;
-}
-
-nfsen-toast:is(:hover, :focus-within) .toast-progress {
-    animation-play-state: paused;
-}
-
-@keyframes toast-shrink {
-    to {
-        transform: scaleX(0);
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .toast-progress {
-        display: none;
-    }
+    display: contents;
 }
 
 /* ── Mobile tab bar ─────────────────────────────────────────────────────── */
@@ -600,10 +546,9 @@ nfsen-toast:is(:hover, :focus-within) .toast-progress {
         font-size: var(--font-size-00);
     }
 
-    .toast-stack {
+    /* Above the tab bar. */
+    .toast-stack > sb-toast::part(region) {
         inset-block-end: calc(var(--tabbar-size) + env(safe-area-inset-bottom) + var(--size-2));
-        inset-inline: var(--size-2);
-        inline-size: auto;
     }
 
     .tabbar {

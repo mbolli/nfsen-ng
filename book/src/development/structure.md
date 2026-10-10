@@ -62,7 +62,8 @@ frontend/
     nfsen-ng.css            pieces several pages share: chart containers, result tables, aggregation controls
     pages/                  one stylesheet per page
   js/components/            Rocket elements: nfsen-chart, nfsen-table, nfsen-sankey,
-                            nfsen-matrix, nfsen-toast, nfsen-filter-editor.
+                            nfsen-matrix, nfsen-filter-editor; toasts
+                            (window.showMessage over Starbase's sb-toast).
                             Plain modules loaded before the bundle: nfsen-router,
                             alert-template-preview, filter-drawer, chunks (nfsen/chunks),
                             flows-list (the Flows list's exports and Columns choice).

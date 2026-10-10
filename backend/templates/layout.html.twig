@@ -204,8 +204,8 @@
     <div id="modal-root">{{ shell.modalHtml|raw }}</div>
     {# DOM that client code and tests add; data-ignore-morph keeps it across syncs. #}
     <div id="client-root" data-ignore-morph></div>
-    <div id="alerts-toast-container" class="toast-stack" data-ignore-morph></div>
-    {# The first sync can run a server script (a fired alert) before nfsen-toast.js; it shows what queued here. #}
+    <div id="alerts-toast-container" class="toast-stack" data-ignore-morph><sb-toast placement="bottom-end" max="4" label="Notifications"></sb-toast></div>
+    {# The first sync can run a server script (a fired alert) before toasts.js; it shows what queued here. #}
     <script>
         window.showMessage ??= Object.assign((...args) => { window.showMessage.queue.push(args); }, { queue: [] });
     </script>
@@ -229,7 +229,7 @@
     {{ via_foot() }}
     <script type="module" src="{{ basePath }}js/components/datastar-persist.js?v={{ shell.assetVersion }}"></script>
     {# clipboard is also an import-map target, so its tag uses the identical URL: one module instance. #}
-    {% for component in ['nfsen-chart', 'nfsen-sankey', 'nfsen-matrix', 'nfsen-table', 'nfsen-toast', 'nfsen-filter-editor', 'nfsen-controls', 'clipboard'] %}
+    {% for component in ['nfsen-chart', 'nfsen-sankey', 'nfsen-matrix', 'nfsen-table', 'toasts', 'nfsen-filter-editor', 'nfsen-controls', 'clipboard'] %}
         <script type="module" src="{{ basePath }}js/components/{{ component }}.js?v={{ shell.assetVersion }}"></script>
     {% endfor %}
     {# Vendored Starbase components with "load": true in their lock; the folder name is the version. #}

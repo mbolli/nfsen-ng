@@ -2,6 +2,7 @@
 // caught before they are saved, and the instance settings the runs need.
 import { BASE } from './cdp.mjs';
 import { ddChoose, ddOpen, ddTrigger } from './dropdown.mjs';
+import { CLEAR_TOASTS, toasts } from './toasts.mjs';
 
 /** The dev captures' day of flows: exactly 10,000 rows at limit 10,000. */
 export const RANGE = { from: 1787875200, to: 1787961600 };
@@ -196,14 +197,14 @@ export async function saveSettings(page, { compact, displayTz, logLevel } = {}) 
     if (logLevel !== undefined) {
         await page.setSelectValue('#settingsLogPriority', logLevel);
     }
-    await page.evaluate(`document.querySelectorAll('#alerts-toast-container nfsen-toast').forEach(function(t){ t.remove(); })`);
+    await page.evaluate(CLEAR_TOASTS);
     await page.evaluate(`document.getElementById('settingsSave').click()`);
     await page.waitFor(
-        `[...document.querySelectorAll('#alerts-toast-container nfsen-toast')].some(function(t){ return t.level === 'error' || t.message === 'Settings saved.'; })`,
+        `${toasts('#alerts-toast-container')}.some(function(t){ return t.variant === 'danger' || t.text === 'Settings saved.'; })`,
         { timeout: 15000, label: 'the settings to save' }
     );
     const failed = await page.evaluate(
-        `[...document.querySelectorAll('#alerts-toast-container nfsen-toast')].some(function(t){ return t.level === 'error'; })`
+        `${toasts('#alerts-toast-container')}.some(function(t){ return t.variant === 'danger'; })`
     );
     if (failed) throw new Error('Settings could not be saved');
     // data-density comes with the document.

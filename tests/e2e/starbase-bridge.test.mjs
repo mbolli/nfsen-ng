@@ -296,16 +296,20 @@ function auditHosts({ tags, checks }) {
         ...STATUS.flatMap((t) => [`var(--${t})`, `var(--${t}-subtle)`, `var(--${t}-emphasis)`]),
         ...[1, 2, 3, 4, 5, 6, 7, 8].map((i) => `var(--series-${i})`),
     ].map(resolved);
-    const alertRefs = STATUS.flatMap((t) => [
-        `color-mix(in oklab, var(--${t}) 70%, var(--text-1))`,
-        `color-mix(in oklab, var(--${t}) 30%, var(--border))`,
-    ]).map(resolved);
+    // The tints a component mixes from a status colour, as its own CSS writes them.
+    const tintRefs = {
+        'sb-alert': STATUS.flatMap((t) => [
+            `color-mix(in oklab, var(--${t}) 70%, var(--text-1))`,
+            `color-mix(in oklab, var(--${t}) 30%, var(--border))`,
+        ]).map(resolved),
+        'sb-toast': STATUS.map((t) => `color-mix(in oklch, var(--${t}) 30%, var(--border))`).map(resolved),
+    };
     probe.remove();
     // A reference colour passes at any alpha; any other colour with chroma is a leak.
     const leak = (tag, c) =>
         c.alpha > 0 &&
         chroma(c) > 0.02 &&
-        ![...refs, ...(tag === 'sb-alert' ? alertRefs : [])].some((r) => distance(r, c) <= 0.01);
+        ![...refs, ...(tintRefs[tag] ?? [])].some((r) => distance(r, c) <= 0.01);
     const hosts = [...document.querySelectorAll('#client-root *')].filter((el) => tags.includes(el.localName));
     const trees = new Map(); // tag => elements rendered by its instances
     // Shadow trees, and the light DOM slotted into them; a nested host of `tags` is audited as itself.

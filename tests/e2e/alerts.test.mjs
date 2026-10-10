@@ -15,6 +15,7 @@
 // rule removes its Test events from the history.
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
+import { toasts } from './lib/toasts.mjs';
 
 export const MUTATING = true;
 
@@ -196,7 +197,7 @@ async function openTemplates(page) {
 async function saveTemplates(page) {
     await clickButtonText(page, 'Save default templates');
     await page.waitFor(
-        `[...document.querySelectorAll('#alerts-toast-container *')].some(function(e){ return e.textContent.includes('Default templates saved.'); })`,
+        `${toasts('#alerts-toast-container')}.some(function(t){ return t.text === 'Default templates saved.'; })`,
         {
             label: 'the templates to be saved',
         }

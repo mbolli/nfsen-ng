@@ -43,12 +43,16 @@ final class StarbaseBridgeTest {
     public const array INHERITED = ['--sb-font-body', '--sb-font-display', '--sb-font-ui'];
 
     /**
-     * Pixel traits reviewed and accepted, per module ("<slug>/<file>"): trait => reason. Empty: sb-relative-time
-     * and sb-popover have none, and a component with one is not adopted until Starbase fixes it (ROCKET-SPEC 3.8).
+     * Pixel traits reviewed and accepted, per module ("<slug>/<file>"): trait => reason. Any other one keeps a
+     * component out until Starbase fixes it (ROCKET-SPEC 3.8).
      *
      * @var array<string, array<string, string>>
      */
-    public const array PIXEL_ALLOW = [];
+    public const array PIXEL_ALLOW = [
+        'toast/toast.js' => [
+            'steps()' => 'Only under prefers-reduced-motion: the countdown bar jumps down in fifths instead of sliding.',
+        ],
+    ];
 
     /** @return array<string, string> the --sb-* declarations of the bridge's :root block, name => value */
     public static function mapping(): array {

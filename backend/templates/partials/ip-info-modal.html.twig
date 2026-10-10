@@ -93,6 +93,6 @@
         {% endif %}
     </div>
     <button type="button" slot="footer" data-sb-close autofocus>Close</button>
-    {# A modal makes the rest of the page inert, so a toast shown meanwhile lands here (nfsen-toast.js). #}
-    <div class="toast-stack" data-ignore-morph></div>
+    {# A modal makes the rest of the page inert, so a toast shown meanwhile lands here (toasts.js). #}
+    <div class="toast-stack" data-ignore-morph><sb-toast placement="bottom-end" max="4" label="Notifications"></sb-toast></div>
 </sb-modal>

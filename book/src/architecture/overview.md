@@ -23,7 +23,7 @@ Shell + pages + actions + SSE (php-via / Datastar) → browser
 |---|---|
 | Runtime | PHP 8.4 on [OpenSwoole](https://openswoole.com/) coroutines |
 | Web framework | [php-via](https://github.com/mbolli/php-via): signals, actions, SSE, in-house |
-| Reactivity | [Datastar](https://data-star.dev/) 1.0.4: server-driven DOM patching over SSE, and its Rocket components for the charts, the table, the filter editor and the toasts |
+| Reactivity | [Datastar](https://data-star.dev/) 1.0.4: server-driven DOM patching over SSE, and its Rocket components for the charts, the table and the filter editor |
 | Templates | Twig, one template per page plus the shell parts |
 | Flow decoding | [nfdump](https://github.com/phaag/nfdump) 1.7.10 CLI, invoked as a subprocess, several at once |
 | Time series | RRD (default) or VictoriaMetrics, pluggable per the `Datasource` interface |

@@ -6,6 +6,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { BASE, withPage } from '../tests/e2e/lib/cdp.mjs';
+import { CLEAR_TOASTS } from '../tests/e2e/lib/toasts.mjs';
 
 const OUT = process.env.OUT || join(import.meta.dirname, 'src/images');
 // Committed image over new image, for every image a run changes.
@@ -339,7 +340,7 @@ async function masksFor(page, clip, targets) {
 /** One image of `clip`, or of each clip in `clip.stack` placed under each other; returns its VOLATILE boxes. */
 async function capture(page, clip, file, margin, volatile) {
     // A toast is not part of any page; one left over from a run would cover what the image shows.
-    await page.evaluate(`document.querySelectorAll('nfsen-toast').forEach(function(t){ t.remove(); })`);
+    await page.evaluate(CLEAR_TOASTS);
     const targets = exprs([...VOLATILE, ...volatile]);
     if (clip?.stack) {
         const parts = [];

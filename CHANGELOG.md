@@ -17,6 +17,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **The filter builder slides in as Starbase's `sb-drawer`**, with its close button and focus handling. Escape, the close button, a click beside it and **Cancel** all keep an unapplied draft for the next time, as before.
 
+- **Toasts are Starbase's `sb-toast`**: a coloured light and a wash of the level's colour, at most four at a time, each read out once. One that goes on its own waits while the pointer or the keyboard is on it, as before.
+
 - **The start and end of the range are picked in a calendar** (Starbase's `sb-date-picker`): both days and both times in one place, in five-minute steps like the capture files, in the display timezone, with the days outside the stored data struck out. **Apply** sets the range. It replaces the two date-time fields.
 
 ### Fixed

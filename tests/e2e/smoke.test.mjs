@@ -2,6 +2,7 @@
 // words, the theme popover (D8), the IP modal across a sync, the collapsed sidebar across a reload.
 import assert from 'node:assert/strict';
 import { withPage, BASE } from './lib/cdp.mjs';
+import { toastRegion, toastRows, toasts } from './lib/toasts.mjs';
 
 const TITLES = {
     overview: 'Overview',
@@ -386,30 +387,25 @@ export default async function smokeTest() {
         // A toast shown while the modal is open lands in the modal's own stack, where it is not
         // inert: a real click on its close button dismisses it.
         await page.evaluate(`window.showMessage('error', 'Shown over the modal', false)`);
-        await page.waitFor(`!!document.querySelector('#ip-modal-inner > .toast-stack nfsen-toast .notice')`, {
-            label: 'the toast in the modal',
-        });
+        const MODAL_STACK = '#ip-modal-inner > .toast-stack';
+        await page.waitFor(`${toastRows(MODAL_STACK)}.length === 1`, { label: 'the toast in the modal' });
         assert.deepEqual(
             await page.evaluate(`(function(){
-                var t = document.querySelector('#ip-modal-inner > .toast-stack nfsen-toast');
-                return { rocket: t.rocketInstanceId !== undefined, name: t.querySelector('button[data-variant=close]').getAttribute('aria-label') };
+                var r = ${toastRegion(MODAL_STACK)};
+                return { rocket: r.rocketInstanceId !== undefined, name: ${toastRows(MODAL_STACK)}[0].querySelector('[part~="close"]').getAttribute('aria-label') };
             })()`),
-            { rocket: true, name: 'Dismiss notification' },
-            'the toast in the modal is a Rocket host with a named close button'
+            { rocket: true, name: 'Dismiss: Shown over the modal' },
+            "the modal's toast region is a Rocket host and the toast's close button is named after it"
         );
         const CLOSE_AT = `(function(){
-            var b = document.querySelector('#ip-modal-inner > .toast-stack nfsen-toast button[data-variant=close]').getBoundingClientRect();
+            var b = ${toastRows(MODAL_STACK)}[0].querySelector('[part~="close"]').getBoundingClientRect();
             var x = b.x + b.width / 2, y = b.y + b.height / 2;
-            return { x: x, y: y, hit: document.elementFromPoint(x, y)?.matches('button[data-variant=close]') ?? false };
+            return { x: x, y: y, hit: document.elementFromPoint(x, y) === ${toastRegion(MODAL_STACK)} };
         })()`;
         const before = await page.evaluate(CLOSE_AT);
         assert.ok(before.hit, 'the toast close button is on top and hit-testable');
         assert.equal(await page.evaluate(syncAs('flows')), 'synced', 'a sync arrived while the toast was shown');
-        assert.equal(
-            await page.evaluate(`document.querySelectorAll('#ip-modal-inner nfsen-toast').length`),
-            1,
-            'the toast survives the sync'
-        );
+        assert.equal(await page.evaluate(`${toasts(MODAL_STACK)}.length`), 1, 'the toast survives the sync');
         // Measured again once still: the click goes where the button is after the sync.
         await page.waitFor(
             `(function(){ var at = JSON.stringify(${CLOSE_AT}); var still = window.__closeAt === at; window.__closeAt = at; return still; })()`,
@@ -417,11 +413,10 @@ export default async function smokeTest() {
         );
         const close = await page.evaluate(CLOSE_AT);
         assert.ok(close.hit, 'the toast close button is still on top after the sync');
-        if (close.x !== before.x || close.y !== before.y) console.log(`  (smoke: the toast close button moved across the sync, ${JSON.stringify([before, close])})`);
         for (const type of ['mousePressed', 'mouseReleased']) {
             await page.send('Input.dispatchMouseEvent', { type, x: close.x, y: close.y, button: 'left', clickCount: 1 });
         }
-        await page.waitFor(`!document.querySelector('#ip-modal-inner nfsen-toast')`, { label: 'the toast to be dismissed by a click' });
+        await page.waitFor(`${toasts(MODAL_STACK)}.length === 0`, { label: 'the toast to be dismissed by a click' });
         await press(page, 'Escape');
         await page.waitFor(`!document.getElementById('ip-modal-inner').isOpen`, { label: 'Escape to close the modal' });
         assert.equal(await page.evaluate(syncAs('flows')), 'synced');
@@ -503,45 +498,33 @@ export default async function smokeTest() {
         await press(page, 'Enter');
         await page.waitForPage('alerts');
 
-        // A toast: literal text, its own alert role, and it stays while it holds the focus.
+        // A toast: literal text, announced as an alert, and it stays while it holds the focus.
+        const SHELL_STACK = '#alerts-toast-container';
         await page.evaluate(`window.showMessage('error', 'x <b>y</b>', true)`);
-        await page.waitFor(`!!document.querySelector('#alerts-toast-container nfsen-toast .notice')`, { label: 'the toast' });
+        await page.waitFor(`${toastRows(SHELL_STACK)}.length === 1`, { label: 'the toast' });
         const toast = await page.evaluate(`(function(){
-            var t = document.querySelector('#alerts-toast-container nfsen-toast');
-            var n = t.querySelector('.notice');
+            var row = ${toastRows(SHELL_STACK)}[0];
             return {
-                rocket: t.rocketInstanceId !== undefined,
-                role: n.getAttribute('role'),
-                markup: !!n.querySelector('b'),
-                live: document.getElementById('alerts-toast-container').getAttribute('aria-live'),
-                name: n.querySelector('button[data-variant=close]').getAttribute('aria-label'),
+                text: row.querySelector('[part~="text"]').textContent,
+                markup: !!row.querySelector('b'),
+                name: row.querySelector('[part~="close"]').getAttribute('aria-label'),
             };
         })()`);
-        assert.deepEqual(
-            toast,
-            { rocket: true, role: 'alert', markup: false, live: null, name: 'Dismiss notification' },
-            'an error toast is a Rocket host, an alert of plain text, with a named close button'
-        );
-        await page.waitFor(`document.querySelector('#alerts-toast-container .toast-message')?.textContent === 'x <b>y</b>'`, {
-            label: 'the literal toast text',
+        assert.deepEqual(toast, { text: 'x <b>y</b>', markup: false, name: 'Dismiss: x <b>y</b>' }, 'an error toast is plain text with a named close button');
+        await page.waitFor(`${toastRegion(SHELL_STACK)}.shadowRoot.querySelector('[role="alert"]')?.textContent.includes('x <b>y</b>')`, {
+            label: 'the error announced as an alert',
         });
         // The stack follows the footer in the document, so Tab from its last link reaches the toast.
         await page.evaluate(`[...document.querySelectorAll('.status-footer a')].at(-1).focus()`);
         await press(page, 'Tab');
         assert.ok(
-            await page.evaluate(`document.activeElement?.matches('#alerts-toast-container nfsen-toast button[data-variant=close]')`),
+            await page.evaluate(`!!${toastRegion(SHELL_STACK)}.shadowRoot.activeElement?.matches('[part~="close"]')`),
             'Tab from the footer reaches the toast close button'
         );
         await sleep(6000);
-        assert.equal(
-            await page.evaluate(`!!document.querySelector('#alerts-toast-container nfsen-toast')`),
-            true,
-            'focus holds the toast past its 5 s'
-        );
+        assert.equal(await page.evaluate(`${toasts(SHELL_STACK)}.length`), 1, 'focus holds the toast past its 5 s');
         await press(page, 'Enter');
-        await page.waitFor(`!document.querySelector('#alerts-toast-container nfsen-toast')`, {
-            label: 'Enter on its close button to dismiss it',
-        });
+        await page.waitFor(`${toasts(SHELL_STACK)}.length === 0`, { label: 'Enter on its close button to dismiss it' });
 
         // Collapse, reload, still collapsed, and collapsed from the first paint on (the body has
         // the state before Datastar boots); the Alerts count and the Health glyph keep their text.

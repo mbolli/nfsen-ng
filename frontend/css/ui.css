@@ -1044,13 +1044,6 @@ tbody tr[data-level='error']:hover {
     color: var(--text-2);
 }
 
-/* On its way out: the toast keeps its box while it fades, so the ones below it do not
-   jump up a row before the animation finishes. */
-.notice.is-dismissing {
-    opacity: 0;
-    transition: opacity var(--duration-normal) var(--ease-out);
-}
-
 /* A quoted nfdump command wraps anywhere, or a phone would cut it off. */
 .notice code {
     overflow-wrap: anywhere;

@@ -282,7 +282,7 @@ The page loads the Datastar bundle php-via serves at `/datastar.js` (`withDatast
 | Shape | Definition | Elements |
 |---|---|---|
 | A, enhancer | open shadow root holding only a `<slot>` that `setup` appends; the server markup stays in the light DOM and the logic works on it | `nfsen-chart`, `nfsen-table`, `nfsen-sankey`, `nfsen-matrix` |
-| B, owned content | light mode; `setup` builds the DOM with the DOM API, inside a `data-ignore-morph` container | `nfsen-toast` |
+| B, owned content | light mode; `setup` builds the DOM with the DOM API, inside a `data-ignore-morph` container | none since the toasts are Starbase's `sb-toast` |
 | C, controller | light mode, no children; props on plain attributes, targets found by id (`for="drawerFilterTextarea"`) | `nfsen-filter-editor` |
 
 None of them uses `render`: their content is server markup, which stays in the light DOM, so `ui.css`, the page
@@ -297,8 +297,8 @@ Rules, checked in part by `tests/e2e/rocket.test.mjs` (and K1 in the templates' 
 - K1. No Datastar plugin attribute (`data-on`, `data-text`, `data-bind:*`, `data-ref`, `data-signals`, ...) in the
   light DOM of a Rocket host, except inside a `data-ignore` subtree: Rocket rescopes them to the component. It
   renames `data-signals`, `data-ref` and keyed `data-bind:`, `data-computed:` and `data-indicator:` inside
-  `data-ignore` as well, so those stay out of it. The exception is `sb-popover` and `sb-drawer` (the filter
-  builder), whose slotted content may carry `data-on:*`, `data-attr:*`, `data-class:*`, `data-style:*`,
+  `data-ignore` as well, so those stay out of it. The exception is `sb-popover`, `sb-modal` and `sb-drawer` (the
+  filter builder), whose slotted content may carry `data-on:*`, `data-attr:*`, `data-class:*`, `data-style:*`,
   `data-effect`, `data-text`, `data-show` and value-form `data-bind` that read and write page signals (`$name`,
   `${{ signal.id() }}`, never `$$`): patch 0011 binds them on first load, and Rocket's rewrite of `@name(` to
   `@dispatchRocket("name",` falls back to the page's action. Keyed signal attributes, `data-ref`, `data-init`,
@@ -342,9 +342,9 @@ Load order in `layout.html.twig`:
 3. Plain modules whose `window.*` helpers `data-init` and `data-effect` expressions read (K9): `nfsen-router`,
    `alert-template-preview`, `filter-drawer`, `chunks`, `flows-list`.
 4. `{{ via_foot() }}` (php-via's Datastar), then `datastar-persist.js` (a Datastar plugin).
-5. The elements `nfsen-chart`, `nfsen-sankey`, `nfsen-matrix`, `nfsen-table`, `nfsen-toast`,
-   `nfsen-filter-editor`, then the plain `nfsen-controls` (tabs and the popover layer that completes `sb-popover`,
-   both delegated on `document`) and `clipboard`.
+5. The elements `nfsen-chart`, `nfsen-sankey`, `nfsen-matrix`, `nfsen-table`, `nfsen-filter-editor`, then the
+   plain `toasts` (`window.showMessage` over the `sb-toast` regions), `nfsen-controls` (tabs and the popover layer
+   that completes `sb-popover`, both delegated on `document`) and `clipboard`.
 6. The Starbase components whose lock entry says `"load": true`.
 
 A module with a script tag that is also an import-map target (`chunks`, `clipboard`) uses the identical URL, so it

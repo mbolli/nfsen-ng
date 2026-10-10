@@ -1,0 +1,74 @@
+{
+  "tag": "sb-toast",
+  "props": [
+    {
+      "name": "toasts",
+      "attribute": "toasts",
+      "type": "json",
+      "default": [],
+      "required": false,
+      "docs": {
+        "description": "The toasts, oldest first: [{id, title?, text, variant?: info|ok|warn|danger, duration?}]. Server state: every morph brings the current list, and a toast the server drops is gone."
+      }
+    },
+    {
+      "name": "placement",
+      "attribute": "placement",
+      "type": "oneOf",
+      "default": "bottom-end",
+      "required": false,
+      "values": [
+        "top-start",
+        "top-center",
+        "top-end",
+        "bottom-start",
+        "bottom-center",
+        "bottom-end",
+        "inline"
+      ],
+      "docs": {
+        "description": "Corner of the viewport the stack is pinned to. \"inline\" puts it in the page flow instead (docs, demos, panels)."
+      }
+    },
+    {
+      "name": "max",
+      "attribute": "max",
+      "type": "number",
+      "default": 3,
+      "required": false,
+      "docs": {
+        "description": "How many toasts are shown at once. Older ones wait and appear as newer ones go; only shown toasts count down."
+      }
+    },
+    {
+      "name": "duration",
+      "attribute": "duration",
+      "type": "number",
+      "default": 5000,
+      "required": false,
+      "docs": {
+        "description": "Default time before a toast dismisses itself, in ms. 0 makes them sticky; a toast may carry its own duration."
+      }
+    },
+    {
+      "name": "label",
+      "attribute": "label",
+      "type": "string",
+      "default": "Notifications",
+      "required": false,
+      "docs": {
+        "description": "Accessible name of the region."
+      }
+    }
+  ],
+  "slots": [],
+  "events": [
+    {
+      "kind": "custom-event",
+      "name": "sb-dismiss",
+      "bubbles": true,
+      "composed": true,
+      "description": "A toast went away. detail: { id, reason: \"user\" | \"timeout\" }. It is already hidden locally; post a command if the server should drop it too."
+    }
+  ]
+}

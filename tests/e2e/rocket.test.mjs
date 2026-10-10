@@ -1,8 +1,9 @@
-// Rocket (ROCKET-SPEC 8.3): one engine, K1 (with its sb-popover exception) and K2 on every Rocket host, toasts in all four
-// stacks, identity, names, copying, what removed hosts leave behind. Only the alert Test dialog step writes (a Test event);
-// E2E_SKIP_MUTATING=1 skips it.
+// Rocket (ROCKET-SPEC 8.3): one engine, K1 (with its exception for sb-popover, sb-drawer and sb-modal) and K2 on every
+// Rocket host, toasts in all four stacks, identity, names, copying, what removed hosts leave behind. Only the alert Test
+// dialog step writes (a Test event); E2E_SKIP_MUTATING=1 skips it.
 import assert from 'node:assert/strict';
 import { BASE, withPage } from './lib/cdp.mjs';
+import { toastRegion, toastRows, toasts } from './lib/toasts.mjs';
 
 const SKIP_MUTATING = ['1', 'true', 'yes'].includes(String(process.env.E2E_SKIP_MUTATING ?? '').toLowerCase());
 const PAGES = ['overview', 'talkers', 'flows', 'conversations', 'alerts', 'health', 'settings'];
@@ -27,7 +28,8 @@ const PLUGINS = [
     'text',
     'persist',
 ];
-// K1's exception: the plugin attributes the light DOM of an sb-popover or sb-drawer may carry, value forms that read page signals.
+// K1's exception: the plugin attributes the light DOM of an sb-popover, sb-drawer or sb-modal may carry, value forms
+// that read page signals.
 const POPOVER_ALLOWED = '^data-((on|attr|class|style):|(effect|text|show|bind)(__|$))';
 // What each result page shows with a result: its Export menu and, in an sb-popover, its Columns list.
 const RESULT_IDS = {
@@ -39,7 +41,7 @@ const RESULT_LISTS = { flows: ['flowTable-columns'], talkers: ['statsTable-colum
 const ENGINE = /\/(js\/)?datastar(-rocket)?\.js(\?|$)/;
 // Markup, a Rocket signal and a Rocket action: all of it must stay text.
 const TRICKY = `<b>bold</b> $$count @post('/nope') \${1}`;
-const HEAP_TOASTS = 100;
+const HEAP_HOSTS = 100;
 const HEAP_RUNS = 5;
 const HEAP_BOUND = 8;
 const HEAP_TRIPS = 6;
@@ -95,7 +97,7 @@ const nextCopy = `new Promise(function(resolve){
 
 /**
  * Every element, shadow trees included; the Rocket hosts among them (rocketInstanceId), with K1 and its
- * sb-popover and sb-drawer exception, K2, free text in data-* values and the naming rule checked on each. Attributes that
+ * exception for sb-popover, sb-drawer and sb-modal, K2, free text in data-* values and the naming rule checked on each. Attributes that
  * Rocket renamed into a component scope are reported inside data-ignore too, since the rewrite does not skip it.
  */
 export const SCAN = `(function(){
@@ -123,14 +125,14 @@ export const SCAN = `(function(){
         for (var el of host.querySelectorAll('*')) {
             var ignored = el.closest('[data-ignore]');
             var skip = !!ignored && ignored !== host && host.contains(ignored);
-            var popover = el.parentElement.closest('sb-popover, sb-drawer');
+            var popover = el.parentElement.closest('sb-popover, sb-drawer, sb-modal');
             var inPopover = !!popover && (popover === host || host.contains(popover));
             for (var b of el.attributes) {
                 var on = ' on ' + el.localName;
                 if (b.name.includes('_rocket.') || b.name === 'data-rocket-ref') problems.push(name + ': ' + b.name + on);
                 else if (freeText(b)) problems.push(name + ': ' + b.name + '="' + b.value + '"' + on + ' holds free text Rocket rewrote (K1)');
                 else if (!PLUGIN.test(b.name)) continue;
-                // A popover or drawer holds no $$ at all, as PopoverMarkupTest checks, data-ignore or not.
+                // These hold no $$ at all, as PopoverMarkupTest checks, data-ignore or not.
                 else if (inPopover && b.value.includes('_rocket.')) problems.push(name + ': ' + b.name + '="' + b.value + '"' + on + ' reads a $$ signal (K1)');
                 else if (skip) continue;
                 else if (!inPopover) problems.push(name + ': plugin attribute ' + b.name + on + ' (K1)');
@@ -155,8 +157,12 @@ const listPopovers = (ids) => `${JSON.stringify(ids)}.flatMap(function(id){
     return host ? [{ list: id, popover: host.id || host.className || '(no id)', rocket: host.rocketInstanceId !== undefined }] : [];
 })`;
 
-/** The toast a test tagged with `label` (an expando: a light host carries no data-* attribute, K3). */
-const tagged = (label) => `[...document.querySelectorAll('nfsen-toast')].find(function(t){ return t.__e2e === ${JSON.stringify(label)}; })`;
+/** Whether the toast showMessage returned `id` for is still in a stack's list. */
+const listed = (id) => `${toasts()}.some(function(t){ return t.id === ${JSON.stringify(id)}; })`;
+
+/** Dismisses the toast `id`, as its close button does. */
+const dismiss = (id) =>
+    `[...document.querySelectorAll('.toast-stack > sb-toast')].forEach(function(r){ if ((r.getAttribute('toasts') || '').includes(${JSON.stringify(id)})) r.dismiss(${JSON.stringify(id)}); })`;
 
 /** Whether a dotted signal path exists; reading a missing key would create it as ''. */
 const hasSignalPath = (path) => `(async function(){
@@ -246,46 +252,28 @@ async function scopeProbe(page, stack, label) {
 }
 
 /**
- * Shows a toast into whatever stack showMessage picks and checks it: a Rocket host in `stack` with the
- * literal message, dismissed by its close button. It has no $$ signals (6.1), so it never has a scope.
+ * Shows a toast into whatever stack showMessage picks and checks it: an entry of the sb-toast in `stack`, shown
+ * as literal text and dismissed by its close button.
  */
 async function toastIn(page, stack, label) {
     const message = `${label}: ${TRICKY}`;
-    const shown = await page.evaluate(`(function(){
-        var t = window.showMessage('warning', ${JSON.stringify(message)}, false);
-        t.__e2e = ${JSON.stringify(label)};
-        window.__e2eGone = new WeakRef(t);
-        return { id: t.rocketInstanceId, path: t.rocketSignalPath, inStack: t.parentElement === document.querySelector(${JSON.stringify(stack)}) };
-    })()`);
-    assert.ok(shown.id, `${label}: the toast is a Rocket host`);
-    assert.equal(shown.path, `_rocket.nfsen_toast.${shown.id}`, `${label}: the toast's Rocket scope`);
-    assert.ok(shown.inStack, `${label}: the toast lands in ${stack}`);
-    const toast = tagged(label);
-    await page.waitFor(`${toast}?.querySelector('.notice .toast-message')?.textContent === ${JSON.stringify(message)}`, {
-        label: `${label}: the message in the notice`,
-    });
-    const notice = await page.evaluate(`(function(){
-        var n = ${toast}.querySelector('.notice');
-        return { role: n.getAttribute('role'), level: n.dataset.level, markup: !!n.querySelector('b'), close: n.querySelector('button[data-variant=close]')?.getAttribute('aria-label') };
-    })()`);
-    assert.deepEqual(notice, { role: 'alert', level: 'warning', markup: false, close: 'Dismiss notification' }, `${label}: the notice`);
-    assert.equal(await page.evaluate(hasSignalPath(shown.path)), false, `${label}: the shown toast has no ${shown.path}`);
+    const id = await page.evaluate(`window.showMessage('warning', ${JSON.stringify(message)}, false)`);
+    assert.ok(typeof id === 'string' && id !== '', `${label}: showMessage returns the toast's id`);
+    assert.deepEqual(
+        await page.evaluate(`${toasts(stack)}.filter(function(t){ return t.id === ${JSON.stringify(id)}; })`),
+        [{ id, variant: 'warn', text: message, duration: 0 }],
+        `${label}: the toast is in ${stack}'s list`
+    );
+    const row = `${toastRows(stack)}.find(function(r){ return r.querySelector('[part~="text"]').textContent === ${JSON.stringify(message)}; })`;
+    await page.waitFor(`!!${row}`, { label: `${label}: the message shown` });
+    assert.deepEqual(
+        await page.evaluate(`(function(){ var r = ${row}; return { markup: !!r.querySelector('b'), close: r.querySelector('[part~="close"]').getAttribute('aria-label') }; })()`),
+        { markup: false, close: `Dismiss: ${message}` },
+        `${label}: the toast`
+    );
     assertScan(await page.evaluate(SCAN), `${label}, toast shown`);
-
-    const dismissed = page.evaluate(`new Promise(function(resolve){
-        document.addEventListener('nfsen-toast-dismissed', function on(e){
-            if (e.target.__e2e !== ${JSON.stringify(label)}) return;
-            document.removeEventListener('nfsen-toast-dismissed', on);
-            resolve(e.target.isConnected);
-        });
-    })`);
-    await page.evaluate(`${toast}.querySelector('button[data-variant=close]').click()`);
-    assert.equal(await dismissed, true, `${label}: nfsen-toast-dismissed fires before the toast is removed`);
-    await page.waitFor(`!${toast}`, { label: `${label}: the toast to be removed` });
-    assert.equal(await page.evaluate(hasSignalPath(shown.path)), false, `${label}: no ${shown.path} after the dismissal`);
-    await page.waitFor(`(function(){ var t = window.__e2eGone.deref(); return !t || t.childNodes.length === 0; })()`, {
-        label: `${label}: the removed toast to empty itself (K14)`,
-    });
+    await page.evaluate(`${row}.querySelector('[part~="close"]').click()`);
+    await page.waitFor(`!${listed(id)}`, { label: `${label}: the dismissed toast to leave the list` });
     await scopeProbe(page, stack, label);
 }
 
@@ -382,7 +370,7 @@ export default async function rocketTest() {
         await onOneDocument(page, 'toasts and walk', `${BASE}/#/overview`, () => pageCases(page, requests, consoleText), reset);
     });
 
-    // ── A toast asked for before nfsen-toast.js ran: a fired alert's script on the first sync ──
+    // ── A toast asked for before toasts.js ran: a fired alert's script on the first sync ──
     await withPage(async (page) => {
         await earlyToast(page);
     });
@@ -398,7 +386,7 @@ export default async function rocketTest() {
             name: 'heap',
             url: `${BASE}/#/conversations`,
             measure: measureHeap,
-            least: HEAP_TOASTS + 2 * HEAP_RUNS,
+            least: HEAP_HOSTS + 2 * HEAP_RUNS,
             bound: HEAP_BOUND,
         },
         // Before patch 0010 an emptied light host kept 3 nodes (EXP e8); now every removed host is collected.
@@ -406,7 +394,7 @@ export default async function rocketTest() {
             name: 'heap of hosts removed with an ancestor',
             url: `${BASE}/#/overview`,
             measure: measureAncestorHeap,
-            least: HEAP_TOASTS,
+            least: HEAP_HOSTS,
             bound: 3,
         },
         {
@@ -543,28 +531,28 @@ async function popoverFixtures(page) {
     assert.deepEqual(page.realErrors(), [], 'no console errors');
 }
 
-/** Holds nfsen-toast.js back, calls showMessage the way a server script does, then lets the module in. */
+/** Holds toasts.js back, calls showMessage the way a server script does, then lets the module in. */
 async function earlyToast(page) {
     const paused = [];
     page.ws.addEventListener('message', (ev) => {
         const msg = JSON.parse(ev.data);
         if (msg.method === 'Fetch.requestPaused') paused.push(msg.params.requestId);
     });
-    await page.send('Fetch.enable', { patterns: [{ urlPattern: '*/js/components/nfsen-toast.js*', requestStage: 'Request' }] });
+    await page.send('Fetch.enable', { patterns: [{ urlPattern: '*/js/components/toasts.js*', requestStage: 'Request' }] });
     // The held module delays the load event, so the navigation is not awaited through navigate().
     page.expectNavigation();
     await page.send('Page.navigate', { url: `${BASE}/#/overview` });
     await page.waitForBoot({ timeout: 20000 });
-    assert.ok(paused.length > 0, 'nfsen-toast.js is held back');
+    assert.ok(paused.length > 0, 'toasts.js is held back');
     assert.equal(await page.evaluate(`Array.isArray(window.showMessage.queue)`), true, 'the layout stand-in answers showMessage');
     await page.evaluate(`window.showMessage('warning', 'Alert fired: early', true)`);
     for (const requestId of paused.splice(0)) await page.send('Fetch.continueRequest', { requestId });
     await page.send('Fetch.disable');
     await page.waitFor(
-        `[...document.querySelectorAll('#alerts-toast-container nfsen-toast')].some(function(t){ return t.querySelector('.toast-message')?.textContent === 'Alert fired: early'; })`,
-        { timeout: 10000, label: 'the queued toast once nfsen-toast.js has run' }
+        `${toasts('#alerts-toast-container')}.some(function(t){ return t.text === 'Alert fired: early'; })`,
+        { timeout: 10000, label: 'the queued toast once toasts.js has run' }
     );
-    assert.equal(await page.evaluate(`window.showMessage.queue`), undefined, 'nfsen-toast.js replaced the stand-in');
+    assert.equal(await page.evaluate(`window.showMessage.queue`), undefined, 'toasts.js replaced the stand-in');
     assert.deepEqual(page.realErrors(), [], 'no console errors (no "showMessage is not a function")');
 }
 
@@ -593,80 +581,30 @@ async function pageCases(page, requests, consoleText) {
             'no request for a self-hosted engine'
         );
 
-        // ── The shell stack; its pause on hover, and a move that is not atomic ──
+        // ── The shell stack (sb-toast's own pause, countdown and focus handling are Starbase's to test) ──
         await toastIn(page, '#alerts-toast-container', 'shell');
-        await page.evaluate(`window.showMessage('info', 'held by the pointer', true).__e2e = 'hover'`);
-        const hover = tagged('hover');
-        await page.waitFor(`${hover}?.textContent.includes('held by the pointer')`, { label: 'the auto-dismissing toast' });
-        const box = await page.evaluate(
-            `(function(){ var r = ${hover}.getBoundingClientRect(); return { x: r.x + r.width / 3, y: r.y + r.height / 2 }; })()`
-        );
-        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y });
-        await sleep(6000);
-        assert.ok(await page.evaluate(`!!${hover}`), 'the pointer holds an auto-dismissing toast past its 5 s');
-        const moved = await page.evaluate(`(function(){
-            var t = ${hover};
-            var notice = t.querySelector('.notice');
-            var stack = t.parentNode;
-            t.remove();
-            stack.append(t);
-            return new Promise(function(resolve){ setTimeout(function(){ resolve(t.querySelector('.notice') === notice && t.isConnected); }); });
-        })()`);
-        assert.ok(moved, 'a toast taken out and put back in one task keeps its notice');
-        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
-        await page.waitFor(`!${hover}`, { timeout: 8000, label: 'the toast to time out once the pointer has left' });
 
-        // A move while the timer runs resumes with the time left (6.1), not with a fresh 5 s.
-        const counting = await page.evaluate(`new Promise(function(resolve){
-            var t = window.showMessage('info', 'moved while counting', true);
-            setTimeout(function(){
-                var notice = t.querySelector('.notice');
-                var stack = t.parentNode;
-                t.remove();
-                stack.append(t);
-                var moved = performance.now();
-                t.addEventListener('nfsen-toast-dismissed', function(){
-                    resolve({
-                        kept: t.querySelector('.notice') === notice,
-                        delay: parseFloat(t.querySelector('.toast-progress').style.animationDelay),
-                        afterMove: Math.round(performance.now() - moved),
-                    });
-                });
-                setTimeout(function(){ resolve({ afterMove: null }); }, 8000);
-            }, 3000);
+        // ── The four levels as sb-toast's variants, and in forced colours (V-A11Y) the close button shows ──
+        const SHELL = '#alerts-toast-container';
+        const ids = await page.evaluate(`['success', 'info', 'warning', 'error'].map(function(level){
+            return window.showMessage(level, level + ': ' + ${JSON.stringify(TRICKY)}, false);
         })`);
-        assert.equal(counting.kept, true, `the moved toast keeps its notice (${JSON.stringify(counting)})`);
-        assert.ok(counting.delay <= -2500, `its progress bar resumes about 3 s in (${JSON.stringify(counting)})`);
-        assert.ok(
-            counting.afterMove !== null && counting.afterMove >= 1500 && counting.afterMove <= 3500,
-            `it goes about 2 s after the move, not 5 s (${JSON.stringify(counting)})`
-        );
-
-        // ── The four levels in forced colours (V-A11Y): the glyph keeps its colour, the close button shows ──
-        // Tagged: a fired alert's toast (Shell.php:233) can land in the same stack at any time.
-        const levels = `[...document.querySelectorAll('#alerts-toast-container nfsen-toast')].filter(function(t){ return t.__e2e === 'levels'; })`;
-        await page.evaluate(`['success', 'info', 'warning', 'error'].forEach(function(level){
-            window.showMessage(level, level + ': ' + ${JSON.stringify(TRICKY)}, false).__e2e = 'levels';
-        })`);
-        await page.waitFor(
-            `${levels}.filter(function(t){ return t.querySelector('.toast-message')?.textContent.endsWith(${JSON.stringify(TRICKY)}); }).length === 4`,
-            { label: 'a toast of each level' }
-        );
+        const levels = `${toastRows(SHELL)}.filter(function(r){ return r.querySelector('[part~="text"]').textContent.endsWith(${JSON.stringify(TRICKY)}); })`;
+        await page.waitFor(`${levels}.length === 4`, { label: 'a toast of each level' });
         const forced = await page.withForcedColors(async () => {
             await sleep(200);
             await page.screenshot('/tmp/nfsen-rocket-toasts-forced.png');
-            return page.evaluate(`${levels}.map(function(t){
-                var n = t.querySelector('.notice'), dot = n.querySelector('.status-dot'), close = n.querySelector('button[data-variant=close]');
-                return n.dataset.level + ':' + getComputedStyle(dot).forcedColorAdjust + ':' + (dot.getClientRects().length > 0) + ':' + (close.getBoundingClientRect().width > 0);
+            return page.evaluate(`${levels}.map(function(r){
+                return r.querySelector('[part~="text"]').textContent.split(':')[0] + ':' + r.dataset.variant + ':' + (r.querySelector('[part~="close"]').getBoundingClientRect().width > 0);
             }).sort()`);
         });
         assert.deepEqual(
             forced,
-            ['error:none:true:true', 'info:none:true:true', 'success:none:true:true', 'warning:none:true:true'],
-            'forced colours: every level keeps its glyph and its close button'
+            ['error:danger:true', 'info:info:true', 'success:ok:true', 'warning:warn:true'],
+            'each level is its sb-toast variant, and in forced colours every toast keeps its close button'
         );
-        await page.evaluate(`${levels}.forEach(function(t){ t.dismiss(); })`);
-        await page.waitFor(`${levels}.length === 0`, { label: 'the four toasts to go' });
+        for (const id of ids) await page.evaluate(dismiss(id));
+        await page.waitFor(`!${toastRegion(SHELL)}.getAttribute('toasts').includes('error: ')`, { label: 'the four toasts to go' });
 
         // ── nfsen/clipboard: a copy button in text and rows mode, its label, the announcement, nfsen-copy ──
         await page.evaluate(`(function(){
@@ -720,7 +658,7 @@ async function pageCases(page, requests, consoleText) {
         const MARKED = ['#trafficGraph', '#trafficGraph .chart-container', '#alerts-toast-container', '#modal-root', '#client-root'];
         await page.evaluate(`${JSON.stringify(MARKED)}.forEach(function(s){ document.querySelector(s).__keep = 1; })`);
         // A toast that stays through the walk, so a Rocket host is there on every page.
-        await page.evaluate(`window.showMessage('info', ${JSON.stringify(`walk: ${TRICKY}`)}, false).__e2e = 'walk'`);
+        const walkToast = await page.evaluate(`window.showMessage('info', ${JSON.stringify(`walk: ${TRICKY}`)}, false)`);
         const walkStart = requests.length;
         await page.runQuery('flows', { timeout: 60000 });
         // A result on every result page, so the walk scans their Export menus and Columns popovers too.
@@ -780,8 +718,8 @@ async function pageCases(page, requests, consoleText) {
             [],
             'no runaway recursion and no undefined action'
         );
-        await page.evaluate(`${tagged('walk')}.dismiss()`);
-        await page.waitFor(`!${tagged('walk')}`, { label: 'the walk toast to go' });
+        await page.evaluate(dismiss(walkToast));
+        await page.waitFor(`!${listed(walkToast)}`, { label: 'the walk toast to go' });
 
         // ── nfsen/clipboard on Flows: the Raw tab's Copy of the command ──
         await page.evaluate(`document.getElementById('flowsTab-raw').click()`);
@@ -810,17 +748,17 @@ async function pageCases(page, requests, consoleText) {
         await page.evaluate(`document.querySelector('#page-flows .ip-link').click()`);
         await page.waitFor(`document.getElementById('ip-modal-inner')?.isOpen`, { timeout: 15000, label: 'the IP modal to open' });
         await page.evaluate(`document.getElementById('ip-modal-inner').__keep = 1`);
-        await page.evaluate(`window.showMessage('error', 'kept by the modal', false).__e2e = 'modal-sync'`);
+        const modalToast = await page.evaluate(`window.showMessage('error', 'kept by the modal', false)`);
         assert.equal(await page.evaluate(syncAs('flows')), 'synced', 'a sync arrives while the IP modal is open');
         assert.deepEqual(
             await page.evaluate(`({
                 modal: document.getElementById('ip-modal-inner')?.__keep === 1,
-                toast: !!${tagged('modal-sync')}?.closest('#ip-modal-inner > .toast-stack') && !!${tagged('modal-sync')}.querySelector('.notice'),
+                toast: ${toasts('#ip-modal-inner > .toast-stack')}.some(function(t){ return t.id === ${JSON.stringify(modalToast)}; }) && ${toastRows('#ip-modal-inner > .toast-stack')}.length === 1,
             })`),
             { modal: true, toast: true },
             'the IP modal and its toast survive the sync'
         );
-        await page.evaluate(`${tagged('modal-sync')}.dismiss()`);
+        await page.evaluate(dismiss(modalToast));
         await toastIn(page, '#ip-modal-inner > .toast-stack', 'ip-modal');
         await press(page, 'Escape');
         await page.waitFor(`!document.getElementById('ip-modal-inner').isOpen`, { label: 'Escape to close the IP modal' });
@@ -890,16 +828,26 @@ const HEAP_HELPERS = `(function(){
     window.__alive = function(){
         return gone().filter(function(e){ return !!e.ref.deref(); }).length;
     };
-    window.__toasts = async function(n){
+    // A small light host of the test's own, removed by itself: what the engine keeps of it after collection.
+    window.__lightHosts = async function(n){
+        var ds = await import('datastar');
+        if (!customElements.get('e2e-heap-host')) {
+            ds.rocket('e2e-heap-host', { mode: 'light', setup: function(ctx){
+                if (ctx.host.firstChild) return;
+                var n = document.createElement('div');
+                n.innerHTML = '<span></span><span>heap</span><button type="button">x</button>';
+                ctx.host.append(n);
+            } });
+        }
         var shown = [];
         for (var i = 0; i < n; i++) {
-            var t = window.showMessage('info', 'heap ' + i, false);
-            t.__e2e = 'heap';
-            shown.push(t);
+            var h = document.createElement('e2e-heap-host');
+            document.getElementById('client-root').append(h);
+            shown.push(h);
         }
-        window.__snap();
         await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
-        shown.forEach(function(t){ t.dismiss(); });
+        window.__snap();
+        shown.forEach(function(h){ h.remove(); });
         shown = null;
     };
 })()`;
@@ -932,20 +880,20 @@ async function heapAround(page, run, runs, extra = async () => {}) {
 }
 
 /**
- * Shows and dismisses the toasts and runs Conversations: each run replaces the result hosts, and the
+ * Adds and removes light hosts and runs Conversations: each run replaces the result hosts, and the
  * Sankey and Matrix hosts inside go with their ancestor.
  */
 async function measureHeap(page) {
     await page.gotoPage('conversations');
     await page.setRangePreset('1y');
     await page.evaluate(HEAP_HELPERS);
-    const heapToast = `[...document.querySelectorAll('nfsen-toast')].some(function(t){ return t.__e2e === 'heap'; })`;
+    const heapHost = `!!document.querySelector('#client-root e2e-heap-host')`;
     const run = resultRun(page, 'conversations', `document.querySelector('#convPanel-sankey .result-host')?.id ?? ''`);
-    await page.evaluate('window.__toasts(5)');
-    await page.waitFor(`!${heapToast}`, { label: 'the warm-up toasts to go' });
+    await page.evaluate('window.__lightHosts(5)');
+    await page.waitFor(`!${heapHost}`, { label: 'the warm-up hosts to go' });
     return heapAround(page, run, HEAP_RUNS, async () => {
-        await page.evaluate(`window.__toasts(${HEAP_TOASTS})`);
-        await page.waitFor(`!${heapToast}`, { timeout: 15000, label: 'the toasts to go' });
+        await page.evaluate(`window.__lightHosts(${HEAP_HOSTS})`);
+        await page.waitFor(`!${heapHost}`, { timeout: 15000, label: 'the hosts to go' });
     });
 }
 
@@ -972,19 +920,15 @@ async function measureRoundTrips(page) {
     return { ...(await heapAround(page, trip, HEAP_TRIPS)), popovers };
 }
 
-/** Toasts in a box that goes as a whole: no host is removed itself, each goes with its ancestor. */
+/** Light hosts in a box that goes as a whole: no host is removed itself, each goes with its ancestor. */
 async function measureAncestorHeap(page) {
     await page.waitForPage('overview');
     await page.evaluate(HEAP_HELPERS);
     const run = async () => {
         await page.evaluate(`(async function(){
+            await window.__lightHosts(0);
             var box = document.createElement('div');
-            for (var i = 0; i < ${HEAP_TOASTS / 2}; i++) {
-                var t = document.createElement('nfsen-toast');
-                t.level = 'info';
-                t.message = 'boxed ' + i;
-                box.append(t);
-            }
+            for (var i = 0; i < ${HEAP_HOSTS / 2}; i++) box.append(document.createElement('e2e-heap-host'));
             document.getElementById('client-root').append(box);
             await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
             window.__snap();

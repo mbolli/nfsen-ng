@@ -536,8 +536,7 @@ async function step(page, names, fn, { optional = false } = {}) {
                 await boot(page);
             }
             await page.evaluate(`(function(){
-                document.querySelectorAll('dialog[open]').forEach(function(d){ d.close(); });
-                document.querySelectorAll('sb-modal').forEach(function(m){ if (m.isOpen) m.close(); });
+                document.querySelectorAll('sb-modal, sb-drawer').forEach(function(m){ if (m.isOpen) m.close(); });
                 document.querySelectorAll('sb-popover').forEach(function(p){ if (p.open) p.hide(); });
             })()`);
             await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
@@ -966,7 +965,7 @@ async function desktop(page) {
     await step(page, ['guide-filter-drawer', 'guide-saved-filters'], async () => {
         await flowsResult(page);
         await click(page, '[data-filter-field="flows"] [data-open-drawer="builder"]');
-        await page.waitFor(`document.getElementById('filter-drawer')?.open && !!document.getElementById('drawerFilterTextarea')`, {
+        await page.waitFor(`document.getElementById('filter-drawer')?.isOpen && !!document.getElementById('drawerFilterTextarea')`, {
             timeout: 15000,
             label: 'drawer',
         });
@@ -976,7 +975,7 @@ async function desktop(page) {
         });
         await page.evaluate(`document.activeElement?.blur()`);
         await sleep(1200);
-        await shot(page, 'guide-filter-drawer', '#filter-drawer', { margin: 0 });
+        await shot(page, 'guide-filter-drawer', `document.getElementById('filter-drawer').shadowRoot.querySelector('[part~="panel"]')`, { margin: 0 });
         const menu = () =>
             openMenu(page, '#drawerSavedList .saved-filter [slot="trigger"]', '#drawerSavedList sb-popover.saved-menu .popover-list', {
                 mouse: true,

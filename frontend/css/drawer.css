@@ -1,5 +1,25 @@
 /* Filter builder drawer (spec 4.5, 2.7.7): the editor beside the saved filters, stacked on phones.
-   The dialog itself (side, size, slide-in, backdrop) is dialog.drawer in ui.css. */
+   sb-drawer draws the panel, the slide-in, the backdrop and the close button; its width is --sb-drawer-size. */
+
+sb-drawer.drawer::part(panel) {
+    border-color: var(--border-strong);
+}
+
+/* The header has no part: the line under it is the body's. */
+sb-drawer.drawer::part(body) {
+    padding: var(--size-4);
+    border-block-start: 1px solid var(--border);
+    color: var(--text-1);
+    font-size: var(--font-size-1);
+}
+
+sb-drawer.drawer::part(footer) {
+    padding: var(--size-3) var(--size-4);
+}
+
+.drawer-actions {
+    flex: 1;
+}
 
 .drawer [hidden] {
     display: none;
@@ -24,10 +44,6 @@
     align-items: center;
     gap: var(--size-2);
     color: var(--text-2);
-}
-
-.drawer .dialog-footer {
-    justify-content: space-between;
 }
 
 /* ── Editor ─────────────────────────────────────────────────────────────── */

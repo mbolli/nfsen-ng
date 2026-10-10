@@ -8,21 +8,21 @@ const MIGRATED_KEY = 'nfsen-filters-migrated';
 
 let pendingFocus = null;
 
-/** Whether focus is still where showModal() left it, so moving it takes nothing from the user. */
-function focusUnclaimed(dialog) {
+/** Whether focus is still where opening left it (the drawer's own close button), so moving it takes nothing from the user. */
+function focusUnclaimed(drawer) {
     const active = document.activeElement;
-    return !active || active === document.body || active === dialog || !dialog.contains(active) || active.matches('[data-variant="close"]');
+    return !active || active === document.body || active === drawer || !drawer.contains(active);
 }
 
 window.nfsenFilterEditor = {
     /** Focus #id in the open drawer now, or once a sync has rendered it, unless the user moved on. */
     focusDrawer(id) {
-        const dialog = document.getElementById('filter-drawer');
-        if (!dialog) return;
+        const drawer = document.getElementById('filter-drawer');
+        if (!drawer) return;
         pendingFocus?.();
         const attempt = () => {
             const target = document.getElementById(id);
-            if (!dialog.open || !target?.getClientRects().length) return !dialog.open;
+            if (!drawer.isOpen || !target?.getClientRects().length) return !drawer.isOpen;
             target.focus();
             return true;
         };
@@ -30,7 +30,7 @@ window.nfsenFilterEditor = {
             if (attempt()) return;
             // Showing the frame focused its close button; the editor arrives with the drawer-open sync.
             const observer = new MutationObserver(() => {
-                if (!focusUnclaimed(dialog) || attempt()) stop();
+                if (!focusUnclaimed(drawer) || attempt()) stop();
             });
             const timer = setTimeout(() => stop(), 10000);
             const stop = () => {
@@ -39,9 +39,13 @@ window.nfsenFilterEditor = {
                 if (pendingFocus === stop) pendingFocus = null;
             };
             pendingFocus = stop;
-            observer.observe(dialog, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'style'] });
+            observer.observe(drawer, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'style'] });
         });
     },
+
+    /** A saved-list row's name and expression, from its text (K1 keeps user text out of data-* values). */
+    rowName: (row) => row?.querySelector('.saved-name')?.textContent ?? '',
+    rowExpression: (row) => row?.querySelector('.saved-expression')?.textContent ?? '',
 
     /** Whether a saved-list row matches the search, by name or expression, case-insensitively. */
     matches(row, search) {
@@ -49,7 +53,7 @@ window.nfsenFilterEditor = {
             .trim()
             .toLowerCase();
         if (query === '') return true;
-        return (row.dataset.name ?? '').toLowerCase().includes(query) || (row.dataset.expression ?? '').toLowerCase().includes(query);
+        return this.rowName(row).toLowerCase().includes(query) || this.rowExpression(row).toLowerCase().includes(query);
     },
 
     /** True when a search is typed and no row of `list` matches it. */

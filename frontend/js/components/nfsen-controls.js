@@ -193,17 +193,10 @@ function onPopoverOpen(event) {
 }
 
 // A popover's Escape listener would still take the first Escape once a modal covers it.
-function onDialogToggleCapture(event) {
-    const dialog = event.target;
-    if (!(dialog instanceof HTMLDialogElement) || event.newState !== 'open' || !dialog.matches(':modal')) return;
-    for (const host of openPopovers()) {
-        if (!dialog.contains(host)) host.hide();
-    }
-}
-
-// An sb-modal's <dialog> is in its shadow root, so its toggle never reaches the document: it says sb-open.
+// A modal (sb-modal, sb-drawer) makes the page inert, so the popovers outside it close. Its <dialog> is in its
+// shadow root, so its toggle never reaches the document: it says sb-open.
 function onModalOpen(event) {
-    if (event.target.localName !== 'sb-modal') return;
+    if (event.target.localName !== 'sb-modal' && event.target.localName !== 'sb-drawer') return;
     for (const host of openPopovers()) {
         if (!event.target.contains(host)) host.hide();
     }
@@ -225,7 +218,6 @@ if (!window.__nfsenControls) {
     document.addEventListener('pointercancel', endPress, true);
     document.addEventListener('keydown', endPress, true);
     document.addEventListener('click', () => setTimeout(endPress), true);
-    document.addEventListener('toggle', onDialogToggleCapture, true);
     document.addEventListener('sb-open', onModalOpen);
     document.addEventListener('focusin', onTabFocusin);
     document.addEventListener('focusout', onPopoverFocusout);

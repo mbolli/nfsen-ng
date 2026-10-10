@@ -34,6 +34,17 @@
         "manifest.json": "sha384-zEIh5ZaHhtpFhvcRYf/KJCu96OvsH2inkzi6tC3mfT8jtioFzGgQDgs326wCydXi"
       }
     },
+    "drawer": {
+      "tag": "sb-drawer",
+      "version": "e6cccadb283c",
+      "entry": "drawer.js",
+      "load": true,
+      "files": {
+        "README.md": "sha384-mEePKvqwInplJteP5jTto8dNRo7Ld5m3rf/cbxeuGrh+KwQ+szMr1aEGjLQkg5MU",
+        "drawer.js": "sha384-sva5RD53+RZOxwMw92/dBZAJv9MGlk/Hrz8cKX9iCBFdR2Gn6vQOzRw1dFnicwwA",
+        "manifest.json": "sha384-Q9RnR3Q/CO9v5Yo3j165pClb6IY9EslMX0UYQPE/Cgrw65JHow8qsMNh6JIY/RDw"
+      }
+    },
     "dropdown": {
       "tag": "sb-dropdown",
       "version": "e461cd778acd",

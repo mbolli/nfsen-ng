@@ -94,7 +94,7 @@ async function applyFromDrawer(page, text) {
         `(function(){ var b = document.querySelector('[data-filter-field="conversations"] [data-open-drawer="builder"]'); b.focus(); b.click(); })()`
     );
     await page.waitFor(
-        `document.getElementById('filter-drawer').open && document.getElementById('drawerTitle').textContent.includes('for ') && !!document.getElementById('drawerFilterTextarea')`,
+        `document.getElementById('filter-drawer').isOpen && document.getElementById('drawerTitle').textContent.includes('for ') && !!document.getElementById('drawerFilterTextarea')`,
         {
             timeout: 10000,
             label: 'the drawer for Conversations',
@@ -105,7 +105,7 @@ async function applyFromDrawer(page, text) {
     );
     await sleep(200);
     await page.evaluate(`document.getElementById('drawerApply').click()`);
-    await page.waitFor(`!document.getElementById('filter-drawer').open`, { label: 'the drawer to close' });
+    await page.waitFor(`!document.getElementById('filter-drawer').isOpen`, { label: 'the drawer to close' });
     await page.waitFor(`document.getElementById('filterNfdumpTextareaSankey').value === ${JSON.stringify(text)}`, {
         label: 'the applied filter',
     });

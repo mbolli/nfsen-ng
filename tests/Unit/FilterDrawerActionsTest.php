@@ -444,7 +444,7 @@ describe('FilterDrawer view', function (): void {
         $html = filterDrawerRender($this->app, $this->c);
 
         expect($data)->toMatchArray(['open' => false, 'grammar' => null, 'savedFilters' => [], 'savedError' => ''])
-            ->and($html)->toContain('<dialog id="filter-drawer" class="drawer"', 'Loading filters', 'id="drawerApply"')
+            ->and($html)->toContain('<sb-drawer id="filter-drawer" class="drawer"', 'Loading filters', 'id="drawerApply"')
             // The browser import is marked done on the server's acknowledgement only.
             ->and($html)->toContain('data-effect="const ack = $' . $this->c->getSignal('_drawer_imported')?->id() . ';')
             ->and($html)->not->toContain('saved-list', 'data-filter-id', 'drawerFilterTextarea', 'nfsen-filter-editor', 'Web')
@@ -473,11 +473,10 @@ describe('FilterDrawer view', function (): void {
             'data-estimate="drawer"',
             'id="drawerSearch"',
             'aria-label="Star DNS" title="Star DNS"',
-            'aria-label="Close the filter builder" title="Close the filter builder"',
             'aria-label="Actions for Web"',
             '<span class="badge">preset</span>',
         )
-            ->and(strpos($html, 'data-name="DNS"'))->toBeLessThan(strpos($html, 'data-name="Web"'))
+            ->and(strpos($html, '<span class="saved-name">DNS</span>'))->toBeLessThan(strpos($html, '<span class="saved-name">Web</span>'))
             ->and(substr_count($html, 'data-filter-id='))->toBe(2)
             // 2.7.7: the estimate is the editor column's last line, under the Fields and Examples.
             ->and(strpos($html, 'data-filter-status="drawer"'))->toBeLessThan(strpos($html, 'class="field-tree"'))

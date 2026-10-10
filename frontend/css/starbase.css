@@ -52,7 +52,9 @@
     --sb-shadow-overlay: var(--shadow-2);
     --sb-selection: color-mix(in oklab, var(--text-1) 18%, transparent);
 
+    --sb-z-overlay: var(--layer-overlay);
     --sb-z-toast: var(--layer-toast);
+    --sb-drawer-size: min(44rem, 100vw);
     --sb-z-tooltip: var(--layer-tooltip);
 
     --sb-code-keyword: var(--text-1);

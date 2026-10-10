@@ -20,6 +20,8 @@ const NOT_COLOUR = [
     '--sb-radius-lg',
     '--sb-focus-ring',
     '--sb-shadow-overlay',
+    '--sb-drawer-size',
+    '--sb-z-overlay',
     '--sb-z-toast',
     '--sb-z-tooltip',
 ];

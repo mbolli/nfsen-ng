@@ -126,7 +126,7 @@ const POPOVERS = `
   <button id="pAfter">after popovers</button>
 </div>
 <div id="fxpMoved" style="position: fixed; inset-block-end: 6rem; inset-inline-start: 1rem; z-index: 40"></div>
-<dialog id="fxDialog" aria-label="Fixture dialog"><button id="fxDialogOk">OK</button></dialog>`;
+<sb-modal id="fxDialog" heading="Fixture dialog"><button id="fxDialogOk">OK</button></sb-modal>`;
 
 async function inject(page) {
     await page.evaluate(`(() => {
@@ -421,17 +421,18 @@ async function popoverUnderModal(page) {
     // the dialog cannot be what closes the popover.
     await page.evaluate(`document.activeElement.blur()`);
     assert.equal(await popOpen(page, 'popA'), true, 'focus going nowhere keeps the popover open');
-    await page.evaluate(`(() => {
-        const dialog = document.getElementById('fxDialog');
-        window.__cancels = 0;
-        dialog.addEventListener('cancel', () => window.__cancels++);
-        dialog.showModal();
+    await page.evaluate(`(async () => {
+        await customElements.whenDefined('sb-modal');
+        const modal = document.getElementById('fxDialog');
+        window.__escapes = 0;
+        modal.addEventListener('sb-close', (e) => e.detail.reason === 'escape' && window.__escapes++);
+        modal.show();
     })()`);
-    await page.waitFor(`document.getElementById('popA').open === false`, { timeout: 2000, label: 'the modal dialog to close the popover' });
+    await page.waitFor(`document.getElementById('popA').open === false`, { timeout: 2000, label: 'the modal to close the popover' });
     assert.equal(await popOpen(page, 'popA'), false);
     await press(page, 'Escape');
-    assert.equal(await page.evaluate(`document.getElementById('fxDialog').open`), false, 'the next Escape closes the dialog');
-    assert.equal(await page.evaluate('window.__cancels'), 1);
+    assert.equal(await page.evaluate(`document.getElementById('fxDialog').isOpen`), false, 'the next Escape closes the modal');
+    assert.equal(await page.evaluate('window.__escapes'), 1);
 }
 
 async function popoverMove(page) {

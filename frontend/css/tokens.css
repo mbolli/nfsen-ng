@@ -138,6 +138,7 @@
     --layer-sticky: 10;
     --layer-sidebar: 20;
     --layer-menu: 30;
+    --layer-overlay: 40;
     --layer-toast: 50;
     --layer-tooltip: 60;
 

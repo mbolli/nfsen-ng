@@ -294,16 +294,17 @@ state), and 0009 lets a light component render inside a `data-ignore-morph` cont
 Rules, checked in part by `tests/e2e/rocket.test.mjs` (and K1 in the templates' popovers by
 `tests/Unit/PopoverMarkupTest.php`):
 
-- K1. No Datastar plugin attribute (`data-on`, `data-text`, `data-bind:*`, `data-ref`, `data-signals`, ...) in the light
-  DOM of a Rocket host, except inside a `data-ignore` subtree: Rocket rescopes them to the component. It renames
-  `data-signals`, `data-ref` and keyed `data-bind:`, `data-computed:` and `data-indicator:` inside `data-ignore` as
-  well, so those stay out of it. The exception is `sb-popover`, whose slotted trigger and panel may carry `data-on:*`,
-  `data-attr:*`, `data-class:*`, `data-style:*`, `data-effect`, `data-text`, `data-show` and value-form `data-bind` that
-  read and write page signals (`$name`, `${{ signal.id() }}`, never `$$`): patch 0011 binds them on first load, and
-  Rocket's rewrite of `@name(` to `@dispatchRocket("name",` falls back to the page's action. Keyed signal attributes,
-  `data-ref`, `data-init`, `data-persist`, `data-json-signals` and the `data-on-*` plugins stay out of a popover, and no
-  `data-*` value inside any Rocket host holds free text from users or nfdump, since that rewrite also changes every `$$`
-  and `@word(` in it: such text goes into element content.
+- K1. No Datastar plugin attribute (`data-on`, `data-text`, `data-bind:*`, `data-ref`, `data-signals`, ...) in the
+  light DOM of a Rocket host, except inside a `data-ignore` subtree: Rocket rescopes them to the component. It
+  renames `data-signals`, `data-ref` and keyed `data-bind:`, `data-computed:` and `data-indicator:` inside
+  `data-ignore` as well, so those stay out of it. The exception is `sb-popover` and `sb-drawer` (the filter
+  builder), whose slotted content may carry `data-on:*`, `data-attr:*`, `data-class:*`, `data-style:*`,
+  `data-effect`, `data-text`, `data-show` and value-form `data-bind` that read and write page signals (`$name`,
+  `${{ signal.id() }}`, never `$$`): patch 0011 binds them on first load, and Rocket's rewrite of `@name(` to
+  `@dispatchRocket("name",` falls back to the page's action. Keyed signal attributes, `data-ref`, `data-init`,
+  `data-persist`, `data-json-signals` and the `data-on-*` plugins stay out of them (the drawer's live on
+  `#filter-drawer-frame` around it), and no `data-*` value inside any Rocket host holds free text from users or
+  nfdump, since that rewrite also changes every `$$` and `@word(` in it: such text goes into element content.
 - K2. No `data-init` on a Rocket host: it can run twice.
 - K3. A light host (shapes B and C) carries no `data-*` attribute from the server or the page; its props use plain
   names (`level`, `message`, `for`).

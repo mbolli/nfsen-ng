@@ -27,7 +27,7 @@ const PLUGINS = [
     'text',
     'persist',
 ];
-// K1's exception: the plugin attributes an sb-popover's light DOM may carry, value forms that read page signals.
+// K1's exception: the plugin attributes the light DOM of an sb-popover or sb-drawer may carry, value forms that read page signals.
 const POPOVER_ALLOWED = '^data-((on|attr|class|style):|(effect|text|show|bind)(__|$))';
 // What each result page shows with a result: its Export menu and, in an sb-popover, its Columns list.
 const RESULT_IDS = {
@@ -95,7 +95,7 @@ const nextCopy = `new Promise(function(resolve){
 
 /**
  * Every element, shadow trees included; the Rocket hosts among them (rocketInstanceId), with K1 and its
- * sb-popover exception, K2, free text in data-* values and the naming rule checked on each. Attributes that
+ * sb-popover and sb-drawer exception, K2, free text in data-* values and the naming rule checked on each. Attributes that
  * Rocket renamed into a component scope are reported inside data-ignore too, since the rewrite does not skip it.
  */
 export const SCAN = `(function(){
@@ -123,14 +123,14 @@ export const SCAN = `(function(){
         for (var el of host.querySelectorAll('*')) {
             var ignored = el.closest('[data-ignore]');
             var skip = !!ignored && ignored !== host && host.contains(ignored);
-            var popover = el.parentElement.closest('sb-popover');
+            var popover = el.parentElement.closest('sb-popover, sb-drawer');
             var inPopover = !!popover && (popover === host || host.contains(popover));
             for (var b of el.attributes) {
                 var on = ' on ' + el.localName;
                 if (b.name.includes('_rocket.') || b.name === 'data-rocket-ref') problems.push(name + ': ' + b.name + on);
                 else if (freeText(b)) problems.push(name + ': ' + b.name + '="' + b.value + '"' + on + ' holds free text Rocket rewrote (K1)');
                 else if (!PLUGIN.test(b.name)) continue;
-                // A popover holds no $$ at all, as PopoverMarkupTest checks, data-ignore or not.
+                // A popover or drawer holds no $$ at all, as PopoverMarkupTest checks, data-ignore or not.
                 else if (inPopover && b.value.includes('_rocket.')) problems.push(name + ': ' + b.name + '="' + b.value + '"' + on + ' reads a $$ signal (K1)');
                 else if (skip) continue;
                 else if (!inPopover) problems.push(name + ': plugin attribute ' + b.name + on + ' (K1)');
@@ -829,7 +829,7 @@ async function pageCases(page, requests, consoleText) {
         await page.evaluate(
             `(function(){ var b = document.querySelector('[data-filter-field="flows"] [data-open-drawer="builder"]'); b.focus(); b.click(); })()`
         );
-        await page.waitFor(`document.getElementById('filter-drawer').open && !!document.getElementById('drawerFilterTextarea')`, {
+        await page.waitFor(`document.getElementById('filter-drawer').isOpen && !!document.getElementById('drawerFilterTextarea')`, {
             timeout: 10000,
             label: 'the drawer to open',
         });
@@ -842,7 +842,7 @@ async function pageCases(page, requests, consoleText) {
         );
         await toastIn(page, '#filter-drawer > .toast-stack', 'drawer');
         await press(page, 'Escape');
-        await page.waitFor(`!document.getElementById('filter-drawer').open`, { label: 'Escape to close the drawer' });
+        await page.waitFor(`!document.getElementById('filter-drawer').isOpen`, { label: 'Escape to close the drawer' });
 
         // ── The alert Test dialog's stack; running a Test records an event ──
         if (SKIP_MUTATING) {

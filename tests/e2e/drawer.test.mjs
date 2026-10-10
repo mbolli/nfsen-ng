@@ -106,7 +106,7 @@ async function drawerChecks(page) {
 }
 
 const q = (selector) => `document.querySelector(${JSON.stringify(selector)})`;
-const row = (name) => `[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].find((li) => li.dataset.name === ${JSON.stringify(name)})`;
+const row = (name) => `[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].find((li) => li.querySelector('.saved-name').textContent === ${JSON.stringify(name)})`;
 const visible = (expr) => `(function(){ var e = ${expr}; return !!e && e.getClientRects().length > 0; })()`;
 
 async function value(page, selector) {
@@ -141,18 +141,18 @@ async function waitForNotice(page, text) {
 async function openDrawer(page, target, tab = 'builder') {
     // Focus first, as a pointer click does: closing the dialog returns focus there.
     await page.evaluate(`(function(){ var b = ${q(`[data-filter-field="${target}"] [data-open-drawer="${tab}"]`)}; b.focus(); b.click(); })()`);
-    await page.waitFor(`${q(DRAWER)}.open && ${visible(q('#drawerSearch'))} && ${q('#drawerTitle')}.textContent.includes('for ')`, {
+    await page.waitFor(`${q(DRAWER)}.isOpen && ${visible(q('#drawerSearch'))} && ${q('#drawerTitle')}.textContent.includes('for ')`, {
         timeout: 10000,
         label: `drawer open for ${target}`,
     });
-    // focusDrawer takes the focus a frame after showModal(), whatever has it then: a trigger focused before that loses its popover.
+    // focusDrawer takes the focus a frame after show(), whatever has it then: a trigger focused before that loses its popover.
     await page.evaluate(`new Promise(function(resolve){ requestAnimationFrame(function(){ requestAnimationFrame(resolve); }); })`);
     const focus = tab === 'saved' ? 'drawerSearch' : 'drawerFilterTextarea';
     await page.waitFor(`document.activeElement?.id === '${focus}'`, { label: `the drawer's focus on #${focus}` });
 }
 
 async function closedDrawer(page) {
-    await page.waitFor(`!${q(DRAWER)}.open`, { label: 'drawer closed' });
+    await page.waitFor(`!${q(DRAWER)}.isOpen`, { label: 'drawer closed' });
 }
 
 /** A saved filter's actions: an sb-popover in its row, so the row's name and expression stay outside it (PC4). */
@@ -205,7 +205,7 @@ async function assertSavedScan(page, name, label) {
     assert.deepEqual(
         await page.evaluate(`(function(){
             var h = ${actions(name)}, t = h.querySelector('[slot="trigger"]');
-            return [h.getAttribute('label'), t.getAttribute('aria-label'), t.title, h.closest('li').dataset.name];
+            return [h.getAttribute('label'), t.getAttribute('aria-label'), t.title, h.closest('li').querySelector('.saved-name').textContent];
         })()`),
         [`Actions for ${name}`, `Actions for ${name}`, `Actions for ${name}`, name],
         `${label}: the popover, its trigger and its row carry the name as typed`
@@ -222,7 +222,7 @@ async function menuAction(page, name, action) {
 }
 
 async function savedNames(page) {
-    return page.evaluate(`[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].map((li) => li.dataset.name)`);
+    return page.evaluate(`[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].map((li) => li.querySelector('.saved-name').textContent)`);
 }
 
 async function deleteSaved(page, name) {
@@ -234,14 +234,14 @@ async function deleteSaved(page, name) {
 /** Cleanup: on the Flows page, deletes every saved filter `match` picks. Never throws. */
 async function removeSaved(page, match) {
     try {
-        if (await page.evaluate(`${q(DRAWER)}.open`)) {
-            await page.evaluate(`${q(DRAWER)}.close()`);
+        if (await page.evaluate(`${q(DRAWER)}.isOpen`)) {
+            await page.evaluate(`${q(DRAWER)}.hide()`);
             await closedDrawer(page);
         }
         await page.gotoPage('flows');
         await openDrawer(page, 'flows', 'saved');
         const rows = await page.evaluate(
-            `[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].map((li) => ({ name: li.dataset.name, expression: li.dataset.expression }))`
+            `[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].map((li) => ({ name: li.querySelector('.saved-name').textContent, expression: li.querySelector('.saved-expression').textContent }))`
         );
         for (const li of rows.filter(match)) await deleteSaved(page, li.name);
     } catch (e) {
@@ -287,7 +287,7 @@ export default async function drawerTest() {
             await type(page, ' an');
             await page.waitFor(visible(q('#drawerSuggestions [role="option"]')), { label: 'suggestions for "an"' });
             await press(page, 'Escape');
-            assert.ok(await page.evaluate(`${q(DRAWER)}.open && ${q('#drawerSuggestions')}.hidden`), 'Escape closes the list only');
+            assert.ok(await page.evaluate(`${q(DRAWER)}.isOpen && ${q('#drawerSuggestions')}.hidden`), 'Escape closes the list only');
 
             // ── The editor is a Rocket element beside the textarea; the arrows move the highlight and wrap ──
             assert.ok(await page.evaluate(`!!document.getElementById('drawerEditor')?.rocketInstanceId`), 'the editor is a Rocket host');
@@ -418,7 +418,7 @@ export default async function drawerTest() {
             await page.evaluate(`${q('#drawerSave')}.click()`);
             await waitForNotice(page, `Saved as ${name}`);
             await page.waitFor(`!!${row(name)}`, { label: 'saved row' });
-            assert.equal(await page.evaluate(`${row(name)}.dataset.expression`), expression);
+            assert.equal(await page.evaluate(`${row(name)}.querySelector('.saved-expression').textContent`), expression);
             assert.equal(await page.evaluate(`${row(name)}.dataset.origin`), 'user');
 
             // A second save of the same text names the first.
@@ -435,7 +435,7 @@ export default async function drawerTest() {
             await press(page, 'Enter');
             await waitForNotice(page, `Renamed to ${renamed}`);
             await page.waitFor(`!!${row(renamed)}`, { label: 'renamed row' });
-            assert.equal(await page.evaluate(`${row(renamed)}.dataset.expression`), expression);
+            assert.equal(await page.evaluate(`${row(renamed)}.querySelector('.saved-expression').textContent`), expression);
             await page.waitFor(`document.activeElement === ${actionsTrigger(renamed)}`, { label: 'focus back on the actions trigger after the rename' });
 
             // Escape in the rename field drops the new name and returns to the trigger; the drawer stays open.
@@ -446,7 +446,7 @@ export default async function drawerTest() {
             await page.waitFor(`document.activeElement === ${actionsTrigger(renamed)} && !${visible(`${row(renamed)}?.querySelector('.saved-rename')`)}`, {
                 label: 'Escape in the rename field returns to the actions trigger',
             });
-            assert.ok(await page.evaluate(`${q(DRAWER)}.open && !!${row(renamed)} && !${row('not this name')}`), 'Escape in the rename field leaves the drawer open and the name as it was');
+            assert.ok(await page.evaluate(`${q(DRAWER)}.isOpen && !!${row(renamed)} && !${row('not this name')}`), 'Escape in the rename field leaves the drawer open and the name as it was');
 
             // ── Edit its expression: the editor loads it and the name unchanged, the save row says Save changes ──
             await menuAction(page, renamed, 'edit');
@@ -457,7 +457,7 @@ export default async function drawerTest() {
             await setEditor(page, edited);
             await page.evaluate(`${q('#drawerSave')}.click()`);
             await waitForNotice(page, `Saved changes to ${renamed}`);
-            await page.waitFor(`${row(renamed)}?.dataset.expression === ${JSON.stringify(edited)}`, { label: 'edited expression' });
+            await page.waitFor(`${row(renamed)}?.querySelector('.saved-expression').textContent === ${JSON.stringify(edited)}`, { label: 'edited expression' });
             await page.waitFor(`${q('#drawerSave')}.textContent === 'Save current filter'`, { label: 'edit mode left' });
             await assertSavedScan(page, renamed, 'after the rename and the edit');
 
@@ -465,7 +465,7 @@ export default async function drawerTest() {
             await page.evaluate(`${row(renamed)}.querySelector('.saved-star').click()`);
             await page.waitFor(`${row(renamed)}?.querySelector('.saved-star').getAttribute('aria-pressed') === 'true'`, { label: 'starred' });
             const order = await page.evaluate(
-                `[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].map((li) => [li.dataset.name, li.querySelector('.saved-star').getAttribute('aria-pressed')])`
+                `[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].map((li) => [li.querySelector('.saved-name').textContent, li.querySelector('.saved-star').getAttribute('aria-pressed')])`
             );
             const firstUnstarred = order.findIndex(([, pressed]) => pressed !== 'true');
             const mine = order.findIndex(([n]) => n === renamed);
@@ -475,11 +475,11 @@ export default async function drawerTest() {
             await page.evaluate(`${q('#drawerSearch')}.focus()`);
             await type(page, stamp);
             await page.waitFor(
-                `[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].filter((li) => li.getClientRects().length).map((li) => li.dataset.name).join() === ${JSON.stringify(renamed)}`,
+                `[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].filter((li) => li.getClientRects().length).map((li) => li.querySelector('.saved-name').textContent).join() === ${JSON.stringify(renamed)}`,
                 { label: 'search shows only the match' }
             );
             await press(page, 'Escape');
-            assert.ok(await page.evaluate(`${q(DRAWER)}.open && ${q('#drawerSearch')}.value === ''`), 'Escape in the search clears it');
+            assert.ok(await page.evaluate(`${q(DRAWER)}.isOpen && ${q('#drawerSearch')}.value === ''`), 'Escape in the search clears it');
             await page.waitFor(`${(await savedNames(page)).length} === [...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].filter((li) => li.getClientRects().length).length`, {
                 label: 'every row back',
             });
@@ -534,7 +534,7 @@ export default async function drawerTest() {
             // ── Keyboard: open with Enter, tabs by arrows, the actions popover by ArrowDown, Escape twice ──
             await page.evaluate(`${q('[data-filter-field="flows"] [data-open-drawer="saved"]')}.focus()`);
             await press(page, 'Enter');
-            await page.waitFor(`${q(DRAWER)}.open && document.activeElement?.id === 'drawerSearch'`, { timeout: 10000, label: 'Saved opens on the search' });
+            await page.waitFor(`${q(DRAWER)}.isOpen && document.activeElement?.id === 'drawerSearch'`, { timeout: 10000, label: 'Saved opens on the search' });
             const hosts = await page.evaluate(`[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].map(function(li){
                 var h = li.querySelector('sb-popover.saved-menu');
                 return h ? [h.id === 'savedMenu' + li.dataset.filterId, h.matches(':defined'),
@@ -600,7 +600,7 @@ export default async function drawerTest() {
             await press(page, 'Escape');
             await page.waitFor(`document.activeElement === ${actionsTrigger(renamed)}`, { label: 'Escape returns to the actions trigger' });
             assert.deepEqual(
-                await page.evaluate(`[${q(DRAWER)}.open, ${actions(renamed)}.open, ${actionsTrigger(renamed)}.getAttribute('aria-expanded')]`),
+                await page.evaluate(`[${q(DRAWER)}.isOpen, ${actions(renamed)}.open, ${actionsTrigger(renamed)}.getAttribute('aria-expanded')]`),
                 [true, false, 'false'],
                 'the first Escape closes only the actions'
             );
@@ -637,7 +637,7 @@ export default async function drawerTest() {
                 await page.send('Input.dispatchMouseEvent', { type, ...outside, button: 'left', clickCount: 1 });
             }
             await page.waitFor(`!${actions(renamed)}.open`, { label: 'an outside press closes the actions' });
-            assert.ok(await page.evaluate(`${q(DRAWER)}.open`), 'the outside press leaves the drawer open');
+            assert.ok(await page.evaluate(`${q(DRAWER)}.isOpen`), 'the outside press leaves the drawer open');
             await press(page, 'Escape');
             await closedDrawer(page);
 
@@ -647,11 +647,11 @@ export default async function drawerTest() {
             await sleep(300);
             const stacked = await page.evaluate(`(function(){
                 var e = document.querySelector('.drawer-editor').getBoundingClientRect(), s = document.querySelector('.drawer-saved').getBoundingClientRect();
-                return { below: s.top >= e.bottom - 1, width: Math.round(document.getElementById('filter-drawer').getBoundingClientRect().width) };
+                return { below: s.top >= e.bottom - 1, width: Math.round(document.getElementById('filter-drawer').shadowRoot.querySelector('dialog').getBoundingClientRect().width), view: document.documentElement.clientWidth };
             })()`);
             await page.send('Emulation.clearDeviceMetricsOverride');
             assert.ok(stacked.below, 'the saved list follows the editor below 48em');
-            assert.equal(stacked.width, 600, 'the drawer is full width on a phone');
+            assert.equal(stacked.width, stacked.view, 'the drawer is full width on a phone');
             await page.withForcedColors(() => page.screenshot('/tmp/drawer-forced-colors.png'));
 
             // ── At 390 x 844 a tap opens the actions inside the viewport, and their trigger stays put ──
@@ -673,7 +673,7 @@ export default async function drawerTest() {
                 );
                 await page.withForcedColors(() => page.screenshot('/tmp/drawer-actions-forced-colors.png'));
                 await press(page, 'Escape');
-                await page.waitFor(`!${actions(renamed)}.open && ${q(DRAWER)}.open`, { label: 'Escape closes the actions on a phone' });
+                await page.waitFor(`!${actions(renamed)}.open && ${q(DRAWER)}.isOpen`, { label: 'Escape closes the actions on a phone' });
             } finally {
                 await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
                 await page.send('Emulation.clearDeviceMetricsOverride');
@@ -721,7 +721,7 @@ export default async function drawerTest() {
             await page.evaluate(`${q('#drawerSave')}.click()`);
             await waitForNotice(page, `Saved as ${heapName}`);
             await setEditor(page, '');
-            await page.evaluate(`${q(`${DRAWER} .dialog-header [data-variant="close"]`)}.click()`);
+            await page.evaluate(`${q(DRAWER)}.shadowRoot.querySelector('[part~="close"]').click()`);
             await closedDrawer(page);
             // Datastar's fetch action keeps every element that posted in a Map, so the cycles start after a sync drops these.
             await page.gotoPage('talkers');
@@ -809,7 +809,7 @@ export default async function drawerTest() {
             await openDrawer(page, 'flows', 'saved');
             for (const expr of legacy) {
                 const rows = await page.evaluate(
-                    `[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].filter((li) => li.dataset.expression === ${JSON.stringify(expr)}).map((li) => li.dataset.origin)`
+                    `[...document.querySelectorAll('#drawerSavedList li[data-filter-id]')].filter((li) => li.querySelector('.saved-expression').textContent === ${JSON.stringify(expr)}).map((li) => li.dataset.origin)`
                 );
                 assert.deepEqual(rows, ['browser'], `${expr} is imported once, as browser`);
             }

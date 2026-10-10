@@ -29,12 +29,33 @@ whether it was set or defaulted.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NFSEN_SOURCES` | _(none)_ | Comma-separated sources, e.g. `gw1,router`. `source:name` shows a name for a source wherever the interface lists it, e.g. `10-20-100-3:dc1rt310` for a directory `nfcapd -M` named after the exporter's address; the source stays what queries and stored data use. |
+| `NFSEN_INTERFACES` | _(none)_ | Names for interface indexes, comma-separated `source:index:name`, e.g. `gw1:3:Gi0/0/1`. Names an exporter sends with its flows are learned without it; a configured name wins. See [Interface names](#interface-names). |
 | `NFSEN_PORTS` | _(none)_ | Comma-separated port numbers to track, e.g. `80,443,22`. |
 | `NFSEN_FILTERS` | _(none)_ | JSON array of filter presets, e.g. `["proto tcp","dst port 80"]`. Each one is added to the saved filters once, marked as a preset. A preset you delete in the filter drawer stays deleted. |
 
-> A `settings.php` that defines `general.sources`, `ports`, `filters`, or
-> `processor` overrides the matching variable; where the file omits a key, the
-> environment variable is used.
+> A `settings.php` that defines `general.sources`, `interfaces`, `ports`,
+> `filters`, or `processor` overrides the matching variable; where the file
+> omits a key, the environment variable is used.
+
+### Interface names
+
+Flows, Top Talkers and Overview show an interface's name next to its SNMP
+index, e.g. *3 (Gi0/0/1)*. An index only means something on its exporter, so a
+name belongs to a source. Where a table mixes several sources, an index gets a
+name only when every selected source that knows it gives the same one.
+
+nfsen-ng learns the names an exporter sends with its flows. A Cisco router
+sends them with `option interface-table` in its flow exporter; after an
+import, nfsen-ng reads them from a new file of each source at most once an
+hour. Settings > Sources lists every name, learned or configured. For an
+exporter that sends none, set them with `NFSEN_INTERFACES` or in
+`settings.php`:
+
+```php
+'general' => [
+    'interfaces' => ['gw1' => [1 => 'Gi0/0/0', 3 => 'Tunnel10']],
+],
+```
 
 ### Core
 

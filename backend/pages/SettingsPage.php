@@ -9,6 +9,7 @@ use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\EnvRegistry;
 use mbolli\nfsen_ng\common\GeoIpDatabase;
 use mbolli\nfsen_ng\common\HealthMetrics;
+use mbolli\nfsen_ng\common\InterfaceNames;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\UserPreferences;
 use mbolli\nfsen_ng\query\Estimate;
@@ -388,7 +389,9 @@ final class SettingsPage implements Page {
     /**
      * The Sources tab: what is captured and where (read-only).
      *
-     * @return array{sources: list<string>, sourcesOrigin: string, ports: list<int>, portsOrigin: string,
+     * @return array{sources: list<string>, sourcesOrigin: string,
+     *               interfaces: array<string, array<int, array{name: string, learned: bool}>>, interfacesOrigin: string,
+     *               ports: list<int>, portsOrigin: string,
      *               portDirection: string, portDirectionOrigin: string, profilesData: string,
      *               profilesDataExists: bool, profilesDataOrigin: string, defaultProfile: string, defaultProfileOrigin: string,
      *               profiles: list<string>,
@@ -408,6 +411,8 @@ final class SettingsPage implements Page {
         return [
             'sources' => $settings->sources,
             'sourcesOrigin' => self::origin('NFSEN_SOURCES', ['general', 'sources']),
+            'interfaces' => InterfaceNames::all(),
+            'interfacesOrigin' => self::origin('NFSEN_INTERFACES', ['general', 'interfaces']),
             'ports' => $settings->ports,
             'portsOrigin' => self::origin('NFSEN_PORTS', ['general', 'ports']),
             'portDirection' => $settings->portDirection,

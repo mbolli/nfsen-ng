@@ -8,6 +8,7 @@ use mbolli\nfsen_ng\store\Migration;
 use mbolli\nfsen_ng\store\migrations\M0001Initial;
 use mbolli\nfsen_ng\store\migrations\M0002QueryRunParts;
 use mbolli\nfsen_ng\store\migrations\M0003AlertSamples;
+use mbolli\nfsen_ng\store\migrations\M0004InterfaceNames;
 use mbolli\nfsen_ng\store\Migrator;
 
 /** @return array<string, list<string>> table and index names by type */
@@ -52,9 +53,10 @@ test('the migration list is strictly increasing and starts with M0001Initial', f
     expect($migrations[0])->toBeInstanceOf(M0001Initial::class)
         ->and($migrations[1])->toBeInstanceOf(M0002QueryRunParts::class)
         ->and($migrations[2])->toBeInstanceOf(M0003AlertSamples::class)
+        ->and($migrations[3])->toBeInstanceOf(M0004InterfaceNames::class)
         ->and($versions)->toBe(array_values(array_unique($sorted)))
         ->and(Migrator::latestVersion())->toBe(end($versions))
-        ->and(Migrator::latestVersion())->toBe(3)
+        ->and(Migrator::latestVersion())->toBe(4)
     ;
 });
 
@@ -63,7 +65,7 @@ test('a fresh database reaches the latest version with every table and index', f
 
     expect($db->schemaVersion())->toBe(Migrator::latestVersion())
         ->and(migratorTestSchema($db))->toBe([
-            'table' => ['alert_events', 'alert_samples', 'meta', 'query_runs', 'saved_filters', 'topn_1d', 'topn_1h', 'topn_5m', 'topn_interval'],
+            'table' => ['alert_events', 'alert_samples', 'interface_names', 'meta', 'query_runs', 'saved_filters', 'topn_1d', 'topn_1h', 'topn_5m', 'topn_interval'],
             'index' => [
                 'alert_events_by_rule',
                 'alert_events_by_ts',
@@ -198,6 +200,7 @@ test('version 3 adds the alert samples to a version 2 store and keeps what it ho
     $path = sys_get_temp_dir() . '/nfsen-migrator-' . bin2hex(random_bytes(6)) . '.sqlite';
     $db = Database::open($path);
     $db->exec('DROP TABLE alert_samples');
+    $db->exec('DROP TABLE interface_names');
     $db->exec('PRAGMA user_version = 2');
     $db->exec("INSERT INTO alert_events (ts, kind, rule_id, rule_name, metric, value) VALUES (1, 'fired', 'r1', 'R', 'bytes', 5)");
     unset($db);
@@ -206,9 +209,29 @@ test('version 3 adds the alert samples to a version 2 store and keeps what it ho
         $db = Database::open($path);
         $db->exec("INSERT INTO alert_samples (rule_id, ts, fingerprint, value) VALUES ('r1', 300, 'f', 2.5)");
 
-        expect($db->schemaVersion())->toBe(3)
+        expect($db->schemaVersion())->toBe(4)
             ->and($db->value('SELECT COUNT(*) FROM alert_events'))->toBe(1)
             ->and($db->all('SELECT rule_id, ts, fingerprint, value FROM alert_samples'))->toBe([['rule_id' => 'r1', 'ts' => 300, 'fingerprint' => 'f', 'value' => 2.5]])
+        ;
+    } finally {
+        unset($db);
+        array_map('unlink', glob($path . '*') ?: []);
+    }
+});
+
+test('version 4 adds the interface names to a version 3 store', function (): void {
+    $path = sys_get_temp_dir() . '/nfsen-migrator-' . bin2hex(random_bytes(6)) . '.sqlite';
+    $db = Database::open($path);
+    $db->exec('DROP TABLE interface_names');
+    $db->exec('PRAGMA user_version = 3');
+    unset($db);
+
+    try {
+        $db = Database::open($path);
+        $db->exec("INSERT INTO interface_names (source, if_index, name, seen) VALUES ('gw1', 3, 'Gi0/0/1', 300)");
+
+        expect($db->schemaVersion())->toBe(4)
+            ->and($db->all('SELECT source, if_index, name, seen FROM interface_names'))->toBe([['source' => 'gw1', 'if_index' => 3, 'name' => 'Gi0/0/1', 'seen' => 300]])
         ;
     } finally {
         unset($db);

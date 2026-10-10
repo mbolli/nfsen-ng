@@ -24,6 +24,10 @@ class TableFormatter {
     private const PATTERN_ICMP_FIELDS = '/^(icmp_type|icmptype)$/i';
     private const PATTERN_FWD_STATUS_FIELDS = '/^(fwd_status|fwdstatus|forwarding_status)$/i';
     private const PATTERN_PROTO_FIELDS = '/^(proto|protocol)$/i';
+
+    /** SNMP interface indexes: flow fields (json, csv) and the statistics' key columns. */
+    private const PATTERN_INTERFACE_FIELDS = '/^(input_snmp|output_snmp|input|output|inif|outif|if)$/i';
+
     private const PATTERN_PORT_FIELDS = '/^(srcport|dstport|src_port|dst_port|sp|dp|port|natsrcport|natdstport|natport|nsrcport|ndstport|xlate_src_port|xlate_dst_port|nat_src_port|nat_dst_port)$/i';
     private const PATTERN_NAT_EVENT_FIELDS = '/^(event|xevent|nevent|nsel_event|nat_event)$/i';
     private const PATTERN_PERCENTAGE_SUFFIX = '/(percent|pct|ratio)$/i';
@@ -216,6 +220,11 @@ class TableFormatter {
         // Format NSEL/NAT event type
         if (preg_match(self::PATTERN_NAT_EVENT_FIELDS, $fieldLower)) {
             return self::formatNatEvent($value);
+        }
+
+        // Interface indexes with their names
+        if (preg_match(self::PATTERN_INTERFACE_FIELDS, $fieldLower) && is_numeric($value)) {
+            return self::formatInterface($value, $options['sources'] ?? []);
         }
 
         // Format port numbers with service names
@@ -693,6 +702,18 @@ class TableFormatter {
         }
 
         return (string) $value;
+    }
+
+    /**
+     * An SNMP interface index with its name (#178), when the query's sources agree on one.
+     *
+     * @param mixed $sources the sources the query read; none means every configured source
+     */
+    private static function formatInterface(float|int|string $value, mixed $sources): string {
+        $index = (int) $value;
+        $name = InterfaceNames::nameIn(array_values(array_map('strval', (array) $sources)), $index);
+
+        return $name === null ? (string) $index : \sprintf('%d <small>(%s)</small>', $index, htmlspecialchars($name, ENT_QUOTES | ENT_HTML5));
     }
 
     /**

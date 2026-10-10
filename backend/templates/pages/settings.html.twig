@@ -167,6 +167,20 @@
                         {% endif %}
                         {{ ui.origin(src.sourcesOrigin) }}
                     </dd>
+                    <dt>Interface names</dt>
+                    <dd>
+                        {% if src.interfaces is empty %}None yet: names an exporter sends with its flows are learned, others are set with <code>NFSEN_INTERFACES</code>{% else %}
+                            <ul class="settings-values">
+                                {% for source, names in src.interfaces %}
+                                    <li><details class="settings-interfaces">
+                                        <summary><code>{{ source }}</code> {{ names|length }} {{ names|length == 1 ? 'name' : 'names' }}</summary>
+                                        <ul>{% for index, n in names %}<li><code>{{ index }}</code> {{ n.name }}{% if n.learned %} <small>learned</small>{% endif %}</li>{% endfor %}</ul>
+                                    </details></li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                        {{ ui.origin(src.interfacesOrigin) }}
+                    </dd>
                     <dt>Ports</dt>
                     <dd>
                         {% if src.ports is empty %}None tracked{% else %}

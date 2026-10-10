@@ -531,7 +531,8 @@ class Import {
 
     /**
      * Hands an imported file to the top-N collector with the `-I` totals the import already
-     * read. The collector ignores it when it was not booted (CLI, MCP) or has the interval.
+     * read, and to the interface names. The collector ignores it when it was not booted (CLI, MCP)
+     * or has the interval.
      *
      * @param array{flows: int, packets: int, bytes: int} $totals
      */
@@ -539,6 +540,7 @@ class Import {
         try {
             $ts = (new \DateTime(substr($statsPath, -12), Config::nfcapdTimezone()))->getTimestamp();
             TopNCollector::enqueue($this->profile ?? Config::$settings->nfdumpProfile, $source, $statsPath, $ts, $totals);
+            InterfaceNames::learnFrom($this->profile ?? Config::$settings->nfdumpProfile, $source, $statsPath, $ts);
         } catch (\Throwable $e) {
             $this->d->log('TopN: not queued ' . $statsPath . ': ' . $e->getMessage(), LOG_DEBUG);
         }

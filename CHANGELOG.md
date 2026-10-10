@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Interface names** ([#178](https://github.com/mbolli/nfsen-ng/issues/178), requested by [@hawk128](https://github.com/hawk128)). Flows, Top Talkers and Overview show an interface's name next to its SNMP index, e.g. *3 (Gi0/0/1)*. nfsen-ng learns the names an exporter sends with its flows (Cisco's `option interface-table`) and keeps them per source; `NFSEN_INTERFACES=gw1:3:Gi0/0/1` or a map in `settings.php` names the rest, and wins. Settings > Sources lists them.
+
 - **Sources can have names, and a searchable picker** ([#177](https://github.com/mbolli/nfsen-ng/issues/177), requested by [@hawk128](https://github.com/hawk128)). `NFSEN_SOURCES=10-20-100-3:dc1rt310,...` (or `'source' => 'name'` in `settings.php`) shows the name in the sources picker, the graph legend, the alert rules and notifications, Health and Settings, which is what makes the directories `nfcapd -M` names after exporter addresses readable. The source itself stays what queries and stored data use. The sources menu is now a picker you can type in: it finds a source by name or by source, picks several, has **Select all** and **Clear**, and reads *All sources* or *3 of 84 sources* when closed.
 
 ### Changed

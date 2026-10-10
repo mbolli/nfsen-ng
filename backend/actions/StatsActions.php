@@ -303,6 +303,7 @@ final class StatsActions {
         $html = Table::generate($result->rows, 'statsTable', [
             'linkIpAddresses' => true,
             'ipInfoActionUrl' => $ipInfoUrl,
+            'sources' => $params['sources'] ?? [],
             'originalData' => $result->rawOutput,
             'caption' => TalkersPage::resultTitle($element, $params['order'] ?? 'bytes'),
             'exportName' => 'top-talkers-' . $element,

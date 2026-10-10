@@ -9,6 +9,7 @@ use mbolli\nfsen_ng\actions\Helpers;
 use mbolli\nfsen_ng\actions\QueryRunner;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\InterfaceNames;
 use mbolli\nfsen_ng\common\Misc;
 use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\pages\state\OverviewState;
@@ -316,14 +317,14 @@ final class OverviewPage implements Page {
 
     /**
      * A key as the card shows it (4.1.6): "443/tcp (https)", "TCP (6)", "AS64512",
-     * "0 (not exported)", "core · if 3".
+     * "0 (not exported)", "core · if 3 (Gi0/0/1)".
      */
     public static function keyLabel(string $tab, string $key, string $source = ''): string {
         return match ($tab) {
             'ports' => self::portLabel($key),
             'protocols' => self::protocolName($key) . (ctype_digit($key) ? ' (' . $key . ')' : ''),
             'asns' => $key === '0' ? '0 (not exported)' : (ctype_digit($key) ? 'AS' . $key : $key),
-            'interfaces' => ($source !== '' ? Config::$settings->sourceName($source) . ' · ' : '') . 'if ' . $key,
+            'interfaces' => ($source !== '' ? Config::$settings->sourceName($source) . ' · ' : '') . 'if ' . $key . self::interfaceName($key, $source),
             default => $key,
         };
     }
@@ -533,6 +534,13 @@ final class OverviewPage implements Page {
             protocol: $in['protocol'],
             output: 'csv',
         );
+    }
+
+    /** " (Gi0/0/1)" when the source names the index (#178); a row without a source takes the name every source agrees on. */
+    private static function interfaceName(string $key, string $source): string {
+        $name = $source !== '' ? InterfaceNames::name($source, $key) : InterfaceNames::nameIn([], $key);
+
+        return $name === null ? '' : ' (' . $name . ')';
     }
 
     /**

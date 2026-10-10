@@ -86,6 +86,21 @@
     list-style: none;
 }
 
+/* Interface names: a source per line, its names folded under it. */
+.settings-values > li:has(> .settings-interfaces) {
+    flex-basis: 100%;
+}
+
+.settings-interfaces summary {
+    cursor: pointer;
+}
+
+.settings-interfaces ul {
+    margin: var(--size-1) 0 0;
+    padding-inline-start: var(--size-4);
+    list-style: none;
+}
+
 /* One integration per block, divided by a rule. */
 .settings-integrations {
     display: flex;

@@ -47,6 +47,7 @@ final class EnvRegistry {
 
             // ── Sources / data selection ──────────────────────────────────────
             new EnvVar('NFSEN_SOURCES', 'sources', 'csv', [], 'NetFlow sources, comma-separated (e.g. "gw1,gw2"); source:name shows a name instead (e.g. "10-20-100-3:dc1rt310").'),
+            new EnvVar('NFSEN_INTERFACES', 'sources', 'csv', [], 'Interface names, comma-separated source:index:name (e.g. "gw1:3:Gi0/0/1"); names the exporter sends are learned without it.'),
             new EnvVar('NFSEN_PORTS', 'sources', 'csv_int', [], 'Port numbers to track, comma-separated (e.g. "80,443,22").'),
             new EnvVar('NFSEN_FILTERS', 'sources', 'json_array', [], 'nfdump filter expressions as a JSON array.'),
 

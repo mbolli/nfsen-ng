@@ -90,6 +90,9 @@ final class Settings {
     /** @var array<string, string> source => the name the interface shows for it, where one is configured (#177) */
     public private(set) array $sourceNames = [];
 
+    /** @var array<string, array<int, string>> source => ifIndex => the interface name configured for it (#178) */
+    public private(set) array $interfaceNames = [];
+
     /**
      * @param list<string>         $sources               Configured NetFlow source names
      * @param list<int>            $ports                 Configured port numbers
@@ -179,6 +182,7 @@ final class Settings {
         [$maxProcesses, $maxProcessesAuto] = self::resolveMaxProcesses($raw['nfdump']['max-processes'] ?? EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'));
 
         [$sources, $sourceNames] = self::sourceEntries($raw['general']['sources'] ?? EnvRegistry::value('NFSEN_SOURCES'));
+        $interfaceNames = self::interfaceEntries($raw['general']['interfaces'] ?? EnvRegistry::value('NFSEN_INTERFACES'));
 
         $settings = new self(
             sources: $sources,
@@ -224,6 +228,7 @@ final class Settings {
             geoipDb: (string) EnvRegistry::value('NFSEN_GEOIP_DB'),
         );
         $settings->sourceNames = $sourceNames;
+        $settings->interfaceNames = $interfaceNames;
 
         return $settings;
     }
@@ -238,6 +243,7 @@ final class Settings {
         [$maxProcesses, $maxProcessesAuto] = self::resolveMaxProcesses(EnvRegistry::value('NFSEN_NFDUMP_MAX_PROCESSES'));
 
         [$sources, $sourceNames] = self::sourceEntries(EnvRegistry::value('NFSEN_SOURCES'));
+        $interfaceNames = self::interfaceEntries(EnvRegistry::value('NFSEN_INTERFACES'));
 
         $settings = new self(
             sources: $sources,
@@ -282,6 +288,7 @@ final class Settings {
             geoipDb: (string) EnvRegistry::value('NFSEN_GEOIP_DB'),
         );
         $settings->sourceNames = $sourceNames;
+        $settings->interfaceNames = $interfaceNames;
 
         return $settings;
     }
@@ -741,6 +748,32 @@ final class Settings {
         }
 
         return [$sources, $names];
+    }
+
+    /**
+     * Interface names from `source:index:name` entries (NFSEN_INTERFACES=gw1:3:Gi0/0/1), or from a settings.php map of
+     * source => [index => name]. A name may hold colons; an index is an SNMP ifIndex, 1 or more.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private static function interfaceEntries(mixed $value): array {
+        $names = [];
+        foreach ((array) $value as $key => $item) {
+            $entries = \is_string($key) && \is_array($item)
+                ? array_map(static fn (int|string $index, mixed $name): array => [$key, (string) $index, \is_scalar($name) ? (string) $name : ''], array_keys($item), $item)
+                : (\is_scalar($item) ? [array_pad(explode(':', (string) $item, 3), 3, '')] : []);
+            foreach ($entries as [$source, $index, $name]) {
+                $source = trim((string) $source);
+                $index = trim((string) $index);
+                $name = trim((string) $name);
+                if ($source === '' || $name === '' || !ctype_digit($index) || (int) $index < 1) {
+                    continue;
+                }
+                $names[$source][(int) $index] = $name;
+            }
+        }
+
+        return $names;
     }
 
     /**

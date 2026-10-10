@@ -34,7 +34,7 @@ use starfederation\datastar\enums\ElementPatchMode;
  *
  * @phpstan-type ListInputs array{tz: string, sortKey: string, sortDir: string, hidden: list<string>}
  * @phpstan-type Run array{limit?: int, fingerprint?: string, totalsFingerprint?: string, live?: bool, ranAt?: int,
- *                        rangeSummary?: ?RangeSummary, rangePending?: bool, list?: ListInputs}
+ *                        rangeSummary?: ?RangeSummary, rangePending?: bool, list?: ListInputs, sources?: list<string>}
  * @phpstan-type Inputs array{start: int, end: int, live: bool, profile: string, sources: list<string>, protocol: string,
  *                           filter: string, lower: string, upper: string, limit: int, aggregation: array<string, mixed>, orderByStart: bool}
  */
@@ -111,7 +111,7 @@ final class FlowActions {
 
                         try {
                             $result = $query->run($processor);
-                            self::storeResult($flows, $result, round(microtime(true) - $time, 3), $ipInfoUrl, $run + ['limit' => $query->limit, 'ranAt' => time()]);
+                            self::storeResult($flows, $result, round(microtime(true) - $time, 3), $ipInfoUrl, $run + ['limit' => $query->limit, 'ranAt' => time(), 'sources' => $query->sources]);
                             unset($result);
                             $flows->settle();
                             if ($large) {
@@ -384,10 +384,13 @@ final class FlowActions {
         $resultId = FlowsState::newResultId();
         $list = $run['list'] ?? ['tz' => '', 'sortKey' => '', 'sortDir' => '', 'hidden' => []];
         $state->releaseStored();
-        $isList = FlowRowStore::store($resultId, $result->rows, ['linkIpAddresses' => true, 'ipInfoActionUrl' => $ipInfoUrl]);
+        // The sources name the interface indexes (#178).
+        $sources = $run['sources'] ?? [];
+        $isList = FlowRowStore::store($resultId, $result->rows, ['linkIpAddresses' => true, 'ipInfoActionUrl' => $ipInfoUrl, 'sources' => $sources]);
         $html = $isList ? '' : Table::generate($result->rows, 'flowTable', [
             'linkIpAddresses' => true,
             'ipInfoActionUrl' => $ipInfoUrl,
+            'sources' => $sources,
             'caption' => 'Flows',
             'exportName' => self::exportName($result->window->start, $result->window->end),
             'emptyTitle' => 'No flows',

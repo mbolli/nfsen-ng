@@ -153,7 +153,7 @@ describe('Database::open()', function (): void {
         $tables = array_column($db->all("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"), 'name');
 
         expect($db->schemaVersion())->toBe(Migrator::latestVersion())
-            ->and($tables)->toBe(['alert_events', 'alert_samples', 'meta', 'query_runs', 'saved_filters', 'topn_1d', 'topn_1h', 'topn_5m', 'topn_interval'])
+            ->and($tables)->toBe(['alert_events', 'alert_samples', 'interface_names', 'meta', 'query_runs', 'saved_filters', 'topn_1d', 'topn_1h', 'topn_5m', 'topn_interval'])
         ;
     });
 

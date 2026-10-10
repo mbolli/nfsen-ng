@@ -8,6 +8,7 @@ use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\store\migrations\M0001Initial;
 use mbolli\nfsen_ng\store\migrations\M0002QueryRunParts;
 use mbolli\nfsen_ng\store\migrations\M0003AlertSamples;
+use mbolli\nfsen_ng\store\migrations\M0004InterfaceNames;
 
 /**
  * Brings a database up to the newest schema this code knows. Runs only from the server
@@ -16,7 +17,7 @@ use mbolli\nfsen_ng\store\migrations\M0003AlertSamples;
 final class Migrator {
     /** @return list<Migration> */
     public static function all(): array {
-        return [new M0001Initial(), new M0002QueryRunParts(), new M0003AlertSamples()];
+        return [new M0001Initial(), new M0002QueryRunParts(), new M0003AlertSamples(), new M0004InterfaceNames()];
     }
 
     public static function latestVersion(): int {

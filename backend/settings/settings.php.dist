@@ -37,6 +37,8 @@ $nfsen_config = [
             'source1', 'source2',
             // A name to show instead of the source: 'source1:Main office', or a map ['source1' => 'Main office'].
         ],
+        // Names for SNMP interface indexes, per source; names the exporter sends are learned without this.
+        // 'interfaces' => ['source1' => [1 => 'Gi0/0/0', 3 => 'Tunnel10']],
         'filters' => [
             // Protocol filters
             'proto tcp',

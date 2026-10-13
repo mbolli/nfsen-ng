@@ -57,13 +57,15 @@
                     <input type="number" id="customDurationValue" min="1" max="9999" step="1" inputmode="numeric" required
                            aria-label="Duration" placeholder="6"
                            data-on:keydown="evt.key === 'Enter' && (evt.preventDefault(), document.getElementById('customDurationApply').click())">
-                    <select id="customDurationUnit" aria-label="Duration unit">
-                        <option value="h">hours</option>
+                    <select id="customDurationUnit" aria-label="Duration unit"
+                            data-on:change="document.getElementById('customDurationValue').min = el.value === 'm' ? 5 : 1">
+                        <option value="m">minutes</option>
+                        <option value="h" selected>hours</option>
                         <option value="d">days</option>
                         <option value="w">weeks</option>
                     </select>
                     <button type="button" id="customDurationApply" data-size="sm"
-                            data-on:click="const field = document.getElementById('customDurationValue'); const n = Number(field.value); Number.isInteger(n) && n >= 1 && n <= 9999 ? ({{ remember }}, @post('{{ setRange.url() }}?op=duration&n=' + n + '&u=' + document.getElementById('customDurationUnit').value)) : (evt.stopPropagation(), field.reportValidity())">Apply</button>
+                            data-on:click="const field = document.getElementById('customDurationValue'); const n = Number(field.value); Number.isInteger(n) && n >= Number(field.min) && n <= 9999 ? ({{ remember }}, @post('{{ setRange.url() }}?op=duration&n=' + n + '&u=' + document.getElementById('customDurationUnit').value)) : (evt.stopPropagation(), field.reportValidity())">Apply</button>
                 </div>
             </div>
         </div>

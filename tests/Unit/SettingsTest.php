@@ -485,8 +485,8 @@ describe('redesign settings (preferences and environment)', function (): void {
     });
 
     test('the enum normalisers', function (): void {
-        expect(array_map(Settings::normalizeRange(...), ['1h', '24h', '7d', '30d', '1y', ' 1Y ', '2h', '', null]))
-            ->toBe(['1h', '24h', '7d', '30d', '1y', '1y', '24h', '24h', '24h'])
+        expect(array_map(Settings::normalizeRange(...), ['30m', '1h', '3h', '6h', '12h', '24h', '7d', '30d', '1y', ' 1Y ', '2h', '15m', '', null]))
+            ->toBe(['30m', '1h', '3h', '6h', '12h', '24h', '7d', '30d', '1y', '1y', '24h', '24h', '24h', '24h'])
             ->and(array_map(Settings::normalizeUnit(...), ['bits', 'bytes', 'BYTES', 'octets', 42]))
             ->toBe(['bits', 'bytes', 'bytes', 'bits', 'bits'])
             ->and(array_map(Settings::normalizeGraphDatatype(...), ['traffic', 'packets', 'flows', 'bytes', 'Packets', 'nonsense']))

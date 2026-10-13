@@ -7,6 +7,7 @@ namespace mbolli\nfsen_ng\pages;
 use mbolli\nfsen_ng\actions\GraphActions;
 use mbolli\nfsen_ng\actions\RangeActions;
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\RangePresets;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\UserPreferences;
 use mbolli\nfsen_ng\query\ProtocolFilter;
@@ -16,7 +17,7 @@ use Mbolli\PhpVia\Via;
 /** Shell module for the global window, sources, protocol, unit and profile (4.0.2). */
 final class RangeControls implements ShellModule {
     /** Range presets and their width in seconds. */
-    public const array PRESETS = ['1h' => 3600, '24h' => 86400, '7d' => 604800, '30d' => 2592000, '1y' => 31536000];
+    public const array PRESETS = RangePresets::SECONDS;
 
     /** The data range (first and last sample) is read at most this often per tab. */
     public const int RANGE_TTL = 60;
@@ -24,13 +25,7 @@ final class RangeControls implements ShellModule {
     /** More capture files than this still to import, and the import chip says it is behind. */
     public const int BEHIND_FILES = 12;
 
-    private const array PRESET_LABELS = [
-        '1h' => 'Last 1 hour',
-        '24h' => 'Last 24 hours',
-        '7d' => 'Last 7 days',
-        '30d' => 'Last 30 days',
-        '1y' => 'Last year',
-    ];
+    private const array PRESET_LABELS = RangePresets::LABELS;
 
     private const array PROTOCOL_LABELS = [
         'any' => 'Any protocol',

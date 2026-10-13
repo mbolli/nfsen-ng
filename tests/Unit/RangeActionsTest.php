@@ -46,7 +46,13 @@ describe('set-range ops', function (): void {
             ->and(rangeOp('duration', ['n' => '2', 'u' => 'w'])['datestart'])->toBe(RANGE_NOW - 2 * 604800)
             // 9999 weeks reach past 1970; the start stops there.
             ->and(rangeOp('duration', ['n' => '9999', 'u' => 'w'])['datestart'])->toBe(0)
+            ->and(rangeOp('duration', ['n' => '45', 'u' => 'm'])['datestart'])->toBe(RANGE_NOW - 45 * 60)
+            ->and(rangeOp('duration', ['n' => '5', 'u' => 'm'])['datestart'])->toBe(RANGE_NOW - 300)
         ;
+    });
+
+    test('a custom duration is at least one 5 minute capture file', function (): void {
+        expect(static fn () => rangeOp('duration', ['n' => '4', 'u' => 'm']))->toThrow(InvalidArgumentException::class, 'at least 5 minutes');
     });
 
     test('an absolute range snaps to 5 minutes and is fixed when it ends in the past', function (): void {

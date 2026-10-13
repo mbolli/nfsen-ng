@@ -11,7 +11,7 @@ the reverse DNS switch) and **System**. Saving goes through `SettingsActions.php
 
 | Section | Fields (`UserPreferences`) |
 |---|---|
-| Display | `defaultView` (a page id), `defaultRange` (`1h`, `24h`, `7d`, `30d`, `1y`), `defaultUnit` (`bits`, `bytes`), `theme` (`''`, `system`, `light`, `dark`), `compactTables`, `displayTimezone` (`browser`, `server`) |
+| Display | `defaultView` (a page id), `defaultRange` (`30m`, `1h`, `3h`, `6h`, `12h`, `24h`, `7d`, `30d`, `1y`), `defaultUnit` (`bits`, `bytes`), `theme` (`''`, `system`, `light`, `dark`), `compactTables`, `displayTimezone` (`browser`, `server`) |
 | Graph defaults | `defaultGraphDisplay`, `defaultGraphDatatype` (`traffic`, `packets`, `flows`), `defaultGraphProtocols` (its first entry seeds the global protocol) |
 | Query defaults | `defaultFlowLimit`, `defaultStatsOrderBy` |
 | Logging | `logPriority` |

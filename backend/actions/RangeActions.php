@@ -32,7 +32,7 @@ final class RangeActions {
     public const int FRESH_DATA = 3 * self::STEP;
 
     /** Seconds per custom duration unit. */
-    public const array UNITS = ['h' => 3600, 'd' => 86400, 'w' => 604800];
+    public const array UNITS = ['m' => 60, 'h' => 3600, 'd' => 86400, 'w' => 604800];
 
     public const int MAX_DURATION = 9999;
 
@@ -128,6 +128,10 @@ final class RangeActions {
                 }
                 if (!isset(self::UNITS[$unit])) {
                     throw new \InvalidArgumentException('Unknown duration unit.');
+                }
+                // A capture file holds 5 minutes; a shorter window may hold none.
+                if ($n * self::UNITS[$unit] < self::STEP) {
+                    throw new \InvalidArgumentException('A duration is at least 5 minutes.');
                 }
 
                 return self::window(max(0, $now - $n * self::UNITS[$unit]), $now, true, 'custom');

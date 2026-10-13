@@ -149,9 +149,10 @@ export function restoreQuery(previous, now = Math.floor(Date.now() / 1000)) {
         ['w', 604800],
         ['d', 86400],
         ['h', 3600],
+        ['m', 60],
     ]) {
         const n = width / seconds;
-        if (Number.isInteger(n) && n <= 9999) return `?op=duration&n=${n}&u=${u}`;
+        if (Number.isInteger(n) && n <= 9999 && width >= 300) return `?op=duration&n=${n}&u=${u}`;
     }
     // set-range treats an end within 5 minutes of now as now, so this window is live again.
     return `?op=abs&from=${now - width}&to=${now}`;

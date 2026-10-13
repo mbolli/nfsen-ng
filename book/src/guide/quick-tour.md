@@ -40,9 +40,12 @@ The bar at the top sets the time range and the scope for every page at once:
 - **Profile**, at the start of the bar, appears only when there is more than one
   nfdump profile (see [nfdump Profiles](../deployment/profiles.md)).
 - **The range menu** (clock icon) names the current window. It offers the
-  presets **Last 1 hour**, **Last 24 hours**, **Last 7 days**, **Last 30 days**
-  and **Last year**, and a **Custom duration**: a number of hours, days or
-  weeks, then **Apply**.
+  presets **Last 30 minutes**, **Last 1 hour**, **Last 3 hours**, **Last 6
+  hours**, **Last 12 hours**, **Last 24 hours**, **Last 7 days**, **Last 30
+  days** and **Last year**, and a **Custom duration**: a number of minutes (5 or
+  more), hours, days or weeks, then **Apply**. Capture files cover 5 minutes
+  each and are imported a few minutes after they close, so the newest few
+  minutes of a short window are usually still empty.
 - **Previous period** and **Next period** step the window back or forward by its
   own width; **Jump to now** moves it to end now. Previous period is disabled at
   the start of the stored data.

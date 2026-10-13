@@ -15,8 +15,8 @@ saves the whole tab.
 **Display**
 
 - **Default view**: the page that opens when the address has none.
-- **Default time range**: the range a new tab starts with, from **Last hour** to
-  **Last year**.
+- **Default time range**: the range a new tab starts with, from **Last 30
+  minutes** to **Last year**.
 - **Default unit**: **Bits** or **Bytes** for rates and volumes.
 - **Theme**: the theme for browsers that have not picked their own in the
   sidebar. **Deployment default** uses what the administrator set

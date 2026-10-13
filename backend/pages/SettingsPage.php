@@ -10,6 +10,7 @@ use mbolli\nfsen_ng\common\EnvRegistry;
 use mbolli\nfsen_ng\common\GeoIpDatabase;
 use mbolli\nfsen_ng\common\HealthMetrics;
 use mbolli\nfsen_ng\common\InterfaceNames;
+use mbolli\nfsen_ng\common\RangePresets;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\UserPreferences;
 use mbolli\nfsen_ng\query\Estimate;
@@ -38,7 +39,7 @@ final class SettingsPage implements Page {
     /** Pages a bare address may open; Settings itself only while it is the saved value. */
     public const array VIEWS = ['overview', 'talkers', 'flows', 'conversations', 'alerts', 'health'];
 
-    public const array RANGES = ['1h' => 'Last hour', '24h' => 'Last 24 hours', '7d' => 'Last 7 days', '30d' => 'Last 30 days', '1y' => 'Last year'];
+    public const array RANGES = RangePresets::LABELS;
 
     public const array UNITS = ['bits' => 'Bits', 'bytes' => 'Bytes'];
 

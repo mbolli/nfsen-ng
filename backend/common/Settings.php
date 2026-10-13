@@ -59,9 +59,6 @@ final class Settings {
     // wipe). A user's explicit toggle is stored client-side and always wins.
     private const THEMES = ['auto', 'dark', 'light'];
 
-    /** Range presets a page opens with; the first-visit default is 24h. */
-    private const RANGES = ['1h', '24h', '7d', '30d', '1y'];
-
     private const UNITS = ['bits', 'bytes'];
 
     private const GRAPH_DATATYPES = ['traffic', 'packets', 'flows'];
@@ -143,7 +140,7 @@ final class Settings {
         public private(set) string $defaultWebhookTitleTemplate,
         public private(set) string $defaultWebhookMessageTemplate,
         private array $datasourceConfigs,
-        /** Range preset every page opens with: '1h', '24h', '7d', '30d' or '1y'. */
+        /** Range preset every page opens with, one of RangePresets. */
         public private(set) string $defaultRange,
         /** Unit of rates and volumes in charts and KPI cards: 'bits' or 'bytes'. */
         public private(set) string $defaultUnit,
@@ -636,11 +633,11 @@ final class Settings {
         return self::VIEWS[$v] ?? 'overview';
     }
 
-    /** '1h'|'24h'|'7d'|'30d'|'1y'; anything else becomes '24h'. */
+    /** A range preset a page opens with (RangePresets); anything else becomes '24h', the first-visit default. */
     public static function normalizeRange(mixed $range): string {
         $r = \is_string($range) ? strtolower(trim($range)) : '';
 
-        return \in_array($r, self::RANGES, true) ? $r : '24h';
+        return isset(RangePresets::SECONDS[$r]) ? $r : '24h';
     }
 
     /** 'bits'|'bytes'; anything else becomes 'bits'. */

@@ -391,7 +391,7 @@ describe('composition', function (): void {
             ->and($data['shell']['healthIssues'])->toBe(0)
             ->and($data['shell']['alertsFiring'])->toBe(0)
             ->and($data['graph']['mode'])->toBe('picker')
-            ->and(array_column($data['range']['presets'], 'id'))->toBe(['1h', '24h', '7d', '30d', '1y'])
+            ->and(array_column($data['range']['presets'], 'id'))->toBe(['30m', '1h', '3h', '6h', '12h', '24h', '7d', '30d', '1y'])
             ->and($data['querykit']['targets'])->toHaveKeys(['overview', 'overview-topn', 'talkers', 'flows', 'conversations', 'drawer', 'alert'])
         ;
     });

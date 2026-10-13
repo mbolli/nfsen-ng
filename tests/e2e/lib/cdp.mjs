@@ -399,7 +399,7 @@ class Page {
 
     /** Pick a range preset from #rangeMenu and wait for its width. */
     async setRangePreset(id, { timeout = 8000 } = {}) {
-        const seconds = { '1h': 3600, '24h': 86400, '7d': 604800, '30d': 2592000, '1y': 31536000 }[id];
+        const seconds = { '30m': 1800, '1h': 3600, '3h': 10800, '6h': 21600, '12h': 43200, '24h': 86400, '7d': 604800, '30d': 2592000, '1y': 31536000 }[id];
         if (!seconds) throw new Error('unknown range preset: ' + id);
         await this.evaluate(`(function(){
             var toggle = document.querySelector('#rangeMenu .menu-toggle');

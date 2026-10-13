@@ -490,6 +490,7 @@ export default async function controlsTest() {
         // Presets: live windows of their width, named by the trigger and marked in the list; choosing one
         // closes the popover and gives the focus back to its trigger.
         for (const [id, seconds, text] of [
+            ['30m', 1800, 'Last 30 minutes'],
             ['1h', 3600, 'Last 1 hour'],
             ['7d', 604800, 'Last 7 days'],
             ['24h', 86400, 'Last 24 hours'],
@@ -533,6 +534,24 @@ export default async function controlsTest() {
             closedOnTrigger,
             'Enter in the duration applied it and closed the popover'
         );
+
+        // Minutes: under 5 posts nothing (a capture file holds 5 minutes), 45 applies.
+        await page.evaluate(`${RANGE_TOGGLE}.click()`);
+        await page.waitFor(`${RANGE}.open === true && document.getElementById('customDurationValue').checkVisibility()`, {
+            label: 'custom duration row again',
+        });
+        await page.setSelectValue('#customDurationUnit', 'm');
+        await page.waitFor(`document.getElementById('customDurationValue').min === '5'`, { label: 'minutes need at least 5' });
+        log.clear();
+        await page.setInputValue('#customDurationValue', '4');
+        await click('#customDurationApply');
+        await sleep(400);
+        assert.equal(log.count('set-range'), 0, 'a duration under 5 minutes posts nothing');
+        await page.setInputValue('#customDurationValue', '45');
+        await page.evaluate(`document.getElementById('customDurationValue').focus()`);
+        await press(page, 'Enter', 'Enter', 13);
+        r = await until('45 minutes', (x) => x.preset === 'custom' && Math.abs(x.to - x.from - 2700) <= 1);
+        await page.waitFor(`${RANGE_TOGGLE}.textContent.trim() === 'Last 45 minutes'`, { label: 'trigger "Last 45 minutes"' });
 
         // Back, forward, now.
         await page.setRangePreset('7d');

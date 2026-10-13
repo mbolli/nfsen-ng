@@ -283,3 +283,53 @@ describe('build-flows-graph', function (): void {
         ;
     });
 });
+
+describe('FlowGraphActions::view()', function (): void {
+    beforeEach(function (): void {
+        $this->settingsBefore = isset(Config::$settings) ? Config::$settings : null;
+        Config::$settings = Settings::fromArray(['general' => ['sources' => ['10-87-15-11:core', 'gw2']]]);
+        $c = new Context('ctx-flow-graph-view', '/', new Via(new ViaConfig()));
+        $c->signal('bits', 'graph_trafficUnit');
+        $c->signal('bytes|sources', 'flows_graph_built');
+        $c->signal('server', 'displayTz');
+        $c->signal('UTC', 'nfcapdTz');
+        $this->c = $c;
+        $this->graph = [
+            'data' => [1_700_000_000 => [100, null], 1_700_000_300 => [2.5, 40]],
+            'start' => 1_700_000_000, 'end' => 1_700_000_600, 'step' => 300,
+            'legend' => ['10-87-15-11_bytes_any', 'gw2_bytes_any'],
+        ];
+    });
+
+    afterEach(function (): void {
+        if ($this->settingsBefore !== null) {
+            Config::$settings = $this->settingsBefore;
+        }
+    });
+
+    // #180: the series holds bytes per second, so Bits is a render-time × 8 and needs no rebuild.
+    test('shows built traffic in the global Bits, with the sources by name', function (): void {
+        $view = FlowGraphActions::view($this->c, $this->graph);
+
+        expect($view['data']['data'])->toBe([1_700_000_000 => [800, null], 1_700_000_300 => [20.0, 320]])
+            ->and($view['config'])->toMatchArray([
+                'display' => 'sources', 'type' => 'traffic', 'unit' => 'bits', 'trafficUnit' => 'bits',
+                'seriesNames' => ['core', 'gw2'], 'seriesSlots' => [1, 2], 'displayTz' => 'server',
+            ])
+        ;
+    });
+
+    test('leaves bytes, packets and flows as built, whatever the radio says now', function (): void {
+        $this->c->getSignal('graph_trafficUnit')?->setValue('bytes');
+        expect(FlowGraphActions::view($this->c, $this->graph)['data']['data'])->toBe($this->graph['data'])
+            ->and(FlowGraphActions::view($this->c, $this->graph)['config']['unit'])->toBe('bytes')
+        ;
+
+        $this->c->getSignal('graph_trafficUnit')?->setValue('bits');
+        $this->c->getSignal('flows_graph_built')?->setValue('packets|sources');
+        $view = FlowGraphActions::view($this->c, $this->graph);
+        expect($view['data']['data'])->toBe($this->graph['data'])
+            ->and($view['config'])->toMatchArray(['type' => 'packets', 'unit' => 'packets'])
+        ;
+    });
+});

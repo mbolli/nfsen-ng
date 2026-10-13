@@ -95,9 +95,11 @@ the current filter over the range:
 
 It answers "when did this happen" without describing the query twice. The graph
 uses the filter you typed, including the byte limits, so it shows exactly the
-traffic the table lists. Pick **Bytes**, **Packets** or **Flows** above it. With
-several sources selected it draws one line per source, otherwise one per
-protocol.
+traffic the table lists. Pick **Traffic**, **Packets** or **Flows** above it;
+traffic is in bits or bytes per second, as **Bits** or **Bytes** in the
+controls bar says, and switching those redraws the graph without building it
+again. With several sources selected it draws one line per source, by its name,
+otherwise one per protocol.
 
 Two things it states on screen. The row limit and the aggregation do not apply
 to it, because they truncate and regroup the table rather than change which

@@ -66,6 +66,8 @@ final class FlowsPage implements Page {
         // a graph someone waited for. The browser's copy brings them back after a revival.
         $c->signal('', 'flows_graph_key', clientWritable: true);
         $c->signal('', 'flows_graph_fingerprint', clientWritable: true);
+        // What that build plotted, "unit|display": the axis and the names follow it, not the current choice.
+        $c->signal('', 'flows_graph_built', clientWritable: true);
         $c->signal(Config::$settings->defaultFlowLimit, 'flows_limit', clientWritable: true);
         $c->signal(false, 'flows_agg_bidirectional', clientWritable: true);
         $c->signal(false, 'flows_agg_proto', clientWritable: true);
@@ -102,6 +104,7 @@ final class FlowsPage implements Page {
         // The series and its cost are both cheap: a cache lookup and arithmetic over the
         // estimate the query kit keeps, so they render whether or not the panel is open.
         $graph = $fatal ? null : FlowGraphActions::cached($c);
+        $view = $graph === null ? null : FlowGraphActions::view($c, $graph);
         $inputs = FlowActions::inputs($c);
         $hasResult = $flows->hasResult();
         $stale = $hasResult && $flows->fingerprint !== '' && $flows->fingerprint !== FlowActions::fingerprintOf($inputs);
@@ -176,8 +179,10 @@ final class FlowsPage implements Page {
                 'earlyStop' => false,
             ],
             'graph' => [
-                // The whole series object: nfsen-chart reads {data, legend, ...}.
-                'data' => json_encode($graph ?? [], JSON_THROW_ON_ERROR),
+                // The whole series object: nfsen-chart reads {data, legend, ...}; the config names and scales it.
+                'data' => json_encode($view['data'] ?? [], JSON_THROW_ON_ERROR),
+                // Rocket rewrites $name and @name( in a host's data-* values, names included.
+                'config' => strtr(json_encode($view['config'] ?? (object) [], JSON_THROW_ON_ERROR), ['$' => '\\u0024', '@' => '\\u0040']),
                 'built' => $graph !== null,
                 'cost' => $fatal ? null : FlowGraphActions::cost($c),
                 'stale' => !$fatal && FlowGraphActions::isStale($c),

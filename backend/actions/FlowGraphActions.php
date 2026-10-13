@@ -10,6 +10,7 @@ use mbolli\nfsen_ng\common\FilteredGraphCache;
 use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\common\QueryProgress;
 use mbolli\nfsen_ng\pages\QueryKit;
+use mbolli\nfsen_ng\pages\TrafficGraph;
 use mbolli\nfsen_ng\processor\FilteredSeries;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\query\CostEstimate;
@@ -168,6 +169,44 @@ final class FlowGraphActions {
     }
 
     /**
+     * The built series as the panel shows it (#180): traffic in the global Bits or Bytes, which needs no rebuild
+     * since the series holds bytes per second, and the chart config from what was built, with readable names.
+     *
+     * @param array{data: array<int|string, mixed>, start: int, end: int, step: int, legend: list<string>} $graph
+     *
+     * @return array{data: array<int|string, mixed>, config: array<string, mixed>}
+     */
+    public static function view(Context $c, array $graph): array {
+        [$unit, $display] = array_pad(explode('|', $c->getSignal('flows_graph_built')?->string() ?? '', 2), 2, '');
+        $unit = \in_array($unit, ['bytes', 'packets', 'flows'], true) ? $unit : 'bytes';
+        $display = $display === 'protocols' ? 'protocols' : 'sources';
+        $trafficUnit = $c->getSignal('graph_trafficUnit')?->string() === 'bytes' ? 'bytes' : 'bits';
+        if ($unit === 'bytes' && $trafficUnit === 'bits') {
+            foreach ($graph['data'] as $ts => $values) {
+                $graph['data'][$ts] = \is_array($values) ? array_map(static fn (mixed $v): mixed => \is_int($v) || \is_float($v) ? $v * 8 : $v, $values) : $values;
+            }
+        }
+        $legend = $graph['legend'];
+
+        return [
+            'data' => $graph,
+            'config' => [
+                'display' => $display,
+                'type' => $unit === 'bytes' ? 'traffic' : $unit,
+                'unit' => $unit === 'bytes' ? $trafficUnit : $unit,
+                'trafficUnit' => $trafficUnit,
+                'seriesNames' => TrafficGraph::seriesNames($display, $legend),
+                'seriesSlots' => TrafficGraph::seriesSlots($display, $legend),
+                'logscale' => false,
+                'stacked' => false,
+                'stepplot' => true,
+                'displayTz' => $c->getSignal('displayTz')?->string() ?? 'browser',
+                'nfcapdTz' => $c->getSignal('nfcapdTz')?->string() ?? 'UTC',
+            ],
+        ];
+    }
+
+    /**
      * True when the query on screen no longer matches the series being shown.
      *
      * Deliberately not a comparison of exact cache keys. The window end follows live time, so
@@ -254,10 +293,12 @@ final class FlowGraphActions {
             $builtKey = $c->getSignal('flows_graph_key');
             $builtPrint = $c->getSignal('flows_graph_fingerprint');
             \assert($builtKey !== null && $builtPrint !== null);
+            $built = $params['unit'] . '|' . $params['display'];
 
             // Already built for exactly this query: point the panel at it and re-render.
             if (FilteredGraphCache::has($key)) {
                 $builtKey->setValue($key);
+                $c->getSignal('flows_graph_built')?->setValue($built);
                 $builtPrint->setValue(self::fingerprintOf($params));
                 $c->sync();
 
@@ -281,6 +322,7 @@ final class FlowGraphActions {
                 $c,
                 $params,
                 $key,
+                $built,
                 $builtKey,
                 $builtPrint,
                 $contextId,
@@ -325,6 +367,7 @@ final class FlowGraphActions {
                     $cancelled = QueryCancel::isRequested($contextId);
                     FilteredGraphCache::put($key, $data, partial: $cancelled);
                     $builtKey->setValue($key);
+                    $c->getSignal('flows_graph_built')?->setValue($built);
                     $builtPrint->setValue(self::fingerprintOf($params));
                     $finalStatus = $cancelled
                         ? 'Cancelled: showing partial results. Build again to finish.'

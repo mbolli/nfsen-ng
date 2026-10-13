@@ -805,7 +805,7 @@ export default async function graphsTest() {
     });
 
     // The Flows "Traffic over time" chart (6.9): a Rocket host with a role and a name of its own, and a
-    // configuration from data-attr that a sync keeps (K4), the display timezone chosen on the client included.
+    // configuration from the server that follows the display timezone and the global unit (#180).
     await withPage(async (page) => {
         // A browser zone apart from the server's, so the two display timezones draw different labels.
         await page.send('Emulation.setTimezoneOverride', { timezoneId: 'Pacific/Auckland' });
@@ -831,13 +831,17 @@ export default async function graphsTest() {
         const first = await page.evaluate(flowsChart);
         assert.equal(first.role, 'img');
         assert.match(first.label, /^Traffic over time, (.+ to .+|no data in this range)/);
-        assert.ok(first.config?.displayTz, `the configuration came from data-attr: ${JSON.stringify(first.config)}`);
+        assert.ok(first.config?.displayTz, `the configuration names the display timezone: ${JSON.stringify(first.config)}`);
+        assert.equal(first.y, first.config.trafficUnit === 'bytes' ? 'bytes/s' : 'bits/s', 'traffic is in the global unit');
+        assert.ok(!first.config.seriesNames.some((n) => /_bytes_|_bits_/.test(n)), `readable series names: ${first.config.seriesNames}`);
 
         const next = first.config.displayTz === 'server' ? 'browser' : 'server';
         await page.evaluate(`(async function(){
             var root = (await import('datastar')).root;
             root[Object.keys(root).find(function(k){ return k.startsWith('displayTz____'); })] = ${JSON.stringify(next)};
         })()`);
+        // The setting reaches the server with the next post; the unit radio's posts a sync.
+        await page.evaluate(`document.querySelector('input[name=flowsGraphUnit]:checked').dispatchEvent(new Event('change', { bubbles: true }))`);
         await page.waitFor(`JSON.parse(${FLOWS}.getAttribute('data-chart-config')).displayTz === ${JSON.stringify(next)}`, { label: 'the other display timezone' });
         await sleep(800);
         const chosen = await page.evaluate(flowsChart);
@@ -848,6 +852,14 @@ export default async function graphsTest() {
         await page.waitFor(`!document.getElementById('flowsGraphTitle').hasAttribute('data-e2e-sync')`, { timeout: 10000, label: 'a sync of the Flows page' });
         await sleep(800);
         assert.deepEqual(await page.evaluate(flowsChart), chosen, 'a sync keeps the configuration, its timezone and the name');
+
+        // The global Bits or Bytes rescales the built traffic without a rebuild (#180).
+        const other = chosen.config.trafficUnit === 'bytes' ? 'bits' : 'bytes';
+        await page.evaluate(`document.querySelector('input[name="globalUnit"][value="${other}"]').click()`);
+        await page.waitFor(`${FLOWS}.chart?.getOption().yAxis[0].name === '${other}/s'`, { timeout: 10000, label: `the Flows chart in ${other}/s` });
+        assert.equal(await page.evaluate(`document.querySelector('button[data-run="flows-graph"]').disabled`), false, 'no build ran');
+        await page.evaluate(`document.querySelector('input[name="globalUnit"][value="${chosen.config.trafficUnit}"]').click()`);
+        await page.waitFor(`${FLOWS}.chart?.getOption().yAxis[0].name === '${chosen.config.trafficUnit}/s'`, { timeout: 10000, label: 'the Flows chart back in its unit' });
 
         const errors = page.realErrors();
         assert.deepEqual(errors, [], `expected no console errors with the Flows chart, got:\n${errors.join('\n')}`);

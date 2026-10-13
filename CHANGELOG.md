@@ -27,6 +27,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The Flows graph follows Bits or Bytes** ([#180](https://github.com/mbolli/nfsen-ng/issues/180), requested by [@hawk128](https://github.com/hawk128)). *Traffic over time* plotted bytes per second whatever the controls bar said; it now shows traffic in the global unit and switching redraws it without a rebuild. Its lines carry the sources' names instead of keys like `gw1_bytes_any`, and its axis no longer changes to packets or flows before you build the graph again.
+
 - **All sources could not be unticked** ([#176](https://github.com/mbolli/nfsen-ng/issues/176), reported by [@hawk128](https://github.com/hawk128)), so picking a few of many sources meant unticking the rest one by one. The new sources picker starts from all and picks only what you choose; **Clear** goes back to every source.
 
 ## [1.0.0-beta.6] - 2026-10-05

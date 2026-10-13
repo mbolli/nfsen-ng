@@ -145,9 +145,9 @@
         </section>
     </div>
 
-    {# One nfdump per bin (#166), so it builds only on a click, after saying what that costs. #}
-    <section class="card flows-graph" id="flowsGraph" aria-labelledby="flowsGraphTitle"
-             data-computed:flows._config="{{ '{' }} sources: ${{ graph_sources.id() }}, protocols: ['any'], ports: [], display: ((${{ graph_sources.id() }}.includes('any') || ${{ graph_sources.id() }}.length === 0 ? {{ shell.sources|length }} : ${{ graph_sources.id() }}.length) > 1 ? 'sources' : 'protocols'), type: (${{ flows_graph_unit.id() }} === 'bytes' ? 'traffic' : ${{ flows_graph_unit.id() }}), trafficUnit: 'bytes', unit: ${{ flows_graph_unit.id() }}, logscale: false, stacked: false, stepplot: true, displayTz: ${{ displayTz.id() }}, nfcapdTz: ${{ nfcapdTz.id() }} {{ '}' }}">
+    {# One nfdump per bin (#166), so it builds only on a click, after saying what that costs. The chart's config
+       comes from the server, as Overview's does: it follows what was built and the global Bits or Bytes (#180). #}
+    <section class="card flows-graph" id="flowsGraph" aria-labelledby="flowsGraphTitle">
         <header>
             <h2 id="flowsGraphTitle">
                 <button type="button" class="flows-disclosure" aria-controls="flowsGraphBody"
@@ -167,7 +167,8 @@
                                value="{{ u }}" {{ bind(flows_graph_unit) }}
                                data-effect="el.checked = ${{ flows_graph_unit.id() }} === '{{ u }}'"
                                data-on:change="@post('{{ touchFlowsGraph.url() }}')">
-                        <label for="flowsGraphUnit_{{ u }}">{{ u|capitalize }}</label>
+                        {# Traffic is in the global Bits or Bytes. #}
+                        <label for="flowsGraphUnit_{{ u }}">{{ u == 'bytes' ? 'Traffic' : u|capitalize }}</label>
                     {% endfor %}
                 </div>
                 {% include 'partials/progress-button.html.twig' with progress|merge({
@@ -204,8 +205,8 @@
             {% if f.graph.built %}
                 <nfsen-chart data-external-prefix="flowsGraph" role="img"
                              aria-label="Traffic over time" data-aria-base="Traffic over time"
-                             data-preserve-attr="aria-label data-chart-config"
-                             data-attr:data-chart-config="$flows._config"
+                             data-preserve-attr="aria-label"
+                             data-chart-config="{{ f.graph.config }}"
                              data-chart-data="{{ f.graph.data }}">
                     <div class="chart-container" data-ignore-morph data-ignore>
                         <div class="chart-canvas"></div>

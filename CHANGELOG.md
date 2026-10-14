@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Larger Flows limits** ([#182](https://github.com/mbolli/nfsen-ng/issues/182), requested by [@hawk128](https://github.com/hawk128)). `NFSEN_FLOWS_MAX_LIMIT` raises the largest row limit the Flows page offers, and the menu adds 100,000 and 1,000,000 up to it. A row takes about 5 KB of server memory at the peak of a run, so `NFSEN_MEMORY_LIMIT` sets PHP's `memory_limit` for the server, and nfsen-ng learns the actual size from its own large listings to decide whether the next one fits.
+
 - **Shorter ranges** ([#181](https://github.com/mbolli/nfsen-ng/issues/181), requested by [@hawk128](https://github.com/hawk128)). The range menu adds **Last 30 minutes**, **Last 3 hours**, **Last 6 hours** and **Last 12 hours**, and **Custom duration** takes minutes, from 5. The new presets can be the default range in Settings.
 
 - **Interface names** ([#178](https://github.com/mbolli/nfsen-ng/issues/178), requested by [@hawk128](https://github.com/hawk128)). Flows, Top Talkers and Overview show an interface's name next to its SNMP index, e.g. *3 (Gi0/0/1)*. nfsen-ng learns the names an exporter sends with its flows (Cisco's `option interface-table`) and keeps them per source; `NFSEN_INTERFACES=gw1:3:Gi0/0/1` or a map in `settings.php` names the rest, and wins. Settings > Sources lists them.
@@ -26,6 +28,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **The start and end of the range are picked in a calendar** (Starbase's `sb-date-picker`): both days and both times in one place, in five-minute steps like the capture files, in the display timezone, with the days outside the stored data struck out. **Apply** sets the range. It replaces the two date-time fields.
 
 ### Fixed
+
+- **An aggregated Flows query aggregates every matching flow** ([#182](https://github.com/mbolli/nfsen-ng/issues/182)). The row limit used to cut the flows nfdump read before it aggregated them, so a busy router's result covered seconds of traffic; the limit now keeps the aggregated rows with the most bytes, packets or flows, or the earliest, as **Top rows by** says, and the line next to the tabs says which. Like Top Talkers, an aggregated query now honours `NFSEN_MAX_STATS_WINDOW`, and its estimate no longer promises to stop early.
 
 - **The Flows graph follows Bits or Bytes** ([#180](https://github.com/mbolli/nfsen-ng/issues/180), requested by [@hawk128](https://github.com/hawk128)). *Traffic over time* plotted bytes per second whatever the controls bar said; it now shows traffic in the global unit and switching redraws it without a rebuild. Its lines carry the sources' names instead of keys like `gw1_bytes_any`, and its axis no longer changes to packets or flows before you build the graph again.
 

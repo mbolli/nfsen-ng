@@ -21,6 +21,9 @@ use mbolli\nfsen_ng\processor\Processor;
  * @phpstan-type FilteredTotals array{flows: int, packets: int, bytes: int, protocols: list<ProtocolRow>}
  */
 final readonly class FlowsQuery {
+    /** What an aggregated query ranks its rows by, nfdump's -O (#182). */
+    public const array TOP_BY = ['bytes', 'packets', 'flows', 'tstart'];
+
     /** The statistic of the filtered totals run: one row per protocol, every protocol. */
     public const string SUMMARY_STATISTIC = 'proto/bytes';
 
@@ -42,6 +45,8 @@ final readonly class FlowsQuery {
         public string $handle = 'default',
         /** The global protocol, one of ProtocolFilter::PROTOCOLS. */
         public string $protocol = 'any',
+        /** What an aggregated query keeps the top rows by: one of TOP_BY. */
+        public string $rankBy = 'bytes',
     ) {
         ProtocolFilter::assertValid($protocol);
     }
@@ -73,17 +78,38 @@ final readonly class FlowsQuery {
         );
     }
 
-    public function processor(): Processor {
-        $processor = $this->baseProcessor();
-        $processor->setOption('-c', $this->limit);
-        $processor->setOption('-o', 'json');
-
-        if ($this->orderByStart) {
-            $processor->setOption('-O', 'tstart');
+    /**
+     * How an aggregated query picks its rows from more than the limit, '' when it does not aggregate.
+     *
+     * @return ''|'bytes'|'flows'|'packets'|'tstart'
+     */
+    public function topBy(): string {
+        if ($this->aggregationString() === '') {
+            return '';
         }
 
+        return match ($this->rankBy) {
+            'packets' => 'packets',
+            'flows' => 'flows',
+            'tstart' => 'tstart',
+            default => 'bytes',
+        };
+    }
+
+    public function processor(): Processor {
+        $processor = $this->baseProcessor();
+        $processor->setOption('-o', 'json');
+
         $aggregate = $this->aggregationString();
-        if ($aggregate !== '') {
+        if ($aggregate === '') {
+            $processor->setOption('-c', $this->limit);
+            if ($this->orderByStart) {
+                $processor->setOption('-O', 'tstart');
+            }
+        } else {
+            // Every matching flow is aggregated (#182); the limit keeps the top rows, where -c would cut the input.
+            $processor->setOption('-O', $this->topBy());
+            $processor->setOption('-n', $this->limit);
             // Bidirectional is its own flag; everything else is an aggregation spec.
             $processor->setOption(
                 $aggregate === 'bidirectional' ? '-B' : '-a',

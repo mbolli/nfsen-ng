@@ -21,7 +21,8 @@ use Mbolli\PhpVia\Context;
  * @phpstan-type Run array{resultId?: string, limit?: int, command?: string, notes?: list<string>,
  *                        rawOutput?: string, rawBytes?: int, elapsed?: float, returnedSummary?: ?ReturnedSummary,
  *                        rangeSummary?: ?RangeSummary, rangePending?: bool, fingerprint?: string, totalsFingerprint?: string,
- *                        ranAt?: int, start?: int, end?: int, live?: bool, mode?: 'html'|'list', itemSize?: int, browserTz?: string}
+ *                        ranAt?: int, start?: int, end?: int, live?: bool, mode?: 'html'|'list', itemSize?: int, browserTz?: string,
+ *                        topBy?: ''|'bytes'|'packets'|'flows'|'tstart'}
  */
 final class FlowsState extends PageState {
     /** The page keeps at most this much of nfdump's stdout (4.3.2). */
@@ -49,6 +50,9 @@ final class FlowsState extends PageState {
     public string $resultId = '';
 
     public int $limit = 0;
+
+    /** How an aggregated run picked its rows when there were more than the limit: '' (not aggregated), or nfdump's -O. */
+    public string $topBy = '';
 
     public string $command = '';
 
@@ -173,6 +177,7 @@ final class FlowsState extends PageState {
         $this->tableGz = '';
         $this->count = $count;
         $this->limit = $run['limit'] ?? 0;
+        $this->topBy = $run['topBy'] ?? '';
         $this->command = $run['command'] ?? '';
         $this->notes = $run['notes'] ?? [];
         $this->elapsed = $run['elapsed'] ?? 0.0;
@@ -401,6 +406,7 @@ final class FlowsState extends PageState {
             'resultId' => $this->resultId,
             'notifications' => $this->notifications,
             'limit' => $this->limit,
+            'topBy' => $this->topBy,
             'command' => $this->command,
             'notes' => $this->notes,
             'rawBytes' => $this->rawBytes,
@@ -437,6 +443,7 @@ final class FlowsState extends PageState {
         $this->resultId = self::stringFrom($data['resultId'] ?? '');
         $this->notifications = self::notificationsFrom($data['notifications'] ?? []);
         $this->limit = self::intFrom($data['limit'] ?? null);
+        $this->topBy = \in_array($data['topBy'] ?? '', ['bytes', 'packets', 'flows', 'tstart'], true) ? $data['topBy'] : '';
         $this->command = self::stringFrom($data['command'] ?? '');
         $this->notes = array_values(array_filter(\is_array($data['notes'] ?? null) ? $data['notes'] : [], \is_string(...)));
         $this->rawBytes = self::intFrom($data['rawBytes'] ?? null);

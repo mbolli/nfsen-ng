@@ -70,6 +70,8 @@ exporter that sends none, set them with `NFSEN_INTERFACES` or in
 | `NFSEN_MCP_HTTP` | `false` | Serve the read-only MCP endpoint at `/_mcp` on the app's own port. See [MCP Server](../features/mcp.md). |
 | `NFSEN_MCP_HOSTS` | *(empty)* | Hostnames an MCP client may address this server as, comma-separated. Empty means localhost only. |
 | `NFSEN_MAX_STATS_WINDOW` | `0` | Longest window, in seconds, that Top Talkers, Conversations, a filtered graph and the exact Overview run read (`0` = unlimited). A longer range is shortened to its last part, and the estimate says so. Also `general.max_stats_window` in `settings.php`. |
+| `NFSEN_FLOWS_MAX_LIMIT` | `10000` | Largest row limit the Flows page offers; the menu adds 100,000 and 1,000,000 up to it. Returned rows stay in server memory while the result is open. The server learns how much a row takes at the peak of a run from its own large listings (about 5 KB with the book's test data; your exporters' fields decide), so raise `NFSEN_MEMORY_LIMIT` with it: `1G` covers 100,000 rows. A run that would not fit is refused and says how many rows would. Also `general.flows_max_limit` in `settings.php`. |
+| `NFSEN_MEMORY_LIMIT` | _(none)_ | PHP `memory_limit` of the server, e.g. `2G`. Empty keeps the image's `512M`. |
 | `NFSEN_DEFAULT_THEME` | `auto` | Instance theme while **Settings > General > Theme** is left at *Deployment default*. `auto` follows the operating system's `prefers-color-scheme`; `dark` and `light` force it. A browser that picked its own theme in the sidebar keeps its choice. Also settable as `frontend.defaults.theme` in `settings.php`. |
 | `NFSEN_DEV_MODE` | `false` | Enables php-via dev mode (static assets served `no-cache`). Leave off in production. |
 

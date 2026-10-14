@@ -14,7 +14,7 @@ and the protocol come from the controls bar.
 | Control | What it does |
 |---|---|
 | **nfdump filter** | Free nfdump filter syntax, e.g. `proto tcp and dst port 443`, checked against nfdump as you type |
-| **Limit** | How many rows nfdump returns (`-c`): 20, 50, 100, 500, 1,000 or 10,000 |
+| **Limit** | How many rows nfdump returns: 20, 50, 100, 500, 1,000 or 10,000; an administrator can offer more with `NFSEN_FLOWS_MAX_LIMIT` |
 | **Bytes per flow** | **Min** and **Max**, added to the filter as `bytes > min` and `bytes < max` (accepts `k`, `M` and `G`) |
 | **Aggregation and output** | Folded away by default, see below |
 
@@ -26,8 +26,11 @@ examples. **Saved** lists the filters you saved; see
 
 The **Estimate** card next to the query says what a run would read before you
 start it: the number of capture files, their size, and how long that takes at
-most. A Flows query stops as soon as nfdump has the rows the limit asks for, so
-the time is an upper bound and says *stops early once the limit is reached*.
+most. Without aggregation a Flows query stops as soon as nfdump has the rows the
+limit asks for, so the time is an upper bound and says *stops early once the
+limit is reached*. An aggregated query reads every capture file of the range, so
+its time is *about*, and `NFSEN_MAX_STATS_WINDOW` shortens its range as it does
+for Top Talkers.
 
 ![The query card with its estimate and a valid filter](../images/guide-flows-estimate.png)
 
@@ -45,8 +48,13 @@ To summarise rather than list every flow, open **Aggregation and output**:
 - **Port**: **Source** and **Destination** collapse by port.
 - **IP Aggregation**: per direction, collapse addresses to the exact IP or to an
   IPv4 or IPv6 prefix such as a /24, instead of listing every host.
-- **Order by start time** sorts the returned rows. nfdump still stops after the
-  limit in file order, so it sorts what came back, not the whole range.
+- **Order by start time**, without aggregation, sorts the returned rows. nfdump
+  still stops after the limit in file order, so it sorts what came back, not
+  the whole range.
+- **Top rows by**, with aggregation, takes its place. An aggregated query
+  aggregates every flow the filter matches in the range, and the limit keeps
+  the rows with the most **Bytes**, **Packets** or **Flows**, or the ones with
+  the **Earliest start**.
 
 These map onto nfdump's own aggregation (`-a`, `-A` and `-B`): the panel is a
 form over nfdump's options, not a reimplementation of them.
@@ -54,8 +62,8 @@ form over nfdump's options, not a reimplementation of them.
 ## Reading the result
 
 The result has three tabs, and the line next to them says how many rows came back
-and whether the limit was reached (or, for an aggregated query, how many flows
-were aggregated).
+and whether the limit was reached. For an aggregated query it says how many flows
+were aggregated, or, when the rows fill the limit, which ones the limit kept.
 
 **Flows** is one list of every row that came back: scroll it, or walk it with
 Tab, and the server sends the rows as they come into view. nfdump cannot skip

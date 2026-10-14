@@ -305,7 +305,7 @@ describe('payload shapes equal the seeded defaults', function (): void {
             ->and($estimate . $field)->not->toContain('data-signals__ifmissing')
             ->and($this->c->getSignal('_est_flows')?->getValue())->toBe(QueryKit::ESTIMATE_DEFAULT)
             ->and($this->c->getSignal('_flt_flows')?->getValue())->toBe(QueryKit::FILTER_DEFAULT)
-            ->and($estimate)->toContain('data-estimate="flows"', '/_action/estimate-query?target=flows', "(true ? 'up to ' : 'about ')")
+            ->and($estimate)->toContain('data-estimate="flows"', '/_action/estimate-query?target=flows', 'up to ')
             ->and($field)->toContain('data-filter-status="flows"', 'aria-describedby="flowsFilterStatus"', 'id="flowsFilterStatus" role="status"')
         ;
     });
@@ -336,7 +336,12 @@ describe('payload shapes equal the seeded defaults', function (): void {
         $render = fn (string $target): string => html_entity_decode($this->c->render('components/query-estimate.html.twig', [...$data, 'target' => $target]), ENT_QUOTES);
 
         expect($render('talkers'))->toContain("(false ? 'up to ' : 'about ')", "false && 'stops early once the limit is reached'")
-            ->and($render('flows'))->toContain("(true ? 'up to ' : 'about ')", "true && 'stops early once the limit is reached'")
+            // Flows stops early only without aggregation (#182).
+            ->and($render('flows'))->toContain(
+                "(!{$data['querykit']['targets']['flows']['aggregating']} ? 'up to ' : 'about ')",
+                "!{$data['querykit']['targets']['flows']['aggregating']} && 'stops early once the limit is reached'",
+            )
+            ->and($data['querykit']['targets']['flows']['aggregating'])->toContain('flows_agg_bidirectional')
             ->and(trim($render('alert')))->toBe('')
         ;
     });

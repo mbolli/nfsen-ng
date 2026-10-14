@@ -23,6 +23,11 @@ use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
 
 $isDev = (bool) EnvRegistry::value('NFSEN_DEV_MODE');
+// Before the workers fork, so each has it (#182): larger Flows limits need more than the image's 512M.
+$memoryLimit = trim((string) EnvRegistry::value('NFSEN_MEMORY_LIMIT'));
+if (preg_match('/^(-1|\d+[KMG]?)$/i', $memoryLimit) === 1) {
+    ini_set('memory_limit', $memoryLimit);
+}
 $priority = Settings::logLevelFromString((string) EnvRegistry::value('NFSEN_LOG_LEVEL'));
 // php-via knows debug, info, warn and error: notice is info, anything above err is error.
 $logLevel = match (true) {

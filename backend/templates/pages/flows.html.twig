@@ -81,7 +81,7 @@
                                 <option value="{{ n }}"{{ n == current ? ' selected' }}>{{ n|number_format }}</option>
                             {% endfor %}
                         </select>
-                        <p class="help" id="flowsLimitHelp">Rows nfdump returns (-c).</p>
+                        <p class="help" id="flowsLimitHelp">Rows nfdump returns: the first flows (-c), or with aggregation the top rows (-n).</p>
                     </div>
 
                     <fieldset class="field flows-bytes">
@@ -114,12 +114,24 @@
                                 aggDstIpPrefix: flows_agg_dstip_prefix
                             } only %}
                         </div>
-                        <div class="field" id="filterOutput">
-                            <label class="choice" for="flowsFilterOrderTstart">
-                                <input type="checkbox" id="flowsFilterOrderTstart" {{ bind(flows_orderByTstart) }} aria-describedby="flowsOrderHelp">
-                                Order by start time
-                            </label>
-                            <p class="help" id="flowsOrderHelp">Sorts the returned rows only; nfdump stops after the limit in file order.</p>
+                        {# Without aggregation nfdump stops after the limit; with it every matching flow counts and the limit keeps the top rows (#182). #}
+                        <div id="filterOutput">
+                            <div class="field" data-show="!{{ f.aggregating }}"{{ f.aggregatingNow ? ' style="display: none"' }}>
+                                <label class="choice" for="flowsFilterOrderTstart">
+                                    <input type="checkbox" id="flowsFilterOrderTstart" {{ bind(flows_orderByTstart) }} aria-describedby="flowsOrderHelp">
+                                    Order by start time
+                                </label>
+                                <p class="help" id="flowsOrderHelp">Sorts the rows nfdump returns; it stops after the limit in file order.</p>
+                            </div>
+                            <div class="field" data-show="{{ f.aggregating }}"{{ f.aggregatingNow ? '' : ' style="display: none"' }}>
+                                <label class="field-label" for="flowsTopBy">Top rows by</label>
+                                <select id="flowsTopBy" {{ bind(flows_topBy) }} aria-describedby="flowsTopByHelp">
+                                    {% for value, label in {bytes: 'Bytes', packets: 'Packets', flows: 'Flows', tstart: 'Earliest start'} %}
+                                        <option value="{{ value }}"{{ flows_topBy.string() == value ? ' selected' }}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <p class="help" id="flowsTopByHelp">Every matching flow is aggregated; the limit keeps the rows with the most of this.</p>
+                            </div>
                         </div>
                     </div>
                 </details>
@@ -230,7 +242,8 @@
                 </div>
                 <span class="card-meta" aria-live="polite">
                     {{- f.count|number_format }} {{ f.countLabel }} returned
-                    {%- if f.aggregated %}, aggregated from {{ f.limitReached ? 'the first ' }}{{ f.flowsRead|number_format }} flows{{ f.limitReached ? ' (the limit)' }}
+                    {%- if f.aggregated and f.topBy and f.limitReached %}, the {{ f.limit|number_format }} with {{ f.topBy == 'tstart' ? 'the earliest start' : 'the most ' ~ f.topBy }} (the limit)
+                    {%- elseif f.aggregated %}, aggregated from {{ f.limitReached ? 'the first ' }}{{ f.flowsRead|number_format }} flows{{ f.limitReached ? ' (the limit)' }}
                     {%- elseif f.limitReached %}, the limit of {{ f.limit|number_format }}{% endif -%}
                 </span>
                 {% set exportUrl = flowsExport.url() ~ '?result=' ~ f.result.id|url_encode ~ '&format=' %}

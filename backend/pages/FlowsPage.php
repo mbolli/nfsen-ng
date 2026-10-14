@@ -28,8 +28,8 @@ use Mbolli\PhpVia\Via;
  * @phpstan-type ProtocolLine array{name: string, series: ?int, flows: string, packets: string, bytes: string}
  */
 final class FlowsPage implements Page {
-    /** The Limit select's choices (4.3.2). */
-    public const array LIMITS = [20, 50, 100, 500, 1000, 10_000];
+    /** The Limit select's choices (4.3.2), up to NFSEN_FLOWS_MAX_LIMIT. */
+    public const array LIMITS = [20, 50, 100, 500, 1000, 10_000, 100_000, 1_000_000];
 
     /** Protocol series slots of the picker graph (D25): the Summary's protocol rows share them. */
     private const array PROTOCOL_SERIES = ['tcp' => 1, 'udp' => 2, 'icmp' => 3, 'icmp6' => 3, 'ipv6-icmp' => 3, 'other' => 4];
@@ -78,6 +78,8 @@ final class FlowsPage implements Page {
         $c->signal('none', 'flows_agg_dstip', clientWritable: true);
         $c->signal('', 'flows_agg_dstip_prefix', clientWritable: true);
         $c->signal(false, 'flows_orderByTstart', clientWritable: true);
+        // What an aggregated query keeps the top rows by (#182), nfdump's -O.
+        $c->signal('bytes', 'flows_topBy', clientWritable: true);
         // Byte thresholds, composed into the filter as bytes > / bytes <.
         $c->signal('', 'flows_lower_limit', clientWritable: true);
         $c->signal('', 'flows_upper_limit', clientWritable: true);
@@ -146,7 +148,11 @@ final class FlowsPage implements Page {
                 'columns' => self::listColumns($flows),
             ] : null,
             'limit' => $flows->limit,
-            'limitReached' => $flows->limit > 0 && ($returned['flows'] ?? $flows->count) >= $flows->limit,
+            // An aggregated run fills the limit with rows; one without aggregation stops after that many flows.
+            'limitReached' => $flows->limit > 0 && ($flows->topBy !== '' ? $flows->count : ($returned['flows'] ?? $flows->count)) >= $flows->limit,
+            'topBy' => $flows->topBy,
+            'aggregating' => self::aggregatingExpr($c),
+            'aggregatingNow' => FlowActions::aggregates($inputs),
             'aggregated' => $returned['aggregated'] ?? false,
             'flowsRead' => $returned['flows'] ?? $flows->count,
             'limits' => self::limits($inputs['limit']),
@@ -204,17 +210,29 @@ final class FlowsPage implements Page {
         return $list;
     }
 
+    /** A browser expression: whether the page's aggregation options aggregate (Nfdump::buildAggregationString()). */
+    public static function aggregatingExpr(Context $c): string {
+        $id = static fn (string $name): string => '$' . ($c->getSignal($name)?->id() ?? $name);
+
+        return '(' . $id('flows_agg_bidirectional') . ' || ' . $id('flows_agg_proto') . ' || ' . $id('flows_agg_srcport') . ' || '
+            . $id('flows_agg_dstport') . " || !['', 'none'].includes(" . $id('flows_agg_srcip') . ") || !['', 'none'].includes(" . $id('flows_agg_dstip') . '))';
+    }
+
     /**
-     * The Limit select's choices, plus the current value when a preference set another one.
+     * The Limit select's choices up to the ceiling, the ceiling itself, and the current value when a preference set
+     * another one.
      *
      * @return list<int>
      */
     public static function limits(int $current): array {
-        $limits = self::LIMITS;
-        if (!\in_array($current, $limits, true)) {
-            $limits[] = $current;
-            sort($limits);
+        $max = Config::$settings->flowsMaxLimit;
+        $limits = array_values(array_filter(self::LIMITS, static fn (int $n): bool => $n <= $max));
+        foreach ([$max, $current] as $extra) {
+            if ($extra <= $max && !\in_array($extra, $limits, true)) {
+                $limits[] = $extra;
+            }
         }
+        sort($limits);
 
         return $limits;
     }

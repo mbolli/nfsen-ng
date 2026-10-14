@@ -28,9 +28,13 @@ command passes `--` before it.
 
 The estimate card (`estimate-query?target=flows`) shows the files, bytes and
 seconds of the window before anything runs. Flows is the one kind whose time is an
-upper bound: nfdump stops once it has the rows `-c` asks for, and the estimate
-says *stops early once the limit is reached*. Flows is not clamped by
-`NFSEN_MAX_STATS_WINDOW`, since the limit already bounds it.
+upper bound: without aggregation nfdump stops once it has the rows `-c` asks for,
+and the estimate says *stops early once the limit is reached*. An aggregated
+query reads the whole window and keeps the top rows with `-O` (**Top rows by**)
+and `-n`, since `-c` would cut the flows before nfdump aggregates them; the
+estimate then says *about*, and `NFSEN_MAX_STATS_WINDOW` clamps its window as it
+does Top Talkers'. A listing without aggregation is not clamped, since the limit
+bounds it.
 
 `flow-actions` (query kind `flows`) runs `-o json -c <limit>` through
 `QueryRunner`, with progress from the bytes nfdump has read and a Kill. Listings

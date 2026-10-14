@@ -153,6 +153,7 @@ function flowActionsTestInputs(array $overrides = []): array {
         'limit' => 50,
         'aggregation' => ['proto' => false],
         'orderByStart' => false,
+        'rankBy' => 'bytes',
     ], ...$overrides];
 }
 
@@ -567,6 +568,15 @@ describe('the query as a fingerprint (1.7)', function (): void {
         ['aggregation', ['proto' => true], false],
         ['orderByStart', true, false],
     ]);
+
+    test('the ranking counts only for an aggregated query (#182)', function (): void {
+        $aggregated = ['aggregation' => ['proto' => true]];
+
+        expect(FlowActions::fingerprintOf(flowActionsTestInputs(['rankBy' => 'packets'])))->toBe(FlowActions::fingerprintOf(flowActionsTestInputs()))
+            ->and(FlowActions::fingerprintOf(flowActionsTestInputs([...$aggregated, 'rankBy' => 'packets'])))
+            ->not->toBe(FlowActions::fingerprintOf(flowActionsTestInputs($aggregated)))
+        ;
+    });
 });
 
 describe('the Flows page', function (): void {
@@ -736,6 +746,24 @@ describe('the Flows page', function (): void {
         ;
     });
 
+    // #182: an aggregated run reads every matching flow; a full limit means it kept the top rows.
+    test('aggregated rows that fill the limit: the line says which rows the limit kept', function (): void {
+        [$app, $c, $states] = flowActionsTestCompose();
+        $rows = array_map(static fn (int $i): array => ['firstSeen' => '2026-08-29 05:17:53.000', 'proto' => '6', 'flows' => '4', 'bytes' => '10'], range(1, 25));
+        FlowActions::storeResult($states->flows, flowActionsTestResult($rows), 0.1, '', ['limit' => 25, 'topBy' => 'bytes']);
+        $full = flowActionsTestRender($c, $app, $states);
+        FlowActions::storeResult($states->flows, flowActionsTestResult($rows), 0.1, '', ['limit' => 25, 'topBy' => 'tstart']);
+        $earliest = flowActionsTestRender($c, $app, $states);
+        FlowActions::storeResult($states->flows, flowActionsTestResult($rows), 0.1, '', ['limit' => 100, 'topBy' => 'bytes']);
+        $all = flowActionsTestRender($c, $app, $states);
+
+        expect($full)->toContain('25 rows returned, the 25 with the most bytes (the limit)')
+            ->and($earliest)->toContain('25 rows returned, the 25 with the earliest start (the limit)')
+            ->and($all)->toContain('25 rows returned, aggregated from 100 flows')
+            ->and($all)->not->toContain('(the limit)')
+        ;
+    });
+
     test('the Summary times and the covered window carry their result\'s id, so a new result replaces them', function (): void {
         [$app, $c, $states] = flowActionsTestCompose();
         $row = ['first' => 1_700_000_000, 'last' => 1_700_000_060, 'in_bytes' => 5];
@@ -813,7 +841,25 @@ describe('the Flows page', function (): void {
         ;
 
         $c->getSignal('flows_limit')?->setValue(10_000_000);
-        expect(FlowActions::inputs($c)['limit'])->toBe(FlowActions::MAX_LIMIT);
+        expect(FlowActions::inputs($c)['limit'])->toBe(10_000);
+    });
+
+    // #182: NFSEN_FLOWS_MAX_LIMIT raises the ceiling; the menu offers the larger steps up to it, and it itself.
+    test('a raised ceiling offers larger limits up to it', function (): void {
+        [, $c] = flowActionsTestCompose();
+        $before = Config::$settings;
+        putenv('NFSEN_FLOWS_MAX_LIMIT=250000');
+
+        try {
+            Config::$settings = Settings::fromEnv();
+            $c->getSignal('flows_limit')?->setValue(10_000_000);
+            expect(FlowsPage::limits(50))->toBe([20, 50, 100, 500, 1000, 10_000, 100_000, 250_000])
+                ->and(FlowActions::inputs($c)['limit'])->toBe(250_000)
+            ;
+        } finally {
+            putenv('NFSEN_FLOWS_MAX_LIMIT');
+            Config::$settings = $before;
+        }
     });
 
     test('a snapshot of a run is revived into a fresh tab', function (): void {

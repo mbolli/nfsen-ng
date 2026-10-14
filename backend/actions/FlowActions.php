@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
+use mbolli\nfsen_ng\common\FlowRowMemory;
 use mbolli\nfsen_ng\common\FlowRows;
 use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\common\Table;
@@ -15,6 +16,7 @@ use mbolli\nfsen_ng\pages\QueryKit;
 use mbolli\nfsen_ng\pages\RangeControls;
 use mbolli\nfsen_ng\pages\state\FlowRowStore;
 use mbolli\nfsen_ng\pages\state\FlowsState;
+use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\processor\NfdumpException;
 use mbolli\nfsen_ng\query\Estimate;
 use mbolli\nfsen_ng\query\FlowsQuery;
@@ -34,16 +36,15 @@ use starfederation\datastar\enums\ElementPatchMode;
  *
  * @phpstan-type ListInputs array{tz: string, sortKey: string, sortDir: string, hidden: list<string>}
  * @phpstan-type Run array{limit?: int, fingerprint?: string, totalsFingerprint?: string, live?: bool, ranAt?: int,
- *                        rangeSummary?: ?RangeSummary, rangePending?: bool, list?: ListInputs, sources?: list<string>}
+ *                        rangeSummary?: ?RangeSummary, rangePending?: bool, list?: ListInputs, sources?: list<string>,
+ *                        topBy?: ''|'bytes'|'packets'|'flows'|'tstart'}
  * @phpstan-type Inputs array{start: int, end: int, live: bool, profile: string, sources: list<string>, protocol: string,
- *                           filter: string, lower: string, upper: string, limit: int, aggregation: array<string, mixed>, orderByStart: bool}
+ *                           filter: string, lower: string, upper: string, limit: int, aggregation: array<string, mixed>, orderByStart: bool,
+ *                           rankBy: string}
  */
 final class FlowActions {
     /** A live result older than this no longer covers the window (1.7). */
     public const int LIVE_MOVED_AFTER = 300;
-
-    /** The largest row limit the Limit select offers. */
-    public const int MAX_LIMIT = 10_000;
 
     /** The filtered totals' estimate, named as QueryKit names estimates. */
     public const string SUMMARY_ESTIMATE = '_est_flows_summary';
@@ -108,11 +109,20 @@ final class FlowActions {
                 ): void {
                     try {
                         $large = self::claimMemory($query->limit, handle: $contextId);
+                        $heapBefore = memory_get_usage();
+                        if ($large) {
+                            memory_reset_peak_usage();
+                        }
 
                         try {
                             $result = $query->run($processor);
-                            self::storeResult($flows, $result, round(microtime(true) - $time, 3), $ipInfoUrl, $run + ['limit' => $query->limit, 'ranAt' => time(), 'sources' => $query->sources]);
+                            self::storeResult($flows, $result, round(microtime(true) - $time, 3), $ipInfoUrl, $run + ['limit' => $query->limit, 'topBy' => $query->topBy(), 'ranAt' => time(), 'sources' => $query->sources]);
                             unset($result);
+                            // One large listing per worker at a time, so the peak is mostly this one's. Aggregated rows are
+                            // fewer fields of CSV, so only raw listings teach the size of a row.
+                            if ($large && $query->topBy() === '' && $flows->count > self::LARGE_ROWS) {
+                                FlowRowMemory::record($flows->count, memory_get_peak_usage() - $heapBefore);
+                            }
                             $flows->settle();
                             if ($large) {
                                 gc_mem_caches();
@@ -268,11 +278,15 @@ final class FlowActions {
     }
 
     /**
-     * The heap a listing of $rows reaches: nfdump's text and its lines always take new memory,
-     * the decoded records fill the free pages of the heap first.
+     * The heap a listing of $rows reaches: from the row size this server learned (FlowRowMemory), else nfdump's text
+     * and its lines always take new memory and the decoded records fill the free pages of the heap first.
      */
     public static function expectedPeak(int $rows): int {
         $heap = memory_get_usage(true);
+        $learned = FlowRowMemory::perRow();
+        if ($learned !== null) {
+            return $heap + $rows * $learned;
+        }
         $free = max(0, $heap - memory_get_usage());
 
         return $heap + $rows * self::TEXT_BYTES_PER_ROW + max(0, $rows * self::RECORD_BYTES_PER_ROW - $free);
@@ -301,9 +315,10 @@ final class FlowActions {
             'filter' => $c->getSignal('flows_filter')?->string() ?? '',
             'lower' => $c->getSignal('flows_lower_limit')?->string() ?? '',
             'upper' => $c->getSignal('flows_upper_limit')?->string() ?? '',
-            'limit' => max(1, min(self::MAX_LIMIT, $limit)),
+            'limit' => max(1, min(Config::$settings->flowsMaxLimit, $limit)),
             'aggregation' => Helpers::aggregationFromSignals($c, 'flows_agg_'),
             'orderByStart' => $c->getSignal('flows_orderByTstart')?->bool() ?? false,
+            'rankBy' => \in_array($rank = $c->getSignal('flows_topBy')?->string() ?? '', FlowsQuery::TOP_BY, true) ? $rank : 'bytes',
         ];
     }
 
@@ -328,10 +343,16 @@ final class FlowActions {
     }
 
     /** @param Inputs $inputs */
+    public static function aggregates(array $inputs): bool {
+        return Nfdump::buildAggregationString($inputs['aggregation']) !== '';
+    }
+
+    /** @param Inputs $inputs */
     public static function query(array $inputs, string $handle): FlowsQuery {
         return new FlowsQuery(
-            // Not clamped: a flow listing is bounded by its record limit, not the range.
-            window: TimeWindow::raw($inputs['start'], $inputs['end']),
+            // A listing is bounded by its limit; an aggregated one reads the whole window, so NFSEN_MAX_STATS_WINDOW
+            // applies to it as to Top Talkers (#182).
+            window: self::aggregates($inputs) ? TimeWindow::clamped($inputs['start'], $inputs['end']) : TimeWindow::raw($inputs['start'], $inputs['end']),
             sources: $inputs['sources'],
             profile: $inputs['profile'],
             limit: $inputs['limit'],
@@ -342,6 +363,7 @@ final class FlowActions {
             orderByStart: $inputs['orderByStart'],
             handle: $handle,
             protocol: $inputs['protocol'],
+            rankBy: $inputs['rankBy'],
         );
     }
 
@@ -368,6 +390,9 @@ final class FlowActions {
             $parts[] = (string) $inputs['limit'];
             $parts[] = json_encode($inputs['aggregation']);
             $parts[] = $inputs['orderByStart'] ? 'tstart' : '';
+            if (self::aggregates($inputs)) {
+                $parts[] = $inputs['rankBy'];
+            }
         }
 
         return sha1(implode("\x1f", $parts));
@@ -404,6 +429,7 @@ final class FlowActions {
             'itemSize' => FlowRows::itemSize(isset(Config::$settings) && Config::$settings->compactTables),
             'browserTz' => $list['tz'],
             'limit' => $limit,
+            'topBy' => $run['topBy'] ?? '',
             'command' => $result->command,
             'notes' => $result->notes,
             'rawOutput' => \is_string($result->rawOutput) ? $result->rawOutput : '',
@@ -423,6 +449,9 @@ final class FlowActions {
         }
 
         $state->notifyResult($result, $elapsed, 'Flows');
+        if ($result->window->clamped) {
+            $state->notify('warning', $result->window->clampNotice());
+        }
     }
 
     /** Stores a failed run. A cancelled run keeps kill-nfdump's notice instead of an error. */

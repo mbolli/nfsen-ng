@@ -8,6 +8,10 @@
     "[].concat($" ~ graph_sources.id() ~ " ?? []).join(',')",
     '$' ~ selected_profile.id(),
 ] %}
+{% set aggregating = meta.aggregating ?? '' %}
+{% if aggregating %}
+    {% set keys = keys|merge([aggregating]) %}
+{% endif %}
 {% if target == 'overview' %}
     {% set keys = keys|merge(['$' ~ graph_resolution.id(), '$' ~ graph_display.id()]) %}
 {% endif %}
@@ -17,10 +21,10 @@
         {% if t.estimates and name != 'drawer' %}{% set kinds = kinds|merge({(name): t.kind}) %}{% endif %}
     {% endfor %}
     {% set keys = keys|merge(['$' ~ drawer_target.id()]) %}
-    {% set upTo = "$" ~ drawer_target.id() ~ " === 'flows'" %}
+    {% set upTo = "($" ~ drawer_target.id() ~ " === 'flows' && !" ~ querykit.targets.flows.aggregating ~ ")" %}
     {% set runKind = '(' ~ kinds|json_encode ~ ')[$' ~ drawer_target.id() ~ ']' %}
 {% else %}
-    {% set upTo = meta.earlyStop ? 'true' : 'false' %}
+    {% set upTo = meta.earlyStop ? (aggregating ? '!' ~ aggregating : 'true') : 'false' %}
     {% set runKind = "'" ~ meta.kind ~ "'" %}
 {% endif %}
 {# A finished run of this kind is recorded, so the seconds (and "measured") may change. #}

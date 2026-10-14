@@ -168,7 +168,7 @@ final class QueryKitActions {
         return [
             'target' => $resolved,
             'kind' => $meta['kind'],
-            'window' => $meta['clamped'] ? TimeWindow::clamped($start, $end) : TimeWindow::raw($start, $end),
+            'window' => $meta['clamped'] || ($resolved === 'flows' && FlowActions::aggregates(FlowActions::inputs($c))) ? TimeWindow::clamped($start, $end) : TimeWindow::raw($start, $end),
             'sources' => $sources,
             'profile' => self::profile($c),
             'points' => $points > 0 ? $points : self::DEFAULT_POINTS,

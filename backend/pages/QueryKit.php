@@ -64,7 +64,7 @@ final class QueryKit implements ShellModule {
      * Per target: its signals' wire ids, and whether a run may stop early (the estimate says "up to").
      *
      * @return array{targets: array<string, array{filterSignal: string, kind: string, clamped: bool, validates: bool,
-     *               estimates: bool, filterId: string, estimateId: string, earlyStop: bool}>}
+     *               estimates: bool, filterId: string, estimateId: string, earlyStop: bool, aggregating: string}>}
      */
     public static function viewData(Context $c, Via $app, PageStates $states, bool $isUpdate, string $activePage): array {
         $targets = [];
@@ -78,6 +78,8 @@ final class QueryKit implements ShellModule {
                 'filterId' => $meta['filter'] !== '' ? ($c->getSignal(self::filterSignal($target))?->id() ?? '') : '',
                 'estimateId' => $meta['kind'] !== '' ? ($c->getSignal(self::estimateSignal($target))?->id() ?? '') : '',
                 'earlyStop' => \in_array($meta['kind'], QueryRunner::EARLY_STOP_KINDS, true),
+                // An aggregated Flows query reads the whole window (#182): no early stop, and the window is clamped.
+                'aggregating' => $target === 'flows' ? FlowsPage::aggregatingExpr($c) : '',
             ];
         }
 

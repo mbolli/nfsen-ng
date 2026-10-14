@@ -61,6 +61,8 @@ final class Settings {
 
     private const UNITS = ['bits', 'bytes'];
 
+    private const int FLOWS_MAX_LIMIT = 10_000;
+
     private const GRAPH_DATATYPES = ['traffic', 'packets', 'flows'];
 
     /**
@@ -89,6 +91,9 @@ final class Settings {
 
     /** @var array<string, array<int, string>> source => ifIndex => the interface name configured for it (#178) */
     public private(set) array $interfaceNames = [];
+
+    /** The largest Flows limit offered (#182); every returned row takes about 5 KB of server memory. */
+    public private(set) int $flowsMaxLimit = self::FLOWS_MAX_LIMIT;
 
     /**
      * @param list<string>         $sources               Configured NetFlow source names
@@ -180,6 +185,7 @@ final class Settings {
 
         [$sources, $sourceNames] = self::sourceEntries($raw['general']['sources'] ?? EnvRegistry::value('NFSEN_SOURCES'));
         $interfaceNames = self::interfaceEntries($raw['general']['interfaces'] ?? EnvRegistry::value('NFSEN_INTERFACES'));
+        $flowsMaxLimit = self::flowsMaxLimit($raw['general']['flows_max_limit'] ?? EnvRegistry::value('NFSEN_FLOWS_MAX_LIMIT'));
 
         $settings = new self(
             sources: $sources,
@@ -226,6 +232,7 @@ final class Settings {
         );
         $settings->sourceNames = $sourceNames;
         $settings->interfaceNames = $interfaceNames;
+        $settings->flowsMaxLimit = $flowsMaxLimit;
 
         return $settings;
     }
@@ -241,6 +248,7 @@ final class Settings {
 
         [$sources, $sourceNames] = self::sourceEntries(EnvRegistry::value('NFSEN_SOURCES'));
         $interfaceNames = self::interfaceEntries(EnvRegistry::value('NFSEN_INTERFACES'));
+        $flowsMaxLimit = self::flowsMaxLimit(EnvRegistry::value('NFSEN_FLOWS_MAX_LIMIT'));
 
         $settings = new self(
             sources: $sources,
@@ -286,6 +294,7 @@ final class Settings {
         );
         $settings->sourceNames = $sourceNames;
         $settings->interfaceNames = $interfaceNames;
+        $settings->flowsMaxLimit = $flowsMaxLimit;
 
         return $settings;
     }
@@ -745,6 +754,11 @@ final class Settings {
         }
 
         return [$sources, $names];
+    }
+
+    /** The Flows limit ceiling: 10,000 by default, never under 100. */
+    private static function flowsMaxLimit(mixed $value): int {
+        return is_numeric($value) ? max(100, (int) $value) : self::FLOWS_MAX_LIMIT;
     }
 
     /**

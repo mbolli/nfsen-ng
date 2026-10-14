@@ -29,6 +29,7 @@ function flowsQueryTestQuery(array $overrides = []): FlowsQuery {
         orderByStart: $overrides['orderByStart'] ?? true,
         handle: 'ctx-1',
         protocol: $overrides['protocol'] ?? 'tcp',
+        rankBy: $overrides['rankBy'] ?? 'bytes',
     );
 }
 
@@ -79,11 +80,19 @@ describe('the filtered totals run (D13)', function (): void {
         ;
     });
 
-    test('the listing itself still asks for json with the limit, order and aggregation', function (): void {
+    // #182: -c would cut the flows before nfdump aggregates them; -n keeps the top rows of all of them instead.
+    test('an aggregated listing aggregates every matching flow and keeps the top rows', function (): void {
         $query = flowsQueryTestQuery();
         $query->run();
 
-        expect(FakeProcessor::callOptions())->toMatchArray(['-c' => 100, '-o' => 'json', '-O' => 'tstart', '-a' => '-Asrcport']);
+        expect(FakeProcessor::callOptions())->toMatchArray(['-n' => 100, '-o' => 'json', '-O' => 'bytes', '-a' => '-Asrcport'])
+            ->and(FakeProcessor::callOptions())->not->toHaveKey('-c')
+            ->and($query->topBy())->toBe('bytes')
+            ->and(flowsQueryTestQuery(['rankBy' => 'packets'])->topBy())->toBe('packets')
+            ->and(flowsQueryTestQuery(['rankBy' => 'tstart'])->topBy())->toBe('tstart')
+            ->and(flowsQueryTestQuery(['rankBy' => 'nonsense'])->topBy())->toBe('bytes')
+            ->and(flowsQueryTestQuery(['aggregation' => []])->topBy())->toBe('')
+        ;
     });
 
     test('an unbalanced filter is refused before anything runs', function (): void {

@@ -125,7 +125,7 @@ and reads nothing.
   The window is clamped by `NFSEN_MAX_STATS_WINDOW`.
 - **A built graph survives a moving window.** The section renders the last build
   and reports that the query changed, instead of blanking a graph somebody waited
-  for. The comparison rounds to the five-minute slot, so a live window end does
+  for. The comparison rounds to the capture interval, so a live window end does
   not count as a change.
 
 A filtered series has no per-port breakdown: the filter *is* the port selection.

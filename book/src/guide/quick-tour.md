@@ -44,14 +44,15 @@ The bar at the top sets the time range and the scope for every page at once:
   hours**, **Last 12 hours**, **Last 24 hours**, **Last 7 days**, **Last 30
   days** and **Last year**, and a **Custom duration**: a number of minutes (5 or
   more), hours, days or weeks, then **Apply**. Capture files cover 5 minutes
-  each and are imported a few minutes after they close, so the newest few
-  minutes of a short window are usually still empty.
+  each unless your administrator set another capture interval, and are imported
+  shortly after they close, so the newest few minutes of a short window are
+  usually still empty.
 - **Previous period** and **Next period** step the window back or forward by its
   own width; **Jump to now** moves it to end now. Previous period is disabled at
   the start of the stored data.
 - **The start and end** of the window are shown next to the step buttons, in the
   timezone Settings asks for. Click them to pick a start and an end in the
-  calendar, in five-minute steps, then **Apply**.
+  calendar, in steps of the capture interval, then **Apply**.
 - **Sources** picks which exporters count, as *All sources* or *2 of 5 sources*. Type to find one by its name or source; **Select all** and **Clear** both go back to every source. A source can carry a name to show (`NFSEN_SOURCES=10-20-100-3:dc1rt310`).
 - **Protocol** narrows everything to **TCP**, **UDP**, **ICMP** or **Other**, or
   leaves it at **Any protocol**.
@@ -118,7 +119,7 @@ the time left, and **Kill** stops it:
 
 A result stays until you run again. When you change the filter, the range or any
 option afterwards, the result says *These results are for an earlier query. Run
-again to update.* When a live window has moved on by more than five minutes, it
+again to update.* When a live window has moved on by more than one capture interval, it
 says which span it covers instead.
 
 ## Filters

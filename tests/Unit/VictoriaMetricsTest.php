@@ -627,8 +627,8 @@ describe('VictoriaMetrics::get_graph_data() multi-source series', function (): v
         $result = $this->vm->get_graph_data($this->start, $this->end, ['gw', 'srv'], ['tcp', 'any'], [], 'flows', 'protocols');
 
         expect(($this->queries)())->toBe([
-            'sum(max by (source) (nfsen_flows_tcp{source=~"gw|srv",port="",protocol="tcp"}))',
-            'sum(max by (source) (nfsen_flows{source=~"gw|srv",port=""}))',
+            'sum(max by (source) (sum_over_time(nfsen_flows_tcp{source=~"gw|srv",port="",protocol="tcp"}[300s]))) / 300',
+            'sum(max by (source) (sum_over_time(nfsen_flows{source=~"gw|srv",port=""}[300s]))) / 300',
         ]);
         expect($result['legend'])->toBe(['tcp_flows', 'any_flows']);
     });
@@ -636,21 +636,21 @@ describe('VictoriaMetrics::get_graph_data() multi-source series', function (): v
     test('protocols display with any reads every configured source, profile included', function (): void {
         $this->vm->get_graph_data($this->start, $this->end, ['any'], ['udp'], [], 'packets', 'protocols', profile: 'live');
 
-        expect(($this->queries)())->toBe(['sum(max by (source) (nfsen_packets_udp{source=~"gateway|server1",port="",protocol="udp",profile=~"live|"}))']);
+        expect(($this->queries)())->toBe(['sum(max by (source) (sum_over_time(nfsen_packets_udp{source=~"gateway|server1",port="",protocol="udp",profile=~"live|"}[300s]))) / 300']);
     });
 
     test('a profile name is matched literally, not as a regex', function (): void {
         $this->vm->get_graph_data($this->start, $this->end, ['gw'], ['any'], [], 'flows', 'protocols', profile: 'a.b+c');
 
-        expect(($this->queries)())->toBe(['sum(max by (source) (nfsen_flows{source="gw",port="",profile=~"a\\\\.b\\\\+c|"}))']);
+        expect(($this->queries)())->toBe(['sum(max by (source) (sum_over_time(nfsen_flows{source="gw",port="",profile=~"a\\\\.b\\\\+c|"}[300s]))) / 300']);
     });
 
     test('ports display sums a source subset per port', function (): void {
         $result = $this->vm->get_graph_data($this->start, $this->end, ['gw', 'srv'], ['any'], [80, 443], 'bytes', 'ports');
 
         expect(($this->queries)())->toBe([
-            'sum(max by (source) (nfsen_bytes{source=~"gw|srv",port="80"}))',
-            'sum(max by (source) (nfsen_bytes{source=~"gw|srv",port="443"}))',
+            'sum(max by (source) (sum_over_time(nfsen_bytes{source=~"gw|srv",port="80"}[300s]))) / 300',
+            'sum(max by (source) (sum_over_time(nfsen_bytes{source=~"gw|srv",port="443"}[300s]))) / 300',
         ]);
         expect($result['legend'])->toBe(['80_bytes_any', '443_bytes_any']);
     });
@@ -658,7 +658,7 @@ describe('VictoriaMetrics::get_graph_data() multi-source series', function (): v
     test('ports display with one source keeps the source in the legend', function (): void {
         $result = $this->vm->get_graph_data($this->start, $this->end, ['gateway'], ['tcp'], [80], 'flows', 'ports');
 
-        expect(($this->queries)())->toBe(['sum(max by (source) (nfsen_flows_tcp{source="gateway",port="80",protocol="tcp"}))']);
+        expect(($this->queries)())->toBe(['sum(max by (source) (sum_over_time(nfsen_flows_tcp{source="gateway",port="80",protocol="tcp"}[300s]))) / 300']);
         expect($result['legend'])->toBe(['80_flows_gateway_tcp']);
     });
 
@@ -667,7 +667,7 @@ describe('VictoriaMetrics::get_graph_data() multi-source series', function (): v
             $this->vm->capturedGetUrls = [];
             $result = $this->vm->get_graph_data($this->start, $this->end, $sources, ['any'], [80], 'flows', 'ports');
 
-            expect(($this->queries)())->toBe(['sum(max by (source) (nfsen_flows{source="",port="80"}))']);
+            expect(($this->queries)())->toBe(['sum(max by (source) (sum_over_time(nfsen_flows{source="",port="80"}[300s]))) / 300']);
             expect($result['legend'])->toBe(['80_flows_any']);
         }
     });
@@ -675,16 +675,23 @@ describe('VictoriaMetrics::get_graph_data() multi-source series', function (): v
     test('regex characters in source names are escaped for the string literal', function (): void {
         $this->vm->get_graph_data($this->start, $this->end, ['gw-1', 'edge.2'], ['any'], [], 'flows', 'protocols');
 
-        expect(($this->queries)()[0])->toBe('sum(max by (source) (nfsen_flows{source=~"gw\\\\-1|edge\\\\.2",port=""}))');
+        expect(($this->queries)()[0])->toBe('sum(max by (source) (sum_over_time(nfsen_flows{source=~"gw\\\\-1|edge\\\\.2",port=""}[300s]))) / 300');
     });
 
-    test('sources display still issues one plain query per source', function (): void {
+    test('sources display still issues one query per source', function (): void {
         $this->vm->get_graph_data($this->start, $this->end, ['gw', 'srv'], ['tcp'], [], 'flows', 'sources');
 
         expect(($this->queries)())->toBe([
-            'nfsen_flows_tcp{source="gw",port="",protocol="tcp"}',
-            'nfsen_flows_tcp{source="srv",port="",protocol="tcp"}',
+            'sum_over_time(nfsen_flows_tcp{source="gw",port="",protocol="tcp"}[300s]) / 300',
+            'sum_over_time(nfsen_flows_tcp{source="srv",port="",protocol="tcp"}[300s]) / 300',
         ]);
+    });
+
+    test('a sample is the total of a capture file, so a point is the rate over its step at any interval (#184)', function (): void {
+        Config::$settings = Settings::fromArray(['general' => ['sources' => ['gw'], 'db' => 'VictoriaMetrics', 'capture_interval' => '60']]);
+        $this->vm->get_graph_data($this->start, $this->start + 3600, ['gw'], ['any'], [], 'flows', 'sources');
+
+        expect(($this->queries)())->toBe(['sum_over_time(nfsen_flows{source="gw",port=""}[60s]) / 60']);
     });
 });
 

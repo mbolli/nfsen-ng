@@ -37,9 +37,6 @@ final class AlertManager {
     public const DEFAULT_WEBHOOK_TITLE = 'nfsen-ng alert: {rule}';
     public const DEFAULT_WEBHOOK_MESSAGE = '{metric} = {value} (profile: {profile}, sources: {sources})';
 
-    /** Length of one nfcapd data interval. */
-    public const int SLOT_SECONDS = 300;
-
     /** How long one live evaluation waits for nfdump slots in total. The import daemon waits for it. */
     public const float LIVE_SLOT_BUDGET_SECONDS = 60.0;
 
@@ -119,6 +116,11 @@ final class AlertManager {
         private ?AlertSampleRepository $samples = null,
     ) {
         $this->loadState();
+    }
+
+    /** Rules are evaluated once per capture interval (#184). */
+    public static function slotSeconds(): int {
+        return CaptureInterval::seconds();
     }
 
     // ── Scheduling and evaluation ──────────────────────────────────────────────
@@ -529,12 +531,12 @@ final class AlertManager {
      * it is the file's own.
      */
     public static function completeSlot(int $newestFile, ?int $interval): int {
-        if ($interval === null || $interval >= self::SLOT_SECONDS) {
+        if ($interval === null || $interval >= self::slotSeconds()) {
             return $newestFile;
         }
         $end = $newestFile + $interval;
 
-        return $end - $end % self::SLOT_SECONDS - self::SLOT_SECONDS;
+        return $end - $end % self::slotSeconds() - self::slotSeconds();
     }
 
     /** A parsed window as the Alerts page names it: '10 min', '1 h'. */
@@ -623,7 +625,7 @@ final class AlertManager {
                     }
                     $state->lastTriggeredAt = $slot;
                     $state->recentTriggers = \array_slice([...$state->recentTriggers, $slot], -10);
-                    $state->cooldownRemaining = $rule->cooldownSlots;
+                    $state->cooldownRemaining = (int) ceil($rule->cooldownMinutes * 60 / self::slotSeconds());
 
                     if ($notify) {
                         $this->dispatchNotifications($rule, $values, $threshold, $slot, 'fired');
@@ -885,7 +887,7 @@ final class AlertManager {
         }
 
         $top = max($stored);
-        $recent = array_filter($stored, static fn (int $ts): bool => $ts >= $top - self::SLOT_SECONDS);
+        $recent = array_filter($stored, static fn (int $ts): bool => $ts >= $top - self::slotSeconds());
 
         return [min($top, ...array_values($recent)), array_fill_keys(array_keys($recent), null)];
     }
@@ -993,7 +995,7 @@ final class AlertManager {
     private function fetchFilteredSlot(AlertRule $rule, string $profile, int $slot): array|string {
         $sources = array_values(array_filter(
             $this->sourcesOf($rule),
-            static fn (string $source): bool => NfcapdFiles::names($slot, $slot + self::SLOT_SECONDS - 1, $source, $profile) !== [],
+            static fn (string $source): bool => NfcapdFiles::names($slot, $slot + self::slotSeconds() - 1, $source, $profile) !== [],
         ));
         if ($sources === []) {
             $name = (new \DateTimeImmutable('@' . $slot))->setTimezone(Config::nfcapdTimezone())->format('YmdHi');
@@ -1009,7 +1011,7 @@ final class AlertManager {
             // -M must be set before -R: -R resolves file paths with the sources -M recorded.
             $nfdump->setOption('-M', implode(':', $sources));
             // Every file of the slot: nfcapd may rotate more often than the slot (#184).
-            $nfdump->setOption('-R', [$slot, $slot + self::SLOT_SECONDS - 60]);
+            $nfdump->setOption('-R', [$slot, $slot + self::slotSeconds() - 60]);
             $nfdump->setFilter($rule->nfdumpFilter ?? '');
             $nfdump->setOption('-s', self::TOTALS_STATISTIC);
             $nfdump->setOption('-n', 0);
@@ -1044,13 +1046,13 @@ final class AlertManager {
         } catch (\Throwable) {
         }
         if ($newest === []) {
-            return intdiv(time(), self::SLOT_SECONDS) * self::SLOT_SECONDS - self::SLOT_SECONDS;
+            return intdiv(time(), self::slotSeconds()) * self::slotSeconds() - self::slotSeconds();
         }
 
         $top = max($newest);
         $slot = $top;
         foreach ($newest as $ts) {
-            if ($ts >= $top - self::SLOT_SECONDS) {
+            if ($ts >= $top - self::slotSeconds()) {
                 $slot = min($slot, $ts);
             }
         }
@@ -1083,7 +1085,7 @@ final class AlertManager {
         if ($state === null || !$state->firing) {
             return;
         }
-        $ts ??= $state->lastEvaluatedSlot !== null ? $state->lastEvaluatedSlot + self::SLOT_SECONDS : time();
+        $ts ??= $state->lastEvaluatedSlot !== null ? $state->lastEvaluatedSlot + self::slotSeconds() : time();
 
         $events = $this->events();
         if ($events === null) {

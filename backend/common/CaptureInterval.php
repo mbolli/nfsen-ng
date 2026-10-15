@@ -70,6 +70,11 @@ final class CaptureInterval {
         return $n . ' ' . $unit . ($n === 1 ? '' : 's');
     }
 
+    /** "5 min", "1 min", "1 h": an interval as a unit. */
+    public static function short(int $seconds): string {
+        return $seconds % 3600 === 0 ? intdiv($seconds, 3600) . ' h' : intdiv($seconds, 60) . ' min';
+    }
+
     /** `$ts` floored to the interval. */
     public static function floor(int $ts): int {
         $i = self::seconds();

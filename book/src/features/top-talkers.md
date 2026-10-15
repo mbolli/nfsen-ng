@@ -53,7 +53,7 @@ processes the result came from. The side panels split the same way.
 
 The result is stored per statistic in `TalkersState`, with a fingerprint of its
 inputs. The window part of the fingerprint is `live:<width>` while the range is
-live, so a live result does not turn stale by itself; after five minutes the card
+live, so a live result does not turn stale by itself; after one capture interval the card
 says which span it covers instead. The table is sent once through a result host
 (see [Reactive Loop](../architecture/reactive-loop.md#result-hosts)). Clamp
 notices and nfdump's stderr lines are kept with the result they belong to, and a

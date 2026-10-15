@@ -185,7 +185,7 @@ final class OverviewPage implements Page {
     }
 
     /**
-     * What the KPI cards depend on: the window in 5 minute intervals, the sources and the profile.
+     * What the KPI cards depend on: the window in capture files, the sources and the profile.
      *
      * @param Inputs $in
      */
@@ -193,7 +193,7 @@ final class OverviewPage implements Page {
         $sources = $in['sources'];
         sort($sources);
 
-        return implode("\x1f", [intdiv($in['start'], TopNRepository::INTERVAL), intdiv($in['end'], TopNRepository::INTERVAL), implode(',', $sources), $in['profile']]);
+        return implode("\x1f", [intdiv($in['start'], CaptureInterval::files()), intdiv($in['end'], CaptureInterval::files()), implode(',', $sources), $in['profile']]);
     }
 
     /**
@@ -216,7 +216,7 @@ final class OverviewPage implements Page {
         sort($sources);
         $window = $in['live']
             ? 'live:' . ($in['end'] - $in['start'])
-            : intdiv($in['start'], TopNRepository::INTERVAL) . ':' . intdiv($in['end'], TopNRepository::INTERVAL);
+            : intdiv($in['start'], CaptureInterval::files()) . ':' . intdiv($in['end'], CaptureInterval::files());
 
         return implode("\x1f", [$window, implode(',', $sources), $in['profile'], $in['protocol'], $in['tab'], $in['dir'], $in['limit'], $in['order']]);
     }
@@ -277,7 +277,7 @@ final class OverviewPage implements Page {
             'proto' => $run(TopNStat::Proto, 1, 'bytes')->rows[0] ?? null,
         ];
 
-        $intervals = intdiv(max(0, $window->end - $window->end % TopNRepository::INTERVAL - ($window->start - $window->start % TopNRepository::INTERVAL)), TopNRepository::INTERVAL);
+        $intervals = intdiv(max(0, $window->end - $window->end % CaptureInterval::files() - ($window->start - $window->start % CaptureInterval::files())), CaptureInterval::files());
 
         return [
             ...$answer,
@@ -454,10 +454,10 @@ final class OverviewPage implements Page {
 
         $notes = [];
         if ($state === 'table' && $shown !== null && $shown['coverage'] < self::FULL_COVERAGE) {
-            $notes[] = 'Covers ' . (int) floor($shown['coverage'] * 100) . "% of the range's 5 minute intervals.";
+            $notes[] = 'Covers ' . (int) floor($shown['coverage'] * 100) . "% of the range's capture files.";
         }
         if (\in_array($state, ['table', 'empty'], true)) {
-            $notes[] = 'Ranked by bytes within each 5 minute interval; ' . self::TAB_META[$shownTab]['noun'] . " outside an interval's top " . TopNRepository::TOP . ' are not counted.';
+            $notes[] = 'Ranked by bytes within each capture file; ' . self::TAB_META[$shownTab]['noun'] . " outside a file's top " . TopNRepository::TOP . ' are not counted.';
         }
         if ($in['protocol'] !== 'any' && \in_array($state, ['table', 'empty', 'collecting'], true)) {
             $notes[] = 'The protocol filter does not apply to precomputed lists.';
@@ -518,8 +518,8 @@ final class OverviewPage implements Page {
      * @param Inputs $in
      */
     public static function exactQuery(array $in, string $handle): StatsQuery {
-        $start = $in['start'] - $in['start'] % TopNRepository::INTERVAL;
-        $end = $in['end'] - $in['end'] % TopNRepository::INTERVAL;
+        $start = $in['start'] - $in['start'] % CaptureInterval::files();
+        $end = $in['end'] - $in['end'] % CaptureInterval::files();
 
         return new StatsQuery(
             window: TimeWindow::clamped($start, max($start, $end - 1)),

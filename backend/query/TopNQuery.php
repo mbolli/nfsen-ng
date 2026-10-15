@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\query;
 
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\TopNCollector;
 use mbolli\nfsen_ng\store\TopNRepository;
 
 /**
- * A range question to the precomputed top-N tables. The window is rounded down to 5 minute
+ * A range question to the precomputed top-N tables. The window is rounded down to capture file
  * boundaries and read as [start, end), which is also what the cache is keyed on.
  */
 final readonly class TopNQuery {
@@ -39,8 +40,8 @@ final readonly class TopNQuery {
      * @param null|\Closure():void $yield called between chunks of the range query
      */
     public function run(TopNRepository $repo, int $retentionDays, int $now, ?\Closure $yield = null): TopNResult {
-        $start = $this->window->start - $this->window->start % TopNRepository::INTERVAL;
-        $end = $this->window->end - $this->window->end % TopNRepository::INTERVAL;
+        $start = $this->window->start - $this->window->start % CaptureInterval::files();
+        $end = $this->window->end - $this->window->end % CaptureInterval::files();
         $sources = array_values(array_unique($this->sources));
         sort($sources);
 
@@ -69,7 +70,7 @@ final readonly class TopNQuery {
             ];
         }
 
-        $expected = intdiv(max(0, $end - $start), TopNRepository::INTERVAL) * \count($sources);
+        $expected = intdiv(max(0, $end - $start), CaptureInterval::files()) * \count($sources);
 
         return new TopNResult(
             rows: $rows,

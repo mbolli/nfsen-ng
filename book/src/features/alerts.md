@@ -1,6 +1,6 @@
 # Alerts
 
-Threshold rules, evaluated automatically for every five-minute interval as the
+Threshold rules, evaluated automatically for every capture interval as the
 import brings it in, on their own **Alerts** page. Managed by `AlertManager`
 (`backend/common/AlertManager.php`), with the page in `AlertsPage.php` and the
 actions in `AlertActions.php`.
@@ -15,7 +15,7 @@ actions in `AlertActions.php`.
 | Metric | flows / packets / bytes |
 | Operator | `>`, `>=`, `<`, `<=` |
 | Threshold type | **Absolute** value, or **percent of a rolling average** over a window (10 min to 24 h); see [Baseline](#baseline-of-percent-of-average-rules) |
-| Cooldown | Five-minute intervals to wait before notifying again while the rule keeps firing |
+| Cooldown | Minutes to wait before notifying again while the rule keeps firing; a rule saved before 1.0 counted it in five-minute intervals and is read as five times as many minutes |
 | Traffic filter | Optional raw nfdump filter expression |
 | Notifications | Email and/or webhook (HTTP POST, JSON payload; see [libcurl 8.20 and OpenSwoole](../deployment/installation.md#libcurl-820-and-openswoole)) |
 
@@ -44,8 +44,10 @@ for a source that is still importing. The slot is the interval's start, and
   flows, packets and bytes of the protocol rows (`AlertManager::sumProtocolRows()`).
   nfdump does the summing, so a busy interval costs the worker no more memory
   than a quiet one; packets and bytes count the input direction, as nfdump's
-  per-protocol statistic prints them. The value is a total per five minutes, not
-  a rate, and the form says so. This is what lets a rule watch "ICMP only" or
+  per-protocol statistic prints them. The value is a total per capture interval,
+  not a rate, and the form says so. A rule keeps the interval its threshold was
+  set at, and the rules table points out one set at another interval than the
+  current. This is what lets a rule watch "ICMP only" or
   "this one subnet".
 
 The live evaluation runs its nfdump calls as background work (see
@@ -72,7 +74,7 @@ value:
 
 - **Without a filter**, the average comes from the datasource,
   `fetchRollingAverage($sources, $profile, $window, $slot)`: per second on RRD,
-  per 5 minutes on VictoriaMetrics, over the window that ends where the checked
+  per capture interval on VictoriaMetrics, over the window that ends where the checked
   interval starts. The value is each source's stored interval,
   `fetchLatestSlot()`, which leaves out a source more than one interval behind
   the newest.
@@ -100,7 +102,7 @@ or check, and deleting a rule drops its samples and its Test events.
 
 Events that filtered percent-of-average rules recorded before the samples existed
 (schema version 3) keep their threshold, which was a per-second average of all
-traffic; the history now labels it as a total per 5 minutes.
+traffic; the history now labels it as a total per interval.
 
 ## Fired and resolved
 

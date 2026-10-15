@@ -180,6 +180,7 @@ nfcapd -w /var/nfdump/profiles-data/live/<source> -z=lz4 -S 1 -p <port> -D
 | `-S 1` | `YYYY/MM/DD/` subdirectory structure. **Required** for nfsen-ng to locate files. |
 | `-p <port>` | UDP listen port (e.g. `9995`). |
 | `-D` | Daemonize. |
+| `-t <seconds>` | Optional. How often `nfcapd` starts a new file, 300 by default. nfsen-ng reads the interval from the file names; set `NFSEN_CAPTURE_INTERVAL` to the same value for graphs, ranges and alerts at that resolution (see [Configuration](configuration.md#nfdump--nfcapd-paths)). |
 
 > **Timezone:** `nfcapd` names files from the host's *local* time. If nfsen-ng
 > then runs in a container at `TZ=UTC`, set `NFCAPD_TZ` to the capture host's

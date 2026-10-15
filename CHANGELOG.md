@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **A configurable capture interval** ([#184](https://github.com/mbolli/nfsen-ng/issues/184), requested by [@hawk128](https://github.com/hawk128)). `NFSEN_CAPTURE_INTERVAL` sets the resolution nfsen-ng works in, from 1 to 60 minutes, to match `nfcapd -t`: the RRD step, the range snapping, the date picker, the filtered graph bins, the live checks and the alert intervals. `auto`, the default, keeps the step the databases already store, and a fresh install takes what the file names show. Databases at another step are rewritten when nfsen-ng starts, with what they hold resampled to the new rows; a Force Rescan restores the detail still in the capture files. Health shows each source's interval and the stored step. Alert cooldowns are now in minutes, and a threshold per interval set at another interval is pointed out in the rules table.
+
 - **A total at the cursor** ([#183](https://github.com/mbolli/nfsen-ng/issues/183), requested by [@hawk128](https://github.com/hawk128)). The tooltip and the legend beside the graphs start with the sum of the visible series at that time, for sources and protocols; ports overlap, so they have none.
 
 - **Larger Flows limits** ([#182](https://github.com/mbolli/nfsen-ng/issues/182), requested by [@hawk128](https://github.com/hawk128)). `NFSEN_FLOWS_MAX_LIMIT` raises the largest row limit the Flows page offers, and the menu adds 100,000 and 1,000,000 up to it. A row takes about 5 KB of server memory at the peak of a run, so `NFSEN_MEMORY_LIMIT` sets PHP's `memory_limit` for the server, and nfsen-ng learns the actual size from its own large listings to decide whether the next one fits.
@@ -27,9 +29,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Toasts are Starbase's `sb-toast`**: a coloured light and a wash of the level's colour, at most four at a time, each read out once. One that goes on its own waits while the pointer or the keyboard is on it, as before.
 
-- **The start and end of the range are picked in a calendar** (Starbase's `sb-date-picker`): both days and both times in one place, in five-minute steps like the capture files, in the display timezone, with the days outside the stored data struck out. **Apply** sets the range. It replaces the two date-time fields.
+- **The start and end of the range are picked in a calendar** (Starbase's `sb-date-picker`): both days and both times in one place, in steps of the capture interval, in the display timezone, with the days outside the stored data struck out. **Apply** sets the range. It replaces the two date-time fields.
 
 ### Fixed
+
+- **Capture files shorter than five minutes were mostly lost** ([#184](https://github.com/mbolli/nfsen-ng/issues/184)). With `nfcapd -t 60`, only one file in five reached the graphs, and alerts read one file per interval. Every file now counts, at any interval. A Force Rescan rebuilds the history from the capture files still on disk.
+
+- **VictoriaMetrics graphs plot rates per second**, as RRD's do: each point was one capture file's total, so its scale depended on the interval.
 
 - **An aggregated Flows query aggregates every matching flow** ([#182](https://github.com/mbolli/nfsen-ng/issues/182)). The row limit used to cut the flows nfdump read before it aggregated them, so a busy router's result covered seconds of traffic; the limit now keeps the aggregated rows with the most bytes, packets or flows, or the earliest, as **Top rows by** says, and the line next to the tabs says which. Like Top Talkers, an aggregated query now honours `NFSEN_MAX_STATS_WINDOW`, and its estimate no longer promises to stop early.
 

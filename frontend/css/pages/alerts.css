@@ -38,6 +38,13 @@
     font-weight: var(--font-weight-normal);
 }
 
+/* A threshold per interval set at another interval (#184). */
+.alert-interval-note {
+    display: block;
+    color: var(--warning-emphasis);
+    text-align: start;
+}
+
 /* Room for "59 seconds ago", so the column keeps its width while sb-relative-time counts the seconds.
    A fixed width keeps the table's spare space from following the text's width. */
 .alert-rules td[data-kind='time'] {

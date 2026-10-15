@@ -22,9 +22,8 @@ use mbolli\nfsen_ng\query\TopNStat;
  */
 final class TopNRepository {
     public const int TOP = 50;
-    public const int INTERVAL = 300;
 
-    /** Ranges up to this long are read from the 5 minute rows alone, so `intervals` is exact. */
+    /** Ranges up to this long are read from the per-file rows alone, so `intervals` is exact. */
     public const int EXACT_MAX = 6 * 3600;
 
     public const int STATUS_OK = 0;

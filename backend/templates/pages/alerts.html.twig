@@ -79,7 +79,7 @@
                                             <small>Profile {{ row.form.profile }}</small>
                                         </th>
                                         <td>{{ row.condition }}</td>
-                                        <td data-num>{{ row.threshold }}</td>
+                                        <td data-num>{{ row.threshold }}{% if row.intervalNote %}<small class="alert-interval-note" data-level="warning">{{ row.intervalNote }}</small>{% endif %}</td>
                                         <td>{{ row.sources }}</td>
                                         <td data-kind="time">
                                             {% if row.lastFired is not null %}
@@ -245,8 +245,8 @@
                     </div>
                     <div class="field">
                         <label for="alertFormThresholdValue"
-                               data-text="${{ alert_form_thresholdType.id() }} === 'percent_of_avg' ? 'Threshold (% of the average)' : 'Threshold (' + ${{ alert_form_metric.id() }} + (({{ f.perInterval ? 'true' : 'false' }} || {{ filterText }}.trim() !== '') ? ' per 5 min' : '/s') + ')'">
-                            {{- alert_form_thresholdType.string() == 'percent_of_avg' ? 'Threshold (% of the average)' : 'Threshold (' ~ alert_form_metric.string() ~ (perInterval ? ' per 5 min' : '/s') ~ ')' -}}
+                               data-text="${{ alert_form_thresholdType.id() }} === 'percent_of_avg' ? 'Threshold (% of the average)' : 'Threshold (' + ${{ alert_form_metric.id() }} + (({{ f.perInterval ? 'true' : 'false' }} || {{ filterText }}.trim() !== '') ? '{{ f.perIntervalLabel }}' : '/s') + ')'">
+                            {{- alert_form_thresholdType.string() == 'percent_of_avg' ? 'Threshold (% of the average)' : 'Threshold (' ~ alert_form_metric.string() ~ (perInterval ? f.perIntervalLabel : '/s') ~ ')' -}}
                         </label>
                         <input id="alertFormThresholdValue" type="number" min="0" step="any"
                                aria-describedby="alertFormThresholdHelp" {{ bind(alert_form_thresholdValue) }}>
@@ -264,10 +264,10 @@
                            data-text="{{ filterText }}.trim() !== '' ? '{{ averageHelp.filtered|e('js') }}' : '{{ averageHelp.stored|e('js') }}'">{{ filtered ? averageHelp.filtered : averageHelp.stored }}</p>
                     </div>
                     <div class="field">
-                        <label for="alertFormCooldown">Cooldown (5 minute intervals)</label>
-                        <input id="alertFormCooldown" type="number" min="0" max="288" step="1"
-                               aria-describedby="alertFormCooldownHelp" {{ bind(alert_form_cooldownSlots) }}>
-                        <p class="help" id="alertFormCooldownHelp">Intervals to wait before notifying again while the rule keeps firing.</p>
+                        <label for="alertFormCooldown">Cooldown (minutes)</label>
+                        <input id="alertFormCooldown" type="number" min="0" max="1440" step="1"
+                               aria-describedby="alertFormCooldownHelp" {{ bind(alert_form_cooldownMinutes) }}>
+                        <p class="help" id="alertFormCooldownHelp">Minutes to wait before notifying again while the rule keeps firing.</p>
                     </div>
                 </div>
             </fieldset>

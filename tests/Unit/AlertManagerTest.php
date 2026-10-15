@@ -2234,7 +2234,7 @@ describe('AlertRule roundtrip', function (): void {
             'thresholdType' => 'percent_of_avg',
             'thresholdValue' => 80.0,
             'avgWindow' => '6h',
-            'cooldownSlots' => 5,
+            'cooldownMinutes' => 25,
             'notifyEmail' => 'alert@example.com',
             'notifyWebhook' => 'https://example.com/hook',
             'nfdumpFilter' => 'proto icmp',
@@ -2242,10 +2242,20 @@ describe('AlertRule roundtrip', function (): void {
             'emailBodyTemplate' => 'Custom body {value}',
             'webhookTitleTemplate' => 'Custom title {rule}',
             'webhookMessageTemplate' => 'Custom message {value}',
+            'interval' => 60,
         ];
 
         $rule = AlertRule::fromArray($data);
         expect($rule->toArray())->toBe($data);
+    });
+
+    test('a rule saved before #184 counted its cooldown in 5 minute intervals and its threshold at 300 s', function (): void {
+        $rule = AlertRule::fromArray(['id' => 'old', 'cooldownSlots' => 5]);
+
+        expect($rule->cooldownMinutes)->toBe(25)
+            ->and($rule->interval)->toBeNull()
+            ->and($rule->toArray())->not->toHaveKey('cooldownSlots')
+        ;
     });
 
     test('withEnabled returns a new instance with updated enabled flag', function (): void {
@@ -2299,6 +2309,15 @@ describe('AlertManager::sumProtocolRows()', function (): void {
 });
 
 // ── Filtered totals against a real nfdump ─────────────────────────────────
+
+/** The settings of the filtered captures tests at a given NFSEN_CAPTURE_INTERVAL. */
+function alertCapturesInterval(object $test, string $interval): void {
+    Config::$settings = Settings::fromArray([
+        'general' => ['sources' => ['gw1', 'gw2'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump', 'capture_interval' => $interval],
+        'nfdump' => ['binary' => FixtureCaptures::BIN . '/nfdump', 'profiles-data' => $test->dir . '/profiles', 'profile' => 'live', 'max-processes' => 2],
+        'log' => ['priority' => LOG_ERR],
+    ]);
+}
 
 describe('AlertManager filtered totals from nfcapd captures', function (): void {
     beforeEach(function (): void {
@@ -2363,7 +2382,8 @@ describe('AlertManager filtered totals from nfcapd captures', function (): void 
             ->and(alertListedTotals(['gw1'], $this->slot, 'dst port 443')['bytes'])->toBeGreaterThan(0.0)
         ;
     });
-    test('one-minute files: every file of the slot counts, and the slot is complete once its last file is in (#184)', function (): void {
+    test('one-minute files at a five-minute interval: every file of the slot counts, and the slot is complete once its last file is in (#184)', function (): void {
+        alertCapturesInterval($this, '300');
         $dir = $this->dir . '/profiles/live/gw1/' . gmdate('Y/m/d', $this->slot);
         $file = $dir . '/nfcapd.' . gmdate('YmdHi', $this->slot);
         $one = alertListedTotals(['gw1'], $this->slot, 'dst port 443');
@@ -2382,6 +2402,21 @@ describe('AlertManager filtered totals from nfcapd captures', function (): void 
         CaptureInterval::reset();
 
         expect($mgr->testRule($rule, 'live')['slot'])->toBe($this->slot - 300);
+    });
+
+    test('one-minute files at a one-minute interval: each file is a slot of its own (#184)', function (): void {
+        alertCapturesInterval($this, '60');
+        $dir = $this->dir . '/profiles/live/gw1/' . gmdate('Y/m/d', $this->slot);
+        $file = $dir . '/nfcapd.' . gmdate('YmdHi', $this->slot);
+        $one = alertListedTotals(['gw1'], $this->slot, 'dst port 443');
+        foreach ([60, 120, 180, 240] as $offset) {
+            copy($file, $dir . '/nfcapd.' . gmdate('YmdHi', $this->slot + $offset));
+        }
+        CaptureInterval::reset();
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
+        $rule = makeRule(['sources' => ['gw1'], 'nfdumpFilter' => 'dst port 443', 'operator' => '>=', 'thresholdValue' => 0.0]);
+
+        expect($mgr->testRule($rule, 'live'))->toMatchArray(['evaluated' => true, 'slot' => $this->slot + 240, 'value' => $one['bytes']]);
     });
 });
 

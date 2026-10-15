@@ -225,7 +225,7 @@ describe('composition', function (): void {
             'settings_defaultWebhookTitleTemplate', 'settings_defaultWebhookMessageTemplate', 'serverTz', 'nfcapdTz',
             'displayTz', 'alert_form_id', 'alert_form_name', 'alert_form_enabled', 'alert_form_profile',
             'alert_form_sources', 'alert_form_metric', 'alert_form_operator', 'alert_form_thresholdType',
-            'alert_form_thresholdValue', 'alert_form_avgWindow', 'alert_form_cooldownSlots', 'alert_form_notifyEmail',
+            'alert_form_thresholdValue', 'alert_form_avgWindow', 'alert_form_cooldownMinutes', 'alert_form_notifyEmail',
             'alert_form_emailSubjectTemplate', 'alert_form_emailBodyTemplate', 'alert_form_notifyWebhook',
             'alert_form_webhookTitleTemplate', 'alert_form_webhookMessageTemplate', 'alert_form_nfdumpFilter'];
 

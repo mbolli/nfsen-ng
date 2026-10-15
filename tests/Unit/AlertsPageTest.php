@@ -189,8 +189,8 @@ describe('labels', function (): void {
     ]);
 
     test('values carry the time base they were counted over', function (): void {
-        expect(AlertsPage::formatValue('bytes', 1.8e12, AlertsPage::PER_INTERVAL))->toBe('1.8 TB per 5 min')
-            ->and(AlertsPage::formatValue('packets', 450e3, AlertsPage::PER_INTERVAL))->toBe('450k packets per 5 min')
+        expect(AlertsPage::formatValue('bytes', 1.8e12, AlertsPage::perInterval()))->toBe('1.8 TB per 5 min')
+            ->and(AlertsPage::formatValue('packets', 450e3, AlertsPage::perInterval()))->toBe('450k packets per 5 min')
             ->and(AlertsPage::formatValue('bytes', 6.1e9, ''))->toBe('6.1 GB')
         ;
     });
@@ -201,14 +201,14 @@ describe('labels', function (): void {
 
         expect(AlertsPage::valueBasis($plain))->toBe(AlertsPage::PER_SECOND)
             ->and(AlertsPage::thresholdLabel($plain))->toBe('5 GB/s')
-            ->and(AlertsPage::valueBasis($filtered))->toBe(AlertsPage::PER_INTERVAL)
+            ->and(AlertsPage::valueBasis($filtered))->toBe(AlertsPage::perInterval())
             ->and(AlertsPage::thresholdLabel($filtered))->toBe('5 GB per 5 min')
         ;
 
         Config::$settings = Settings::fromArray(['general' => ['sources' => ['gw1'], 'db' => 'VictoriaMetrics']]);
 
         expect(AlertsPage::storesTotals())->toBeTrue()
-            ->and(AlertsPage::valueBasis($plain))->toBe(AlertsPage::PER_INTERVAL)
+            ->and(AlertsPage::valueBasis($plain))->toBe(AlertsPage::perInterval())
         ;
     });
 
@@ -587,7 +587,7 @@ describe('AlertActions', function (): void {
     });
 
     test('ruleFromForm() builds the rule the form describes', function (): void {
-        $form = ['name' => '  High traffic ', 'sources' => ['gw2', 'gw1', 'gw2'], 'thresholdValue' => '5000000000', 'cooldownSlots' => 6,
+        $form = ['name' => '  High traffic ', 'sources' => ['gw2', 'gw1', 'gw2'], 'thresholdValue' => '5000000000', 'cooldownMinutes' => 30,
             'notifyWebhook' => 'https://hooks.example.net/a', 'nfdumpFilter' => ' proto icmp ', 'emailSubjectTemplate' => ''] + AlertsPage::formDefaults();
         $rule = AlertActions::ruleFromForm($form, 'abc', ['live'], ['gw1', 'gw2']);
 
@@ -595,7 +595,8 @@ describe('AlertActions', function (): void {
             ->and($rule->name)->toBe('High traffic')
             ->and($rule->sources)->toBe(['gw2', 'gw1'])
             ->and($rule->thresholdValue)->toBe(5e9)
-            ->and($rule->cooldownSlots)->toBe(6)
+            ->and($rule->cooldownMinutes)->toBe(30)
+            ->and($rule->interval)->toBe(300)
             ->and($rule->notifyWebhook)->toBe('https://hooks.example.net/a')
             ->and($rule->notifyEmail)->toBeNull()
             ->and($rule->nfdumpFilter)->toBe('proto icmp')
@@ -618,7 +619,7 @@ describe('AlertActions', function (): void {
         'unknown operator' => [['operator' => '=='], 'Unknown operator: ==.'],
         'negative threshold' => [['thresholdValue' => -1], 'The threshold must be a number of 0 or more.'],
         'text threshold' => [['thresholdValue' => 'lots'], 'The threshold must be a number of 0 or more.'],
-        'cooldown too long' => [['cooldownSlots' => 289], 'The cooldown must be a whole number of intervals from 0 to 288.'],
+        'cooldown too long' => [['cooldownMinutes' => 1441], 'The cooldown must be a whole number of minutes from 0 to 1440.'],
         'webhook scheme' => [['notifyWebhook' => 'file:///etc/passwd'], 'The webhook URL must start with http:// or https://.'],
     ]);
 

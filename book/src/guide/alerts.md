@@ -1,8 +1,9 @@
 # Setting Up Alerts
 
 Alerts watch a metric (flows, packets or bytes) and notify you when it crosses a
-threshold. They are checked automatically for every five-minute interval as the
-import brings it in, so nobody has to keep a browser open.
+threshold. They are checked automatically for every capture interval (five
+minutes unless `NFSEN_CAPTURE_INTERVAL` says otherwise) as the import brings it
+in, so nobody has to keep a browser open.
 
 They live on the **Alerts** page:
 
@@ -39,8 +40,8 @@ Press **New rule** and fill in the form below the table:
      normal for one link and alarming for another. A rule of this type waits
      until there is an average to compare with, and skips intervals while the
      average is zero.
-5. **Cooldown (5 minute intervals)**: how many intervals to wait before notifying
-   again while the rule keeps firing, so a sustained spike doesn't flood you.
+5. **Cooldown (minutes)**: how long to wait before notifying again while the
+   rule keeps firing, so a sustained spike doesn't flood you.
 6. **Notifications**: an email address and/or a webhook URL. Email works only
    when the administrator set a sender address (`NFSEN_ALERT_EMAIL_FROM`); the
    form says when it is off. Leave both empty for a rule that only shows up on
@@ -90,10 +91,14 @@ its filter matched in that interval, and averages those records. So:
 - Alerts such a rule recorded before this version show their old threshold
   labelled as a total per five minutes; that threshold was a per-second average
   of all traffic.
+- A threshold per interval counts one interval's traffic. When the capture
+  interval changes, the rules table marks each such threshold with the interval
+  it was set at, so you can scale it: a threshold of 5 GB per 5 min is 1 GB per
+  1 min.
 
 ## When rules are checked
 
-Every rule is evaluated once per five-minute interval and profile, as soon as
+Every rule is evaluated once per capture interval and profile, as soon as
 every source has delivered its capture file for that interval, in whatever order
 the files arrive. A source that has nothing waiting once a later interval is in
 counts as down and is left out until it reports again, so one dead exporter

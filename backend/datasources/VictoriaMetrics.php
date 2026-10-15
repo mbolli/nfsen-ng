@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\datasources;
 
 use JetBrains\PhpStorm\ExpectedValues;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\HealthChecker;
@@ -162,9 +163,13 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
             $ports = Config::$settings->ports;
         }
 
-        // Calculate step (resolution). Fall back to 500 rows when maxrows is null
+        // Calculate step (resolution), whole capture intervals. Fall back to 500 rows when maxrows is null
         // (matches RRD's default behaviour and avoids division by zero).
-        $step = max(300, (int) (($end - $start) / ($maxrows ?? 500)));
+        $interval = CaptureInterval::seconds();
+        $step = max($interval, (int) ceil(($end - $start) / ($maxrows ?? 500) / $interval) * $interval);
+        // A sample is one capture file's total: summed over the step and divided by it, a rate per second as RRD
+        // stores, whatever nfcapd's rotation (#184).
+        $rate = static fn (string $selector): string => "sum_over_time({$selector}[{$step}s])";
 
         $queries = [];
         $legends = [];
@@ -175,7 +180,7 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
                 foreach ($protocols as $protocol) {
                     $proto = ($protocol === 'any') ? null : $protocol;
                     $metricName = $this->buildMetricName($type, $proto);
-                    $queries[] = self::sumPerSource($metricName . $this->querySelector($resolved, 0, $proto, $profile));
+                    $queries[] = self::sumPerSource($rate($metricName . $this->querySelector($resolved, 0, $proto, $profile))) . " / {$step}";
                     $legends[] = $protocol . '_' . $type;
                 }
 
@@ -186,7 +191,7 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
                     $proto = ($protocols[0] === 'any') ? null : $protocols[0];
                     $metricName = $this->buildMetricName($type, $proto);
                     $labels = $this->buildLabels($source, 0, $proto, forQuery: true, profile: $profile);
-                    $queries[] = "{$metricName}{$labels}";
+                    $queries[] = $rate("{$metricName}{$labels}") . " / {$step}";
                     $legends[] = implode('_', array_filter([$source, $type, $protocols[0]]));
                 }
 
@@ -199,7 +204,7 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
                 $subset = self::sourceSubset($sources);
                 $legendSource = ($subset !== null && \count($subset) === 1) ? $subset[0] : '';
                 foreach ($ports as $port) {
-                    $queries[] = self::sumPerSource($metricName . $this->querySelector($subset ?? [''], $port, $proto, $profile));
+                    $queries[] = self::sumPerSource($rate($metricName . $this->querySelector($subset ?? [''], $port, $proto, $profile))) . " / {$step}";
                     $legends[] = implode('_', array_filter([(string) $port, $type, $legendSource, $protocols[0]], static fn (string $part): bool => $part !== ''));
                 }
 
@@ -353,8 +358,9 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
 
         foreach (['flows', 'packets', 'bytes'] as $metric) {
             $metricName = $this->buildMetricName($metric, null);
-            // At the newest sample, the window (newest - 600, newest] holds the newest one of each source not further behind.
-            $promql = self::sumPerSource("last_over_time({$metricName}{$sel}[600s])");
+            // At the newest sample, the window of two intervals holds the newest one of each source not further behind.
+            $lookback = 2 * CaptureInterval::seconds();
+            $promql = self::sumPerSource("last_over_time({$metricName}{$sel}[{$lookback}s])");
             $result[$metric] = $this->queryInstantScalar($promql, $newest);
         }
 
@@ -362,7 +368,7 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
     }
 
     /**
-     * The average total per 5 minutes over the window before the interval starting at $end, summed
+     * The average total per capture interval over the window before the interval starting at $end, summed
      * across sources: the unit of fetchLatestSlot(). Without $end, the window before the newest
      * complete interval by the clock, which is left out. Zeros without data.
      *
@@ -373,7 +379,7 @@ class VictoriaMetrics implements Datasource, TotalsProvider {
     public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds, ?int $end = null): array {
         $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
         $sel = $this->querySelector(array_values($sources), 0, null, $profile);
-        $end ??= intdiv(time(), 300) * 300 - 300;
+        $end ??= CaptureInterval::floor(time()) - CaptureInterval::seconds();
 
         foreach (['flows', 'packets', 'bytes'] as $metric) {
             $metricName = $this->buildMetricName($metric, null);

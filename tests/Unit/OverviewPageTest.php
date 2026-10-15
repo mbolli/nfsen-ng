@@ -485,8 +485,8 @@ describe('the KPI strip and the card', function (): void {
             ->and($view['busy'])->toBeFalse()
             ->and($view['exactRun'])->toBeFalse()
             ->and($view['notes'])->toBe([
-                "Covers 8% of the range's 5 minute intervals.",
-                "Ranked by bytes within each 5 minute interval; addresses outside an interval's top 50 are not counted.",
+                "Covers 8% of the range's capture files.",
+                "Ranked by bytes within each capture file; addresses outside a file's top 50 are not counted.",
                 'The protocol filter does not apply to precomputed lists.',
             ])
             ->and($view['rows'][0])->toMatchArray(['rank' => 1, 'label' => '10.0.0.1', 'ip' => '10.0.0.1', 'intervals' => '1 of 12', 'shareText' => '60.0%'])

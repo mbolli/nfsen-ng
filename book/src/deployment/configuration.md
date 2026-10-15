@@ -507,20 +507,22 @@ The size is set at creation and never grows. Each file holds four resolutions
 
 | Resolution | Retention |
 |------------|-----------|
-| 5-minute samples | 45 days |
+| One sample per capture interval (`NFSEN_CAPTURE_INTERVAL`, 5 minutes by default) | 45 days |
 | 30-minute samples | 90 days |
 | 2-hour samples | 1 year |
 | 1-day samples | `NFSEN_IMPORT_YEARS` years (default 3) |
 
 Only the daily archive's depth changes with `NFSEN_IMPORT_YEARS`; the finer
-three are fixed.
+three are fixed. An interval of 30 minutes or more leaves out the archives no
+coarser than it.
 
 ### Disk space
 
 Because the fine-resolution archives dominate and are fixed, **every `.rrd` file
 is roughly the same size, about 5 MiB**, whether it's an aggregate or a
 per-port file, and almost independent of `NFSEN_IMPORT_YEARS` (the daily archive
-is a small fraction of the total). Budget accordingly:
+is a small fraction of the total). Budget accordingly, at the default 5-minute
+interval (a 1-minute interval holds five times the samples, about 17 MiB a file):
 
 - ~5 MiB per source (aggregate)
 - ~5 MiB per tracked port, per source

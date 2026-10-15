@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\actions;
 
 use mbolli\nfsen_ng\common\AlertManager;
 use mbolli\nfsen_ng\common\AlertRule;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\common\UserPreferences;
@@ -23,8 +24,8 @@ use Mbolli\PhpVia\Via;
  * through the alerts:fired broadcast.
  */
 final class AlertActions {
-    /** The longest cooldown the form accepts: one day of 5 minute intervals. */
-    public const int MAX_COOLDOWN = 288;
+    /** The longest cooldown the form accepts, in minutes: one day. */
+    public const int MAX_COOLDOWN = 1440;
 
     public static function register(Context $c, Via $app, PageStates $states): void {
         $c->action(static function (Context $c) use ($app): void {
@@ -310,9 +311,9 @@ final class AlertActions {
         if (!is_numeric($threshold) || !is_finite((float) $threshold) || (float) $threshold < 0) {
             throw new \InvalidArgumentException('The threshold must be a number of 0 or more.');
         }
-        $cooldown = $text('cooldownSlots');
+        $cooldown = $text('cooldownMinutes');
         if (preg_match('/^\d+$/', $cooldown) !== 1 || (int) $cooldown > self::MAX_COOLDOWN) {
-            throw new \InvalidArgumentException('The cooldown must be a whole number of intervals from 0 to ' . self::MAX_COOLDOWN . '.');
+            throw new \InvalidArgumentException('The cooldown must be a whole number of minutes from 0 to ' . self::MAX_COOLDOWN . '.');
         }
         $webhook = $text('notifyWebhook');
         if ($webhook !== '' && preg_match('#^https?://.#i', $webhook) !== 1) {
@@ -332,7 +333,7 @@ final class AlertActions {
             'thresholdType' => $text('thresholdType'),
             'thresholdValue' => (float) $threshold,
             'avgWindow' => $text('avgWindow'),
-            'cooldownSlots' => (int) $cooldown,
+            'cooldownMinutes' => (int) $cooldown,
             'notifyEmail' => $text('notifyEmail'),
             'notifyWebhook' => $webhook,
             'nfdumpFilter' => $text('nfdumpFilter'),
@@ -340,6 +341,7 @@ final class AlertActions {
             'emailBodyTemplate' => \is_string($form['emailBodyTemplate'] ?? null) ? $form['emailBodyTemplate'] : '',
             'webhookTitleTemplate' => \is_string($form['webhookTitleTemplate'] ?? null) ? $form['webhookTitleTemplate'] : '',
             'webhookMessageTemplate' => \is_string($form['webhookMessageTemplate'] ?? null) ? $form['webhookMessageTemplate'] : '',
+            'interval' => CaptureInterval::seconds(),
         ]);
     }
 

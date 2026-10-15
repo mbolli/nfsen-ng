@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 use Dom\HTMLDocument;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use Tests\TestCase;
 
 /*
@@ -16,6 +17,11 @@ use Tests\TestCase;
 */
 
 pest()->extend(TestCase::class)->in('Feature');
+
+// The automatic capture interval is cached per process (#184): each test reads its own settings' files and RRDs.
+pest()->beforeEach(function (): void {
+    CaptureInterval::reset();
+})->in('Feature', 'Unit');
 
 /*
 |--------------------------------------------------------------------------

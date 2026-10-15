@@ -21,7 +21,7 @@ actions are in `ImportActions.php`.
 `ImportStats` keeps the last 100 imports of the worker (from the inotify path, the
 directory catch-up and a bulk import alike) and reports files per minute and
 milliseconds per file over the last 15 minutes. A source is *healthy* while its
-newest file is less than 12 minutes old (2.4 times nfcapd's five-minute rotation),
+newest file is less than 2.4 capture intervals old (12 minutes at nfcapd's default rotation),
 *stale* after that, *no data* without a file in seven days, and *missing* without
 a directory.
 
@@ -44,8 +44,8 @@ that saw the stale cache are re-rendered when it lands. While Health is open,
 | nfdump | Binary presence; **Minimum version**, an error below 1.7.2 (the JSON field names changed from 1.6.x) and a warning below 1.7.10; **CPU cores** with their source; **Parallel processes** (with `auto`, how it was derived); **Filter threads** (the `-W` passed); **Slots in use** by class, recounted on every render |
 | Sources | At least one configured |
 | Import Daemon | Running / initializing / watching N directories, last auto-import age |
-| nfcapd Paths | `profiles-data` reachable; per profile and source, directory presence, flat or nested layout, and capture freshness |
-| RRD Storage / VictoriaMetrics | Delegated to the active `Datasource::healthChecks()` |
+| nfcapd Paths | `profiles-data` reachable; per profile and source, directory presence, flat or nested layout, capture freshness, and the interval the file names show (`CaptureInterval::forFile()`): a warning when files come less often than the RRD step or do not divide it |
+| RRD Storage / VictoriaMetrics | Delegated to the active `Datasource::healthChecks()`; on RRD, **RRD step** says whether the databases store the capture interval, and a mismatch is rewritten at the next start |
 | Storage (SQLite) | From `Database::inspect()`, which opens the file read-only and never migrates: the file and whether it exists, whether it and its directory are writable, the journal mode (WAL, or the rollback journal where the filesystem refused WAL), the schema version, the size, and the SQLite library (3.33 or later, which the top-N rollups need for `UPDATE ... FROM`) |
 | Disk space | One row per filesystem of the Disk usage card: warning from 85 % used, error from 95 % |
 

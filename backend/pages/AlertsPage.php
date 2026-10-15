@@ -8,6 +8,7 @@ use mbolli\nfsen_ng\actions\AlertActions;
 use mbolli\nfsen_ng\common\AlertManager;
 use mbolli\nfsen_ng\common\AlertRule;
 use mbolli\nfsen_ng\common\AlertState;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\store\AlertEventRepository;
 use Mbolli\PhpVia\Context;
@@ -36,7 +37,7 @@ final class AlertsPage implements Page {
     /** Form field => signal name suffix; each field is the signal `alert_form_<field>`. */
     public const array FORM_FIELDS = [
         'id', 'name', 'enabled', 'profile', 'sources', 'metric', 'operator', 'thresholdType', 'thresholdValue',
-        'avgWindow', 'cooldownSlots', 'notifyEmail', 'emailSubjectTemplate', 'emailBodyTemplate', 'notifyWebhook',
+        'avgWindow', 'cooldownMinutes', 'notifyEmail', 'emailSubjectTemplate', 'emailBodyTemplate', 'notifyWebhook',
         'webhookTitleTemplate', 'webhookMessageTemplate', 'nfdumpFilter',
     ];
 
@@ -44,8 +45,6 @@ final class AlertsPage implements Page {
 
     /** The time bases a value can be shown with, see valueBasis(). */
     public const string PER_SECOND = '/s';
-
-    public const string PER_INTERVAL = ' per 5 min';
 
     public const array OPERATORS = ['>', '>=', '<', '<='];
 
@@ -101,7 +100,7 @@ final class AlertsPage implements Page {
     }
 
     public static function lede(): string {
-        return 'Rules checked after each 5 minute import.';
+        return 'Rules checked after each import, every ' . CaptureInterval::label(CaptureInterval::seconds()) . '.';
     }
 
     public static function icon(): string {
@@ -189,6 +188,7 @@ final class AlertsPage implements Page {
                     $settings->alerts,
                 ), 'name', 'id'), JSON_FORCE_OBJECT | JSON_THROW_ON_ERROR),
                 'perInterval' => self::storesTotals(),
+                'perIntervalLabel' => self::perInterval(),
                 'signals' => $signals,
                 'defaults' => self::formDefaults(),
                 'profiles' => self::profileOptions($c->getSignal('available_profiles')?->array() ?? [], $settings->alerts),
@@ -240,7 +240,7 @@ final class AlertsPage implements Page {
             'thresholdType' => 'absolute',
             'thresholdValue' => 0,
             'avgWindow' => '1h',
-            'cooldownSlots' => 3,
+            'cooldownMinutes' => 15,
             'notifyEmail' => '',
             'emailSubjectTemplate' => '',
             'emailBodyTemplate' => '',
@@ -296,6 +296,7 @@ final class AlertsPage implements Page {
                 'statusLabel' => $label,
                 'condition' => self::conditionLabel($rule),
                 'threshold' => self::thresholdLabel($rule),
+                'intervalNote' => self::intervalNote($rule),
                 'sources' => self::sourcesLabel($rule->sources),
                 'filter' => $rule->nfdumpFilter ?? '',
                 'lastFired' => $last,
@@ -367,6 +368,25 @@ final class AlertsPage implements Page {
             : self::formatValue($rule->metric, $rule->thresholdValue, self::valueBasis($rule));
     }
 
+    /** The time base of a value summed over one capture interval: " per 5 min" (#184). */
+    public static function perInterval(): string {
+        return ' per ' . CaptureInterval::short(CaptureInterval::seconds());
+    }
+
+    /**
+     * A threshold per interval set at another interval than the current one (#184): the rule still compares it with
+     * one interval's sum, so it wants adjusting.
+     */
+    public static function intervalNote(AlertRule $rule): string {
+        $set = $rule->interval ?? CaptureInterval::DEFAULT;
+        $now = CaptureInterval::seconds();
+        if ($set === $now || $rule->thresholdType !== 'absolute' || self::valueBasis($rule) === self::PER_SECOND) {
+            return '';
+        }
+
+        return 'Set per ' . CaptureInterval::short($set) . '; the interval is now ' . CaptureInterval::short($now) . '.';
+    }
+
     /**
      * A value with the metric's unit and a time base: "6.1 GB/s", "1.5k packets per 5 min",
      * or with $per '' none at all.
@@ -389,7 +409,7 @@ final class AlertsPage implements Page {
      * rule sums one interval's flow records and VictoriaMetrics stores interval totals.
      */
     public static function valueBasis(AlertRule $rule): string {
-        return $rule->nfdumpFilter !== null || self::storesTotals() ? self::PER_INTERVAL : self::PER_SECOND;
+        return $rule->nfdumpFilter !== null || self::storesTotals() ? self::perInterval() : self::PER_SECOND;
     }
 
     /** Whether the datasource stores totals per interval rather than per second rates. */

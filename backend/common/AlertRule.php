@@ -24,8 +24,8 @@ final class AlertRule {
         public readonly float $thresholdValue,
         /** 10m|30m|1h|6h|12h|24h, only for percent_of_avg */
         public readonly string $avgWindow,
-        /** Number of 5-min slots to suppress re-triggering after a fire */
-        public readonly int $cooldownSlots,
+        /** Minutes to suppress re-notifying after a fire (#184: was 5 minute slots, cooldownSlots) */
+        public readonly int $cooldownMinutes,
         public readonly ?string $notifyEmail,
         public readonly ?string $notifyWebhook,
         /** Optional nfdump filter expression, e.g. "proto icmp" or "net 192.168.1.0/24" */
@@ -35,6 +35,8 @@ final class AlertRule {
         public readonly ?string $emailBodyTemplate = null,
         public readonly ?string $webhookTitleTemplate = null,
         public readonly ?string $webhookMessageTemplate = null,
+        /** The capture interval a per-interval threshold was set at (#184); null before 1.0, when it was 300 */
+        public readonly ?int $interval = null,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -50,7 +52,7 @@ final class AlertRule {
             thresholdType: (string) ($data['thresholdType'] ?? 'absolute'),
             thresholdValue: (float) ($data['thresholdValue'] ?? 0),
             avgWindow: (string) ($data['avgWindow'] ?? '1h'),
-            cooldownSlots: max(0, (int) ($data['cooldownSlots'] ?? 3)),
+            cooldownMinutes: max(0, isset($data['cooldownMinutes']) ? (int) $data['cooldownMinutes'] : 5 * (int) ($data['cooldownSlots'] ?? 3)),
             notifyEmail: isset($data['notifyEmail']) && $data['notifyEmail'] !== '' ? (string) $data['notifyEmail'] : null,
             notifyWebhook: isset($data['notifyWebhook']) && $data['notifyWebhook'] !== '' ? (string) $data['notifyWebhook'] : null,
             nfdumpFilter: isset($data['nfdumpFilter']) && $data['nfdumpFilter'] !== '' ? (string) $data['nfdumpFilter'] : null,
@@ -58,6 +60,7 @@ final class AlertRule {
             emailBodyTemplate: isset($data['emailBodyTemplate']) && $data['emailBodyTemplate'] !== '' ? (string) $data['emailBodyTemplate'] : null,
             webhookTitleTemplate: isset($data['webhookTitleTemplate']) && $data['webhookTitleTemplate'] !== '' ? (string) $data['webhookTitleTemplate'] : null,
             webhookMessageTemplate: isset($data['webhookMessageTemplate']) && $data['webhookMessageTemplate'] !== '' ? (string) $data['webhookMessageTemplate'] : null,
+            interval: isset($data['interval']) && (int) $data['interval'] > 0 ? (int) $data['interval'] : null,
         );
     }
 
@@ -74,7 +77,7 @@ final class AlertRule {
             'thresholdType' => $this->thresholdType,
             'thresholdValue' => $this->thresholdValue,
             'avgWindow' => $this->avgWindow,
-            'cooldownSlots' => $this->cooldownSlots,
+            'cooldownMinutes' => $this->cooldownMinutes,
             'notifyEmail' => $this->notifyEmail,
             'notifyWebhook' => $this->notifyWebhook,
             'nfdumpFilter' => $this->nfdumpFilter,
@@ -82,6 +85,7 @@ final class AlertRule {
             'emailBodyTemplate' => $this->emailBodyTemplate,
             'webhookTitleTemplate' => $this->webhookTitleTemplate,
             'webhookMessageTemplate' => $this->webhookMessageTemplate,
+            'interval' => $this->interval,
         ];
     }
 
@@ -110,7 +114,7 @@ final class AlertRule {
             thresholdType: $this->thresholdType,
             thresholdValue: $this->thresholdValue,
             avgWindow: $this->avgWindow,
-            cooldownSlots: $this->cooldownSlots,
+            cooldownMinutes: $this->cooldownMinutes,
             notifyEmail: $this->notifyEmail,
             notifyWebhook: $this->notifyWebhook,
             nfdumpFilter: $this->nfdumpFilter,
@@ -118,6 +122,7 @@ final class AlertRule {
             emailBodyTemplate: $this->emailBodyTemplate,
             webhookTitleTemplate: $this->webhookTitleTemplate,
             webhookMessageTemplate: $this->webhookMessageTemplate,
+            interval: $this->interval,
         );
     }
 }

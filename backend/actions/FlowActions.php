@@ -38,7 +38,7 @@ use starfederation\datastar\enums\ElementPatchMode;
  * @phpstan-type ListInputs array{tz: string, sortKey: string, sortDir: string, hidden: list<string>}
  * @phpstan-type Run array{limit?: int, fingerprint?: string, totalsFingerprint?: string, live?: bool, ranAt?: int,
  *                        rangeSummary?: ?RangeSummary, rangePending?: bool, list?: ListInputs, sources?: list<string>,
- *                        topBy?: ''|'bytes'|'packets'|'flows'|'tstart'}
+ *                        topBy?: ''|'bytes'|'packets'|'flows'|'tstart', onRows?: \Closure(int, int): void}
  * @phpstan-type Inputs array{start: int, end: int, live: bool, profile: string, sources: list<string>, protocol: string,
  *                           filter: string, lower: string, upper: string, limit: int, aggregation: array<string, mixed>, orderByStart: bool,
  *                           rankBy: string}
@@ -114,7 +114,7 @@ final class FlowActions {
 
                         try {
                             $result = $query->run($processor);
-                            self::storeResult($flows, $result, round(microtime(true) - $time, 3), $ipInfoUrl, $run + ['limit' => $query->limit, 'topBy' => $query->topBy(), 'ranAt' => time(), 'sources' => $query->sources]);
+                            self::storeResult($flows, $result, round(microtime(true) - $time, 3), $ipInfoUrl, $run + ['limit' => $query->limit, 'topBy' => $query->topBy(), 'ranAt' => time(), 'sources' => $query->sources, 'onRows' => self::rowsProgress($c)]);
                             unset($result);
                             // One large listing per worker at a time, so the peak is mostly this one's. Aggregated rows are
                             // fewer fields of CSV, so only raw listings teach the size of a row.
@@ -409,7 +409,7 @@ final class FlowActions {
         $state->releaseStored();
         // The sources name the interface indexes (#178).
         $sources = $run['sources'] ?? [];
-        $isList = FlowRowStore::store($resultId, $result->rows, ['linkIpAddresses' => true, 'ipInfoActionUrl' => $ipInfoUrl, 'sources' => $sources]);
+        $isList = FlowRowStore::store($resultId, $result->rows, ['linkIpAddresses' => true, 'ipInfoActionUrl' => $ipInfoUrl, 'sources' => $sources, 'onRows' => $run['onRows'] ?? null]);
         $html = $isList ? '' : Table::generate($result->rows, 'flowTable', [
             'linkIpAddresses' => true,
             'ipInfoActionUrl' => $ipInfoUrl,
@@ -525,6 +525,28 @@ final class FlowActions {
     /** `flows-<from>-<to>` in the server's time, for exports and the raw output download. */
     public static function exportName(int $start, int $end): string {
         return 'flows-' . date('YmdHi', $start) . '-' . date('YmdHi', $end);
+    }
+
+    /**
+     * After nfdump, a large listing still takes its rows' formatting (#182): the status line says how far it got,
+     * at most four times a second.
+     *
+     * @return \Closure(int, int): void
+     */
+    private static function rowsProgress(Context $c): \Closure {
+        $last = 0.0;
+
+        return static function (int $done, int $total) use ($c, &$last): void {
+            $now = microtime(true);
+            if ($now - $last < 0.25 && $done < $total) {
+                return;
+            }
+            $last = $now;
+            $c->getSignal('query_status')?->setValue('Preparing rows: ' . number_format($done) . ' of ' . number_format($total));
+            $c->getSignal('query_permille')?->setValue(intdiv(1000 * $done, max(1, $total)));
+            $c->getSignal('query_eta')?->setValue('');
+            $c->syncSignals();
+        };
     }
 
     /**

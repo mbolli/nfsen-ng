@@ -33,6 +33,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Large Flows listings no longer freeze the interface** ([#182](https://github.com/mbolli/nfsen-ng/issues/182)). After nfdump, every returned row is formatted on the server, which took about 0.1 ms a row without letting the worker serve anything else: a listing of a million rows held every tab for minutes. It is now about twice as fast (a port's service name and a column's format are looked up once, not per row), lets other requests through every thousand rows, and the status line counts the rows it prepares.
+
 - **Capture files shorter than five minutes were mostly lost** ([#184](https://github.com/mbolli/nfsen-ng/issues/184)). With `nfcapd -t 60`, only one file in five reached the graphs, and alerts read one file per interval. Every file now counts, at any interval. A Force Rescan rebuilds the history from the capture files still on disk.
 
 - **VictoriaMetrics graphs plot rates per second**, as RRD's do: each point was one capture file's total, so its scale depended on the interval.

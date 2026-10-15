@@ -54,6 +54,18 @@ class TableFormatter {
         5 => ['quota exceeded', 'warning'],
     ];
 
+    /** @var array<string, list<string>> field name => the formats it asks for, see kinds() */
+    private static array $kinds = [];
+
+    /** @var array<int, false|string> port => service name */
+    private static array $services = [];
+
+    /** @var array<int, false|string> protocol number => name */
+    private static array $protocols = [];
+
+    /** @var array<string, null|int> a date to the second => its epoch */
+    private static array $epochs = [];
+
     /**
      * How a column's cells are set (2.5): 'num' right aligned in tabular figures, 'time' and
      * 'address' by their own rules, '' as text.
@@ -91,13 +103,15 @@ class TableFormatter {
 
         $fieldLower = strtolower($fieldName);
 
+        $kinds = self::kinds($fieldLower);
+
         // Dates sort by their timestamp.
-        if (self::isDate($fieldLower)) {
+        if (($kinds[0] ?? '') === 'date') {
             return self::epoch($value) ?? $value;
         }
 
         // For IP address fields (e.g. srcip, dstip, src_addr, ip), convert to sortable format
-        if (preg_match(self::PATTERN_IP_SUFFIX, strtolower($fieldName))) {
+        if (\in_array('ip', $kinds, true)) {
             // If already a dotted IP string, use it
             if (\is_string($value) && filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                 return \sprintf('%010u', ip2long($value));
@@ -154,107 +168,85 @@ class TableFormatter {
         }
 
         $fieldLower = strtolower($fieldName);
-
-        if (self::isDate($fieldLower)) {
-            return self::formatDate($value);
-        }
-
-        // Format duration fields
-        if (preg_match(self::PATTERN_DURATION_FIELDS, $fieldLower)) {
-            return self::formatDuration($value);
-        }
-
-        // Format bytes (ibyt, obyt, bytes, octets)
-        if (preg_match(self::PATTERN_BYTES_FIELDS, $fieldLower)
-            || preg_match(self::PATTERN_BYTES_SUFFIX, $fieldLower)) {
-            return self::formatBytes($value);
-        }
-
-        // Format packets (ipkt, opkt, packets, but NOT port fields)
-        if (preg_match(self::PATTERN_PACKETS_FIELDS, $fieldLower)
-            || (preg_match(self::PATTERN_PACKETS_SUFFIX, $fieldLower) && !preg_match('/port/', $fieldLower))) {
-            return self::formatNumber($value);
-        }
-
-        // Format flows
-        if (preg_match(self::PATTERN_FLOWS_FIELDS, $fieldLower)) {
-            return self::formatNumber($value);
-        }
-
-        // Bytes per packet is a size, not a rate.
-        if ($fieldLower === 'bpp') {
-            return is_numeric($value) ? self::formatNumber($value) . ' B' : (string) $value;
-        }
-
-        // Format bitrate/bandwidth (bps, pps)
-        if (preg_match(self::PATTERN_BITRATE_FIELDS, $fieldLower)
-            || preg_match(self::PATTERN_BITRATE_SUFFIX, $fieldLower)) {
-            return self::formatBitrate($value, $fieldLower);
-        }
-
-        // Format TCP flags
-        if (preg_match(self::PATTERN_FLAGS_FIELDS, $fieldLower)) {
-            return self::formatTcpFlags($value);
-        }
-
-        // Format ToS (Type of Service / DSCP)
-        if (preg_match(self::PATTERN_TOS_FIELDS, $fieldLower) && is_numeric($value)) {
-            return self::formatToS($value);
-        }
-
-        // Format ICMP type
-        if (preg_match(self::PATTERN_ICMP_FIELDS, $fieldLower) && is_numeric($value)) {
-            return self::formatIcmpType($value);
-        }
-
-        // Format Forwarding Status
-        if (preg_match(self::PATTERN_FWD_STATUS_FIELDS, $fieldLower) && is_numeric($value)) {
-            return self::formatForwardingStatus($value);
-        }
-
-        // Format protocol numbers to names
-        if (preg_match(self::PATTERN_PROTO_FIELDS, $fieldLower) && is_numeric($value)) {
-            return self::formatProtocol($value);
-        }
-
-        // Format NSEL/NAT event type
-        if (preg_match(self::PATTERN_NAT_EVENT_FIELDS, $fieldLower)) {
-            return self::formatNatEvent($value);
-        }
-
-        // Interface indexes with their names
-        if (preg_match(self::PATTERN_INTERFACE_FIELDS, $fieldLower) && is_numeric($value)) {
-            return self::formatInterface($value, $options['sources'] ?? []);
-        }
-
-        // Format port numbers with service names
-        if (preg_match(self::PATTERN_PORT_FIELDS, $fieldLower) && is_numeric($value)) {
-            return self::formatPort($value);
-        }
-
-        // Format percentage values
-        if (preg_match(self::PATTERN_PERCENTAGE_SUFFIX, $fieldLower)) {
-            return self::formatPercentage($value);
-        }
-
-        // Check if this is an IP address field and linking is enabled
-        if ($options['linkIpAddresses'] && preg_match(self::PATTERN_IP_SUFFIX, strtolower($fieldName))) {
-            // If it's a numeric IPv4 value, convert to dotted notation
-            if (!filter_var($value, FILTER_VALIDATE_IP) && is_numeric($value)) {
-                $int = (int) $value;
-                if ($int >= 0 && $int <= 0xFFFFFFFF) {
-                    $value = long2ip($int);
-                }
-            }
-
-            if (filter_var($value, FILTER_VALIDATE_IP)) {
-                // The table element posts ip-info for any .ip-link clicked inside it (Table::generate).
-                return '<a href="#" class="ip-link">' . htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5) . '</a>';
+        $numeric = is_numeric($value);
+        foreach (self::kinds($fieldLower) as $kind) {
+            // null: this format does not take the value, the next one may.
+            $formatted = match ($kind) {
+                'date' => self::formatDate($value),
+                'duration' => self::formatDuration($value),
+                'bytes' => self::formatBytes($value),
+                'packets', 'flows' => self::formatNumber($value),
+                // Bytes per packet is a size, not a rate.
+                'bpp' => $numeric ? self::formatNumber($value) . ' B' : (string) $value,
+                'bitrate' => self::formatBitrate($value, $fieldLower),
+                'flags' => self::formatTcpFlags($value),
+                'tos' => $numeric ? self::formatToS($value) : null,
+                'icmp' => $numeric ? self::formatIcmpType($value) : null,
+                'fwd' => $numeric ? self::formatForwardingStatus($value) : null,
+                'proto' => $numeric ? self::formatProtocol($value) : null,
+                'nat' => self::formatNatEvent($value),
+                'interface' => $numeric ? self::formatInterface($value, $options['sources'] ?? []) : null,
+                'port' => $numeric ? self::formatPort($value) : null,
+                'percentage' => self::formatPercentage($value),
+                'ip' => $options['linkIpAddresses'] ? self::ipLink($value) : null,
+                default => null,
+            };
+            if ($formatted !== null) {
+                return $formatted;
             }
         }
 
         // Escape HTML for unknown/unhandled field types to prevent XSS
         return htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5);
+    }
+
+    /** An address as the link that posts ip-info (Table::generate), or null when the value is none. */
+    private static function ipLink(bool|float|int|string $value): ?string {
+        // A numeric IPv4 value, as nfdump may print one, in dotted notation.
+        if (!filter_var($value, FILTER_VALIDATE_IP) && is_numeric($value)) {
+            $int = (int) $value;
+            if ($int >= 0 && $int <= 0xFFFFFFFF) {
+                $value = long2ip($int);
+            }
+        }
+
+        return filter_var($value, FILTER_VALIDATE_IP)
+            ? '<a href="#" class="ip-link">' . htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5) . '</a>'
+            : null;
+    }
+
+    /**
+     * The formats a field name asks for, in the order formatCellValue() tries them: they depend on the name alone, so
+     * they are matched once per name instead of once per cell (#182).
+     *
+     * @return list<string>
+     */
+    private static function kinds(string $fieldLower): array {
+        if (isset(self::$kinds[$fieldLower])) {
+            return self::$kinds[$fieldLower];
+        }
+        $match = static fn (string $pattern): bool => preg_match($pattern, $fieldLower) === 1;
+        $kinds = array_keys(array_filter([
+            'date' => self::isDate($fieldLower),
+            'duration' => $match(self::PATTERN_DURATION_FIELDS),
+            'bytes' => $match(self::PATTERN_BYTES_FIELDS) || $match(self::PATTERN_BYTES_SUFFIX),
+            'packets' => $match(self::PATTERN_PACKETS_FIELDS) || ($match(self::PATTERN_PACKETS_SUFFIX) && !str_contains($fieldLower, 'port')),
+            'flows' => $match(self::PATTERN_FLOWS_FIELDS),
+            'bpp' => $fieldLower === 'bpp',
+            'bitrate' => $match(self::PATTERN_BITRATE_FIELDS) || $match(self::PATTERN_BITRATE_SUFFIX),
+            'flags' => $match(self::PATTERN_FLAGS_FIELDS),
+            'tos' => $match(self::PATTERN_TOS_FIELDS),
+            'icmp' => $match(self::PATTERN_ICMP_FIELDS),
+            'fwd' => $match(self::PATTERN_FWD_STATUS_FIELDS),
+            'proto' => $match(self::PATTERN_PROTO_FIELDS),
+            'nat' => $match(self::PATTERN_NAT_EVENT_FIELDS),
+            'interface' => $match(self::PATTERN_INTERFACE_FIELDS),
+            'port' => $match(self::PATTERN_PORT_FIELDS),
+            'percentage' => $match(self::PATTERN_PERCENTAGE_SUFFIX),
+            'ip' => $match(self::PATTERN_IP_SUFFIX),
+        ]));
+
+        return self::$kinds[$fieldLower] = $kinds;
     }
 
     /**
@@ -279,10 +271,19 @@ class TableFormatter {
             return null;
         }
 
+        // A listing's dates share their seconds (nfdump prints milliseconds): parse each second once (#182).
+        $second = \strlen($value) === 23 && $value[19] === '.' ? substr($value, 0, 19) : $value;
+        if (\array_key_exists($second, self::$epochs)) {
+            return self::$epochs[$second];
+        }
+        if (\count(self::$epochs) >= 4096) {
+            self::$epochs = [];
+        }
+
         try {
-            return new \DateTimeImmutable($value)->getTimestamp();
+            return self::$epochs[$second] = new \DateTimeImmutable($second)->getTimestamp();
         } catch (\Exception) {
-            return null;
+            return self::$epochs[$second] = null;
         }
     }
 
@@ -313,15 +314,16 @@ class TableFormatter {
         if ($seconds < 60) {
             return \sprintf('%.2f s', $seconds);
         }
+        // fmod, not %: % casts to int and drops the fraction the format prints.
         if ($seconds < 3600) {
             $minutes = floor($seconds / 60);
-            $secs = $seconds % 60;
+            $secs = fmod($seconds, 60);
 
             return \sprintf('%d:%05.2f', $minutes, $secs);
         }
         $hours = floor($seconds / 3600);
-        $minutes = floor(($seconds % 3600) / 60);
-        $secs = $seconds % 60;
+        $minutes = floor(fmod($seconds, 3600) / 60);
+        $secs = fmod($seconds, 60);
 
         return \sprintf('%d:%02d:%05.2f', $hours, $minutes, $secs);
     }
@@ -691,7 +693,7 @@ class TableFormatter {
         }
 
         $protoNum = (int) $value;
-        $protoName = getprotobynumber($protoNum);
+        $protoName = self::$protocols[$protoNum] ??= getprotobynumber($protoNum);
 
         if ($protoName !== false) {
             return \sprintf(
@@ -727,7 +729,8 @@ class TableFormatter {
         }
 
         $port = (int) $value;
-        $service = getservbyport($port, 'tcp') ?: getservbyport($port, 'udp');
+        // getservbyport() reads /etc/services on every call: once per port, not per row (#182).
+        $service = self::$services[$port] ??= (getservbyport($port, 'tcp') ?: getservbyport($port, 'udp'));
 
         if ($service !== false) {
             return \sprintf(

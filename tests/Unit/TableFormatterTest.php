@@ -466,4 +466,29 @@ describe('TableFormatter', function (): void {
             expect($result)->toContain('22');
         });
     });
+
+    describe('large listings (#182)', function (): void {
+        test('a duration over a minute keeps its fraction of a second', function (): void {
+            expect(TableFormatter::formatCellValue(125.75, 'duration', ['linkIpAddresses' => false]))->toBe('2:05.75')
+                ->and(TableFormatter::formatCellValue(5099.993, 'duration', ['linkIpAddresses' => false]))->toBe('1:24:59.99')
+            ;
+        });
+
+        test('repeated cells format as the first one did: ports, protocols, dates to the millisecond', function (): void {
+            $options = ['linkIpAddresses' => true];
+            foreach ([[443, 'dst_port'], [6, 'proto'], ['2026-10-08T00:00:22.946', 'first'], ['192.0.2.7', 'dst_addr'], [7, 'in_packets']] as [$value, $field]) {
+                $first = [TableFormatter::formatCellValue($value, $field, $options), TableFormatter::getSortValue($value, $field)];
+                expect([TableFormatter::formatCellValue($value, $field, $options), TableFormatter::getSortValue($value, $field)])->toBe($first);
+            }
+            expect(TableFormatter::getSortValue('2026-10-08T00:00:22.946', 'first'))->toBe(TableFormatter::getSortValue('2026-10-08T00:00:22', 'first'))
+                ->and(TableFormatter::getSortValue('2026-10-08T00:00:23.001', 'first') - TableFormatter::getSortValue('2026-10-08T00:00:22.946', 'first'))->toBe(1)
+            ;
+        });
+
+        test('a field whose format needs a number falls through to the next one for anything else', function (): void {
+            expect(TableFormatter::formatCellValue('web', 'dst_port', ['linkIpAddresses' => false]))->toBe('web')
+                ->and(TableFormatter::formatCellValue('192.0.2.1', 'src_addr', ['linkIpAddresses' => false]))->toBe('192.0.2.1')
+            ;
+        });
+    });
 });

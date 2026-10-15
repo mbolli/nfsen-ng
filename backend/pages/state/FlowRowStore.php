@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\pages\state;
 
+use mbolli\nfsen_ng\common\Cooperative;
 use mbolli\nfsen_ng\common\FlowRows;
 use mbolli\nfsen_ng\common\Table;
 use mbolli\nfsen_ng\common\TableFormatter;
@@ -29,6 +30,9 @@ final class FlowRowStore {
 
     /** An address column's cap: the longest IPv6 text (45 characters, INET6_ADDRSTRLEN) plus 2. */
     public const int ADDRESS_MAX_CH = 47;
+
+    /** Blocks stored between two yields to the worker's other requests: about 1,000 rows (#182). */
+    private const int YIELD_BLOCKS = 16;
 
     /** Rows an export expands blocks for at a time, so a sorted export holds a bounded part of the result. */
     private const int EXPORT_ROWS = 4096;
@@ -92,6 +96,12 @@ final class FlowRowStore {
                 $cellLengths = [];
                 $html = '';
                 $inBlock = 0;
+                if (\count($offsets) % self::YIELD_BLOCKS === 0) {
+                    if (($options['onRows'] ?? null) instanceof \Closure) {
+                        $options['onRows']($i + 1, \count($data));
+                    }
+                    Cooperative::pause();
+                }
             }
         }
         if ($inBlock > 0) {
@@ -100,11 +110,15 @@ final class FlowRowStore {
         }
 
         $count = \count($data);
+        if (($options['onRows'] ?? null) instanceof \Closure) {
+            $options['onRows']($count, $count);
+        }
         $widths = [];
         foreach ($keys as $key) {
             $widths[$key] = self::width($titles[$key], $lengths[$key], $count, $kinds[$key] === 'address');
             $sort[$key] = self::compress($sort[$key]);
             $raw[$key] = self::compress($raw[$key]);
+            Cooperative::pause();
         }
         $bytes = \strlen($blob) + 4 * \count($offsets) + array_sum(array_map(\strlen(...), $sort)) + array_sum(array_map(\strlen(...), $raw));
 
@@ -392,6 +406,7 @@ final class FlowRowStore {
                 yield $row;
             }
             unset($blocks);
+            Cooperative::pause();
         }
     }
 

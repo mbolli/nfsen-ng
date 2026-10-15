@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\processor;
 
 use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Cooperative;
 use mbolli\nfsen_ng\common\CpuBudget;
 use mbolli\nfsen_ng\common\Debug;
 
@@ -616,18 +617,29 @@ class Nfdump implements Processor {
      * @return array<array<string, mixed>>
      */
     public static function normalizeAddressFamilyKeys(array $records): array {
-        // Record by record in place: passed a temporary, each old record is freed as it is replaced.
-        foreach (array_keys($records) as $i) {
+        // Record by record in place: passed a temporary, each old record is freed as it is replaced. Each key is
+        // renamed once, and a record with no family key is kept as it is (#182).
+        $renamed = [];
+        foreach (array_keys($records) as $n => $i) {
+            if ($n % 10_000 === 9_999) {
+                Cooperative::pause();
+            }
             $record = $records[$i];
             if (!\is_array($record)) {
+                continue;
+            }
+            $changes = false;
+            foreach (array_keys($record) as $key) {
+                $renamed[$key] ??= \is_string($key) ? (preg_replace('/^(src|dst|ip|bgp)[46]_/', '$1_', $key) ?? $key) : $key;
+                $changes = $changes || $renamed[$key] !== $key;
+            }
+            if (!$changes) {
                 continue;
             }
 
             $row = [];
             foreach ($record as $key => $value) {
-                $newKey = \is_string($key)
-                    ? (preg_replace('/^(src|dst|ip|bgp)[46]_/', '$1_', $key) ?? $key)
-                    : $key;
+                $newKey = $renamed[$key];
                 // Both family variants in one record would be a nfdump oddity; keep the filled one.
                 if (isset($row[$newKey]) && $row[$newKey] !== '') {
                     continue;

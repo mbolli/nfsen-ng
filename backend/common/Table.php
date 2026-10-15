@@ -407,14 +407,22 @@ class Table {
     private static function collectHeaders(array $data): array {
         /** @var list<string> $headers */
         $headers = [];
+        $seen = [];
 
         foreach ($data as $row) {
             if (!\is_array($row)) {
                 continue;
             }
+            // Rows come in a few shapes: merge each shape once, not once per row (#182).
+            $rowKeys = array_keys($row);
+            $shape = implode("\0", $rowKeys);
+            if (isset($seen[$shape])) {
+                continue;
+            }
+            $seen[$shape] = true;
 
             $insertAt = 0;
-            foreach (array_keys($row) as $key) {
+            foreach ($rowKeys as $key) {
                 $position = array_search($key, $headers, true);
                 if ($position === false) {
                     array_splice($headers, $insertAt, 0, [$key]);

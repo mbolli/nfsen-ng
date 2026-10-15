@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\query;
 
 use mbolli\nfsen_ng\common\Config;
+use mbolli\nfsen_ng\common\Cooperative;
 use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\processor\MultiStatCsvParser;
 use mbolli\nfsen_ng\processor\Nfdump;
@@ -196,7 +197,10 @@ final readonly class FlowsQuery {
         $first = $last = null;
         $aggregated = false;
 
-        foreach ($rows as $row) {
+        foreach ($rows as $i => $row) {
+            if ($i % 10_000 === 9_999) {
+                Cooperative::pause();
+            }
             $aggregated = $aggregated || isset($row['flows']);
             $flows += isset($row['flows']) ? self::count($row['flows']) : 1;
             $packets += self::sum($row, ['packets', 'in_packets', 'out_packets', 'inPackets', 'outPackets']);

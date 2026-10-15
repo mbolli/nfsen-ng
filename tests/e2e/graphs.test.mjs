@@ -635,7 +635,7 @@ export default async function graphsTest() {
         await page.evaluate(`document.getElementById('zoomReset').click()`);
         await page.waitFor(`document.getElementById('zoomPreview').hidden`, { label: 'Reset after the move' });
 
-        // A brush (dispatched as ECharts reports one) sets the range on 5 minute boundaries, with
+        // A brush (dispatched as ECharts reports one) sets the range on capture interval boundaries, with
         // one post: the host's range-select handler is bound once, also after the move above.
         const brushTarget = await page.evaluate(`(function(){
             var src = ${CHART}.chart.getOption().dataset[0].source;
@@ -645,12 +645,13 @@ export default async function graphsTest() {
         log.clear();
         await page.evaluate(`${CHART}.chart.dispatchAction({ type: 'brush', areas: [{ brushType: 'lineX', xAxisIndex: 0, coordRange: ${JSON.stringify(brushTarget)} }] })`);
         await page.evaluate(`${CHART}.chart.dispatchAction({ type: 'brushEnd', areas: [{ brushType: 'lineX', xAxisIndex: 0, coordRange: ${JSON.stringify(brushTarget)} }] })`);
-        await windowMatches({ from: Math.floor(brushTarget[0] / 300000) * 300000, to: Math.ceil(brushTarget[1] / 300000) * 300000 });
+        const stepMs = (await page.evaluate('Number(document.documentElement.dataset.interval)')) * 1000;
+        await windowMatches({ from: Math.floor(brushTarget[0] / stepMs) * stepMs, to: Math.ceil(brushTarget[1] / stepMs) * stepMs });
         await sleep(1000);
         assert.equal(log.count('set-range'), 1, `one brush posts set-range once, got ${log.names().join(', ')}`);
         const brushed = await currentWindow(page);
         assert.equal(brushed.live, false, 'a brushed range is fixed');
-        assert.equal(brushed.from % 300, 0, 'the brushed start is on a 5 minute boundary');
+        assert.equal(brushed.from % (stepMs / 1000), 0, 'the brushed start is on a capture interval boundary');
         await page.evaluate(`document.getElementById('rangeUndo').click()`);
         await page.waitFor(`document.querySelector('#rangeMenu .menu-toggle').textContent.includes('Last year')`, { label: 'Previous range after a brush' });
         await page.waitFor(`!!${CHART}.chart`, { label: 'the chart to redraw' });

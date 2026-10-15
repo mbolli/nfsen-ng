@@ -6,9 +6,10 @@ declare(strict_types=1);
  * Capture files for the book's screenshots: two gateways of a small office, written by a real nfcapd
  * (tests/Support/captures/FixtureCaptures.php). Seeded, so a rerun writes the same flows.
  *
- *   php book/_seed-captures.php [--from=<unix>] [--to=<unix>] [--seed=1] <profiles-data>
+ *   php book/_seed-captures.php [--from=<unix>] [--to=<unix>] [--seed=1] [--interval=300] <profiles-data>
  *
- * Without --from and --to it writes the 48 hours up to the current 5-minute slot. Outside hosts use only
+ * Without --from and --to it writes the 48 hours up to the current slot. --interval is nfcapd's -t (#184): files of
+ * that many seconds, with the same traffic per second. Outside hosts use only
  * the documentation ranges (RFC 5737) and private-use AS numbers, so no image shows a real host.
  */
 
@@ -21,17 +22,24 @@ const SOURCES = ['gw1', 'gw2'];
 /** Peak flows per 5 minutes: gw1 is the main office, gw2 a branch. */
 const PEAK = [6000, 1800];
 
-$args = getopt('', ['from:', 'to:', 'seed:'], $rest);
+$args = getopt('', ['from:', 'to:', 'seed:', 'interval:'], $rest);
 $root = $argv[$rest] ?? null;
 if ($root === null) {
-    fwrite(STDERR, "usage: php book/_seed-captures.php [--from=<unix>] [--to=<unix>] [--seed=1] <profiles-data>\n");
+    fwrite(STDERR, "usage: php book/_seed-captures.php [--from=<unix>] [--to=<unix>] [--seed=1] [--interval=300] <profiles-data>\n");
 
     exit(2);
 }
-$to = isset($args['to']) ? (int) $args['to'] : intdiv(time(), 300) * 300;
+$interval = (int) ($args['interval'] ?? 300);
+if ($interval < 60 || $interval % 60 !== 0 || 3600 % $interval !== 0) {
+    fwrite(STDERR, "--interval takes whole minutes that divide an hour\n");
+
+    exit(2);
+}
+define('INTERVAL', $interval);
+$to = isset($args['to']) ? (int) $args['to'] : intdiv(time(), INTERVAL) * INTERVAL;
 $from = isset($args['from']) ? (int) $args['from'] : $to - 48 * 3600;
 $seed = (int) ($args['seed'] ?? 1);
-$from -= $from % 300;
+$from -= $from % INTERVAL;
 
 /** A uniform number in [0, 1) from mt_rand, which FixtureCaptures seeds per file. */
 function rnd(): float {
@@ -204,8 +212,8 @@ function flow(int $source, int $slot, int $exportSecs, int $i, int $count): arra
     $serverPort = $proto === 1 ? 8 << 8 : $port;
     [$src, $dst, $srcPort, $dstPort] = $reverse ? [$b, $a, $serverPort, $clientPort] : [$a, $b, $clientPort, $serverPort];
 
-    $firstMs = $slot * 1000 + (int) (rnd() * 299_000);
-    $lastMs = min($slot * 1000 + 299_999, $firstMs + $ms);
+    $firstMs = $slot * 1000 + (int) (rnd() * (INTERVAL - 1) * 1000);
+    $lastMs = min($slot * 1000 + INTERVAL * 1000 - 1, $firstMs + $ms);
     $exportMs = $exportSecs * 1000;
     $uptime = 1_000_000_000;
     $srcInside = inside($src);
@@ -222,14 +230,14 @@ function flow(int $source, int $slot, int $exportSecs, int $i, int $count): arra
     ];
 }
 
-$flows = static fn (int $source, int $slot): int => max(50, (int) round(PEAK[$source] * load($source, $slot))) + (backup($source, $slot) ? 36 : 0);
+$flows = static fn (int $source, int $slot): int => max(intdiv(50 * INTERVAL, 300), (int) round(PEAK[$source] * load($source, $slot) * INTERVAL / 300)) + (backup($source, $slot) ? 36 : 0);
 $record = static fn (int $source, int $slot, int $exportSecs, int $i): array => flow($source, $slot, $exportSecs, $i, 0);
 
 // FixtureCaptures tags a file by engine id, so one build holds at most 255 files.
 $total = 0;
-for ($start = $from; $start < $to; $start += 48 * 300) {
-    $files = min(48, intdiv($to - $start, 300));
-    $total += FixtureCaptures::build($root, 'live', SOURCES, $start, $files, $flows, $seed, record: $record);
-    fprintf(STDERR, "%s: %d flows so far\n", gmdate('Y-m-d H:i', $start + $files * 300), $total);
+for ($start = $from; $start < $to; $start += 48 * INTERVAL) {
+    $files = min(48, intdiv($to - $start, INTERVAL));
+    $total += FixtureCaptures::build($root, 'live', SOURCES, $start, $files, $flows, $seed, record: $record, interval: INTERVAL);
+    fprintf(STDERR, "%s: %d flows so far\n", gmdate('Y-m-d H:i', $start + $files * INTERVAL), $total);
 }
-echo "{$total} flows in " . intdiv($to - $from, 300) . ' files per source, ' . gmdate('Y-m-d H:i', $from) . ' to ' . gmdate('Y-m-d H:i', $to) . " UTC\n";
+echo "{$total} flows in " . intdiv($to - $from, INTERVAL) . ' files per source, ' . gmdate('Y-m-d H:i', $from) . ' to ' . gmdate('Y-m-d H:i', $to) . " UTC\n";

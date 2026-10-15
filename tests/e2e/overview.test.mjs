@@ -37,10 +37,11 @@ export default async function overviewTest() {
         await page.setRangePreset('24h');
         await page.waitFor(`!!${CHART}.dataset.chartData`, { label: 'the graph data' });
 
-        // 4.1.2: the data-mode label. 24 hours at 500 points is the 5 minute RRA.
-        await page.waitFor(`${text('#trafficGraphMode')} === 'Stored data · 5 min resolution'`, {
-            label: 'the mode label "Stored data · 5 min resolution"',
-        });
+        // 4.1.2: the data-mode label. 24 hours at 500 points is the 5 minute RRA at the default capture interval;
+        // a finer interval consolidates to whole intervals (#184).
+        const interval = await page.evaluate('Number(document.documentElement.dataset.interval)');
+        const mode = interval === 300 ? `=== 'Stored data · 5 min resolution'` : `.match(/^Stored data · \\d+ (min|h) resolution$/)`;
+        await page.waitFor(`${text('#trafficGraphMode')}${mode}`, { label: `the mode label at a ${interval} s interval` });
         assert.match(await page.evaluate(text('#trafficGraphTitle')), /^(Traffic|Packets|Flows) by (source|protocol|port)$/);
 
         // The Options panel is closed by default; its toggle opens it, by keyboard too.
@@ -184,7 +185,8 @@ export default async function overviewTest() {
         await sleep(1000);
         assert.equal(log.count('set-range'), 1, `one drag posts set-range once, got ${log.names().join(', ')}`);
         assert.ok(brushed.to - brushed.from < 30 * 86400 * 0.5, `the brush narrowed the 30 day window (${brushed.to - brushed.from} s)`);
-        assert.equal(brushed.from % 300, 0, 'the brushed start is on a 5 minute boundary');
+        const step = await page.evaluate('Number(document.documentElement.dataset.interval)');
+        assert.equal(brushed.from % step, 0, 'the brushed start is on a capture interval boundary');
         assert.ok(before[0], 'the chart carries an accessible name');
         assert.match(await page.evaluate(`${CHART}.getAttribute('aria-label')`), / to .*(peak|no data)/, 'the name gives the range and the peak');
 

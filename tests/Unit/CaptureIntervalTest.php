@@ -6,8 +6,10 @@ use mbolli\nfsen_ng\common\AlertManager;
 use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\HealthChecker;
+use mbolli\nfsen_ng\common\NfcapdFiles;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Rrd;
+use Tests\Support\captures\FixtureCaptures;
 
 /**
  * A profiles tree with empty capture files for `gw` named after `$stamps` in the nfcapd timezone.
@@ -177,6 +179,30 @@ describe('CaptureInterval::seconds()', function (): void {
         expect(CaptureInterval::label(60))->toBe('1 minute')
             ->and(CaptureInterval::label(300))->toBe('5 minutes')
             ->and(CaptureInterval::label(3600))->toBe('1 hour')
+        ;
+    });
+});
+
+describe('captures written by nfcapd every minute', function (): void {
+    beforeEach(function (): void {
+        if (!FixtureCaptures::available() || Config::nfcapdTimezone()->getName() !== 'UTC') {
+            $this->markTestSkipped('needs nfcapd and nfdump under ' . FixtureCaptures::BIN . ' and NFCAPD_TZ=UTC (the app image)');
+        }
+        $this->dir = sys_get_temp_dir() . '/capint_nfcapd_' . uniqid();
+        $this->start = intdiv(time(), 3600) * 3600 - 3600;
+    });
+
+    afterEach(function (): void {
+        FixtureCaptures::remove($this->dir);
+    });
+
+    test('a file per minute, and the interval read from their names', function (): void {
+        $stored = FixtureCaptures::build($this->dir, 'live', ['gw'], $this->start, 6, 40, interval: 60);
+        Config::$settings = Settings::fromArray(['general' => ['sources' => ['gw']], 'nfdump' => ['profiles-data' => $this->dir, 'profile' => 'live']]);
+
+        expect(NfcapdFiles::names($this->start, $this->start + 3599, 'gw', 'live'))->toBe(range($this->start, $this->start + 300, 60))
+            ->and(CaptureInterval::forFile('live', 'gw', $this->start))->toBe(60)
+            ->and($stored)->toBe(240)
         ;
     });
 });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\common;
 
+use mbolli\nfsen_ng\datasources\Rrd;
 use mbolli\nfsen_ng\processor\Nfdump;
 use mbolli\nfsen_ng\query\Estimate;
 use mbolli\nfsen_ng\store\Database;
@@ -443,6 +444,26 @@ class HealthChecker {
                         }
                         $add("capture_fresh_{$sourceIdPfx}", $freshnessLabel, $status, $detail, 'nfcapd Paths', false, '', $newestMtime);
                     }
+
+                    if ($newest !== null) {
+                        $step = null;
+                        if ($datasource === 'rrd' && $rrdOk) {
+                            try {
+                                $step = Rrd::stepOf(Rrd::pathFor($source, 0, $profile));
+                            } catch (\Throwable) {
+                            }
+                        }
+                        $interval = self::intervalCheck(CaptureInterval::forFile($profile, $source, $newest['ts']), $step);
+                        $add(
+                            "capture_interval_{$sourceIdPfx}",
+                            $multiProfile ? "Interval {$source} ({$profile})" : "nfcapd interval: {$source}",
+                            $interval['status'],
+                            $interval['detail'],
+                            'nfcapd Paths',
+                            false,
+                            $interval['hint']
+                        );
+                    }
                 }
             }
         }
@@ -628,6 +649,31 @@ class HealthChecker {
             $row('nfdump_max_processes', 'Parallel processes', $processes, 'Each nfdump process uses about 2 to 3 CPU cores.'),
             $row('nfdump_workers', 'Filter threads', HealthMetrics::workersText($budget)),
             self::slotsCheck($active),
+        ];
+    }
+
+    /**
+     * nfcapd's rotation (`-t`) against the RRD step (#184): files every minute sum into 5-minute rows, files rarer
+     * than the step leave gaps.
+     *
+     * @return array{status: 'ok'|'warning', detail: string, hint: string}
+     */
+    public static function intervalCheck(?int $interval, ?int $step): array {
+        if ($interval === null) {
+            return ['status' => 'ok', 'detail' => 'Not enough files yet to tell', 'hint' => ''];
+        }
+        $detail = 'Every ' . self::ageStr($interval) . ' (nfcapd -t ' . $interval . ')';
+        if ($step === null || $interval === $step) {
+            return ['status' => 'ok', 'detail' => $detail, 'hint' => ''];
+        }
+        if ($interval < $step && $step % $interval === 0) {
+            return ['status' => 'ok', 'detail' => $detail, 'hint' => 'Graphs sum ' . intdiv($step, $interval) . ' files into each ' . self::ageStr($step) . ' RRD row.'];
+        }
+
+        return [
+            'status' => 'warning',
+            'detail' => $detail,
+            'hint' => 'The RRD step is ' . self::ageStr($step) . ($interval > $step ? ', so graphs have gaps between files.' : ', which is not a multiple of the interval.'),
         ];
     }
 

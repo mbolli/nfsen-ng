@@ -12,6 +12,7 @@ namespace mbolli\nfsen_ng\datasources;
  *     date_iso: string,
  *     date_timestamp: int,
  *     fields: array<string, float|int>,
+ *     interval?: ?int,
  * }
  * @phpstan-type GraphData array{
  *     start: int,

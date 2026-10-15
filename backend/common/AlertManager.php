@@ -523,6 +523,20 @@ final class AlertManager {
         return $sum;
     }
 
+    /**
+     * The newest slot whose files have all arrived, given the newest file and nfcapd's rotation (#184): with files
+     * every minute the slot of 12:03 is still filling, so 11:55 is the newest complete one. With one file per slot
+     * it is the file's own.
+     */
+    public static function completeSlot(int $newestFile, ?int $interval): int {
+        if ($interval === null || $interval >= self::SLOT_SECONDS) {
+            return $newestFile;
+        }
+        $end = $newestFile + $interval;
+
+        return $end - $end % self::SLOT_SECONDS - self::SLOT_SECONDS;
+    }
+
     /** A parsed window as the Alerts page names it: '10 min', '1 h'. */
     private static function windowLabel(int $seconds): string {
         return $seconds < 3600 ? intdiv($seconds, 60) . ' min' : intdiv($seconds, 3600) . ' h';
@@ -979,7 +993,7 @@ final class AlertManager {
     private function fetchFilteredSlot(AlertRule $rule, string $profile, int $slot): array|string {
         $sources = array_values(array_filter(
             $this->sourcesOf($rule),
-            static fn (string $source): bool => NfcapdFiles::names($slot, $slot, $source, $profile) !== [],
+            static fn (string $source): bool => NfcapdFiles::names($slot, $slot + self::SLOT_SECONDS - 1, $source, $profile) !== [],
         ));
         if ($sources === []) {
             $name = (new \DateTimeImmutable('@' . $slot))->setTimezone(Config::nfcapdTimezone())->format('YmdHi');
@@ -994,7 +1008,8 @@ final class AlertManager {
             $nfdump->setProfile($profile);
             // -M must be set before -R: -R resolves file paths with the sources -M recorded.
             $nfdump->setOption('-M', implode(':', $sources));
-            $nfdump->setOption('-R', [$slot, $slot]);
+            // Every file of the slot: nfcapd may rotate more often than the slot (#184).
+            $nfdump->setOption('-R', [$slot, $slot + self::SLOT_SECONDS - 60]);
             $nfdump->setFilter($rule->nfdumpFilter ?? '');
             $nfdump->setOption('-s', self::TOTALS_STATISTIC);
             $nfdump->setOption('-n', 0);
@@ -1023,7 +1038,7 @@ final class AlertManager {
             foreach ($this->sourcesOf($rule) as $source) {
                 $ts = NfcapdFiles::newest($profile, $source, 1)['ts'] ?? null;
                 if ($ts !== null) {
-                    $newest[] = $ts;
+                    $newest[] = self::completeSlot($ts, CaptureInterval::forFile($profile, $source, $ts));
                 }
             }
         } catch (\Throwable) {

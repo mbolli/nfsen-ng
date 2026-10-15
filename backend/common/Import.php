@@ -591,6 +591,7 @@ class Import {
             'profile' => $this->profile ?? Config::$settings->nfdumpProfile,
             'date_iso' => $date->format('Ymd\THis'),
             'date_timestamp' => $date->getTimestamp(),
+            'interval' => $this->intervalOf($source, $date->getTimestamp()),
         ];
         // $input['decoded'] data is an array of metric/value pairs
         // e.g., [['metric' => 'flows_tcp', 'value' => '323829'], ...]
@@ -626,6 +627,19 @@ class Import {
         }
 
         return true;
+    }
+
+    /** The interval of the file of `$source` at `$ts` (#184), so the datasource places a file finer than its step. */
+    private function intervalOf(string $source, int $ts): ?int {
+        if ($source === '') {
+            return null;
+        }
+
+        try {
+            return CaptureInterval::forFile($this->profile ?? Config::$settings->nfdumpProfile, $source, $ts);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -734,6 +748,7 @@ class Import {
             'profile' => $this->profile ?? Config::$settings->nfdumpProfile,
             'date_iso' => $date->format('Ymd\THis'),
             'date_timestamp' => $date->getTimestamp(),
+            'interval' => $this->intervalOf($source !== '' ? $source : (string) ($sources[0] ?? ''), $date->getTimestamp()),
         ];
 
         // process protocols

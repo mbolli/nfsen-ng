@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\datasources;
 
 use JetBrains\PhpStorm\ExpectedValues;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\HealthChecker;
@@ -29,6 +30,9 @@ class Rrd implements Datasource, TotalsProvider {
      * @var array<string, array{inode: int, steps: array<int, array<int, array<string, float>>>}>
      */
     private static array $daySums = [];
+
+    /** @var array<string, array{inode: false|int, step: int}> each file's step, by file and inode */
+    private static array $steps = [];
 
     private readonly Debug $d;
     private readonly int $importYears;
@@ -97,12 +101,38 @@ class Rrd implements Datasource, TotalsProvider {
      *
      * @return int timestamp or false
      */
+    /**
+     * The newest complete slot: files finer than the step are written within it (write()), so the last update can
+     * sit inside a slot whose files have not all arrived.
+     */
     public function last_update(string $source = '', int $port = 0, string $profile = ''): int {
         $rrdFile = $this->get_data_path($source, $port, $profile);
-        $last_update = rrd_last($rrdFile);
+        $last = (int) rrd_last($rrdFile);
+        $step = self::stepOf($rrdFile);
 
-        // $this->d->log('Last update of ' . $rrdFile . ': ' . date('d.m.Y H:i', $last_update), LOG_DEBUG);
-        return (int) $last_update;
+        return $last - $last % $step;
+    }
+
+    /** A file's step, from rrd_info once per file and inode; 300 when it cannot be read. */
+    public static function stepOf(string $rrdFile): int {
+        $inode = is_file($rrdFile) ? fileinode($rrdFile) : false;
+        $cached = self::$steps[$rrdFile] ?? null;
+        if ($cached !== null && $cached['inode'] === $inode) {
+            return $cached['step'];
+        }
+        $info = $inode === false ? false : @rrd_info($rrdFile);
+        $step = \is_array($info) && (int) ($info['step'] ?? 0) > 0 ? (int) $info['step'] : CaptureInterval::DEFAULT;
+        self::$steps[$rrdFile] = ['inode' => $inode, 'step' => $step];
+
+        return $step;
+    }
+
+    /**
+     * When the file of `$fileTs` is written (#184): a file finer than the step goes in at its slot's offset, so the
+     * files of one slot fill it and the rate of each spans its own interval. At interval = step it is $fileTs.
+     */
+    public static function updateTime(int $fileTs, ?int $interval, int $step): int {
+        return $interval !== null && $interval < $step ? $fileTs + $interval - $step : $fileTs;
     }
 
     /**
@@ -286,20 +316,22 @@ WARNING;
                 // Corrupted far-future timestamp: recreate the file.
                 $this->d->log('Recreating RRD with corrupted timestamp (' . $lastTs . '): ' . $rrdFile, LOG_WARNING);
                 $this->create($data['source'], $data['port'], true, $profile);
-            } else {
-                $nearest = (int) $data['date_timestamp'] - ($data['date_timestamp'] % 300);
-                if ($nearest <= $lastTs) {
-                    // Timestamp already covered: silently skip to avoid "illegal attempt to update" noise
-                    // when the import restarts mid-way and port RRDs are already ahead.
-                    return true;
-                }
             }
         }
 
-        $nearest = (int) $data['date_timestamp'] - ($data['date_timestamp'] % 300);
+        $step = self::stepOf($rrdFile);
+        $fileTs = (int) $data['date_timestamp'];
+        $fileTs -= $fileTs % 60;
+        $at = self::updateTime($fileTs, $data['interval'] ?? null, $step);
+        $at -= $at % 60;
+        if ($at <= (int) rrd_last($rrdFile)) {
+            // Already written: skip to avoid "illegal attempt to update" noise when the import restarts mid-way,
+            // port RRDs are already ahead, or a file of a slot in progress is offered again.
+            return true;
+        }
         $this->d->log('Writing to file ' . $rrdFile, LOG_DEBUG);
 
-        $result = (new \RRDUpdater($rrdFile))->update($data['fields'], (string) $nearest);
+        $result = (new \RRDUpdater($rrdFile))->update($data['fields'], (string) $at);
 
         // Write sidecar on first successful write (if missing) so date_boundaries()
         // knows the actual first data point rather than the RRD creation start.
@@ -308,7 +340,8 @@ WARNING;
         if ($result) {
             $sidecar = $rrdFile . '.first';
             if (!file_exists($sidecar)) {
-                file_put_contents($sidecar, (string) $nearest);
+                // The slot the write went into: rows are stamped with the end of their step.
+                file_put_contents($sidecar, (string) ((int) ceil($at / $step) * $step));
             }
         }
 
@@ -651,6 +684,16 @@ WARNING;
      * Path: {data_path}/{profile}/{source}{_port}.rrd.
      */
     public function get_data_path(string $source = '', int $port = 0, string $profile = ''): string {
+        $path = self::pathFor($source, $port, $profile);
+
+        if (!file_exists($path)) {
+            $this->d->log('Was not able to find ' . $path, LOG_DEBUG);
+        }
+
+        return $path;
+    }
+
+    public static function pathFor(string $source = '', int $port = 0, string $profile = ''): string {
         if ($port === 0) {
             $port = '';
         } else {
@@ -665,13 +708,7 @@ WARNING;
         // Support nested profiles like 'group/sub': convert to OS path separator
         $p = str_replace('/', \DIRECTORY_SEPARATOR, $p);
 
-        $path = $rrdPath . \DIRECTORY_SEPARATOR . $p . \DIRECTORY_SEPARATOR . $source . $port . '.rrd';
-
-        if (!file_exists($path)) {
-            $this->d->log('Was not able to find ' . $path, LOG_DEBUG);
-        }
-
-        return $path;
+        return $rrdPath . \DIRECTORY_SEPARATOR . $p . \DIRECTORY_SEPARATOR . $source . $port . '.rrd';
     }
 
     /**

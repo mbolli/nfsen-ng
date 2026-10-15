@@ -569,6 +569,78 @@ describe('Rrd::fetchTotals() and fetchProtocolTotals() over [start, end)', funct
     });
 });
 
+// ── Capture files shorter than the step (#184) ────────────────────────────────
+
+/**
+ * Writes slots like rrdWriteSlots(), each split into $per capture files of 300 / $per seconds.
+ *
+ * @param list<int> $multipliers
+ */
+function rrdWriteSplitSlots(Rrd $rrd, string $source, int $from, array $multipliers, int $per): void {
+    $interval = intdiv(300, $per);
+    foreach ($multipliers as $i => $m) {
+        $fields = array_map(static fn (int $v): int => intdiv($v, $per), rrdSlotFields($m));
+        for ($k = 0; $k < $per; ++$k) {
+            $rrd->write([
+                'source' => $source,
+                'port' => 0,
+                'profile' => '',
+                'date_iso' => '',
+                'date_timestamp' => $from + $i * 300 + $k * $interval,
+                'interval' => $interval,
+                'fields' => $fields,
+            ]);
+        }
+    }
+}
+
+describe('Rrd with capture files shorter than the step (#184)', function (): void {
+    beforeEach(function (): void {
+        $this->dir = makeRrdFeatureSettings(3);
+        $this->rrd = new Rrd();
+
+        $ts = strtotime('-2 hours');
+        $this->base = $ts - ($ts % 300);
+        $this->slot = fn (int $i): int => $this->base + $i * 300;
+    });
+
+    afterEach(function (): void {
+        cleanRrdDir($this->dir);
+    });
+
+    test('one-minute files sum into their five-minute slot', function (): void {
+        rrdWriteSplitSlots($this->rrd, 'gw', $this->base, range(1, 10), 5);
+
+        expect($this->rrd->fetchProtocolTotals(['gw'], '', ($this->slot)(2), ($this->slot)(6)))
+            ->toBe(rrdRangeTotals(2, 5, static fn (int $i): int => $i + 1))
+        ;
+    });
+
+    test('they store what one five-minute file per slot stores', function (): void {
+        rrdWriteSplitSlots($this->rrd, 'gw', $this->base, range(1, 10), 5);
+        rrdWriteSlots($this->rrd, 'srv', $this->base, range(1, 10));
+
+        expect($this->rrd->fetchProtocolTotals(['gw'], '', ($this->slot)(2), ($this->slot)(8)))
+            ->toBe($this->rrd->fetchProtocolTotals(['srv'], '', ($this->slot)(2), ($this->slot)(8)))
+        ;
+    });
+
+    test('offering the files again after a restart changes nothing', function (): void {
+        rrdWriteSplitSlots($this->rrd, 'gw', $this->base, range(1, 10), 5);
+        $before = $this->rrd->fetchProtocolTotals(['gw'], '', ($this->slot)(1), ($this->slot)(9));
+
+        rrdWriteSplitSlots($this->rrd, 'gw', $this->base, range(1, 10), 5);
+
+        expect($this->rrd->fetchProtocolTotals(['gw'], '', ($this->slot)(1), ($this->slot)(9)))->toBe($before);
+    });
+
+    test('the newest slot counts as imported once its last file is written', function (): void {
+        rrdWriteSplitSlots($this->rrd, 'gw', $this->base, [1, 2], 5);
+
+        expect($this->rrd->last_update('gw', 0))->toBe(($this->slot)(1));
+    });
+});
+
 // ── Stored totals over whole days (day cache) ─────────────────────────────────
 
 describe('Rrd totals over windows longer than a day', function (): void {

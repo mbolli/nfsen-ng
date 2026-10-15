@@ -5,6 +5,7 @@ declare(strict_types=1);
 use mbolli\nfsen_ng\common\AlertManager;
 use mbolli\nfsen_ng\common\AlertRule;
 use mbolli\nfsen_ng\common\AlertState;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\NfcapdFiles;
@@ -2361,6 +2362,26 @@ describe('AlertManager filtered totals from nfcapd captures', function (): void 
             ->and(alertSlotValues($this->db))->toBe([[$this->slot, alertListedTotals(['gw1'], $this->slot, 'dst port 443')['bytes']]])
             ->and(alertListedTotals(['gw1'], $this->slot, 'dst port 443')['bytes'])->toBeGreaterThan(0.0)
         ;
+    });
+    test('one-minute files: every file of the slot counts, and the slot is complete once its last file is in (#184)', function (): void {
+        $dir = $this->dir . '/profiles/live/gw1/' . gmdate('Y/m/d', $this->slot);
+        $file = $dir . '/nfcapd.' . gmdate('YmdHi', $this->slot);
+        $one = alertListedTotals(['gw1'], $this->slot, 'dst port 443');
+        foreach ([60, 120, 180, 240] as $offset) {
+            copy($file, $dir . '/nfcapd.' . gmdate('YmdHi', $this->slot + $offset));
+        }
+        CaptureInterval::reset();
+        $mgr = alertManager($this, makeDatasource(alertBytes(0.0)));
+        $rule = makeRule(['sources' => ['gw1'], 'nfdumpFilter' => 'dst port 443', 'operator' => '>=', 'thresholdValue' => 0.0]);
+
+        expect($mgr->testRule($rule, 'live'))->toMatchArray(['evaluated' => true, 'slot' => $this->slot, 'value' => 5 * $one['bytes']])
+            ->and($one['bytes'])->toBeGreaterThan(0.0)
+        ;
+
+        unlink($dir . '/nfcapd.' . gmdate('YmdHi', $this->slot + 240));
+        CaptureInterval::reset();
+
+        expect($mgr->testRule($rule, 'live')['slot'])->toBe($this->slot - 300);
     });
 });
 

@@ -434,8 +434,10 @@ class Nfdump implements Processor {
      * @throws \Exception
      */
     public function convert_date_to_path(int $datestart, int $dateend): string {
+        // The file that covers the start, and every file named up to the end: names have minute precision, whatever
+        // nfcapd's rotation (#184).
         $startTs = $datestart - ($datestart % 300);
-        $endTs = $dateend - ($dateend % 300);
+        $endTs = $dateend - ($dateend % 60);
 
         $sourcepath = $this->cfg['env']['profiles-data']
             . \DIRECTORY_SEPARATOR

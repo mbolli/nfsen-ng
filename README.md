@@ -71,3 +71,6 @@ The full user guide and developer reference live in the **[nfsen-ng book](https:
 
 Upgrading from 1.0.0-beta.5, or migrating from the old v0.x NfSen-style release? See the [upgrade guide](https://mbolli.github.io/nfsen-ng/deployment/upgrading.html) in the book. Bare-metal installs now need `php8.4-sqlite3` and a `memory_limit` of 512M for the server, and should run nfdump 1.7.10 (the Health page warns below it); the Docker image has all three.
 
+## Maintainer
+
+nfsen-ng is maintained by [Michael Bolli](https://github.com/mbolli) at [zwei und eins gmbh](https://zweiundeins.gmbh), Aarberg, Switzerland.

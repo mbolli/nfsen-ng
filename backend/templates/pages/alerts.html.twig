@@ -275,7 +275,7 @@
             <fieldset class="alert-form-group">
                 <legend>Traffic filter (optional)</legend>
                 {% include 'components/filter-field.html.twig' with {target: 'alert', signal: alert_form_nfdumpFilter, textareaId: 'alertNfdumpFilter', label: 'nfdump filter', rows: 2} %}
-                <p class="help">With a filter the rule counts only the matching flows in each interval's capture files, so its threshold is a total per 5 minutes, not a rate, and a percentage of the average compares with the filter's own recent traffic. Without one it reads the stored traffic.</p>
+                <p class="help">With a filter the rule counts only the matching flows in each interval's capture files, so its threshold is a total{{ f.perIntervalLabel }}, not a rate, and a percentage of the average compares with the filter's own recent traffic. Without one it reads the stored traffic.</p>
             </fieldset>
 
             <fieldset class="alert-form-group">

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\actions;
 
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\Settings;
@@ -19,18 +20,6 @@ use Mbolli\PhpVia\Context;
  * @phpstan-type RangeState array{datestart: int, dateend: int, range_live: bool, range_preset: string}
  */
 final class RangeActions {
-    /** Absolute ranges snap to the capture interval, and no window is narrower than one. */
-    public const int STEP = 300;
-
-    /** A window ending closer to now than this is live. */
-    public const int LIVE_SLACK = 300;
-
-    /**
-     * A profile whose newest sample is younger than this is current: a sample is stamped with
-     * its interval's start and stored once the interval closes, so current data is 300 to 600 s old.
-     */
-    public const int FRESH_DATA = 3 * self::STEP;
-
     /** Seconds per custom duration unit. */
     public const array UNITS = ['m' => 60, 'h' => 3600, 'd' => 86400, 'w' => 604800];
 
@@ -38,6 +27,24 @@ final class RangeActions {
 
     /** Leads every banner set-range raises, so the next op that succeeds can clear it. */
     private const string ERROR_PREFIX = 'Range: ';
+
+    /** Absolute ranges snap to the capture interval, and no window is narrower than one (#184). */
+    public static function step(): int {
+        return CaptureInterval::seconds();
+    }
+
+    /** A window ending closer to now than one interval is live. */
+    public static function liveSlack(): int {
+        return CaptureInterval::seconds();
+    }
+
+    /**
+     * A profile whose newest sample is younger than this is current: a sample is stamped with its interval's start
+     * and stored once the interval closes, so current data is one to two intervals old.
+     */
+    public static function freshData(): int {
+        return 3 * CaptureInterval::seconds();
+    }
 
     public static function register(Context $c, PageStates $states): void {
         $c->action(static function (Context $c) use ($states): void {
@@ -106,8 +113,8 @@ final class RangeActions {
      * @throws \InvalidArgumentException for input that names no valid window; the message is shown as is
      */
     public static function compute(string $op, array $input, array $state, int $now, int $min): array {
-        $min = min(max(0, $min), $now - self::STEP);
-        $width = max(self::STEP, $state['dateend'] - $state['datestart']);
+        $min = min(max(0, $min), $now - self::step());
+        $width = max(self::step(), $state['dateend'] - $state['datestart']);
         [$start, $end] = $state['range_live'] ? [$now - $width, $now] : [$state['datestart'], $state['dateend']];
         $preset = $state['range_preset'];
 
@@ -129,9 +136,9 @@ final class RangeActions {
                 if (!isset(self::UNITS[$unit])) {
                     throw new \InvalidArgumentException('Unknown duration unit.');
                 }
-                // A capture file holds 5 minutes; a shorter window may hold none.
-                if ($n * self::UNITS[$unit] < self::STEP) {
-                    throw new \InvalidArgumentException('A duration is at least 5 minutes.');
+                // A shorter window than one capture file may hold none.
+                if ($n * self::UNITS[$unit] < self::step()) {
+                    throw new \InvalidArgumentException('A duration is at least ' . CaptureInterval::label(self::step()) . '.');
                 }
 
                 return self::window(max(0, $now - $n * self::UNITS[$unit]), $now, true, 'custom');
@@ -241,9 +248,9 @@ final class RangeActions {
 
         GraphActions::updateDataRange($c);
 
-        $width = max(self::STEP, $dateend->int() - $datestart->int());
+        $width = max(self::step(), $dateend->int() - $datestart->int());
         $last = $dataRangeMax->int();
-        $live = $now - $last < self::FRESH_DATA;
+        $live = $now - $last < self::freshData();
         $end = $live ? $now : $last;
         $dateend->setValue($end);
         $datestart->setValue($end - $width);
@@ -271,15 +278,15 @@ final class RangeActions {
             throw new \InvalidArgumentException('The range lies outside the stored data.');
         }
 
-        $from = intdiv($from, self::STEP) * self::STEP;
-        $to = self::snapToNow((int) (ceil($to / self::STEP) * self::STEP), $now);
+        $from = intdiv($from, self::step()) * self::step();
+        $to = self::snapToNow((int) (ceil($to / self::step()) * self::step()), $now);
 
-        return self::window(min($from, $to - self::STEP), $to, $to === $now, 'custom');
+        return self::window(min($from, $to - self::step()), $to, $to === $now, 'custom');
     }
 
     /** An end this close to now is now: the window is live, whatever the seconds since. */
     private static function snapToNow(int $to, int $now): int {
-        return $now - $to < self::LIVE_SLACK ? $now : $to;
+        return $now - $to < self::liveSlack() ? $now : $to;
     }
 
     /** @return RangeState */

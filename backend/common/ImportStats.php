@@ -14,9 +14,6 @@ final class ImportStats {
     /** The rate is measured over this many seconds. */
     public const int WINDOW = 900;
 
-    /** nfcapd rotates every 5 minutes: the gap assumed after a single arrival. */
-    private const int ROTATION = 300;
-
     /** An import that starts at most this many seconds after the previous one ended joins its batch. */
     private const int BATCH_GAP = 30;
 
@@ -58,7 +55,7 @@ final class ImportStats {
         $first = $events[0]['ts'];
         $gap = match (true) {
             $count > 1 => ($events[$count - 1]['ts'] - $first) / ($count - 1),
-            $events[0]['arrival'] => self::ROTATION,
+            $events[0]['arrival'] => CaptureInterval::seconds(),
             default => 1, // several files under one whole-second stamp
         };
         // Each event covers one gap, and the rate falls off once no event follows.

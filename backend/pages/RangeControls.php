@@ -202,7 +202,7 @@ final class RangeControls implements ShellModule {
             return;
         }
 
-        $width = max(RangeActions::STEP, $dateend->int() - $datestart->int());
+        $width = max(RangeActions::step(), $dateend->int() - $datestart->int());
         if ($dateend->int() !== $now) {
             $dateend->setValue($now);
             $datestart->setValue($now - $width);

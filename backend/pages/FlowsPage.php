@@ -8,6 +8,7 @@ use mbolli\nfsen_ng\actions\FlowActions;
 use mbolli\nfsen_ng\actions\FlowExportActions;
 use mbolli\nfsen_ng\actions\FlowGraphActions;
 use mbolli\nfsen_ng\actions\FlowWindowActions;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\TableFormatter;
 use mbolli\nfsen_ng\pages\state\FlowsState;
@@ -165,7 +166,7 @@ final class FlowsPage implements Page {
             'rawSize' => Estimate::humanBytes($flows->rawBytes),
             'downloadName' => FlowActions::exportName($flows->windowStart, $flows->windowEnd) . '.txt',
             'stale' => $stale,
-            'movedOn' => $hasResult && !$stale && $flows->live && time() - $flows->ranAt > FlowActions::LIVE_MOVED_AFTER,
+            'movedOn' => $hasResult && !$stale && $flows->live && time() - $flows->ranAt > CaptureInterval::seconds(),
             'covers' => ['from' => $flows->windowStart, 'to' => $flows->windowEnd],
             'returned' => self::returnedView($returned),
             'range' => self::rangeView($flows->rangeSummary),

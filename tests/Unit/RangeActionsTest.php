@@ -26,6 +26,31 @@ function rangeOp(string $op, array $input = [], int $start = RANGE_NOW - 86400, 
     return RangeActions::compute($op, $input, ['datestart' => $start, 'dateend' => $end, 'range_live' => $live, 'range_preset' => $preset], RANGE_NOW, RANGE_MIN);
 }
 
+describe('set-range ops at a one-minute capture interval (#184)', function (): void {
+    beforeEach(function (): void {
+        $this->settings = Config::$settings;
+        Config::$settings = Settings::fromArray(['general' => ['sources' => ['gw'], 'capture_interval' => '60']]);
+    });
+
+    afterEach(function (): void {
+        Config::$settings = $this->settings;
+    });
+
+    test('absolute ranges snap to the minute, and a duration is at least one', function (): void {
+        $from = RANGE_NOW - 7200 + 17;
+        $to = RANGE_NOW - 3600 - 17;
+
+        expect(rangeOp('abs', ['from' => (string) $from, 'to' => (string) $to]))->toMatchArray([
+            'datestart' => intdiv($from, 60) * 60,
+            'dateend' => (int) ceil($to / 60) * 60,
+            'range_live' => false,
+        ])
+            ->and(rangeOp('duration', ['n' => '2', 'u' => 'm'])['datestart'])->toBe(RANGE_NOW - 120)
+            ->and(rangeOp('abs', ['from' => (string) (RANGE_NOW - 3600), 'to' => (string) (RANGE_NOW - 250)])['range_live'])->toBeFalse()
+        ;
+    });
+});
+
 describe('set-range ops', function (): void {
     test('a preset is a live window of its width ending now', function (): void {
         expect(rangeOp('preset', ['v' => '7d'], live: false, preset: 'custom'))->toBe([

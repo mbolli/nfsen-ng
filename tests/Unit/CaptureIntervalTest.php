@@ -126,3 +126,54 @@ describe('HealthChecker::intervalCheck()', function (): void {
         expect(HealthChecker::intervalCheck(null, 300)['status'])->toBe('ok');
     });
 });
+
+describe('CaptureInterval::seconds()', function (): void {
+    afterEach(function (): void {
+        if (isset($this->dir)) {
+            captureIntervalClean($this->dir);
+        }
+    });
+
+    test('NFSEN_CAPTURE_INTERVAL takes whole minutes dividing an hour, or auto', function (): void {
+        expect(CaptureInterval::parse('60'))->toBe(60)
+            ->and(CaptureInterval::parse(900))->toBe(900)
+            ->and(CaptureInterval::parse('auto'))->toBe(0)
+            ->and(CaptureInterval::parse('420'))->toBe(0)
+            ->and(CaptureInterval::parse('30'))->toBe(0)
+            ->and(CaptureInterval::parse(null))->toBe(0)
+        ;
+    });
+
+    test('a configured interval wins', function (): void {
+        $this->dir = captureIntervalTree(range(captureIntervalDay() + 3600, captureIntervalDay() + 4800, 300));
+        Config::$settings = Settings::fromArray(['general' => ['sources' => ['gw'], 'capture_interval' => 60], 'nfdump' => ['profiles-data' => $this->dir, 'profile' => 'live']]);
+
+        expect(CaptureInterval::seconds())->toBe(60)
+            ->and(CaptureInterval::floor(43200 + 59))->toBe(43200)
+            ->and(CaptureInterval::ceil(43200 + 1))->toBe(43260)
+            ->and(CaptureInterval::ceil(43200))->toBe(43200)
+        ;
+    });
+
+    test('auto follows the file names when there is no RRD yet', function (): void {
+        $now = time();
+        $this->dir = captureIntervalTree(range($now - $now % 60 - 600, $now - $now % 60, 60));
+
+        expect(CaptureInterval::seconds())->toBe(60)
+            ->and(CaptureInterval::files())->toBe(60)
+        ;
+    });
+
+    test('auto without files is 300', function (): void {
+        $this->dir = captureIntervalTree([]);
+
+        expect(CaptureInterval::seconds())->toBe(300);
+    });
+
+    test('an interval in words', function (): void {
+        expect(CaptureInterval::label(60))->toBe('1 minute')
+            ->and(CaptureInterval::label(300))->toBe('5 minutes')
+            ->and(CaptureInterval::label(3600))->toBe('1 hour')
+        ;
+    });
+});

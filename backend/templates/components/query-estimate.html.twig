@@ -3,8 +3,8 @@
 {% if meta.estimates %}
 {% set est = '$' ~ meta.estimateId %}
 {% set keys = [
-    'Math.floor($' ~ datestart.id() ~ ' / 300)',
-    'Math.floor($' ~ dateend.id() ~ ' / 300)',
+    'Math.floor($' ~ datestart.id() ~ ' / ' ~ querykit.interval ~ ')',
+    'Math.floor($' ~ dateend.id() ~ ' / ' ~ querykit.interval ~ ')',
     "[].concat($" ~ graph_sources.id() ~ " ?? []).join(',')",
     '$' ~ selected_profile.id(),
 ] %}

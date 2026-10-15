@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\actions;
 
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\FlowRowMemory;
@@ -43,9 +44,6 @@ use starfederation\datastar\enums\ElementPatchMode;
  *                           rankBy: string}
  */
 final class FlowActions {
-    /** A live result older than this no longer covers the window (1.7). */
-    public const int LIVE_MOVED_AFTER = 300;
-
     /** The filtered totals' estimate, named as QueryKit names estimates. */
     public const string SUMMARY_ESTIMATE = '_est_flows_summary';
 
@@ -376,7 +374,7 @@ final class FlowActions {
     public static function fingerprintOf(array $inputs, bool $totalsOnly = false): string {
         $window = $inputs['live']
             ? 'live:' . ($inputs['end'] - $inputs['start'])
-            : ($inputs['start'] - $inputs['start'] % 300) . '-' . ($inputs['end'] - $inputs['end'] % 300);
+            : CaptureInterval::floor($inputs['start']) . '-' . CaptureInterval::floor($inputs['end']);
         $parts = [
             $window,
             implode(',', $inputs['sources']),

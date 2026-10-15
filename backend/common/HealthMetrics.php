@@ -20,12 +20,6 @@ use mbolli\nfsen_ng\processor\NfdumpSlots;
  * @phpstan-type LagView array{samples: int, window: int, p50: string, p95: string, max: string, level: ''|'warning'|'error'}
  */
 final class HealthMetrics {
-    /** Seconds a capture file covers; also nfcapd's default rotation interval. */
-    public const INTERVAL = 300;
-
-    /** Seconds since the newest file was written after which a source counts as stale. */
-    public const STALE_AFTER = 720;
-
     /** How far back the newest file and the pending files are looked for. */
     public const WINDOW_DAYS = 7;
 
@@ -35,6 +29,11 @@ final class HealthMetrics {
     public const float LAG_WARNING = 100.0;
 
     public const float LAG_ERROR = 1000.0;
+
+    /** Seconds since the newest file was written after which a source counts as stale: 2.4 intervals, 12 min at 300. */
+    public static function staleAfter(): int {
+        return max(180, intdiv(12 * CaptureInterval::seconds(), 5));
+    }
 
     /**
      * One row per profile and configured source.
@@ -258,9 +257,9 @@ final class HealthMetrics {
 
         $mtime = @filemtime($newest['path']);
         $row['newestFile'] = $newest['name'];
-        $row['dataUntil'] = $newest['ts'] + self::INTERVAL;
+        $row['dataUntil'] = $newest['ts'] + (CaptureInterval::forFile($profile, $source, $newest['ts']) ?? CaptureInterval::seconds());
         $row['written'] = $mtime === false ? null : $mtime;
-        $row['state'] = $now - ($row['written'] ?? $row['dataUntil']) > self::STALE_AFTER ? 'stale' : 'healthy';
+        $row['state'] = $now - ($row['written'] ?? $row['dataUntil']) > self::staleAfter() ? 'stale' : 'healthy';
 
         return $row;
     }

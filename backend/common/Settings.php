@@ -95,6 +95,9 @@ final class Settings {
     /** The largest Flows limit offered (#182); every returned row takes about 5 KB of server memory. */
     public private(set) int $flowsMaxLimit = self::FLOWS_MAX_LIMIT;
 
+    /** Seconds between nfcapd files as configured (#184), 0 for auto: {@see CaptureInterval::seconds()}. */
+    public private(set) int $captureInterval = 0;
+
     /**
      * @param list<string>         $sources               Configured NetFlow source names
      * @param list<int>            $ports                 Configured port numbers
@@ -186,6 +189,7 @@ final class Settings {
         [$sources, $sourceNames] = self::sourceEntries($raw['general']['sources'] ?? EnvRegistry::value('NFSEN_SOURCES'));
         $interfaceNames = self::interfaceEntries($raw['general']['interfaces'] ?? EnvRegistry::value('NFSEN_INTERFACES'));
         $flowsMaxLimit = self::flowsMaxLimit($raw['general']['flows_max_limit'] ?? EnvRegistry::value('NFSEN_FLOWS_MAX_LIMIT'));
+        $captureInterval = CaptureInterval::parse($raw['general']['capture_interval'] ?? EnvRegistry::value('NFSEN_CAPTURE_INTERVAL'));
 
         $settings = new self(
             sources: $sources,
@@ -233,6 +237,7 @@ final class Settings {
         $settings->sourceNames = $sourceNames;
         $settings->interfaceNames = $interfaceNames;
         $settings->flowsMaxLimit = $flowsMaxLimit;
+        $settings->captureInterval = $captureInterval;
 
         return $settings;
     }
@@ -249,6 +254,7 @@ final class Settings {
         [$sources, $sourceNames] = self::sourceEntries(EnvRegistry::value('NFSEN_SOURCES'));
         $interfaceNames = self::interfaceEntries(EnvRegistry::value('NFSEN_INTERFACES'));
         $flowsMaxLimit = self::flowsMaxLimit(EnvRegistry::value('NFSEN_FLOWS_MAX_LIMIT'));
+        $captureInterval = CaptureInterval::parse(EnvRegistry::value('NFSEN_CAPTURE_INTERVAL'));
 
         $settings = new self(
             sources: $sources,
@@ -295,6 +301,7 @@ final class Settings {
         $settings->sourceNames = $sourceNames;
         $settings->interfaceNames = $interfaceNames;
         $settings->flowsMaxLimit = $flowsMaxLimit;
+        $settings->captureInterval = $captureInterval;
 
         return $settings;
     }

@@ -65,7 +65,7 @@
 
     {# Posts overview-topn on open and whenever an input really changes (1.7, 4.1.5). #}
     <section class="card topn-card" id="overviewTopn" aria-labelledby="overviewTopnTitle"
-             data-effect="window.nfsenChanged(el, Math.floor(${{ datestart.id() }} / 300), Math.floor(${{ dateend.id() }} / 300), [].concat(${{ graph_sources.id() }} ?? []).join(','), ${{ selected_profile.id() }}, {{ tab }}, ${{ ov_dir.id() }}, ${{ ov_limit.id() }}, ${{ ov_order.id() }}) && @post('{{ overviewTopn.url() }}')">
+             data-effect="window.nfsenChanged(el, Math.floor(${{ datestart.id() }} / {{ shell.interval }}), Math.floor(${{ dateend.id() }} / {{ shell.interval }}), [].concat(${{ graph_sources.id() }} ?? []).join(','), ${{ selected_profile.id() }}, {{ tab }}, ${{ ov_dir.id() }}, ${{ ov_limit.id() }}, ${{ ov_order.id() }}) && @post('{{ overviewTopn.url() }}')">
         <header class="card-header topn-header">
             <h2 id="overviewTopnTitle">Top of the range</h2>
             {% if not topn.exactRun %}

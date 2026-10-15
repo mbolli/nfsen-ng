@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use mbolli\nfsen_ng\actions\ConversationActions;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\pages\ConversationsPage;
@@ -548,8 +549,8 @@ describe('ConversationsPage', function (): void {
         $state = new ConversationsState();
         $state->setResult('{"pairs":[]}', '', ['live' => true, 'at' => 1_000]);
 
-        expect(ConversationsPage::aged($state, 1_000 + ConversationsPage::LIVE_AGE - 1))->toBeFalse()
-            ->and(ConversationsPage::aged($state, 1_000 + ConversationsPage::LIVE_AGE))->toBeTrue()
+        expect(ConversationsPage::aged($state, 1_000 + CaptureInterval::seconds() - 1))->toBeFalse()
+            ->and(ConversationsPage::aged($state, 1_000 + CaptureInterval::seconds()))->toBeTrue()
         ;
 
         $state->setResult('{"pairs":[]}', '', ['live' => false, 'at' => 1_000]);

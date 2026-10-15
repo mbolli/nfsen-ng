@@ -7,6 +7,7 @@ namespace mbolli\nfsen_ng\pages;
 use mbolli\nfsen_ng\actions\ShellActions;
 use mbolli\nfsen_ng\actions\UtilityActions;
 use mbolli\nfsen_ng\common\AlertManager;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\HealthChecker;
 use mbolli\nfsen_ng\common\HealthMetrics;
@@ -25,12 +26,6 @@ final class Shell {
     public const string STATUS_CACHE = 'status_cache';
 
     public const int STATUS_TTL = 30;
-
-    /**
-     * A last capture older than this is a warning, older than an hour an error. The last update is the
-     * newest file's interval start, so it is 600 s old just before the next file lands: Health's limit.
-     */
-    private const int CAPTURE_FRESH = HealthMetrics::STALE_AFTER;
 
     /** Top-level Twig key of each shell module. */
     private const array MODULE_KEYS = [
@@ -100,6 +95,7 @@ final class Shell {
                     'theme' => Config::$settings->defaultTheme,
                     'density' => Config::$settings->compactTables ? 'compact' : 'comfortable',
                 ],
+                'interval' => CaptureInterval::seconds(),
                 'sources' => Config::$settings->sources,
                 'sourceNames' => Config::$settings->sourceNames,
                 'ports' => Config::$settings->ports,
@@ -276,8 +272,9 @@ final class Shell {
             return ['level' => 'neutral', 'label' => 'nfcapd: no data yet'];
         }
 
+        // The last update is the newest slot's start, two intervals old just before the next file: Health's limit.
         $age = $now - $last;
-        if ($age < self::CAPTURE_FRESH) {
+        if ($age < HealthMetrics::staleAfter()) {
             return ['level' => 'success', 'label' => 'nfcapd: last capture ' . HealthChecker::ageStr($age) . ' ago'];
         }
 

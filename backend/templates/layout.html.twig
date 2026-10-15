@@ -5,6 +5,8 @@
     data-density="{{ shell.defaults.density }}"
     {# Read by the head script, so a new instance default applies to a browser without its own choice. #}
     data-theme-default="{{ shell.defaults.theme }}"
+    {# Seconds between capture files (#184), for the charts' slot snapping. #}
+    data-interval="{{ shell.interval }}"
     {# The client-local signals of 1.9, seeded on the element that persists them: an unseeded
        path reads back as '', which data-persist would store over the default for good. #}
     data-signals__ifmissing="{ {{ page.id() }}: '{{ shell.activePage }}', _darkMode: window.__nfsenTheme.dark, _themeChoice: window.__nfsenTheme.choice ?? 'default', _sidebarCollapsed: window.__nfsenSidebar.collapsed, _optionsOpen_overview: false, _optionsOpen_talkers: false, _optionsOpen_flows: false, _optionsOpen_conversations: false, _prevRange: null, _autoSyncGraph: false, _graph_logscale: false, _graph_stacked: false, _graph_stepplot: true, _ov_optionsOpen: false, _ov_seriesOpen: true, _flows_tab: 'flows', _flows_sort: '', _flows_hidden: [], _flows_enhanced: true, _conv_view: 'sankey', _settings_tab: 'general', _drawer_tab: 'builder', _drawer_draftFor: '' }"

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\processor;
 
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\Import;
@@ -40,9 +41,6 @@ use OpenSwoole\Coroutine\Channel;
 final class FilteredSeries {
     /** The protocol split the RRD schema and the chart already use. */
     public const ALL_PROTOCOLS = ['tcp', 'udp', 'icmp', 'other'];
-
-    /** nfcapd rotates every 5 minutes, so no bin can be narrower than that. */
-    public const MIN_BIN = 300;
 
     /**
      * Upper bound on nfdump invocations for one build. Each bin costs a process, and
@@ -115,6 +113,11 @@ final class FilteredSeries {
         $this->exits = Coroutine::getCid() > 0 ? new Channel($this->limit) : null;
     }
 
+    /** No bin is narrower than the capture interval (#184), the shortest span a file holds. */
+    public static function minBin(): int {
+        return CaptureInterval::seconds();
+    }
+
     /**
      * Build the series.
      *
@@ -150,7 +153,7 @@ final class FilteredSeries {
         // the raw one dropped the capture covering the first partial bin and under-reported
         // it. Rrd::get_graph_data() floors the same way, so this also keeps Stored and
         // Filtered covering the same window.
-        $binStart = $start - ($start % self::MIN_BIN);
+        $binStart = $start - ($start % self::minBin());
         $files = NfcapdFiles::list($binStart, $end, $sources, $profile);
 
         if ($files === []) {
@@ -282,15 +285,15 @@ final class FilteredSeries {
         return $ordered === [] ? ['any'] : $ordered;
     }
 
-    /** How many bins build() lays out: from the start floored to MIN_BIN up to and including the end. */
+    /** How many bins build() lays out: from the start floored to minBin() up to and including the end. */
     public static function binCount(int $start, int $end, int $targetPoints, int $groupCount = 1): int {
-        $binStart = $start - ($start % self::MIN_BIN);
+        $binStart = $start - ($start % self::minBin());
 
         return intdiv(max(0, $end - $binStart), self::binWidth($binStart, $end, $targetPoints, $groupCount)) + 1;
     }
 
     /**
-     * Bin width in seconds: at least MIN_BIN, always a whole multiple of it so bins line
+     * Bin width in seconds: at least minBin(), always a whole multiple of it so bins line
      * up with nfcapd rotation, and never so fine that the run would exceed MAX_RUNS.
      */
     public static function binWidth(int $start, int $end, int $targetPoints, int $groupCount = 1): int {
@@ -298,15 +301,15 @@ final class FilteredSeries {
         $points = max(1, $targetPoints);
         $groupCount = max(1, $groupCount);
 
-        $step = (int) (ceil($span / $points / self::MIN_BIN) * self::MIN_BIN);
-        $step = max(self::MIN_BIN, $step);
+        $step = (int) (ceil($span / $points / self::minBin()) * self::minBin());
+        $step = max(self::minBin(), $step);
 
         // Solved, not stepped: graph_sources is client-writable, and a loop could not end once
         // $groupCount alone exceeds MAX_RUNS.
         $maxBins = max(1, intdiv(self::MAX_RUNS, max(1, $groupCount)));
-        $needed = (int) (ceil($span / $maxBins / self::MIN_BIN) * self::MIN_BIN);
+        $needed = (int) (ceil($span / $maxBins / self::minBin()) * self::minBin());
 
-        return max($step, $needed, self::MIN_BIN);
+        return max($step, $needed, self::minBin());
     }
 
     /**

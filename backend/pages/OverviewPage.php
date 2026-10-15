@@ -7,6 +7,7 @@ namespace mbolli\nfsen_ng\pages;
 use mbolli\nfsen_ng\actions\GraphActions;
 use mbolli\nfsen_ng\actions\Helpers;
 use mbolli\nfsen_ng\actions\QueryRunner;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\InterfaceNames;
@@ -61,9 +62,6 @@ final class OverviewPage implements Page {
 
     /** Below this share of collected intervals the card says how much of the range it covers. */
     private const float FULL_COVERAGE = 0.95;
-
-    /** A live exact result older than this has fallen behind the window (1.7). */
-    private const int LIVE_STALE = 300;
 
     public static function id(): string {
         return 'overview';
@@ -653,7 +651,7 @@ final class OverviewPage implements Page {
             'command' => $exact['command'],
             'start' => $exact['start'],
             'end' => $exact['end'],
-            'movedOn' => $exact['live'] && $now - $exact['computedAt'] > self::LIVE_STALE,
+            'movedOn' => $exact['live'] && $now - $exact['computedAt'] > CaptureInterval::seconds(),
         ];
     }
 

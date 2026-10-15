@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\processor;
 
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\CpuBudget;
 use mbolli\nfsen_ng\common\Debug;
@@ -436,7 +437,7 @@ class Nfdump implements Processor {
     public function convert_date_to_path(int $datestart, int $dateend): string {
         // The file that covers the start, and every file named up to the end: names have minute precision, whatever
         // nfcapd's rotation (#184).
-        $startTs = $datestart - ($datestart % 300);
+        $startTs = CaptureInterval::fileFloor($datestart);
         $endTs = $dateend - ($dateend % 60);
 
         $sourcepath = $this->cfg['env']['profiles-data']

@@ -97,14 +97,14 @@
             {# Runs before sb-popover's own click handler, so aria-expanded still says whether this click opens it. #}
             <button type="button" slot="trigger" class="menu-toggle" data-size="sm"
                     data-preserve-attr="aria-expanded aria-haspopup" title="Set a start and an end"
-                    data-on:click="el.getAttribute('aria-expanded') !== 'true' && (document.getElementById('rangePicker').value = {start: new Date(Math.floor({{ ds }} / 300) * 300000).toISOString(), end: new Date(Math.ceil({{ de }} / 300) * 300000).toISOString()})">
+                    data-on:click="el.getAttribute('aria-expanded') !== 'true' && (document.getElementById('rangePicker').value = {start: new Date(Math.floor({{ ds }} / {{ shell.interval }}) * {{ shell.interval * 1000 }}).toISOString(), end: new Date(Math.ceil({{ de }} / {{ shell.interval }}) * {{ shell.interval * 1000 }}).toISOString()})">
                 <span data-ignore-morph data-text="window.nfsenTime.formatRange({{ ds }}, {{ de }}, {{ tz }})">{{ datestart.int()|date('M j, H:i', nfcapdTz.string()) }} to {{ dateend.int()|date('M j, H:i', nfcapdTz.string()) }}</span>
             </button>
             <div class="range-entry" id="rangeDisplayList">
-                <sb-date-picker id="rangePicker" inline mode="range" time step="300" label="Range" lang="en-GB"
+                <sb-date-picker id="rangePicker" inline mode="range" time step="{{ shell.interval }}" label="Range" lang="en-GB"
                                 data-attr:time-zone="{{ pickerZone }}"
                                 data-attr:min="{{ '$' ~ data_range_min.id() }} > 0 ? new Date({{ '$' ~ data_range_min.id() }} * 1000).toISOString() : ''"
-                                data-attr:max="{{ '$' ~ data_range_max.id() }} > 0 ? new Date(Math.ceil(Math.max({{ '$' ~ data_range_max.id() }}, Date.now() / 1000) / 300) * 300000).toISOString() : ''"
+                                data-attr:max="{{ '$' ~ data_range_max.id() }} > 0 ? new Date(Math.ceil(Math.max({{ '$' ~ data_range_max.id() }}, Date.now() / 1000) / {{ shell.interval }}) * {{ shell.interval * 1000 }}).toISOString() : ''"
                                 data-preserve-attr="time-zone min max"
                                 data-on:sb-change="const from = Math.floor(Date.parse(evt.detail.value.start) / 1000); const to = Math.floor(Date.parse(evt.detail.value.end) / 1000); from < to && ({{ remember }}, @post('{{ setRange.url() }}?op=abs&from=' + from + '&to=' + to), document.getElementById('rangeDisplay').open = false)"></sb-date-picker>
                 <p class="help" data-ignore-morph data-text="{{ '$' ~ displayTz.id() }} === 'server' ? 'Times in ' + {{ '$' ~ nfcapdTz.id() }} + ', the capture timezone.' : 'Times in this browser\'s timezone.'">Times in this browser's timezone.</p>

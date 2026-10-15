@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\actions;
 
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\FilteredGraphCache;
@@ -237,8 +238,8 @@ final class FlowGraphActions {
      */
     public static function fingerprintOf(array $p): string {
         return hash('xxh128', implode("\x1f", [
-            $p['start'] - ($p['start'] % 300),
-            $p['end'] - ($p['end'] % 300),
+            CaptureInterval::floor($p['start']),
+            CaptureInterval::floor($p['end']),
             implode(',', $p['sources']),
             $p['filter'],
             $p['unit'],

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\query;
 
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\Misc;
 use mbolli\nfsen_ng\common\NfcapdFiles;
@@ -90,7 +91,7 @@ final class PartitionPlanner {
      * @return list<NfcapdFile>
      */
     public static function files(TimeWindow $window, array $sources, string $profile): array {
-        return NfcapdFiles::list($window->start - $window->start % 300, $window->end, $sources, $profile);
+        return NfcapdFiles::list(CaptureInterval::fileFloor($window->start), $window->end, $sources, $profile);
     }
 
     /**
@@ -190,7 +191,7 @@ final class PartitionPlanner {
         $free = self::freeSlots($class);
         $want = min($free, $parts ?? self::parts(\count($files), $bytes / QueryEstimator::throughput($kind)['bytesPerSecond'], $free));
         $times = array_column($files, 'ts');
-        if ($want < 2 || PartitionMerge::repeatsLocalTime(min($times), max($times) + 300)) {
+        if ($want < 2 || PartitionMerge::repeatsLocalTime(min($times), max($times) + CaptureInterval::seconds())) {
             return $single();
         }
 

@@ -42,6 +42,7 @@ final class EnvRegistry {
             new EnvVar('NFSEN_DEFAULT_THEME', 'core', 'enum', 'auto', 'Default UI theme for browsers with no saved toggle.', enum: ['auto', 'dark', 'light']),
             new EnvVar('NFSEN_MAX_STATS_WINDOW', 'core', 'int', 0, 'Max statistics time window in seconds (0 = unlimited).', min: 0),
             new EnvVar('NFSEN_FLOWS_MAX_LIMIT', 'core', 'int', 10000, 'Largest Flows limit offered. A row takes about 5 KB of server memory at the peak of a run (learned per server): raise NFSEN_MEMORY_LIMIT with it.', min: 100),
+            new EnvVar('NFSEN_CAPTURE_INTERVAL', 'core', 'enum', 'auto', 'Seconds between nfcapd files (nfcapd -t) and the resolution of graphs. auto takes the step of the existing RRD databases, else what the file names show, else 300.', enum: CaptureInterval::CHOICES),
             new EnvVar('NFSEN_MEMORY_LIMIT', 'core', 'string', '', 'PHP memory_limit of the server, e.g. "2G" (empty = the image\'s 512M).'),
             new EnvVar('NFSEN_MCP_HTTP', 'core', 'bool', false, 'Serve the read-only MCP endpoint at /_mcp on the app\'s own port.'),
             new EnvVar('NFSEN_MCP_HOSTS', 'core', 'csv', [], 'Hostnames an MCP client may address this server as (empty = localhost only).'),

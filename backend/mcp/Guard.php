@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\mcp;
 
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\query\TimeWindow;
 use Mcp\Exception\ToolCallException;
@@ -39,7 +40,7 @@ final class Guard {
     public static function window(int $start, int $end): TimeWindow {
         if ($end <= $start) {
             // A reversed or empty range would otherwise read every capture nfdump can find.
-            $end = $start + 300;
+            $end = $start + CaptureInterval::seconds();
         }
 
         return TimeWindow::clamped($start, $end, self::maxWindowSeconds());

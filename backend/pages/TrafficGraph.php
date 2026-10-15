@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\pages;
 
 use mbolli\nfsen_ng\actions\GraphActions;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\FilteredGraphCache;
 use mbolli\nfsen_ng\common\Misc;
@@ -264,8 +265,8 @@ final class TrafficGraph implements ShellModule {
         $profile = $c->getSignal('selected_profile')?->string() ?? Config::$settings->nfdumpProfile;
         $protocol = RangeControls::protocol($c);
         // In buckets, since a datasource without a last write reports the time of the fetch.
-        $written = intdiv($c->getSignal('graph_lastUpdate')?->int() ?? 0, 300);
-        $key = implode("\x1f", [intdiv($start, 300), intdiv($end, 300), implode(',', $sources), $profile, $protocol, $written]);
+        $written = CaptureInterval::floor($c->getSignal('graph_lastUpdate')?->int() ?? 0);
+        $key = implode("\x1f", [CaptureInterval::floor($start), CaptureInterval::floor($end), implode(',', $sources), $profile, $protocol, $written]);
         if ($key === $cache['totalsKey']) {
             return $cache;
         }

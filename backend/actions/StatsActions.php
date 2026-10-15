@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\actions;
 
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\common\Table;
@@ -43,9 +44,6 @@ final class StatsActions {
 
     /** @var array<int, int> protocol number => the picker graph's series slot (2.3) */
     public const array PROTOCOL_SLOTS = [6 => 1, 17 => 2, 1 => 3, 58 => 3];
-
-    /** Windows are compared at the granularity of the capture files. */
-    public const int WINDOW_STEP = 300;
 
     public static function register(Context $c, PageStates $states): void {
         $talkers = $states->talkers;
@@ -235,7 +233,7 @@ final class StatsActions {
         if ($live) {
             return 'live:' . max(0, $end - $start);
         }
-        $step = self::WINDOW_STEP;
+        $step = CaptureInterval::seconds();
 
         return intdiv($start, $step) * $step . '-' . intdiv($end, $step) * $step;
     }

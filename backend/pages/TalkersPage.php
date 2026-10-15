@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\pages;
 
 use mbolli\nfsen_ng\actions\StatsActions;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\pages\state\TalkersState;
 use mbolli\nfsen_ng\processor\Nfdump;
@@ -36,9 +37,6 @@ final class TalkersPage implements Page {
 
     /** @var array<string, string> panel => card title */
     public const array PANEL_TITLES = ['proto' => 'Protocol share', 'as' => 'Top ASNs'];
-
-    /** A live result older than this says the window has moved on (1.7). */
-    public const int LIVE_FRESH = 300;
 
     /** Seconds between probes of the nfdump binary for the statistics it rejects. */
     public const int PROBE_TTL = 60;
@@ -260,7 +258,7 @@ final class TalkersPage implements Page {
             'to' => $result['to'],
             'stale' => $result['fingerprint'] !== StatsActions::fingerprint([...$params, 'element' => $element]),
             'scopeStale' => $scopeStale,
-            'moved' => $result['live'] && !$scopeStale && $now - $result['ts'] > self::LIVE_FRESH,
+            'moved' => $result['live'] && !$scopeStale && $now - $result['ts'] > CaptureInterval::seconds(),
             'inputs' => $result['inputs'],
             // The -A the fingerprint covers, so the browser compares what nfdump would get.
             'aggregation' => $element === 'record' ? Nfdump::buildAggregationString($result['inputs']['aggregation']) : null,

@@ -694,12 +694,12 @@ describe('FilteredSeries::binWidth termination', function (): void {
     test('terminates when the group count alone exceeds the run ceiling', function (): void {
         $step = FilteredSeries::binWidth(0, 86400, 500, FilteredSeries::MAX_RUNS + 1);
 
-        expect($step)->toBeGreaterThanOrEqual(FilteredSeries::MIN_BIN);
+        expect($step)->toBeGreaterThanOrEqual(FilteredSeries::minBin());
     });
 
     test('terminates for an absurd group count', function (): void {
         expect(FilteredSeries::binWidth(0, 86400, 500, 100000))
-            ->toBeGreaterThanOrEqual(FilteredSeries::MIN_BIN)
+            ->toBeGreaterThanOrEqual(FilteredSeries::minBin())
         ;
     });
 

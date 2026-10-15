@@ -6,6 +6,7 @@ namespace mbolli\nfsen_ng\pages;
 
 use mbolli\nfsen_ng\actions\QueryKitActions;
 use mbolli\nfsen_ng\actions\QueryRunner;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use Mbolli\PhpVia\Context;
 use Mbolli\PhpVia\Via;
 
@@ -83,7 +84,7 @@ final class QueryKit implements ShellModule {
             ];
         }
 
-        return ['targets' => $targets];
+        return ['targets' => $targets, 'interval' => CaptureInterval::seconds()];
     }
 
     /** `_flt_<target>`, with '_' for '-'. */

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace mbolli\nfsen_ng\actions;
 
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Debug;
 use mbolli\nfsen_ng\common\QueryCancel;
 use mbolli\nfsen_ng\common\Table;
@@ -99,7 +100,7 @@ final class ConversationActions {
         sort($sources);
         $window = $p['live']
             ? 'live:' . max(0, $p['end'] - $p['start'])
-            : intdiv($p['start'], 300) . '-' . intdiv($p['end'], 300);
+            : CaptureInterval::floor($p['start']) . '-' . CaptureInterval::floor($p['end']);
 
         return json_encode([
             $p['group'], $p['direction'], $p['metric'], $p['topN'], $p['filter'], $p['lower'], $p['upper'],

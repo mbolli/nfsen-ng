@@ -206,7 +206,7 @@ class HealthChecker {
         }
 
         // nfcapd file time plausibility: the newest file name must match its write time (a
-        // file is written when its 5 minute interval ends) and must not lie in the future.
+        // file is written when its interval ends) and must not lie in the future.
         $plausibilityDone = false;
         if (rtrim($settings->nfdumpProfilesData, '/\\') !== '' && !empty($settings->sources)) {
             foreach (Config::detectProfiles() as $profileP) {
@@ -220,7 +220,8 @@ class HealthChecker {
                     $now = time();
                     $plausibilityDone = true;
                     $written = @filemtime($newestP['path']);
-                    $skew = $written !== false ? $written - ($newestP['ts'] + 300) : 0;
+                    $rotation = CaptureInterval::forFile($profileP, $sourceP, $newestP['ts']) ?? CaptureInterval::seconds();
+                    $skew = $written !== false ? $written - ($newestP['ts'] + $rotation) : 0;
                     if (abs($skew) > 1800) {
                         $hours = round(abs($skew) / 3600, 1);
                         $add(
@@ -433,11 +434,11 @@ class HealthChecker {
                         );
                     } else {
                         $age = time() - $newestMtime;
-                        // nfcapd default rotation is 5 min; warn after 12 min (2.4×) to allow for slow systems
-                        $status = $age > HealthMetrics::STALE_AFTER ? 'warning' : 'ok';
+                        // Warn after 2.4 intervals to allow for slow systems.
+                        $status = $age > HealthMetrics::staleAfter() ? 'warning' : 'ok';
                         if ($age <= 0) {
                             $detail = 'Just captured';
-                        } elseif ($age > HealthMetrics::STALE_AFTER) {
+                        } elseif ($age > HealthMetrics::staleAfter()) {
                             $detail = 'Last file ' . $ageStr($age) . ' ago. nfcapd may have stopped.';
                         } else {
                             $detail = 'Last file ' . $ageStr($age) . ' ago';

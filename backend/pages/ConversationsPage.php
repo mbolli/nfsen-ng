@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace mbolli\nfsen_ng\pages;
 
 use mbolli\nfsen_ng\actions\ConversationActions;
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\TableFormatter;
 use mbolli\nfsen_ng\pages\state\ConversationsState;
 use mbolli\nfsen_ng\query\MatrixQuery;
@@ -13,9 +14,6 @@ use Mbolli\PhpVia\Via;
 
 /** Conversations (was Sankey): who talks to whom in the range, as a Sankey, a Matrix and ranked IP pairs (4.4). */
 final class ConversationsPage implements Page {
-    /** A live result older than this says the window has moved on (1.7). */
-    public const int LIVE_AGE = 300;
-
     public static function id(): string {
         return 'conversations';
     }
@@ -79,9 +77,9 @@ final class ConversationsPage implements Page {
         ];
     }
 
-    /** A live result that is older than LIVE_AGE (1.7). */
+    /** A live result that is older than one capture interval (1.7). */
     public static function aged(ConversationsState $state, int $now): bool {
-        return !$state->isEmpty() && $state->info['live'] && $now - $state->info['at'] >= self::LIVE_AGE;
+        return !$state->isEmpty() && $state->info['live'] && $now - $state->info['at'] >= CaptureInterval::seconds();
     }
 
     /**

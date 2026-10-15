@@ -23,8 +23,8 @@ const SLOTS = 8;
 const LINE_SLOTS = 24;
 /** Rows in the tooltip and the legend at the cursor, largest first. */
 const MAX_ROWS = 12;
-/** A brushed range snaps to capture intervals. */
-const INTERVAL_MS = 300_000;
+/** A brushed range snaps to capture intervals (#184): the server's, from the root element. */
+const intervalMs = () => (Number(document.documentElement.dataset.interval) || 300) * 1000;
 /** A drag narrower than this is a click, which does nothing. */
 const MIN_BRUSH_PX = 4;
 const HINT_MS = 2000;
@@ -668,8 +668,9 @@ class ChartState {
         const [a, b] = range.map(Number);
         const width = Math.abs(this.chart.convertToPixel({ xAxisIndex: 0 }, b) - this.chart.convertToPixel({ xAxisIndex: 0 }, a));
         if (!Number.isFinite(width) || width < MIN_BRUSH_PX) return;
-        const from = Math.floor(Math.min(a, b) / INTERVAL_MS) * INTERVAL_MS;
-        const to = Math.max(from + INTERVAL_MS, Math.ceil(Math.max(a, b) / INTERVAL_MS) * INTERVAL_MS);
+        const step = intervalMs();
+        const from = Math.floor(Math.min(a, b) / step) * step;
+        const to = Math.max(from + step, Math.ceil(Math.max(a, b) / step) * step);
         this.emit('range-select', { from, to });
     }
 

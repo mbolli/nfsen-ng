@@ -142,6 +142,10 @@ class Import {
             if ($this->cli === true && $this->quiet === false) {
                 echo PHP_EOL . 'Validating RRD structure...' . PHP_EOL;
             }
+            // A configured interval the databases do not store yet: rewrite them first, keeping their history (#184).
+            if (Config::$settings->captureInterval > 0) {
+                Config::$db->convertSteps($this->profile ?? Config::$settings->nfdumpProfile);
+            }
             Config::$db->validateStructure($sources[0], 0, true, $this->quiet, $this->profile ?? Config::$settings->nfdumpProfile);
 
             // Ports whose RRD would otherwise only appear on their first non-empty write, so a

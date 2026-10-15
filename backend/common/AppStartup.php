@@ -273,6 +273,16 @@ class AppStartup {
         // imports nothing until someone presses Trigger in the Health page's Import card.
         // NFSEN_SKIP_INITIAL_IMPORT=true skips the gap fill and only sets up the watches.
         Coroutine::create(static function () use ($app, $daemons, $debug): void {
+            // Databases at another step than a configured interval are rewritten before anything writes to them (#184).
+            if (Config::$settings->captureInterval > 0 && Config::$db instanceof Rrd) {
+                foreach (array_keys($daemons) as $profile) {
+                    $converted = Config::$db->convertSteps((string) $profile);
+                    if ($converted > 0) {
+                        $debug->log("RRD [{$profile}]: rewrote {$converted} databases at " . Config::$settings->captureInterval . ' s', LOG_INFO);
+                    }
+                }
+            }
+
             // NFSEN_SKIP_INITIAL_IMPORT: skip gap fill, just set up inotify watches.
             if ((bool) EnvRegistry::value('NFSEN_SKIP_INITIAL_IMPORT')) {
                 $debug->log('ImportDaemon: startup import skipped (NFSEN_SKIP_INITIAL_IMPORT)', LOG_INFO);

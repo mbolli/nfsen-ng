@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\common\Settings;
 use mbolli\nfsen_ng\datasources\Rrd;
@@ -22,9 +23,11 @@ if (!function_exists('rrd_version')) {
  *
  * @return string the temp directory path (caller must clean up)
  */
-function makeRrdFeatureSettings(int $importYears = 3, array $sources = ['gw']): string {
-    $dir = sys_get_temp_dir() . '/rrd_feat_' . uniqid();
-    mkdir($dir, 0o755, true);
+function makeRrdFeatureSettings(int $importYears = 3, array $sources = ['gw'], int $interval = 0, ?string $dir = null): string {
+    if ($dir === null) {
+        $dir = sys_get_temp_dir() . '/rrd_feat_' . uniqid();
+        mkdir($dir, 0o755, true);
+    }
 
     Config::$settings = Settings::fromArray([
         'general' => [
@@ -32,6 +35,7 @@ function makeRrdFeatureSettings(int $importYears = 3, array $sources = ['gw']): 
             'ports' => [80],
             'db' => 'RRD',
             'processor' => 'Nfdump',
+            'capture_interval' => $interval > 0 ? (string) $interval : 'auto',
         ],
         'nfdump' => [
             'binary' => '/usr/bin/nfdump',
@@ -48,6 +52,7 @@ function makeRrdFeatureSettings(int $importYears = 3, array $sources = ['gw']): 
         'log' => ['priority' => LOG_WARNING],
     ]);
     Config::$path = $dir;
+    CaptureInterval::reset();
 
     return $dir;
 }
@@ -638,6 +643,91 @@ describe('Rrd with capture files shorter than the step (#184)', function (): voi
         rrdWriteSplitSlots($this->rrd, 'gw', $this->base, [1, 2], 5);
 
         expect($this->rrd->last_update('gw', 0))->toBe(($this->slot)(1));
+    });
+});
+
+describe('Rrd at the configured capture interval (#184)', function (): void {
+    afterEach(function (): void {
+        cleanRrdDir($this->dir);
+    });
+
+    test('the archives keep their reach at any step, and 300 keeps the layout it always had', function (): void {
+        expect(Rrd::layoutFor(300, 3))->toBe(['0.5:1:12960', '0.5:6:4320', '0.5:24:4380', '0.5:288:1095'])
+            ->and(Rrd::layoutFor(60, 3))->toBe(['0.5:1:64800', '0.5:30:4320', '0.5:120:4380', '0.5:1440:1095'])
+            ->and(Rrd::layoutFor(3600, 3))->toBe(['0.5:1:1080', '0.5:2:4380', '0.5:24:1095'])
+        ;
+        $this->dir = makeRrdFeatureSettings();
+    });
+
+    test('a new database takes the configured step, and one-minute files each get a row', function (): void {
+        $this->dir = makeRrdFeatureSettings(3, ['gw'], 60);
+        $rrd = new Rrd();
+        $ts = strtotime('-2 hours');
+        $base = $ts - ($ts % 300);
+        rrdWriteSplitSlots($rrd, 'gw', $base, range(1, 10), 5);
+        $file = $rrd->get_data_path('gw');
+
+        expect(rrd_info($file)['step'])->toBe(60)
+            ->and($rrd->validateStructure('gw')['valid'])->toBeTrue()
+            ->and($rrd->fetchProtocolTotals(['gw'], '', $base + 600, $base + 1800))->toBe(rrdRangeTotals(2, 5, static fn (int $i): int => $i + 1))
+            // One minute of slot 3: a fifth of it.
+            ->and($rrd->fetchTotals(['gw'], '', $base + 900, $base + 960)['flows'])->toBe((float) intdiv(rrdSlotFields(4)['flows'], 5))
+            ->and($rrd->last_update('gw'))->toBe($base + 9 * 300 + 240)
+        ;
+    });
+
+    test('five-minute files from before nfcapd -t changed spread over their rows', function (): void {
+        $this->dir = makeRrdFeatureSettings(3, ['gw'], 60);
+        $rrd = new Rrd();
+        $ts = strtotime('-2 hours');
+        $base = $ts - ($ts % 300);
+        foreach (range(1, 10) as $i => $m) {
+            $rrd->write(['source' => 'gw', 'port' => 0, 'profile' => '', 'date_iso' => '', 'date_timestamp' => $base + $i * 300, 'interval' => 300, 'fields' => rrdSlotFields($m)]);
+        }
+
+        expect($rrd->fetchProtocolTotals(['gw'], '', $base + 600, $base + 1800))->toBe(rrdRangeTotals(2, 5, static fn (int $i): int => $i + 1));
+    });
+
+    test('a database at another step is reported, and rewritten with what it holds', function (): void {
+        $this->dir = makeRrdFeatureSettings(3, ['gw']);
+        $rrd = new Rrd();
+        $ts = strtotime('-2 hours');
+        $base = $ts - ($ts % 300);
+        rrdWriteSlots($rrd, 'gw', $base, range(1, 10));
+        rrdWriteSlots($rrd, 'gw', $base, range(1, 10), 80);
+        $before = $rrd->fetchProtocolTotals(['gw'], '', $base + 600, $base + 2400);
+
+        makeRrdFeatureSettings(3, ['gw'], 60, $this->dir);
+        $rrd = new Rrd();
+
+        expect($rrd->validateStructure('gw')['message'])->toContain('step mismatch')
+            ->and($rrd->convertSteps())->toBe(2)
+            ->and(rrd_info($rrd->get_data_path('gw'))['step'])->toBe(60)
+            ->and(rrd_info($rrd->get_data_path('gw', 80))['step'])->toBe(60)
+            ->and($rrd->validateStructure('gw')['valid'])->toBeTrue()
+            ->and($rrd->fetchProtocolTotals(['gw'], '', $base + 600, $base + 2400))->toBe($before)
+            ->and($rrd->convertSteps())->toBe(0)
+        ;
+    });
+
+    test('a gap stays a gap: rows the finest archive does not hold are not filled from coarser ones', function (): void {
+        $this->dir = makeRrdFeatureSettings(3, ['gw']);
+        $rrd = new Rrd();
+        $ts = strtotime('-1 day');
+        $base = $ts - ($ts % 1800);
+        rrdWriteSlots($rrd, 'gw', $base, array_fill(0, 12, 2));
+        rrdWriteSlots($rrd, 'gw', $base + 16 * 300, array_fill(0, 12, 2));
+        $gap = $rrd->fetchTotals(['gw'], '', $base + 13 * 300, $base + 16 * 300);
+        $around = $rrd->fetchProtocolTotals(['gw'], '', $base + 300, $base + 27 * 300);
+
+        makeRrdFeatureSettings(3, ['gw'], 60, $this->dir);
+        $rrd = new Rrd();
+        $rrd->convertSteps();
+
+        expect($gap['flows'])->toBe(0.0)
+            ->and($rrd->fetchTotals(['gw'], '', $base + 13 * 300, $base + 16 * 300))->toBe($gap)
+            ->and($rrd->fetchProtocolTotals(['gw'], '', $base + 300, $base + 27 * 300))->toBe($around)
+        ;
     });
 });
 

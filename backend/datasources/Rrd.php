@@ -70,14 +70,25 @@ class Rrd implements Datasource, TotalsProvider {
 
         $this->migrateRrdsToProfileSubdir();
 
-        // Calculate layout based on import years
-        // Structure maintains same resolution levels but extends daily samples
-        $this->layout = [
-            '0.5:1:' . ((60 / (1 * 5)) * 24 * 45), // 45 days of 5 min samples
-            '0.5:6:' . ((60 / (6 * 5)) * 24 * 90), // 90 days of 30 min samples
-            '0.5:24:' . ((60 / (24 * 5)) * 24 * 365), // 365 days of 2 hour samples
-            '0.5:288:' . $this->importYears * 365, // N years of daily samples (based on import_years)
-        ];
+        $this->layout = self::layoutFor(CaptureInterval::seconds(), $this->importYears);
+    }
+
+    /**
+     * The archives for a step (#184): 45 days at the step, 90 days of 30 minutes, a year of 2 hours and the import
+     * years of days. An archive no coarser than the step is left out.
+     *
+     * @return list<string> "xff:steps per row:rows"
+     */
+    public static function layoutFor(int $step, int $importYears): array {
+        $layout = ['0.5:1:' . intdiv(45 * self::DAY, $step)];
+        foreach ([[1800, 90], [7200, 365]] as [$width, $days]) {
+            if ($width > $step && $width % $step === 0) {
+                $layout[] = '0.5:' . intdiv($width, $step) . ':' . intdiv($days * self::DAY, $width);
+            }
+        }
+        $layout[] = '0.5:' . intdiv(self::DAY, $step) . ':' . $importYears * 365;
+
+        return $layout;
     }
 
     /**
@@ -96,11 +107,6 @@ class Rrd implements Datasource, TotalsProvider {
         return [$first, rrd_last($rrdFile)];
     }
 
-    /**
-     * Gets the timestamp of the last update of this specific source.
-     *
-     * @return int timestamp or false
-     */
     /**
      * The newest complete slot: files finer than the step are written within it (write()), so the last update can
      * sit inside a slot whose files have not all arrived.
@@ -128,11 +134,11 @@ class Rrd implements Datasource, TotalsProvider {
     }
 
     /**
-     * When the file of `$fileTs` is written (#184): a file finer than the step goes in at its slot's offset, so the
-     * files of one slot fill it and the rate of each spans its own interval. At interval = step it is $fileTs.
+     * When the file of `$fileTs` is written (#184): at the end of its interval, one step back, as rows are stamped with
+     * their end. Finer files fill their slot together, a coarser one spreads over its rows; at interval = step it is $fileTs.
      */
     public static function updateTime(int $fileTs, ?int $interval, int $step): int {
-        return $interval !== null && $interval < $step ? $fileTs + $interval - $step : $fileTs;
+        return $interval !== null ? $fileTs + $interval - $step : $fileTs;
     }
 
     /**
@@ -174,24 +180,45 @@ class Rrd implements Datasource, TotalsProvider {
             }
         }
 
+        $step = CaptureInterval::seconds();
         $start = strtotime('-' . $this->importYears . ' years');
-        $starttime = (int) $start - ($start % 300);
+        $starttime = (int) $start - ($start % $step);
 
-        $creator = new \RRDCreator($rrdFile, (string) $starttime, 60 * 5);
-        foreach ($this->fields as $field) {
-            $creator->addDataSource($field . ':ABSOLUTE:600:U:U');
-        }
-        foreach ($this->layout as $rra) {
-            $creator->addArchive('AVERAGE:' . $rra);
-            $creator->addArchive('MAX:' . $rra);
-        }
-
-        $saved = $creator->save();
+        $saved = rrd_create($rrdFile, ['--start', (string) $starttime, ...$this->definition($step)]);
         if ($saved === false) {
-            $this->d->log('Error saving RRD data structure to ' . $rrdFile, LOG_ERR);
+            $this->d->log('Error saving RRD data structure to ' . $rrdFile . ': ' . rrd_error(), LOG_ERR);
         }
+        unset(self::$steps[$rrdFile]);
 
         return $saved;
+    }
+
+    /**
+     * Rewrites every database of the profile whose step is not the configured interval (#184), keeping what it holds
+     * ({@see RrdStep}). A rescan restores the finer detail still in the capture files.
+     *
+     * @return int databases rewritten
+     */
+    public function convertSteps(string $profile = ''): int {
+        $step = CaptureInterval::seconds();
+        $dir = \dirname(self::pathFor('x', 0, $profile));
+        $converted = 0;
+        foreach (glob($dir . \DIRECTORY_SEPARATOR . '*.rrd') ?: [] as $file) {
+            $from = self::stepOf($file);
+            if ($from === $step) {
+                continue;
+            }
+            if (!RrdStep::rewrite($file, $step, $this->definition($step))) {
+                $this->d->log('Could not rewrite ' . $file . ' at a ' . $step . ' s step: ' . rrd_error(), LOG_ERR);
+
+                continue;
+            }
+            unset(self::$steps[$file], self::$daySums[$file]);
+            $this->d->log('Rewrote ' . basename($file) . ' from a ' . $from . ' s to a ' . $step . ' s step', LOG_INFO);
+            ++$converted;
+        }
+
+        return $converted;
     }
 
     /**
@@ -223,6 +250,16 @@ class Rrd implements Datasource, TotalsProvider {
             return [
                 'valid' => false,
                 'message' => 'Could not read RRD file info: ' . rrd_error(),
+                'expected_rows' => null,
+                'actual_rows' => null,
+            ];
+        }
+
+        $step = (int) ($info['step'] ?? 0);
+        if ($step !== CaptureInterval::seconds()) {
+            return [
+                'valid' => false,
+                'message' => 'RRD step mismatch: the database stores ' . $step . ' s rows, the capture interval is ' . CaptureInterval::seconds() . ' s',
                 'expected_rows' => null,
                 'actual_rows' => null,
             ];
@@ -373,9 +410,9 @@ WARNING;
     ): array|string {
         $options = [
             '--start',
-            $start - ($start % 300),
+            CaptureInterval::floor($start),
             '--end',
-            $end - ($end % 300),
+            CaptureInterval::floor($end),
             '--maxrows',
             $maxrows,
             // number of values. works like the width value (in pixels) in rrd_graph
@@ -459,9 +496,9 @@ WARNING;
         if ($exports === 0) {
             return [
                 'data' => [],
-                'start' => $start - ($start % 300),
-                'end' => $end - ($end % 300),
-                'step' => 300,
+                'start' => CaptureInterval::floor($start),
+                'end' => CaptureInterval::floor($end),
+                'step' => CaptureInterval::seconds(),
                 'legend' => [],
             ];
         }
@@ -614,6 +651,21 @@ WARNING;
             'hint' => 'Set via NFSEN_IMPORT_YEARS env var (default: 3). Changing requires a force-rescan.',
             'epoch' => 0];
 
+        // The step the databases store against the capture interval (#184); a mismatch is rewritten at the next start.
+        $interval = CaptureInterval::seconds();
+        $first = $sources === [] ? '' : self::pathFor($sources[0]);
+        $stored = $first !== '' && is_file($first) ? self::stepOf($first) : $interval;
+        $checks[] = ['id' => 'rrd_step', 'label' => 'RRD step',
+            'status' => $stored === $interval ? 'ok' : 'warning',
+            'detail' => $stored === $interval
+                ? CaptureInterval::label($stored) . ' rows'
+                : CaptureInterval::label($stored) . ' rows, the capture interval is ' . CaptureInterval::label($interval),
+            'group' => $group, 'code' => false,
+            'hint' => $stored === $interval
+                ? 'NFSEN_CAPTURE_INTERVAL sets it; databases at another step are rewritten when nfsen-ng starts.'
+                : 'Restart nfsen-ng to rewrite the databases at the new step; what they hold is kept. A Force Rescan restores the detail still in the capture files.',
+            'epoch' => 0];
+
         $profiles = Config::detectProfiles();
         $multiProfile = \count($profiles) > 1;
 
@@ -733,11 +785,12 @@ WARNING;
         $newest = $last !== [] ? max($last) : 0;
 
         foreach ($last as $file => $ts) {
-            if ($ts < $newest - 300) {
+            $step = self::stepOf($file);
+            if ($ts < $newest - $step) {
                 continue;
             }
 
-            $fetchResult = @rrd_fetch($file, ['AVERAGE', '--start', (string) ($ts - 300), '--end', (string) ($ts + 1), '--resolution', '300']);
+            $fetchResult = @rrd_fetch($file, ['AVERAGE', '--start', (string) ($ts - $step), '--end', (string) ($ts + 1), '--resolution', (string) $step]);
             if (!isset($fetchResult['data']) || !\is_array($fetchResult['data'])) {
                 continue;
             }
@@ -772,19 +825,20 @@ WARNING;
      */
     public function fetchRollingAverage(array $sources, string $profile, int $windowSeconds, ?int $end = null): array {
         $result = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
-        $end ??= intdiv(time(), 300) * 300 - 300;
-        // Row T holds the file starting at T, and rrd_fetch returns the rows T in
-        // (floor(start), floor(end) + 300]: here the files of [$end - window, $end).
-        $from = (string) ($end - $windowSeconds - 300);
-        $to = (string) ($end - 301);
+        $end ??= CaptureInterval::floor(time()) - CaptureInterval::seconds();
 
         foreach ($sources as $source) {
             $file = $this->get_data_path($source, 0, $profile);
             if (!file_exists($file)) {
                 continue;
             }
+            // Row T holds the file starting at T, and rrd_fetch returns the rows T in
+            // (floor(start), floor(end) + step]: here the files of [$end - window, $end).
+            $step = self::stepOf($file);
+            $from = (string) ($end - $windowSeconds - $step);
+            $to = (string) ($end - $step - 1);
 
-            $fetchResult = @rrd_fetch($file, ['AVERAGE', '--start', $from, '--end', $to, '--resolution', '300']);
+            $fetchResult = @rrd_fetch($file, ['AVERAGE', '--start', $from, '--end', $to, '--resolution', (string) $step]);
             if (!isset($fetchResult['data']) || !\is_array($fetchResult['data'])) {
                 continue;
             }
@@ -835,20 +889,20 @@ WARNING;
         $zero = ['flows' => 0.0, 'packets' => 0.0, 'bytes' => 0.0];
         $totals = ['any' => $zero, 'tcp' => $zero, 'udp' => $zero, 'icmp' => $zero, 'other' => $zero];
 
-        // Slot timestamps are multiples of 300: the first at or after start, the last before end.
-        $firstSlot = (int) ceil($start / 300) * 300;
-        $lastSlot = (int) ceil($end / 300) * 300 - 300;
-        if ($lastSlot < $firstSlot) {
-            return $totals;
-        }
-
         foreach (self::resolveSources($sources) as $source) {
             $file = $this->get_data_path($source, 0, $profile);
             if (!file_exists($file)) {
                 continue;
             }
+            // Slot timestamps are multiples of the file's step: the first at or after start, the last before end.
+            $slot = self::stepOf($file);
+            $firstSlot = (int) ceil($start / $slot) * $slot;
+            $lastSlot = (int) ceil($end / $slot) * $slot - $slot;
+            if ($lastSlot < $firstSlot) {
+                continue;
+            }
 
-            $sums = $this->fileTotals($file, $firstSlot, $lastSlot);
+            $sums = $this->fileTotals($file, $slot, $firstSlot, $lastSlot);
             if ($sums === null) {
                 $this->d->log('Could not read totals from ' . $file . ': ' . rrd_error(), LOG_WARNING);
 
@@ -871,16 +925,20 @@ WARNING;
      */
     public function warmTotals(string $source, string $profile = ''): void {
         $file = $this->get_data_path($source, 0, $profile);
-        $last = file_exists($file) ? intdiv((int) rrd_last($file), 300) * 300 : 0;
+        if (!file_exists($file)) {
+            return;
+        }
+        $slot = self::stepOf($file);
+        $last = intdiv((int) rrd_last($file), $slot) * $slot;
         if ($last <= 0) {
             return;
         }
-        foreach ($this->layout as $archive) {
+        foreach (self::layoutFor($slot, $this->importYears) as $archive) {
             [, $perRow, $rows] = array_map(intval(...), explode(':', $archive));
-            $reach = $perRow * 300 * $rows;
+            $reach = $perRow * $slot * $rows;
             // A day short of the archive's reach, so rrd_fetch still answers from this archive.
-            if ($perRow * 300 < self::DAY && $reach > 2 * self::DAY) {
-                $this->fileTotals($file, $last - $reach + self::DAY, $last);
+            if ($perRow * $slot < self::DAY && $reach > 2 * self::DAY) {
+                $this->fileTotals($file, $slot, $last - $reach + self::DAY, $last);
             }
         }
     }
@@ -894,6 +952,25 @@ WARNING;
      */
     protected function rrdFetch(string $file, array $options): array|false {
         return @rrd_fetch($file, $options);
+    }
+
+    /**
+     * The step, data sources and archives of a database: everything rrd_create takes but --start.
+     *
+     * @return list<string>
+     */
+    private function definition(int $step): array {
+        $options = ['--step', (string) $step];
+        foreach ($this->fields as $field) {
+            // Two steps, and never under two 5-minute files: history from before nfcapd -t changed spreads over its rows.
+            $options[] = 'DS:' . $field . ':ABSOLUTE:' . max(2 * $step, 2 * CaptureInterval::DEFAULT) . ':U:U';
+        }
+        foreach (self::layoutFor($step, $this->importYears) as $rra) {
+            $options[] = 'RRA:AVERAGE:' . $rra;
+            $options[] = 'RRA:MAX:' . $rra;
+        }
+
+        return $options;
     }
 
     /**
@@ -978,26 +1055,26 @@ WARNING;
     }
 
     /**
-     * Volume per data source of the slots [$firstSlot, $lastSlot] in one file.
+     * Volume per data source of the slots [$firstSlot, $lastSlot] in one file whose step is `$slot`.
      *
      * @return null|array<string, float>
      */
-    private function fileTotals(string $file, int $firstSlot, int $lastSlot): ?array {
-        // Day $d holds the rows ($d, $d + DAY], which cover the slots $d + 300 to $d + DAY.
-        $firstDay = intdiv($firstSlot - 300 + self::DAY - 1, self::DAY) * self::DAY;
+    private function fileTotals(string $file, int $slot, int $firstSlot, int $lastSlot): ?array {
+        // Day $d holds the rows ($d, $d + DAY], which cover the slots $d + $slot to $d + DAY.
+        $firstDay = intdiv($firstSlot - $slot + self::DAY - 1, self::DAY) * self::DAY;
         $lastDay = intdiv($lastSlot, self::DAY) * self::DAY - self::DAY;
 
         // The same --start as a read of the whole window, so rrd_fetch picks the same archive.
-        $head = $this->fetchSlots($file, 300, $firstSlot, $lastDay < $firstDay ? $lastSlot : max($firstDay, $firstSlot));
+        $head = $this->fetchSlots($file, $slot, $slot, $firstSlot, $lastDay < $firstDay ? $lastSlot : max($firstDay, $firstSlot));
         if ($head === null) {
             return null;
         }
         [$step, $rows] = $head;
         if ($lastDay < $firstDay) {
-            return self::sumSlots($rows, $step, $firstSlot, $lastSlot);
+            return self::sumSlots($rows, $slot, $step, $firstSlot, $lastSlot);
         }
         if ($step >= self::DAY || self::DAY % $step !== 0) {
-            return $this->wholeWindow($file, $firstSlot, $lastSlot);
+            return $this->wholeWindow($file, $slot, $firstSlot, $lastSlot);
         }
 
         $inode = (int) @fileinode($file);
@@ -1024,14 +1101,14 @@ WARNING;
         $fresh = [];
         $tail = [];
         foreach ($spans as [$from, $to]) {
-            $read = $this->fetchSlots($file, $step, $from + 300, $to);
+            $read = $this->fetchSlots($file, $slot, $step, $from + $slot, $to);
             if ($read === null) {
                 return null;
             }
             if ($read[0] !== $step) {
-                return $this->wholeWindow($file, $firstSlot, $lastSlot);
+                return $this->wholeWindow($file, $slot, $firstSlot, $lastSlot);
             }
-            [$days, $slots] = self::splitDays($read[1], $step, $from, min($to, $tailFrom), $tailFrom, $lastSlot);
+            [$days, $slots] = self::splitDays($read[1], $slot, $step, $from, min($to, $tailFrom), $tailFrom, $lastSlot);
             $fresh = $days + $fresh;
             foreach ($slots as $dsName => $sum) {
                 $tail[$dsName] = ($tail[$dsName] ?? 0.0) + $sum;
@@ -1052,7 +1129,7 @@ WARNING;
             self::$daySums[$file]['steps'][$step] = $cached;
         }
 
-        $totals = self::sumSlots($rows, $step, $firstSlot, $firstDay);
+        $totals = self::sumSlots($rows, $slot, $step, $firstSlot, $firstDay);
         for ($day = $firstDay; $day <= $lastDay; $day += self::DAY) {
             foreach ($fresh[$day] ?? $cached[$day] ?? [] as $dsName => $sum) {
                 $totals[$dsName] = ($totals[$dsName] ?? 0.0) + $sum;
@@ -1066,10 +1143,10 @@ WARNING;
     }
 
     /** @return null|array<string, float> */
-    private function wholeWindow(string $file, int $firstSlot, int $lastSlot): ?array {
-        $read = $this->fetchSlots($file, 300, $firstSlot, $lastSlot);
+    private function wholeWindow(string $file, int $slot, int $firstSlot, int $lastSlot): ?array {
+        $read = $this->fetchSlots($file, $slot, $slot, $firstSlot, $lastSlot);
 
-        return $read === null ? null : self::sumSlots($read[1], $read[0], $firstSlot, $lastSlot);
+        return $read === null ? null : self::sumSlots($read[1], $slot, $read[0], $firstSlot, $lastSlot);
     }
 
     /**
@@ -1095,14 +1172,14 @@ WARNING;
      *
      * @return null|array{int, array<mixed>} the step and the rows per data source
      */
-    private function fetchSlots(string $file, int $resolution, int $from, int $to): ?array {
+    private function fetchSlots(string $file, int $slot, int $resolution, int $from, int $to): ?array {
         // Rows are keyed by the update (capture file) they hold; the first ends one step after --start.
-        $fetched = $this->rrdFetch($file, ['AVERAGE', '--resolution', (string) $resolution, '--start', (string) ($from - 300), '--end', (string) $to]);
+        $fetched = $this->rrdFetch($file, ['AVERAGE', '--resolution', (string) $resolution, '--start', (string) ($from - $slot), '--end', (string) $to]);
         if (!\is_array($fetched['data'] ?? null) || !is_numeric($fetched['step'] ?? null)) {
             return null;
         }
 
-        return [max(300, (int) $fetched['step']), $fetched['data']];
+        return [max($slot, (int) $fetched['step']), $fetched['data']];
     }
 
     /**
@@ -1112,8 +1189,8 @@ WARNING;
      *
      * @return array<string, float>
      */
-    private static function sumSlots(array $rows, int $step, int $from, int $to): array {
-        $rowSlots = intdiv($step, 300);
+    private static function sumSlots(array $rows, int $slot, int $step, int $from, int $to): array {
+        $rowSlots = intdiv($step, $slot);
         $sums = [];
         foreach ($rows as $dsName => $values) {
             $sum = 0.0;
@@ -1123,10 +1200,10 @@ WARNING;
                 }
                 $ts = (int) $ts;
                 // Most rows lie inside; only the rows on an edge pay for slotsInWindow().
-                if ($ts - $step + 300 >= $from && $ts <= $to) {
-                    $sum += $value * 300 * $rowSlots;
-                } elseif (($slots = self::slotsInWindow($ts, $step, $from, $to)) > 0) {
-                    $sum += $value * 300 * $slots;
+                if ($ts - $step + $slot >= $from && $ts <= $to) {
+                    $sum += $value * $slot * $rowSlots;
+                } elseif (($slots = self::slotsInWindow($ts, $slot, $step, $from, $to)) > 0) {
+                    $sum += $value * $slot * $slots;
                 }
             }
             $sums[(string) $dsName] = $sum;
@@ -1143,8 +1220,8 @@ WARNING;
      *
      * @return array{array<int, array<string, float>>, array<string, float>}
      */
-    private static function splitDays(array $rows, int $step, int $from, int $daysEnd, int $tailFrom, int $lastSlot): array {
-        $rowSlots = intdiv($step, 300);
+    private static function splitDays(array $rows, int $slot, int $step, int $from, int $daysEnd, int $tailFrom, int $lastSlot): array {
+        $rowSlots = intdiv($step, $slot);
         $days = [];
         $tail = [];
         foreach ($rows as $dsName => $values) {
@@ -1162,9 +1239,9 @@ WARNING;
                     continue;
                 }
                 if ($ts <= $daysEnd) {
-                    $days[intdiv($ts - 1, self::DAY) * self::DAY][$dsName] += $value * 300 * $rowSlots;
-                } elseif ($ts > $tailFrom && ($slots = self::slotsInWindow($ts, $step, $tailFrom + 300, $lastSlot)) > 0) {
-                    $tail[$dsName] += $value * 300 * $slots;
+                    $days[intdiv($ts - 1, self::DAY) * self::DAY][$dsName] += $value * $slot * $rowSlots;
+                } elseif ($ts > $tailFrom && ($slots = self::slotsInWindow($ts, $slot, $step, $tailFrom + $slot, $lastSlot)) > 0) {
+                    $tail[$dsName] += $value * $slot * $slots;
                 }
             }
         }
@@ -1173,12 +1250,12 @@ WARNING;
     }
 
     /**
-     * How many 5-minute slots of the row ending at $rowEnd lie in [$firstSlot, $lastSlot].
+     * How many slots of `$slot` seconds of the row ending at $rowEnd lie in [$firstSlot, $lastSlot].
      */
-    private static function slotsInWindow(int $rowEnd, int $step, int $firstSlot, int $lastSlot): int {
-        $from = max($rowEnd - $step + 300, $firstSlot);
+    private static function slotsInWindow(int $rowEnd, int $slot, int $step, int $firstSlot, int $lastSlot): int {
+        $from = max($rowEnd - $step + $slot, $firstSlot);
         $to = min($rowEnd, $lastSlot);
 
-        return $to < $from ? 0 : intdiv($to - $from, 300) + 1;
+        return $to < $from ? 0 : intdiv($to - $from, $slot) + 1;
     }
 }

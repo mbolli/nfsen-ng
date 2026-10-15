@@ -93,7 +93,10 @@ describe('Rrd::updateTime()', function (): void {
     test('one file per step, or an unknown interval, keeps the file time', function (): void {
         expect(Rrd::updateTime(43200, 300, 300))->toBe(43200);
         expect(Rrd::updateTime(43200, null, 300))->toBe(43200);
-        expect(Rrd::updateTime(43200, 600, 300))->toBe(43200);
+    });
+
+    test('a file coarser than the step ends at its own end, over the rows of its interval', function (): void {
+        expect(Rrd::updateTime(43200, 300, 60))->toBe(43440);
     });
 });
 

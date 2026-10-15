@@ -65,8 +65,35 @@ describe('Import of one-minute capture files (#184)', function (): void {
         // The first file of a fresh RRD stays unknown, so the first slot is left out.
         $totals = Config::$db->fetchTotals(['gw'], '', $this->slot + 300, $this->slot + 900);
 
-        expect($totals['flows'])->toBe(50.0)
-            ->and($totals['bytes'])->toBe(10000.0)
+        expect($totals['flows'])->toEqualWithDelta(50.0, 1e-9)
+            ->and($totals['bytes'])->toEqualWithDelta(10000.0, 1e-6)
+        ;
+    });
+
+    test('a new database follows the files: a row per minute', function (): void {
+        $import = new Import();
+        $import->setQuiet(true);
+        $import->start(new DateTime('@' . ($this->slot - 86400)));
+
+        expect(rrd_info(Config::$db->get_data_path('gw'))['step'])->toBe(60)
+            ->and(Config::$db->last_update('gw'))->toBe($this->slot + 840)
+        ;
+    });
+
+    test('at a configured five-minute interval, five files sum into each row', function (): void {
+        Config::$settings = Settings::fromArray([
+            'general' => ['sources' => ['gw'], 'ports' => [], 'db' => 'RRD', 'processor' => 'Nfdump', 'capture_interval' => '300'],
+            'nfdump' => ['binary' => $this->stub, 'profiles-data' => $this->root . '/profiles-data', 'profile' => 'live', 'max-processes' => 1],
+            'db' => ['RRD' => ['data_path' => $this->root . '/rrd', 'import_years' => 3]],
+            'log' => ['priority' => LOG_ERR],
+        ]);
+        Config::$db = new Rrd();
+        $import = new Import();
+        $import->setQuiet(true);
+        $import->start(new DateTime('@' . ($this->slot - 86400)));
+
+        expect(rrd_info(Config::$db->get_data_path('gw'))['step'])->toBe(300)
+            ->and(Config::$db->fetchTotals(['gw'], '', $this->slot + 300, $this->slot + 900)['flows'])->toBe(50.0)
             ->and(Config::$db->last_update('gw'))->toBe($this->slot + 600)
         ;
     });

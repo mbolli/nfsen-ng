@@ -668,7 +668,11 @@ class HealthChecker {
             return ['status' => 'ok', 'detail' => $detail, 'hint' => ''];
         }
         if ($interval < $step && $step % $interval === 0) {
-            return ['status' => 'ok', 'detail' => $detail, 'hint' => 'Graphs sum ' . intdiv($step, $interval) . ' files into each ' . self::ageStr($step) . ' RRD row.'];
+            return [
+                'status' => 'ok',
+                'detail' => $detail,
+                'hint' => 'Graphs sum ' . intdiv($step, $interval) . ' files into each ' . self::ageStr($step) . ' RRD row. NFSEN_CAPTURE_INTERVAL=' . $interval . ' keeps every file in a row of its own.',
+            ];
         }
 
         return [

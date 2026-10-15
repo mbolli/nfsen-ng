@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **A total at the cursor** ([#183](https://github.com/mbolli/nfsen-ng/issues/183), requested by [@hawk128](https://github.com/hawk128)). The tooltip and the legend beside the graphs start with the sum of the visible series at that time, for sources and protocols; ports overlap, so they have none.
+
 - **Larger Flows limits** ([#182](https://github.com/mbolli/nfsen-ng/issues/182), requested by [@hawk128](https://github.com/hawk128)). `NFSEN_FLOWS_MAX_LIMIT` raises the largest row limit the Flows page offers, and the menu adds 100,000 and 1,000,000 up to it. A row takes about 5 KB of server memory at the peak of a run, so `NFSEN_MEMORY_LIMIT` sets PHP's `memory_limit` for the server, and nfsen-ng learns the actual size from its own large listings to decide whether the next one fits.
 
 - **Shorter ranges** ([#181](https://github.com/mbolli/nfsen-ng/issues/181), requested by [@hawk128](https://github.com/hawk128)). The range menu adds **Last 30 minutes**, **Last 3 hours**, **Last 6 hours** and **Last 12 hours**, and **Custom duration** takes minutes, from 5. The new presets can be the default range in Settings.

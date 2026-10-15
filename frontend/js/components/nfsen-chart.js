@@ -461,7 +461,15 @@ class ChartState {
         return this.dateFmt(ms, { month: 'short', day: 'numeric' });
     }
 
-    /** The largest series at the hovered time, biggest first and capped. */
+    /**
+     * The sum of the visible series at a time (#183), or null: sources and protocols split the traffic, but a flow
+     * counts for both of its ports, and one series is its own total.
+     */
+    total(values) {
+        return this.config.display === 'ports' || values.length < 2 ? null : values.reduce((sum, v) => sum + Number(v), 0);
+    }
+
+    /** The largest series at the hovered time, biggest first and capped, under their total. */
     tooltipRows(params, rate) {
         const entries = (Array.isArray(params) ? params : [params]).filter(Boolean);
         if (entries.length === 0) return '';
@@ -471,7 +479,10 @@ class ChartState {
             .filter((row) => !isGap(row.value))
             .sort((a, b) => b.value - a.value);
         const time = entries[0].axisValue;
-        const head = `<div>${escapeHtml(this.dateFmt(time, { dateStyle: 'medium', timeStyle: 'short' }))}</div>`;
+        const total = this.total(ranked.map((row) => row.value));
+        const head =
+            `<div>${escapeHtml(this.dateFmt(time, { dateStyle: 'medium', timeStyle: 'short' }))}</div>` +
+            (total === null ? '' : `<div>Total: <b>${escapeHtml(rate(total))}</b></div>`);
         const rows = ranked
             .slice(0, MAX_ROWS)
             .map((row) => `<div>${row.marker}${escapeHtml(row.name)}: <b>${escapeHtml(rate(row.value))}</b></div>`)
@@ -533,7 +544,7 @@ class ChartState {
         panel.append(list);
     }
 
-    /** The Legend panel: the values at the hovered time, largest first, at most MAX_ROWS. */
+    /** The Legend panel: the values at the hovered time under their total, largest first, at most MAX_ROWS. */
     updateCursorLegend(params) {
         const panel = this.externalEl('legend');
         if (!panel || !this.chart || this.mode() !== 'overview') return;
@@ -553,6 +564,17 @@ class ChartState {
         time.textContent = this.dateFmt(row[0], { dateStyle: 'medium', timeStyle: 'short' });
         const list = document.createElement('ol');
         list.className = 'cursor-legend-rows';
+        const total = this.total(ranked.map(({ value }) => value));
+        if (total !== null) {
+            const item = document.createElement('li');
+            item.className = 'cursor-legend-total';
+            const name = document.createElement('span');
+            name.textContent = 'Total';
+            const figure = document.createElement('b');
+            figure.textContent = scaled(total, unit.base, unit.rate);
+            item.append(document.createElement('span'), name, figure);
+            list.append(item);
+        }
         for (const { p, value } of ranked.slice(0, MAX_ROWS)) {
             const item = document.createElement('li');
             const swatch = document.createElement('span');

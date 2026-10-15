@@ -340,6 +340,13 @@ sb-popover.live-menu::part(panel) {
     font-weight: var(--font-weight-semibold);
 }
 
+/* The sum of the rows below it (#183). */
+.cursor-legend-total {
+    border-block-end: 1px solid var(--border);
+    color: var(--text-1);
+    font-weight: var(--font-weight-semibold);
+}
+
 .cursor-legend-more {
     color: var(--text-2);
 }

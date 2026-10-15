@@ -452,6 +452,18 @@ export default async function graphsTest() {
             out.endLabels = o.series.filter(function(s){ return s.endLabel && s.endLabel.show; }).length;
             out.swatch = document.querySelectorAll('#e2eMany-series .series-swatch')[8].dataset.pattern;
 
+            // A total over the visible series in the legend at the cursor (#183): never for ports, which overlap.
+            var tip = function(){ el.chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: 3 }); return wait(); };
+            await tip();
+            out.portsTotal = !!document.querySelector('#e2eMany-legend .cursor-legend-total');
+            var config = JSON.parse(el.getAttribute('data-chart-config'));
+            el.setAttribute('data-chart-config', JSON.stringify(Object.assign({}, config, { display: 'sources' })));
+            await wait();
+            await tip();
+            out.sourcesTotal = document.querySelector('#e2eMany-legend .cursor-legend-total b')?.textContent ?? null;
+            el.setAttribute('data-chart-config', JSON.stringify(config));
+            await wait();
+
             // A move keeps the state (K14): an atomic move, and a remove and insert, which runs
             // cleanup and setup again.
             out.rocket = el.rocketInstanceId !== undefined;
@@ -491,6 +503,9 @@ export default async function graphsTest() {
             patterns: ['solid', 'dashed', 'dotted'],
             endLabels: 8,
             swatch: 'dashed',
+            portsTotal: false,
+            // 1 to 26 is 351; series 10 is hidden.
+            sourcesTotal: '341 b/s',
         });
 
         const dataType = await selectMostLikelyToHaveData(page);

@@ -18,8 +18,9 @@ badge counts the data points.
 
 The panel beside the graph has two lists. **Series** has a checkbox with the
 line's colour for every series, to hide the ones in the way. **Legend** shows
-the values at the time you point at, largest first. **Hide** folds the panel
-away. Pointing at a line lifts it and fades the rest.
+the values at the time you point at, largest first, under their **Total**, the
+sum of the series you have not hidden. Ports have no total, since a flow counts
+for both of its ports. **Hide** folds the panel away. Pointing at a line lifts it and fades the rest.
 
 The graph also sets the time range for every page: drag across it. The
 [Quick Tour](quick-tour.md#the-traffic-graph) describes the zoom, preview and

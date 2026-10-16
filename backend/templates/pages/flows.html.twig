@@ -290,8 +290,17 @@
                     </p>
                 {% endif %}
 
+                {# Column widths the viewer set (#185), as the --fw-<key> the list's grid template falls back from. The
+                   handles sit inside the list's host, so their listeners are here: drag an edge, arrow keys on it,
+                   double-click or Enter for the width of the column's longest value (data-fit, from the server). #}
+                <style id="flowsColumnWidths" data-text="'.flows-results sb-virtual-scroll {' + Object.entries($_flows_widths ?? {}).filter(([k, w]) => /^\w+$/.test(k) && /^\d+(px|ch)$/.test(w)).map(([k, w]) => '--fw-' + k + ': ' + w).join('; ') + '}'"></style>
                 <div role="tabpanel" id="flowsPanel-flows" aria-labelledby="flowsTab-flows" tabindex="0"
-                     data-attr:hidden="$_flows_tab !== 'flows'" data-preserve-attr="hidden">
+                     data-attr:hidden="$_flows_tab !== 'flows'" data-preserve-attr="hidden"
+                     data-on:pointerdown="const h = evt.target.closest('.col-resize'); if (h && evt.button === 0) { evt.preventDefault(); $_flows_drag = {key: h.dataset.col, from: evt.clientX - h.parentElement.offsetWidth} }"
+                     data-on:pointermove__window__throttle.16ms="$_flows_drag && ($_flows_widths[$_flows_drag.key] = Math.max(40, Math.round(evt.clientX - $_flows_drag.from)) + 'px')"
+                     data-on:pointerup__window="$_flows_drag = null"
+                     data-on:dblclick="const h = evt.target.closest('.col-resize'); h && ($_flows_widths[h.dataset.col] = h.dataset.fit)"
+                     data-on:keydown="const h = evt.target.closest('.col-resize'); if (h && ['ArrowLeft', 'ArrowRight', 'Enter', 'Delete'].includes(evt.key)) { evt.preventDefault(); evt.key === 'Delete' ? delete $_flows_widths[h.dataset.col] : $_flows_widths[h.dataset.col] = evt.key === 'Enter' ? h.dataset.fit : Math.max(40, h.parentElement.offsetWidth + (evt.key === 'ArrowRight' ? 8 : -8) * (evt.shiftKey ? 4 : 1)) + 'px' }">
                     {% if f.result.lost %}
                         <p class="notice">The server dropped these rows to free memory for other results. Run again to see them.</p>
                     {% elseif f.list %}
@@ -310,6 +319,9 @@
                                     {% for column in f.list.columns %}
                                         <li><label><input type="checkbox" class="column-checkbox" id="flowTable-col-{{ column.key }}" data-column-key="{{ column.key }}"{{ column.hidden ? '' : ' checked' }}> {{ column.title }}</label></li>
                                     {% endfor %}
+                                    <li class="menu-sep" role="separator"></li>
+                                    {# Drag a header's edge to resize a column; this gives every column its measured width back (#185). #}
+                                    <li><button type="button" class="column-widths-reset" data-on:click="$_flows_widths = {}">Reset column widths</button></li>
                                 </ul>
                             </sb-popover>
                         </div>

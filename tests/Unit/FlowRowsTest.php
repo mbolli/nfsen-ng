@@ -204,7 +204,7 @@ describe('the host', function (): void {
 
         expect(flowRowsTestHeaderKeys($host))->toBe($shown)
             ->and($cells)->toBe(['1000.0 B', '10.0.0.1', '4.657 GiB', '10.0.1.1'])
-            ->and($host->getAttribute('style'))->toBe(sprintf('--flow-cols: minmax(%dch, 1fr) minmax(%dch, 1fr)', $columns['widths']['in_bytes'], $columns['widths']['src_addr']))
+            ->and($host->getAttribute('style'))->toBe(sprintf('--flow-cols: var(--fw-in_bytes, minmax(%dch, 1fr)) var(--fw-src_addr, minmax(%dch, 1fr))', $columns['widths']['in_bytes'], $columns['widths']['src_addr']))
         ;
     });
 

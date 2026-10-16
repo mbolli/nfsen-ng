@@ -31,6 +31,12 @@ final class FlowRowStore {
     /** An address column's cap: the longest IPv6 text (45 characters, INET6_ADDRSTRLEN) plus 2. */
     public const int ADDRESS_MAX_CH = 47;
 
+    /** The widest a column fits to (#185): a longer value stays clipped, and shows whole on hover. */
+    public const int FIT_MAX_CH = 120;
+
+    /** Columns that hold addresses whatever their kind: sized to their longest value, as address columns are. */
+    private const string ADDRESS_NAMES = '/(^|_)(ip|addr|hop|router)(_|$)|addr$/i';
+
     /** Blocks stored between two yields to the worker's other requests: about 1,000 rows (#182). */
     private const int YIELD_BLOCKS = 16;
 
@@ -64,11 +70,14 @@ final class FlowRowStore {
         $hidden = \is_array($options['hiddenFields'] ?? null) ? $options['hiddenFields'] : Table::HIDDEN_FIELDS;
         ['keys' => $keys, 'kinds' => $kinds] = Table::columnsOf($data, $hidden);
 
-        $attributes = $sort = $raw = $lengths = $titles = $caps = [];
+        $attributes = $sort = $raw = $lengths = $titles = $caps = $widest = $longest = [];
         foreach ($keys as $key) {
             $attributes[$key] = FlowRows::kindAttribute($kinds[$key]);
             $sort[$key] = $raw[$key] = '';
-            $caps[$key] = $kinds[$key] === 'address' ? self::ADDRESS_MAX_CH : self::MAX_CH;
+            // Addresses are read whole, wherever they are: the next hop and the router as well (#185).
+            $widest[$key] = $kinds[$key] === 'address' || preg_match(self::ADDRESS_NAMES, $key) === 1;
+            $caps[$key] = $widest[$key] ? self::ADDRESS_MAX_CH : self::MAX_CH;
+            $longest[$key] = 0;
             $lengths[$key] = array_fill(0, $caps[$key] + 1, 0);
             $titles[$key] = Table::columnTitle($key);
         }
@@ -88,7 +97,12 @@ final class FlowRowStore {
                 $html .= $cell;
                 $sort[$key] .= $separator . self::joinable(Table::scalar(TableFormatter::getSortValue($value, $key)));
                 $raw[$key] .= $separator . self::joinable(Table::scalar($value));
-                ++$lengths[$key][min($caps[$key], self::visibleLength($content))];
+                // An empty cell says nothing about the width the column needs (#185).
+                if ($content !== '') {
+                    $length = self::visibleLength($content);
+                    ++$lengths[$key][min($caps[$key], $length)];
+                    $longest[$key] = max($longest[$key], $length);
+                }
             }
             if (++$inBlock === self::BLOCK_ROWS) {
                 $blob .= self::compress(pack('N*', ...$cellLengths) . $html);
@@ -113,9 +127,11 @@ final class FlowRowStore {
         if (($options['onRows'] ?? null) instanceof \Closure) {
             $options['onRows']($count, $count);
         }
-        $widths = [];
+        $widths = $fits = [];
         foreach ($keys as $key) {
-            $widths[$key] = self::width($titles[$key], $lengths[$key], $count, $kinds[$key] === 'address');
+            $widths[$key] = self::width($titles[$key], $lengths[$key], array_sum($lengths[$key]), $widest[$key]);
+            // What a double-click on the column's edge sets: its longest value or its title, whole (#185).
+            $fits[$key] = min(self::FIT_MAX_CH, max(mb_strlen($titles[$key]) + 2, $longest[$key]) + 3);
             $sort[$key] = self::compress($sort[$key]);
             $raw[$key] = self::compress($raw[$key]);
             Cooperative::pause();
@@ -124,7 +140,7 @@ final class FlowRowStore {
 
         self::$stores[$id] = [
             'count' => $count,
-            'columns' => ['keys' => $keys, 'kinds' => $kinds, 'titles' => $titles, 'widths' => $widths],
+            'columns' => ['keys' => $keys, 'kinds' => $kinds, 'titles' => $titles, 'widths' => $widths, 'fits' => $fits],
             'blob' => $blob,
             'offsets' => $offsets,
             'sort' => $sort,
@@ -152,7 +168,7 @@ final class FlowRowStore {
     }
 
     /**
-     * The grid's columns for the shown keys: `minmax(<w>ch, 1fr)` each.
+     * The grid's columns for the shown keys: `var(--fw-<key>, minmax(<w>ch, 1fr))` each.
      *
      * @param list<string> $shown
      */
@@ -161,7 +177,8 @@ final class FlowRowStore {
         $template = [];
         foreach ($shown as $key) {
             if (isset($widths[$key])) {
-                $template[] = \sprintf('minmax(%dch, 1fr)', $widths[$key]);
+                // A width the viewer set (--fw-<key>, flows-list.js) wins over the measured one (#185).
+                $template[] = \sprintf('var(--fw-%s, minmax(%dch, 1fr))', $key, $widths[$key]);
             }
         }
 

@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Resizable columns in the Flows list** ([#185](https://github.com/mbolli/nfsen-ng/issues/185), requested by [@hawk128](https://github.com/hawk128)). Drag a column header's edge, or focus it and use the arrow keys (Shift for bigger steps); a double-click or Enter fits the column to its longest value, and Delete gives it its measured width back. The widths are kept in the browser per column; **Reset column widths** in the Columns menu forgets them. A value that is still cut shows whole while it is pointed at or focused.
+
 - **A configurable capture interval** ([#184](https://github.com/mbolli/nfsen-ng/issues/184), requested by [@hawk128](https://github.com/hawk128)). `NFSEN_CAPTURE_INTERVAL` sets the resolution nfsen-ng works in, from 1 to 60 minutes, to match `nfcapd -t`: the RRD step, the range snapping, the date picker, the filtered graph bins, the live checks and the alert intervals. `auto`, the default, keeps the step the databases already store, and a fresh install takes what the file names show. Databases at another step are rewritten when nfsen-ng starts, with what they hold resampled to the new rows; a Force Rescan restores the detail still in the capture files. Health shows each source's interval and the stored step. Alert cooldowns are now in minutes, and a threshold per interval set at another interval is pointed out in the rules table.
 
 - **A total at the cursor** ([#183](https://github.com/mbolli/nfsen-ng/issues/183), requested by [@hawk128](https://github.com/hawk128)). The tooltip and the legend beside the graphs start with the sum of the visible series at that time, for sources and protocols; ports overlap, so they have none.
@@ -32,6 +34,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **The start and end of the range are picked in a calendar** (Starbase's `sb-date-picker`): both days and both times in one place, in steps of the capture interval, in the display timezone, with the days outside the stored data struck out. **Apply** sets the range. It replaces the two date-time fields.
 
 ### Fixed
+
+- **The Flows list's header stays in line with its rows** ([#185](https://github.com/mbolli/nfsen-ng/issues/185)). Column widths are in characters of the row's font, and the semibold header row has wider digits in some fonts (Segoe UI on Windows), so its columns drifted further right with every column. Mostly empty columns, such as the ICMP type, were as narrow as their title, and next hops and router addresses were cut like any text; both now get the width of their values.
 
 - **Large Flows listings no longer freeze the interface** ([#182](https://github.com/mbolli/nfsen-ng/issues/182)). After nfdump, every returned row is formatted on the server, which took about 0.1 ms a row without letting the worker serve anything else: a listing of a million rows held every tab for minutes. It is now about twice as fast (a port's service name and a column's format are looked up once, not per row), lets other requests through every thousand rows, and the status line counts the rows it prepares.
 

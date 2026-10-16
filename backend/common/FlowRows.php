@@ -8,7 +8,7 @@ namespace mbolli\nfsen_ng\common;
  * The Flows list on sb-virtual-scroll: every piece of the host's markup, for the page render and
  * for the window patches alike, so the two cannot drift.
  *
- * @phpstan-type Columns array{keys: list<string>, kinds: array<string, string>, titles: array<string, string>, widths: array<string, int>}
+ * @phpstan-type Columns array{keys: list<string>, kinds: array<string, string>, titles: array<string, string>, widths: array<string, int>, fits?: array<string, int>}
  * @phpstan-type Host array{result: string, total: int, itemSize: int, columns: Columns, shown: list<string>, template: string,
  *                         sortKey: string, sortDir: string, firstRows: string, windowUrl: string, sortUrl: string, ipInfoUrl: string}
  */
@@ -121,11 +121,16 @@ final class FlowRows {
                 continue;
             }
             $sort = $key === $sortKey ? ' aria-sort="' . ($sortDir === 'desc' ? 'descending' : 'ascending') . '"' : '';
+            // The separator resizes the column (flows-list.js, #185): drag, arrow keys, double-click or Enter to fit.
             $html .= \sprintf(
-                '<div role="columnheader"%s%s><button type="button" data-sort-key="%s">%s</button></div>',
+                '<div role="columnheader"%s%s><button type="button" data-sort-key="%s">%s</button>'
+                . '<span class="col-resize" role="separator" aria-orientation="vertical" tabindex="0" data-col="%s" data-fit="%dch" aria-label="Width of %s"></span></div>',
                 $columns['kinds'][$key] === 'num' ? ' data-num' : '',
                 $sort,
                 self::attr($key),
+                self::attr($columns['titles'][$key] ?? $key),
+                self::attr($key),
+                $columns['fits'][$key] ?? $columns['widths'][$key] ?? 12,
                 self::attr($columns['titles'][$key] ?? $key),
             );
         }

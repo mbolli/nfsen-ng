@@ -160,6 +160,37 @@ export default async function columnsTest() {
         assert.equal(await page.evaluate(MENU_OPEN), false, 'the popover should start closed');
         assert.equal(await page.evaluate(`document.querySelector('${BTN}').getAttribute('aria-expanded')`), 'false');
 
+        // #185: a column's edge resizes it from the keyboard (Shift+Arrow by 32 px), Enter fits it to its longest value,
+        // the width is kept in the browser and survives the next window, the header stays in line, and Reset forgets it.
+        const edge = `${LIST}.querySelector('[slot="header"] .col-resize')`;
+        const width = `Math.round(${edge}.parentElement.getBoundingClientRect().width)`;
+        const col = await page.evaluate(`${edge}.dataset.col`);
+        const start = await page.evaluate(width);
+        await page.evaluate(`${edge}.focus()`);
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 8 });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 8 });
+        await page.waitFor(`${width} === ${start + 32}`, { label: `column ${col} to widen by 32 px from ${start}` });
+        assert.equal(
+            await page.evaluate(`JSON.parse(localStorage.getItem('nfsen-persist:_flows_widths') ?? '{}')[${JSON.stringify(col)}]`),
+            `${start + 32}px`,
+            'the width is kept in the browser by column key'
+        );
+        const aligned = `(function(){
+            var h = ${LIST}; var head = [...h.querySelector('[slot="header"]').children];
+            var row = [...h.children].filter(function(el){ return !el.slot; })[0];
+            return head.every(function(c, i){ return Math.abs(c.getBoundingClientRect().left - row.children[i].getBoundingClientRect().left) < 1; });
+        })()`;
+        assert.ok(await page.evaluate(aligned), 'header and rows stay in line after a resize');
+        await press(page, 'Enter');
+        await page.waitFor(`${edge}.dataset.fit === JSON.parse(localStorage.getItem('nfsen-persist:_flows_widths') ?? '{}')[${JSON.stringify(col)}]`, {
+            label: `Enter to fit column ${col}`,
+        });
+        await page.evaluate(`document.querySelector('${BTN}').click()`);
+        await page.waitFor(MENU_OPEN, { label: 'popover to open for Reset column widths' });
+        await page.evaluate(`document.querySelector('${MENU} .column-widths-reset').click()`);
+        await page.waitFor(`${width} === ${start}`, { label: `Reset column widths to bring column ${col} back to ${start} px` });
+        await pressOutside(page);
+
         // Open, with room below: the popover flips above its trigger only when the panel does not fit under it.
         await page.evaluate(`(function(){
             var b = document.querySelector('${BTN}');
@@ -228,16 +259,15 @@ export default async function columnsTest() {
         await press(page, 'ArrowDown');
         await page.waitFor(focusIs(`${MENU} .column-checkbox`), { label: 'ArrowDown to the first column' });
         await press(page, 'End');
-        await page.waitFor(`document.activeElement === [...document.querySelectorAll('${MENU} .column-checkbox')].at(-1)`, {
-            label: 'End to the last column',
-        });
+        // The last item is Reset column widths (#185).
+        await page.waitFor(focusIs(`${MENU} .column-widths-reset`), { label: 'End to the last item' });
         await press(page, 'ArrowDown');
         await page.waitFor(focusIs(`${MENU} [data-column-all]`), { label: 'ArrowDown to wrap to Show all' });
         await press(page, 'Escape');
         await page.waitFor(`!${MENU_OPEN} && ${focusIs(BTN)}`, { label: 'Escape to close and return to the trigger' });
         await press(page, 'ArrowUp');
-        await page.waitFor(`${MENU_OPEN} && document.activeElement === [...document.querySelectorAll('${MENU} .column-checkbox')].at(-1)`, {
-            label: 'ArrowUp on the trigger to open on the last column',
+        await page.waitFor(`${MENU_OPEN} && ${focusIs(`${MENU} .column-widths-reset`)}`, {
+            label: 'ArrowUp on the trigger to open on the last item',
         });
 
         // A sync morphs the page around the list: the popover stays open, the focus where it was.

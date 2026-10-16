@@ -290,17 +290,21 @@
                     </p>
                 {% endif %}
 
-                {# Column widths the viewer set (#185), as the --fw-<key> the list's grid template falls back from. The
-                   handles sit inside the list's host, so their listeners are here: drag an edge, arrow keys on it,
-                   double-click or Enter for the width of the column's longest value (data-fit, from the server). #}
-                <style id="flowsColumnWidths" data-text="'.flows-results sb-virtual-scroll {' + Object.entries($_flows_widths ?? {}).filter(([k, w]) => /^\w+$/.test(k) && /^\d+(px|ch)$/.test(w)).map(([k, w]) => '--fw-' + k + ': ' + w).join('; ') + '}'"></style>
+                {# Column widths the viewer set (#185): --fw-<column>, which the list's grid template falls back from,
+                   set through the CSSOM (data-style) so no inline style is needed. The handles sit in the list's host,
+                   so their listeners are here: drag an edge (the width commits on release), arrows on it, Home for
+                   the narrowest, End, Enter or a double-click for the column's longest value (data-fit, from the server). #}
                 <div role="tabpanel" id="flowsPanel-flows" aria-labelledby="flowsTab-flows" tabindex="0"
-                     data-attr:hidden="$_flows_tab !== 'flows'" data-preserve-attr="hidden"
-                     data-on:pointerdown="const h = evt.target.closest('.col-resize'); if (h && evt.button === 0) { evt.preventDefault(); $_flows_drag = {key: h.dataset.col, from: evt.clientX - h.parentElement.offsetWidth} }"
-                     data-on:pointermove__window__throttle.16ms="$_flows_drag && ($_flows_widths[$_flows_drag.key] = Math.max(40, Math.round(evt.clientX - $_flows_drag.from)) + 'px')"
-                     data-on:pointerup__window="$_flows_drag = null"
+                     data-attr:hidden="$_flows_tab !== 'flows'" data-preserve-attr="hidden style"
+                     data-style="Object.fromEntries(Object.entries({...$_flows_widths, ...($_flows_drag?.w ? {[$_flows_drag.key]: $_flows_drag.w} : {})}).filter(([k, w]) => /^[a-z0-9-]+$/.test(k) && /^\d+(px|ch)$/.test(w)).map(([k, w]) => ['--fw-' + k, w]))"
+                     data-on:pointerdown="const h = evt.target.closest('.col-resize'); if (h && evt.button === 0) { evt.preventDefault(); h.setPointerCapture(evt.pointerId); $_flows_drag = {key: h.dataset.col, from: evt.clientX - h.parentElement.offsetWidth, w: ''} }"
+                     data-on:pointermove__throttle.16ms.trailing="$_flows_drag && ($_flows_drag.w = Math.max(40, Math.round(evt.clientX - $_flows_drag.from)) + 'px')"
+                     data-on:pointerup="if ($_flows_drag) { $_flows_widths[$_flows_drag.key] = Math.max(40, Math.round(evt.clientX - $_flows_drag.from)) + 'px'; $_flows_drag = null }"
+                     data-on:lostpointercapture="if ($_flows_drag) { $_flows_drag.w && ($_flows_widths[$_flows_drag.key] = $_flows_drag.w); $_flows_drag = null }"
+                     data-on:pointercancel="$_flows_drag = null"
                      data-on:dblclick="const h = evt.target.closest('.col-resize'); h && ($_flows_widths[h.dataset.col] = h.dataset.fit)"
-                     data-on:keydown="const h = evt.target.closest('.col-resize'); if (h && ['ArrowLeft', 'ArrowRight', 'Enter', 'Delete'].includes(evt.key)) { evt.preventDefault(); evt.key === 'Delete' ? delete $_flows_widths[h.dataset.col] : $_flows_widths[h.dataset.col] = evt.key === 'Enter' ? h.dataset.fit : Math.max(40, h.parentElement.offsetWidth + (evt.key === 'ArrowRight' ? 8 : -8) * (evt.shiftKey ? 4 : 1)) + 'px' }">
+                     data-on:focusin="const h = evt.target.closest('.col-resize'); h && h.setAttribute('aria-valuenow', h.parentElement.offsetWidth)"
+                     data-on:keydown="const h = evt.target.closest('.col-resize'); const step = {ArrowRight: 8, ArrowLeft: -8}[evt.key]; if (h && (step || ['Home', 'End', 'Enter'].includes(evt.key))) { evt.preventDefault(); $_flows_widths[h.dataset.col] = step ? Math.max(40, h.parentElement.offsetWidth + step * (evt.shiftKey ? 4 : 1)) + 'px' : evt.key === 'Home' ? '40px' : h.dataset.fit; requestAnimationFrame(() => h.setAttribute('aria-valuenow', h.parentElement.offsetWidth)) }">
                     {% if f.result.lost %}
                         <p class="notice">The server dropped these rows to free memory for other results. Run again to see them.</p>
                     {% elseif f.list %}

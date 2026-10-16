@@ -314,7 +314,7 @@
 }
 
 .flows-results sb-virtual-scroll .col-resize:focus-visible {
-    outline: none;
+    outline: 2px solid transparent;
 }
 
 /* A clipped value shows whole while it is pointed at or focused, over its neighbours (#185). */
@@ -326,6 +326,27 @@
     overflow: visible;
     background: var(--surface-3);
     box-shadow: 0.375rem 0 0.375rem -0.25rem color-mix(in oklab, var(--text-1) 25%, transparent);
+}
+
+/* The last column has nothing after it and the row clips: it grows toward the start. */
+.flows-results sb-virtual-scroll > [role='row']:not([slot]) > [role='cell']:last-child:is(:hover, :focus-within) {
+    justify-self: end;
+}
+
+/* Forced colours drop backgrounds and shadows: the edge and the peek keep a system colour. */
+@media (forced-colors: active) {
+    .flows-results sb-virtual-scroll .col-resize::after {
+        forced-color-adjust: none;
+        background: CanvasText;
+    }
+
+    .flows-results sb-virtual-scroll .col-resize:is(:hover, :focus-visible)::after {
+        background: Highlight;
+    }
+
+    .flows-results sb-virtual-scroll > [role='row']:not([slot]) > [role='cell']:is(:hover, :focus-within) {
+        outline: 1px solid CanvasText;
+    }
 }
 
 .flows-results sb-virtual-scroll :is([role='cell'], [role='columnheader'])[data-num] {

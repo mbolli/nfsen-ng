@@ -178,7 +178,7 @@ final class FlowRowStore {
         foreach ($shown as $key) {
             if (isset($widths[$key])) {
                 // A width the viewer set (--fw-<key>, flows-list.js) wins over the measured one (#185).
-                $template[] = \sprintf('var(--fw-%s, minmax(%dch, 1fr))', $key, $widths[$key]);
+                $template[] = \sprintf('var(--fw-%s, minmax(%dch, 1fr))', FlowRows::cssName($key), $widths[$key]);
             }
         }
 

@@ -314,7 +314,7 @@ describe('flows-sort', function (): void {
         $zeros = range(0, 299, 7);
         expect($ascending)->toHaveCount(1)
             ->and($ascending[0]['content'])->toStartWith("<sb-virtual-scroll id=\"flowRows-{$id}\" offset=\"0\" total=\"300\"")
-            ->and($ascending[0]['content'])->toContain('<div role="columnheader" data-num aria-sort="ascending"><button type="button" data-sort-key="in_bytes">')
+            ->and($ascending[0]['content'])->toContain('<div role="columnheader" aria-label="In Bytes" data-num aria-sort="ascending"><button type="button" data-sort-key="in_bytes">')
             ->and(array_slice(flowWindowTestIndices($ascending[0]['content']), 0, count($zeros)))->toBe($zeros)
             // As many rows as the last window asked for, at least INITIAL_ROWS.
             ->and(flowWindowTestIndices($ascending[0]['content']))->toHaveCount(200)

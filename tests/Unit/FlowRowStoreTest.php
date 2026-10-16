@@ -192,8 +192,8 @@ describe('storing and windows', function (): void {
 
         // a: p95 is 10 chars, the title "A" needs 3, plus 2; b: the minimum; src_addr: "Source IP" is 9 + 2, plus 2.
         expect(FlowRowStore::columns('w6')['widths'] ?? [])->toBe(['a' => 12, 'b' => 6, 'src_addr' => 13])
-            ->and(FlowRowStore::template('w6', ['a', 'b', 'src_addr']))->toBe('var(--fw-a, minmax(12ch, 1fr)) var(--fw-b, minmax(6ch, 1fr)) var(--fw-src_addr, minmax(13ch, 1fr))')
-            ->and(FlowRowStore::template('w6', ['src_addr', 'missing']))->toBe('var(--fw-src_addr, minmax(13ch, 1fr))')
+            ->and(FlowRowStore::template('w6', ['a', 'b', 'src_addr']))->toBe('var(--fw-a, minmax(12ch, 1fr)) var(--fw-b, minmax(6ch, 1fr)) var(--fw-src-addr, minmax(13ch, 1fr))')
+            ->and(FlowRowStore::template('w6', ['src_addr', 'missing']))->toBe('var(--fw-src-addr, minmax(13ch, 1fr))')
             ->and(FlowRowStore::template('missing', ['a']))->toBe('')
         ;
     });
@@ -204,7 +204,7 @@ describe('storing and windows', function (): void {
         FlowRowStore::store('w8', $rows);
 
         // a: p95 is "short", 5 chars plus 2, the IPv6 values cut; src_addr: 36 chars plus 2.
-        expect(FlowRowStore::template('w8', ['a', 'src_addr']))->toBe('var(--fw-a, minmax(7ch, 1fr)) var(--fw-src_addr, minmax(38ch, 1fr))');
+        expect(FlowRowStore::template('w8', ['a', 'src_addr']))->toBe('var(--fw-a, minmax(7ch, 1fr)) var(--fw-src-addr, minmax(38ch, 1fr))');
     });
 
     test('a full-length IPv6 address (39 characters) gets 41 ch, past MAX_CH; other columns stop at MAX_CH', function (): void {
@@ -213,7 +213,7 @@ describe('storing and windows', function (): void {
         FlowRowStore::store('w9', $rows);
 
         expect(strlen($v6))->toBe(39)
-            ->and(FlowRowStore::template('w9', ['a', 'dst_addr']))->toBe('var(--fw-a, minmax(' . FlowRowStore::MAX_CH . 'ch, 1fr)) var(--fw-dst_addr, minmax(41ch, 1fr))')
+            ->and(FlowRowStore::template('w9', ['a', 'dst_addr']))->toBe('var(--fw-a, minmax(' . FlowRowStore::MAX_CH . 'ch, 1fr)) var(--fw-dst-addr, minmax(41ch, 1fr))')
         ;
     });
 

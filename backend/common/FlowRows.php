@@ -109,6 +109,19 @@ final class FlowRows {
     }
 
     /**
+     * A column's name in --fw-<name>, as Datastar's data-style spells a key: kebab case, so the client's widths and
+     * the server's grid template meet on one name (#185).
+     */
+    public static function cssName(string $key): string {
+        $name = (string) preg_replace('/([A-Z]+)([A-Z][a-z])/', '$1-$2', $key);
+        $name = (string) preg_replace('/([a-z0-9])([A-Z])/', '$1-$2', $name);
+        $name = (string) preg_replace('/([a-z])([0-9]+)/i', '$1-$2', $name);
+        $name = (string) preg_replace('/([0-9]+)([a-z])/i', '$1-$2', $name);
+
+        return strtolower((string) preg_replace('/[\s_]+/', '-', $name));
+    }
+
+    /**
      * The sticky header row: one sort button per shown column; the sorted one says so in aria-sort.
      *
      * @param Columns      $columns
@@ -121,17 +134,21 @@ final class FlowRows {
                 continue;
             }
             $sort = $key === $sortKey ? ' aria-sort="' . ($sortDir === 'desc' ? 'descending' : 'ascending') . '"' : '';
-            // The separator resizes the column (flows-list.js, #185): drag, arrow keys, double-click or Enter to fit.
+            // The separator resizes the column (#185, listeners in flows.html.twig); the header is named by its title,
+            // or the separator's value would join its name.
+            $title = self::attr($columns['titles'][$key] ?? $key);
             $html .= \sprintf(
-                '<div role="columnheader"%s%s><button type="button" data-sort-key="%s">%s</button>'
-                . '<span class="col-resize" role="separator" aria-orientation="vertical" tabindex="0" data-col="%s" data-fit="%dch" aria-label="Width of %s"></span></div>',
+                '<div role="columnheader" aria-label="%s"%s%s><button type="button" data-sort-key="%s">%s</button>'
+                . '<span class="col-resize" role="separator" aria-orientation="vertical" tabindex="0" data-col="%s" data-fit="%dch"'
+                . ' aria-valuemin="40" aria-valuemax="1200" aria-label="Width of %s" title="Drag to resize, double-click to fit"></span></div>',
+                $title,
                 $columns['kinds'][$key] === 'num' ? ' data-num' : '',
                 $sort,
                 self::attr($key),
-                self::attr($columns['titles'][$key] ?? $key),
-                self::attr($key),
+                $title,
+                self::attr(self::cssName($key)),
                 $columns['fits'][$key] ?? $columns['widths'][$key] ?? 12,
-                self::attr($columns['titles'][$key] ?? $key),
+                $title,
             );
         }
 

@@ -204,7 +204,7 @@ describe('the host', function (): void {
 
         expect(flowRowsTestHeaderKeys($host))->toBe($shown)
             ->and($cells)->toBe(['1000.0 B', '10.0.0.1', '4.657 GiB', '10.0.1.1'])
-            ->and($host->getAttribute('style'))->toBe(sprintf('--flow-cols: var(--fw-in_bytes, minmax(%dch, 1fr)) var(--fw-src_addr, minmax(%dch, 1fr))', $columns['widths']['in_bytes'], $columns['widths']['src_addr']))
+            ->and($host->getAttribute('style'))->toBe(sprintf('--flow-cols: var(--fw-in-bytes, minmax(%dch, 1fr)) var(--fw-src-addr, minmax(%dch, 1fr))', $columns['widths']['in_bytes'], $columns['widths']['src_addr']))
         ;
     });
 
@@ -252,6 +252,14 @@ describe('cells', function (): void {
             ->and(FlowRows::cell('num', '7'))->toBe('<div role="cell" data-num>7</div>')
             ->and(FlowRows::cell('address', 'a'))->toBe('<div role="cell" data-kind="address">a</div>')
             ->and(FlowRows::cell('text', 'a'))->toBe('<div role="cell">a</div>')
+        ;
+    });
+});
+
+describe('FlowRows::cssName()', function (): void {
+    test('spells a column as the data-style of Datastar spells a key, so the widths meet the grid template (#185)', function (): void {
+        expect(array_map(FlowRows::cssName(...), ['src_addr', 'srcAddr', 'src4_addr', 'ip_next_hop', 'in_bytes']))
+            ->toBe(['src-addr', 'src-addr', 'src-4-addr', 'ip-next-hop', 'in-bytes'])
         ;
     });
 });

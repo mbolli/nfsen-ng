@@ -261,12 +261,12 @@
     background: var(--surface-3);
 }
 
-/* The component gives the header no background: rows would show through it. */
+/* The component gives the header no background: rows would show through it. The weight goes on the
+   cells: the column widths are in ch of the row's own font, and a semibold row has wider digits (#185). */
 .flows-results sb-virtual-scroll > [slot='header'] {
     border-block-end: 2px solid var(--border);
     background: var(--surface-2);
     color: var(--text-1);
-    font-weight: var(--font-weight-semibold);
 }
 
 .flows-results sb-virtual-scroll :is([role='cell'], [role='columnheader']) {
@@ -284,6 +284,7 @@
 
 .flows-results sb-virtual-scroll [role='columnheader'] {
     padding-block: calc(var(--cell-pad-block) + var(--size-1));
+    font-weight: var(--font-weight-semibold);
 }
 
 .flows-results sb-virtual-scroll :is([role='cell'], [role='columnheader'])[data-num] {

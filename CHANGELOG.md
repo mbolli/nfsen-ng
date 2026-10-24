@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0-beta.7] - 2026-10-24
+
 ### Added
 
 - **Resizable columns in the Flows list** ([#185](https://github.com/mbolli/nfsen-ng/issues/185), requested by [@hawk128](https://github.com/hawk128)). Drag a column header's edge, or focus it and use the arrow keys (Shift for bigger steps), Home for the narrowest; a double-click, End or Enter fits the column to its longest value. The widths are kept in the browser per column; **Reset column widths** in the Columns menu forgets them. A value that is still cut shows whole while it is pointed at or focused.
@@ -48,6 +50,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **The Flows graph follows Bits or Bytes** ([#180](https://github.com/mbolli/nfsen-ng/issues/180), requested by [@hawk128](https://github.com/hawk128)). *Traffic over time* plotted bytes per second whatever the controls bar said; it now shows traffic in the global unit and switching redraws it without a rebuild. Its lines carry the sources' names instead of keys like `gw1_bytes_any`, and its axis no longer changes to packets or flows before you build the graph again.
 
 - **All sources could not be unticked** ([#176](https://github.com/mbolli/nfsen-ng/issues/176), reported by [@hawk128](https://github.com/hawk128)), so picking a few of many sources meant unticking the rest one by one. The new sources picker starts from all and picks only what you choose; **Clear** goes back to every source.
+
+### Internal
+
+- Dependencies updated: php-via 0.14.2, PHPStan 2.3, Pest 5.3, Rector 2.7, Biome 2.5.15 and the rest of the lock, and the workflows' actions to their current majors.
+
+- The book is built with mdBook 0.5.4, whose image zoom replaces our lightbox, and carries JSON-LD for the project. `FixtureCaptures` and `book/_seed-captures.php` write capture files of any whole minutes (`--interval`).
+
+---
 
 ## [1.0.0-beta.6] - 2026-10-05
 
@@ -523,6 +533,8 @@ Full architectural rewrite milestone. Server-rendered hypermedia replaces the jQ
 
 Initial release. See the [wiki comparison page](https://github.com/mbolli/nfsen-ng/wiki/Comparison) for a feature comparison with the original NfSen.
 
+[Unreleased]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.7...HEAD
+[1.0.0-beta.7]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.6...v1.0.0-beta.7
 [1.0.0-beta.6]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.5...v1.0.0-beta.6
 [1.0.0-beta.5]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.4...v1.0.0-beta.5
 [1.0.0-beta.4]: https://github.com/mbolli/nfsen-ng/compare/v1.0.0-beta.3...v1.0.0-beta.4

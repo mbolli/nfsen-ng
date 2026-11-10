@@ -236,6 +236,22 @@ describe('storing and windows', function (): void {
         ;
     });
 
+    test('an address shows its translation in brackets where NAT changed it, linked as well (#186)', function (): void {
+        $rows = [
+            ['src_addr' => '10.1.9.10', 'dst_addr' => '100.79.133.123', 'src_xlt_ip' => '198.51.100.11', 'dst_xlt_ip' => '10.7.123.8'],
+            ['src_addr' => '10.1.9.11', 'dst_addr' => '192.0.2.1', 'src_xlt_ip' => '0.0.0.0', 'dst_xlt_ip' => '192.0.2.1'],
+        ];
+        FlowRowStore::store('w12', $rows);
+        [$nat, $plain] = flowRowStoreTestRowList(flowRowStoreTestWindow('w12', 0, 2)['html'] ?? '');
+
+        expect($nat)->toContain('<a href="#" class="ip-link">100.79.133.123</a> <span class="xlt" title="After NAT">(<a href="#" class="ip-link">10.7.123.8</a>)</span>')
+            ->and($nat)->toContain('10.1.9.10</a> <span class="xlt" title="After NAT">(<a href="#" class="ip-link">198.51.100.11</a>)</span>')
+            ->and($plain)->not->toContain('class="xlt"')
+            // Sorting and the raw values keep the address in the record.
+            ->and(FlowRowStore::columns('w12')['widths']['dst_addr'] ?? 0)->toBeGreaterThanOrEqual(strlen('100.79.133.123 (10.7.123.8)'))
+        ;
+    });
+
     test('nothing to store: no rows, or rows that are lines of text', function (): void {
         expect(FlowRowStore::store('w7', []))->toBeFalse()
             ->and(FlowRowStore::store('w7', ['a line', 'another']))->toBeFalse()

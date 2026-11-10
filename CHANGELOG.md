@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Addresses after NAT in the Flows list** ([#186](https://github.com/mbolli/nfsen-ng/issues/186), requested by [@hawk128](https://github.com/hawk128)). Where the exporter sends NAT translations (NSEL), Source IP and Destination IP show the translated address in brackets, *100.79.133.123 (10.7.123.8)*, both opening IP info. The XLATE columns stay for sorting and the raw export.
+
 ## [1.0.0-beta.7] - 2026-10-24
 
 ### Added

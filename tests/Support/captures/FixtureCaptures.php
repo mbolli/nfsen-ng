@@ -31,6 +31,9 @@ final class FixtureCaptures {
         [6, 1], [4, 1], [5, 1], [16, 2], [17, 2], [9, 1], [13, 1], [24, 4], [23, 4], [38, 1], [39, 1],
     ];
 
+    /** Template 257: template 256's fields, then the translated source and destination address and port (Cisco NSEL, #186). */
+    private const array V9_NAT_FIELDS = [...self::V9_FIELDS, [225, 4], [226, 4], [227, 2], [228, 2]];
+
     /** @var list<array{int, int}> destination port and protocol, most used first */
     private const array SERVICES = [
         [443, 6], [80, 6], [53, 17], [443, 17], [22, 6], [123, 17], [25, 6], [993, 6], [3389, 6], [445, 6],
@@ -48,7 +51,7 @@ final class FixtureCaptures {
     /**
      * Writes $files consecutive files of $interval seconds (5 minutes by default, #184) per source from $start (a
      * multiple of $interval, file names in UTC) with about $flowsPerFile flows each, $outPercent of them as v9 with out
-     * counters. Returns the flows nfcapd stored. $flowsPerFile and $record may instead come from
+     * counters and $natPercent with translated addresses and ports. Returns the flows nfcapd stored. $flowsPerFile and $record may instead come from
      * closures of the source index and the file's start, as book/_seed-captures.php does.
      *
      * @param list<string>                                 $sources      at most 255
@@ -57,7 +60,7 @@ final class FixtureCaptures {
      *
      * @throws \RuntimeException when nfcapd or nfdump fails
      */
-    public static function build(string $root, string $profile, array $sources, int $start, int $files, \Closure|int $flowsPerFile, int $seed = 1, string $bin = self::BIN, int $outPercent = 0, ?\Closure $record = null, int $interval = 300): int {
+    public static function build(string $root, string $profile, array $sources, int $start, int $files, \Closure|int $flowsPerFile, int $seed = 1, string $bin = self::BIN, int $outPercent = 0, ?\Closure $record = null, int $interval = 300, int $natPercent = 0): int {
         if ($files < 1 || $files > 255 || \count($sources) > 255 || $interval < 60 || $interval % 60 !== 0 || $start % $interval !== 0) {
             throw new \InvalidArgumentException('1 to 255 files and sources, of whole minutes, from a multiple of the interval.');
         }
@@ -65,7 +68,7 @@ final class FixtureCaptures {
         mkdir($spool, 0o777, true);
 
         try {
-            self::collect($spool, $bin, static function ($socket) use ($sources, $start, $files, $flowsPerFile, $seed, $outPercent, $record, $interval): void {
+            self::collect($spool, $bin, static function ($socket) use ($sources, $start, $files, $flowsPerFile, $seed, $outPercent, $record, $interval, $natPercent): void {
                 foreach ($sources as $sourceIndex => $source) {
                     for ($file = 0; $file < $files; ++$file) {
                         $slot = $start + $file * $interval;
@@ -74,7 +77,7 @@ final class FixtureCaptures {
                         $fields = $record === null
                             ? static fn (int $exportSecs): array => self::record($slot, $exportSecs, $interval)
                             : static fn (int $exportSecs, int $i): array => $record($sourceIndex, $slot, $exportSecs, $i);
-                        self::sendFile($socket, $sourceIndex, $file, $slot, $flows, $outPercent, $fields, $interval);
+                        self::sendFile($socket, $sourceIndex, $file, $slot, $flows, $outPercent, $fields, $interval, $natPercent);
                     }
                 }
             });
@@ -183,14 +186,20 @@ final class FixtureCaptures {
      * @param resource                      $socket
      * @param \Closure(int, int): list<int> $record export time and flow index to a v5 record's fields
      */
-    private static function sendFile($socket, int $engineType, int $engineId, int $slot, int $flows, int $outPercent, \Closure $record, int $interval = 300): void {
+    private static function sendFile($socket, int $engineType, int $engineId, int $slot, int $flows, int $outPercent, \Closure $record, int $interval = 300, int $natPercent = 0): void {
         $exportSecs = $slot + $interval + 100;
         $v5 = ['sequence' => 0, 'records' => '', 'count' => 0];
         $v9 = ['sequence' => 0, 'records' => '', 'count' => 0];
+        $nat = ['sequence' => 0, 'records' => '', 'count' => 0];
         $sent = 0;
         for ($i = 0; $i < $flows; ++$i) {
             $fields = $record($exportSecs, $i);
-            if ($outPercent > 0 && random_int(0, 99) < $outPercent) {
+            if ($natPercent > 0 && random_int(0, 99) < $natPercent) {
+                // The source leaves as 198.51.100.x, the destination is the inside host 10.7.123.x.
+                $nat['records'] .= pack('NNNnnNNNNnnCCCnnCCNNCCNNnn', ...[...$fields, 0, 0, $engineType, $engineId,
+                    0xC6_33_64_00 | (1 + $fields[0] % 250), 0x0A_07_7B_00 | (1 + $fields[1] % 250), 20_000 + $fields[9] % 10_000, $fields[10]]);
+                ++$nat['count'];
+            } elseif ($outPercent > 0 && random_int(0, 99) < $outPercent) {
                 $outPackets = intdiv($fields[5] * random_int(0, 300), 100);
                 $fields[] = $outPackets;
                 $fields[] = min(0xFF_FF_FF_FF, $outPackets * random_int(40, 1500));
@@ -215,6 +224,12 @@ final class FixtureCaptures {
                 $v9['records'] = '';
                 $v9['count'] = 0;
             }
+            if ($nat['count'] === self::RECORDS_PER_PACKET || ($last && $nat['count'] > 0)) {
+                fwrite($socket, self::v9Packet($nat['records'], $nat['count'], $exportSecs, $nat['sequence']++, $engineType << 8 | $engineId, 257, self::V9_NAT_FIELDS));
+                $sent += $nat['count'];
+                $nat['records'] = '';
+                $nat['count'] = 0;
+            }
             // nfcapd drops what its socket buffer cannot hold.
             if ($sent >= self::RECORDS_PER_PACKET * 200) {
                 usleep(2_000);
@@ -223,17 +238,21 @@ final class FixtureCaptures {
         }
     }
 
-    /** A v9 packet of the template and $count data records, of one source id per source and file. */
-    private static function v9Packet(string $records, int $count, int $exportSecs, int $sequence, int $sourceId): string {
-        $template = pack('nn', 256, \count(self::V9_FIELDS));
-        foreach (self::V9_FIELDS as [$type, $length]) {
+    /**
+     * A v9 packet of the template and $count data records, of one source id per source and file.
+     *
+     * @param list<array{int, int}> $fields
+     */
+    private static function v9Packet(string $records, int $count, int $exportSecs, int $sequence, int $sourceId, int $templateId = 256, array $fields = self::V9_FIELDS): string {
+        $template = pack('nn', $templateId, \count($fields));
+        foreach ($fields as [$type, $length]) {
             $template .= pack('nn', $type, $length);
         }
         $padding = str_repeat("\0", (4 - \strlen($records) % 4) % 4);
 
         return pack('nnNNNN', 9, 1 + $count, self::UPTIME_MS, $exportSecs, $sequence, $sourceId)
             . pack('nn', 0, 4 + \strlen($template)) . $template
-            . pack('nn', 256, 4 + \strlen($records) + \strlen($padding)) . $records . $padding;
+            . pack('nn', $templateId, 4 + \strlen($records) + \strlen($padding)) . $records . $padding;
     }
 
     /**

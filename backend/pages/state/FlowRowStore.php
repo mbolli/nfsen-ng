@@ -34,6 +34,9 @@ final class FlowRowStore {
     /** The widest a column fits to (#185): a longer value stays clipped, and shows whole on hover. */
     public const int FIT_MAX_CH = 120;
 
+    /** Address columns and the column of their address after NAT, as nfdump names an NSEL translation (#186). */
+    private const array TRANSLATED = ['src_addr' => 'src_xlt_ip', 'dst_addr' => 'dst_xlt_ip'];
+
     /** Columns that hold addresses whatever their kind: sized to their longest value, as address columns are. */
     private const string ADDRESS_NAMES = '/(^|_)(ip|addr|hop|router)(_|$)|addr$/i';
 
@@ -81,6 +84,8 @@ final class FlowRowStore {
             $lengths[$key] = array_fill(0, $caps[$key] + 1, 0);
             $titles[$key] = Table::columnTitle($key);
         }
+        // An address column that has its translation in the result, column by column (#186).
+        $translated = array_filter(self::TRANSLATED, static fn (string $xlt, string $key): bool => \in_array($key, $keys, true) && \in_array($xlt, $keys, true), ARRAY_FILTER_USE_BOTH);
 
         $blob = '';
         $offsets = [];
@@ -92,6 +97,9 @@ final class FlowRowStore {
             foreach ($keys as $key) {
                 $value = $row[$key] ?? '';
                 $content = TableFormatter::formatCellValue($value, $key, $options);
+                if (isset($translated[$key])) {
+                    $content .= self::translation($row[$translated[$key]] ?? null, $value, $translated[$key], $options);
+                }
                 $cell = '<div role="cell"' . $attributes[$key] . '>' . $content . '</div>';
                 $cellLengths[] = \strlen($cell);
                 $html .= $cell;
@@ -380,6 +388,20 @@ final class FlowRowStore {
         }
 
         return strnatcasecmp($a, $b) <=> 0;
+    }
+
+    /**
+     * The address after NAT in brackets, where there is one and it differs (#186): nfdump prints 0.0.0.0 or :: for a
+     * record without a translation.
+     *
+     * @param array<string, mixed> $options
+     */
+    private static function translation(mixed $xlt, mixed $address, string $key, array $options): string {
+        if (!\is_string($xlt) || \in_array($xlt, ['', '0.0.0.0', '::'], true) || $xlt === $address) {
+            return '';
+        }
+
+        return ' <span class="xlt" title="After NAT">(' . TableFormatter::formatCellValue($xlt, $key, $options) . ')</span>';
     }
 
     private static function isNumber(string $value): bool {

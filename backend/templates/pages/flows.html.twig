@@ -111,7 +111,8 @@
                                 aggSrcIp: flows_agg_srcip,
                                 aggSrcIpPrefix: flows_agg_srcip_prefix,
                                 aggDstIp: flows_agg_dstip,
-                                aggDstIpPrefix: flows_agg_dstip_prefix
+                                aggDstIpPrefix: flows_agg_dstip_prefix,
+                                aggNat: flows_agg_nat
                             } only %}
                         </div>
                         {# Without aggregation nfdump stops after the limit; with it every matching flow counts and the limit keeps the top rows (#182). #}

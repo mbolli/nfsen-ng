@@ -1262,3 +1262,14 @@ describe('Nfdump::execute()', function (): void {
         expect($args)->toBe(['-o', 'csv', '-s', 'srcip/bytes', '-s', 'dstip/bytes', '--', '-w/tmp/x']);
     });
 });
+
+describe('Nfdump::buildAggregationString() with NAT addresses (#186)', function (): void {
+    test('each aggregated address gets its address after NAT, and nothing else does', function (): void {
+        expect(Nfdump::buildAggregationString(['srcip' => 'srcip', 'dstip' => 'dstip', 'nat' => true]))->toBe('srcip,xsrcip,dstip,xdstip')
+            ->and(Nfdump::buildAggregationString(['dstip' => 'dstip4', 'dstipPrefix' => '24', 'proto' => true, 'nat' => true]))->toBe('proto,dstip4/24,xdstip')
+            ->and(Nfdump::buildAggregationString(['srcport' => true, 'nat' => true]))->toBe('srcport')
+            ->and(Nfdump::buildAggregationString(['bidirectional' => true, 'srcip' => 'srcip', 'nat' => true]))->toBe('bidirectional')
+            ->and(Nfdump::buildAggregationString(['srcip' => 'srcip']))->toBe('srcip')
+        ;
+    });
+});

@@ -34,6 +34,7 @@ final class Helpers {
             'srcipPrefix' => $text('srcip_prefix', ''),
             'dstip' => $text('dstip', 'none'),
             'dstipPrefix' => $text('dstip_prefix', ''),
+            'nat' => $flag('nat'),
         ];
     }
 

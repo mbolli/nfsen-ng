@@ -54,6 +54,9 @@ class TableFormatter {
         5 => ['quota exceeded', 'warning'],
     ];
 
+    /** Address columns and the column of their address after NAT, in nfdump's json and csv names (#186). */
+    private const array TRANSLATED = ['src_addr' => 'src_xlt_ip', 'dst_addr' => 'dst_xlt_ip', 'srcAddr' => 'srcXIP', 'dstAddr' => 'dstXIP'];
+
     /** @var array<string, list<string>> field name => the formats it asks for, see kinds() */
     private static array $kinds = [];
 
@@ -198,6 +201,26 @@ class TableFormatter {
 
         // Escape HTML for unknown/unhandled field types to prevent XSS
         return htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5);
+    }
+
+    /**
+     * A formatted cell with NAT taken into account (#186): an address gets its address after NAT in brackets where the
+     * row has one that differs, and an XLATE cell without a translation (nfdump's 0.0.0.0 or ::) stays empty.
+     *
+     * @param array<mixed>         $row
+     * @param array<string, mixed> $options
+     */
+    public static function withTranslation(array $row, string $key, string $content, array $options): string {
+        $none = ['', '0.0.0.0', '::'];
+        if (\in_array($key, self::TRANSLATED, true)) {
+            return \in_array($row[$key] ?? '', $none, true) ? '' : $content;
+        }
+        $xlt = $row[self::TRANSLATED[$key] ?? ''] ?? null;
+        if (!\is_string($xlt) || \in_array($xlt, $none, true) || $xlt === ($row[$key] ?? null)) {
+            return $content;
+        }
+
+        return $content . ' <span class="xlt" title="After NAT">(' . self::formatCellValue($xlt, self::TRANSLATED[$key], $options) . ')</span>';
     }
 
     /** An address as the link that posts ip-info (Table::generate), or null when the value is none. */

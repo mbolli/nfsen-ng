@@ -96,6 +96,8 @@ class Table {
         'lastSeen' => 'Last Seen',
         'srcAddr' => 'Source IP',
         'dstAddr' => 'Destination IP',
+        'srcXIP' => 'XLATE Src IP',
+        'dstXIP' => 'XLATE Dst IP',
         'srcPort' => 'Source Port',
         'dstPort' => 'Destination Port',
         'srcNet' => 'Source Network',
@@ -314,7 +316,7 @@ class Table {
                 $scalar = self::scalar($value);
                 $content = $header === $rankColumn
                     ? self::rankChip($scalar, $rankSeries)
-                    : TableFormatter::formatCellValue($value, $header, $options);
+                    : TableFormatter::withTranslation($row, $header, TableFormatter::formatCellValue($value, $header, $options), $options);
                 $html .= self::cell($kinds[$header], $content, $scalar, self::scalar(TableFormatter::getSortValue($value, $header)));
             }
 

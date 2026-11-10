@@ -57,4 +57,11 @@
                    {{ bind(aggDstIpPrefix) }}>
         </div>
     </div>
+    {# nfdump's xsrcip and xdstip beside the aggregated addresses: one row per address and its NAT translation (#186). #}
+    <label class="choice" for="{{ idPrefix }}AggNat">
+        <input type="checkbox" id="{{ idPrefix }}AggNat" aria-describedby="{{ idPrefix }}AggNatHelp" {{ bind(aggNat) }}
+               data-attr:disabled="${{ aggBidirectional.id() }} || (${{ aggSrcIp.id() }} == 'none' && ${{ aggDstIp.id() }} == 'none')">
+        With NAT addresses
+    </label>
+    <p class="help" id="{{ idPrefix }}AggNatHelp">Keeps each aggregated address apart by its address after NAT, where the exporter sends one.</p>
 </div>

@@ -78,6 +78,7 @@ final class FlowsPage implements Page {
         $c->signal('', 'flows_agg_srcip_prefix', clientWritable: true);
         $c->signal('none', 'flows_agg_dstip', clientWritable: true);
         $c->signal('', 'flows_agg_dstip_prefix', clientWritable: true);
+        $c->signal(false, 'flows_agg_nat', clientWritable: true);
         $c->signal(false, 'flows_orderByTstart', clientWritable: true);
         // What an aggregated query keeps the top rows by (#182), nfdump's -O.
         $c->signal('bytes', 'flows_topBy', clientWritable: true);

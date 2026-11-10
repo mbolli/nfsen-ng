@@ -179,6 +179,11 @@ a:hover {
     text-decoration-style: solid;
 }
 
+/* The address after NAT, next to the one in the record (#186). */
+.xlt {
+    color: var(--text-2);
+}
+
 /* ── Layout primitives ──────────────────────────────────────────────────── */
 
 /* Vertical rhythm without a margin utility on every child. */

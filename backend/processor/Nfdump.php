@@ -578,6 +578,10 @@ class Nfdump implements Processor {
             } else {
                 $parts[] = $v;
             }
+            // Each aggregated address with its address after NAT, for who is behind a translation (#186).
+            if (!empty($agg['nat'])) {
+                $parts[] = 'x' . $k;
+            }
         }
 
         return implode(',', $parts);

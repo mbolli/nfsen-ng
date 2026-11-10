@@ -247,8 +247,18 @@ describe('storing and windows', function (): void {
         expect($nat)->toContain('<a href="#" class="ip-link">100.79.133.123</a> <span class="xlt" title="After NAT">(<a href="#" class="ip-link">10.7.123.8</a>)</span>')
             ->and($nat)->toContain('10.1.9.10</a> <span class="xlt" title="After NAT">(<a href="#" class="ip-link">198.51.100.11</a>)</span>')
             ->and($plain)->not->toContain('class="xlt"')
+            // An XLATE cell without a translation is empty, not 0.0.0.0.
+            ->and($plain)->not->toContain('0.0.0.0')
             // Sorting and the raw values keep the address in the record.
             ->and(FlowRowStore::columns('w12')['widths']['dst_addr'] ?? 0)->toBeGreaterThanOrEqual(strlen('100.79.133.123 (10.7.123.8)'))
+        ;
+    });
+
+    test('aggregated rows pair an address with its address after NAT the same way (#186)', function (): void {
+        FlowRowStore::store('w13', [['srcAddr' => '10.1.9.10', 'srcXIP' => '198.51.100.11', 'bytes' => 100]]);
+
+        expect(flowRowStoreTestWindow('w13', 0, 1)['html'] ?? '')->toContain('10.1.9.10</a> <span class="xlt" title="After NAT">(<a href="#" class="ip-link">198.51.100.11</a>)</span>')
+            ->and(FlowRowStore::columns('w13')['titles']['srcXIP'] ?? '')->toBe('XLATE Src IP')
         ;
     });
 

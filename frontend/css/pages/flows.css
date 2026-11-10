@@ -362,12 +362,6 @@
     font-family: var(--font-mono);
     font-size: 0.9em;
 }
-
-/* The address after NAT, next to the one in the record (#186). */
-.flows-results sb-virtual-scroll .xlt {
-    color: var(--text-2);
-}
-
 .flows-results sb-virtual-scroll [role='columnheader'] > button {
     max-inline-size: 100%;
     padding: 0;

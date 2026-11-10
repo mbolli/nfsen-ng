@@ -437,3 +437,17 @@ describe('Table', function (): void {
         });
     });
 });
+
+describe('Table::generate() with NAT translations (#186)', function (): void {
+    test('an aggregated address shows its address after NAT in brackets, and an untranslated XLATE cell is empty', function (): void {
+        $html = Table::generate([
+            ['srcAddr' => '10.1.9.10', 'srcXIP' => '198.51.100.11', 'bytes' => 100],
+            ['srcAddr' => '10.1.9.11', 'srcXIP' => '0.0.0.0', 'bytes' => 50],
+        ], 'natTable', ['linkIpAddresses' => true]);
+
+        expect($html)->toContain('10.1.9.10</a> <span class="xlt" title="After NAT">(<a href="#" class="ip-link">198.51.100.11</a>)</span>')
+            ->and($html)->not->toContain('>0.0.0.0<')
+            ->and(substr_count($html, 'class="xlt"'))->toBe(1)
+        ;
+    });
+});

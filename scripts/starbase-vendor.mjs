@@ -362,7 +362,8 @@ function pull(args) {
 
     const from = resolve(opts.from);
     const commit = git(from, 'rev-parse', '--verify', `${opts.ref}^{commit}`);
-    const describe = git(from, 'describe', '--tags', '--always', commit);
+    // A release commit also carries templ/vX.Y.Z (Starbase 0.10): the release is the v tag.
+    const describe = git(from, 'describe', '--tags', '--match', 'v[0-9]*', '--always', commit);
     const old = readLock();
     // Every locked component moves with the pin, so the lock always names one Starbase commit.
     const slugs = [...new Set([...opts.slugs, ...Object.keys(old?.components ?? {})])].sort(byName);

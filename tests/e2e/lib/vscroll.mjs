@@ -148,7 +148,8 @@ export async function exportList(page, format, { enhanced = true, timeout = 6000
         window.__createObjectURL ??= URL.createObjectURL;
         URL.createObjectURL = function (blob) { window.__exported = blob; return 'blob:e2e'; };
         window.__anchorClick ??= HTMLAnchorElement.prototype.click;
-        HTMLAnchorElement.prototype.click = function () { window.__download = this.download; };
+        // Only the download link: sb-dropdown's rows are links too.
+        HTMLAnchorElement.prototype.click = function () { if (!this.hasAttribute('download')) return window.__anchorClick.call(this); window.__download = this.download; };
         document.querySelector('iframe[title="Flows to print"]')?.remove();
     })()`);
     await page.evaluate(`${EXPORT_OPEN} || ${EXPORT_TRIGGER}.click()`);

@@ -12,8 +12,8 @@
     "ext-rrd": "*",
     "php": "^8.4",
     "maxmind-db/reader": "^1.12",
-    "mbolli/php-via": "^0.14.2",
-    "mcp/sdk": "^0.8.1",
+    "mbolli/php-via": "^0.14.3",
+    "mcp/sdk": "^0.10",
     "twig/twig": "^3.10"
   },
   "require-dev": {

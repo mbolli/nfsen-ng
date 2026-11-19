@@ -9,6 +9,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Addresses after NAT in the Flows list** ([#186](https://github.com/mbolli/nfsen-ng/issues/186), requested by [@hawk128](https://github.com/hawk128)). Where the exporter sends NAT translations (NSEL), Source IP and Destination IP show the translated address in brackets, *100.79.133.123 (10.7.123.8)*, both opening IP info. The XLATE columns stay for sorting and the raw export, and are empty where nothing was translated. **With NAT addresses** in the aggregation options of Flows and of Top Talkers' Flow Records keeps each aggregated address apart by its address after NAT (nfdump's `xsrcip` and `xdstip`), so the totals say who is behind a translation.
 
+### Internal
+
+- Dependencies updated: php-via 0.14.3 with Datastar 1.0.5, the Starbase components from v0.11.1 (the release built for that engine), mcp/sdk 0.10, PHPStan 2.3.7, Pest 5.3.7, Rector 2.8.5, Biome 2.6.8 and the rest of the lock.
+
 ## [1.0.0-beta.7] - 2026-10-24
 
 ### Added

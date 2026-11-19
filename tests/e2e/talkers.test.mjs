@@ -158,7 +158,8 @@ export default async function talkersTest() {
             window.__createObjectURL ??= URL.createObjectURL;
             URL.createObjectURL = function (blob) { window.__exported = blob; return 'blob:e2e'; };
             window.__anchorClick ??= HTMLAnchorElement.prototype.click;
-            HTMLAnchorElement.prototype.click = function () { window.__download = this.download; };
+            // Only the download link: sb-dropdown's rows are links too.
+            HTMLAnchorElement.prototype.click = function () { if (!this.hasAttribute('download')) return window.__anchorClick.call(this); window.__download = this.download; };
             window.__e2eRightAway = new Promise(function(resolve){
                 new MutationObserver(function(records, observer){
                     if (!${TOGGLE}?.checkVisibility()) return;
@@ -348,7 +349,8 @@ export default async function talkersTest() {
         // Choosing an item exports, closes the menu and returns the focus to Export.
         await page.evaluate(`(function(){
             window.__downloads = [];
-            HTMLAnchorElement.prototype.click = function(){ window.__downloads.push(this.download); };
+            window.__anchorClick ??= HTMLAnchorElement.prototype.click;
+            HTMLAnchorElement.prototype.click = function(){ if (!this.hasAttribute('download')) return window.__anchorClick.call(this); window.__downloads.push(this.download); };
         })()`);
         for (const [n, kind] of ['CSV', 'JSON'].entries()) {
             await clickAt(page, TOGGLE);

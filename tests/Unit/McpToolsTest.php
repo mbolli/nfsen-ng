@@ -11,7 +11,7 @@ use mbolli\nfsen_ng\mcp\Tier;
 use mbolli\nfsen_ng\mcp\Tool\ToolInterface;
 use mbolli\nfsen_ng\mcp\ToolRegistry;
 use mbolli\nfsen_ng\processor\NfdumpSlots;
-use Mcp\Exception\ToolCallException;
+use Mcp\Server\Exception\ToolCallException;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use Psr\Http\Message\ResponseInterface;

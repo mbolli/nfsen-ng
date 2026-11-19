@@ -425,7 +425,10 @@ export default async function conversationsTest() {
         // Downloads and copies are recorded from here on instead of saved.
         await page.evaluate(`(function(){
             window.__downloads = [];
+            window.__anchorClick ??= HTMLAnchorElement.prototype.click;
+            // Only download links: sb-dropdown's rows are links too.
             HTMLAnchorElement.prototype.click = function(){
+                if (!this.hasAttribute('download')) return window.__anchorClick.call(this);
                 var entry = { download: this.download, href: this.href, text: null };
                 window.__downloads.push(entry);
                 if (this.href.startsWith('blob:')) fetch(this.href).then(function(r){ return r.text(); }).then(function(t){ entry.text = t; });

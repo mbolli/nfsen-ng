@@ -1,0 +1,184 @@
+{
+  "tag": "sb-dropdown",
+  "props": [
+    {
+      "name": "items",
+      "attribute": "items",
+      "type": "json",
+      "default": [],
+      "required": false,
+      "docs": {
+        "description": "The menu, as JSON: [\"Rename\", \"-\", {\"value\":\"delete\",\"label\":\"Delete\",\"danger\":true}]. An item is {value, label?, description?, icon?, href?, disabled?, danger?} (icon is text, such as an emoji: rich icons and content are the markup form's), {\"divider\":true} (\"-\" works too), a group heading {\"group\":\"Move to\"} (the items after it, up to the next heading or divider, are its group), or a submenu {label, children:[...]} nested up to 5 levels deep. An item with href is a link the browser follows (no sb-select). Server data: a new array replaces the whole tree, open or not."
+      }
+    },
+    {
+      "name": "label",
+      "attribute": "label",
+      "type": "string",
+      "default": "Actions",
+      "required": false,
+      "docs": {
+        "description": "Text of the default trigger, and the accessible name of trigger and menu."
+      }
+    },
+    {
+      "name": "emptyLabel",
+      "attribute": "empty-label",
+      "type": "string",
+      "default": "Nothing here",
+      "required": false,
+      "docs": {
+        "description": "Shown in a menu or submenu that has no items."
+      }
+    },
+    {
+      "name": "placement",
+      "attribute": "placement",
+      "type": "oneOf",
+      "default": "bottom-start",
+      "required": false,
+      "values": [
+        "bottom-start",
+        "bottom",
+        "bottom-end",
+        "top-start",
+        "top",
+        "top-end"
+      ],
+      "docs": {
+        "description": "Preferred side and alignment of the menu; it flips and shifts when there is no room. Submenus always open to the inline end and flip to the start."
+      }
+    },
+    {
+      "name": "type",
+      "attribute": "type",
+      "type": "oneOf",
+      "default": "actions",
+      "required": false,
+      "values": [
+        "actions",
+        "radio"
+      ],
+      "docs": {
+        "description": "radio makes the root menu one radio group, for a menu that shows a current choice; a group inside a submenu is type:\"radio\" on that item instead. The group reaches into its submenus, and a dropdown holds one group."
+      }
+    },
+    {
+      "name": "value",
+      "attribute": "value",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Radio group: the checked value, owned by the server — for a choice in a submenu the item values from the group root down, joined with dots (\"date.newest\"). A new value from the server wins (value=\"\" clears it); the live value is the value property."
+      }
+    },
+    {
+      "name": "confirm",
+      "attribute": "confirm",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Radio group: :state(pending) on the host and on the chosen item while the local value differs from the server's value attribute (see revert())."
+      }
+    },
+    {
+      "name": "rev",
+      "attribute": "rev",
+      "type": "number",
+      "default": 0,
+      "required": false,
+      "docs": {
+        "description": "Revision of the server's value, for commands: the server bumps it with every command it answers for this field, applied or refused. A new rev makes the value attribute win even when it is unchanged, so a refused edit reverts."
+      }
+    },
+    {
+      "name": "pending",
+      "attribute": "pending",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "The page's word that a command is on its way (e.g. data-attr:pending=\"$_saving\"): :state(pending) and aria-busy while present. It adds to confirm's pending, never clears it."
+      }
+    },
+    {
+      "name": "open",
+      "attribute": "open",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Open when present. The server adding or removing the attribute opens or closes the menu; re-sent identical markup leaves the local state alone. Never reflected: use the open property, show() and hide() from the client."
+      }
+    },
+    {
+      "name": "disabled",
+      "attribute": "disabled",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "docs": {
+        "description": "Disable the trigger (and close the menu)."
+      }
+    },
+    {
+      "name": "name",
+      "attribute": "name",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "docs": {
+        "description": "Name reported in sb-select and sb-change (e.g. the field of a command)."
+      }
+    }
+  ],
+  "slots": [
+    {
+      "name": "trigger",
+      "description": "Content of the trigger button (text, an icon). The component provides the button itself, with all the ARIA on it."
+    },
+    {
+      "name": "item",
+      "description": "Menu items as markup instead of items: <button slot=\"item\" value=\"x\" disabled data-icon=\"🛰\" data-description=\"…\" data-danger>Label</button>, <a slot=\"item\" href=\"/x\">Label</a> for a link, or <hr slot=\"item\"> for a divider. <div slot=\"item\" data-group>Move to</div> is a group heading: the items after it, up to the next heading or divider, are its group (text only). A submenu is data-children='[…]' (the same JSON as items). They are read as data; items wins when it is not empty. Rich items: an element marked data-icon inside the item (an inline <svg>, an <img>) is copied into the row's icon place, and other elements in it (a lozenge) are copied into the row in place of the text, which stays the row's accessible name; a radio trigger shows the chosen item the same way. Copies keep their attributes, so part=\"…\" and an inline style reach them from the page."
+    }
+  ],
+  "events": [
+    {
+      "kind": "custom-event",
+      "name": "sb-select",
+      "bubbles": true,
+      "composed": true,
+      "description": "A plain item was chosen; the whole menu closes. detail: { name, value }: ready for a command. A submenu parent never reports a value, an item of a radio group reports sb-change instead, and a link reports nothing: the browser follows it."
+    },
+    {
+      "kind": "event",
+      "name": "change",
+      "bubbles": true,
+      "composed": true,
+      "description": "Radio group: the value changed."
+    },
+    {
+      "kind": "custom-event",
+      "name": "sb-change",
+      "bubbles": true,
+      "composed": true,
+      "description": "Radio group: an item of the group was chosen. detail: { name, value }, the value being the dotted path for a choice inside a submenu: ready for a command."
+    },
+    {
+      "kind": "custom-event",
+      "name": "sb-open",
+      "bubbles": true,
+      "composed": true,
+      "description": "The menu opened (the root; submenus are view state and stay quiet)."
+    },
+    {
+      "kind": "custom-event",
+      "name": "sb-close",
+      "bubbles": true,
+      "composed": true,
+      "description": "The menu closed. detail: { reason }: item, escape, outside, scroll, tab, trigger, server or api."
+    }
+  ]
+}

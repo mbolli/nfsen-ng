@@ -7,7 +7,7 @@ namespace mbolli\nfsen_ng\mcp;
 use mbolli\nfsen_ng\common\CaptureInterval;
 use mbolli\nfsen_ng\common\Config;
 use mbolli\nfsen_ng\query\TimeWindow;
-use Mcp\Exception\ToolCallException;
+use Mcp\Server\Exception\ToolCallException;
 
 /**
  * Bounds on what a caller may ask an expensive tool to do.

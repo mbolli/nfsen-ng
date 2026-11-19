@@ -15,8 +15,8 @@ use mbolli\nfsen_ng\mcp\Tool\StatusTool;
 use mbolli\nfsen_ng\mcp\Tool\ToolInterface;
 use mbolli\nfsen_ng\mcp\Tool\TopTalkersTool;
 use mbolli\nfsen_ng\mcp\Tool\TrafficTimelineTool;
-use Mcp\Server;
 use Mcp\Server\Builder;
+use Mcp\Server\Server;
 
 /**
  * Assembles the MCP server from the tool classes.

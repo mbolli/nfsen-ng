@@ -627,7 +627,8 @@ class ChartState {
         const short = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
         const unit = this.unit();
         const parts = [base, `${this.dateFmt(first, short)} to ${this.dateFmt(last, short)}`];
-        if (peak) parts.push(`peak ${scaled(peak.total, unit.base, unit.rate)} at ${this.dateFmt(peak.at, short)}`);
+        // Rows that are all gaps (nothing stored for the visible series) have no peak to name.
+        parts.push(peak ? `peak ${scaled(peak.total, unit.base, unit.rate)} at ${this.dateFmt(peak.at, short)}` : 'no data in this range');
         this.host.setAttribute('aria-label', parts.join(', '));
     }
 

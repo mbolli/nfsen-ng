@@ -308,6 +308,7 @@ country flag. All but ipinfo.io work without an account.
 | [ipwho.is](https://ipwho.is/) | `https://ipwho.is/{ip}` | 1 000/day, no key |
 | [freeipapi.com](https://freeipapi.com/) | `https://freeipapi.com/api/json/{ip}` | 60/minute, no key |
 | [ipinfo.io](https://ipinfo.io/) | `https://ipinfo.io/{ip}/json?token={token}` | free token; their free *Lite* plan is unlimited but country-level only |
+| [InternetData](https://internetdata.io/) | `https://api.internetdata.io/{ip}` | no key ([terms](https://internetdata.io/terms#no-key)), country-level; city and coordinates take a paid key, `?apikey={token}` |
 
 Quotas change without notice, so treat the last column as a hint about which
 service to reach for, not a guarantee. Anything else that answers with a JSON

@@ -197,6 +197,26 @@ describe('IpLookup::countryFlag()', function (): void {
 });
 
 describe('IpLookup geo response normalization', function (): void {
+    it('lifts a nested answer onto flat keys, as InternetData returns it', function (): void {
+        $out = normalizeGeo([
+            'ip' => '8.8.8.8',
+            'hostname' => 'dns.google',
+            'location' => ['continent' => 'NA', 'country' => 'US', 'country_name' => 'United States', 'timezone' => 'America/Los_Angeles'],
+            'asn' => ['asn' => 15169, 'name' => 'Google LLC', 'domain' => 'google.com', 'prefix' => '8.8.8.0/24'],
+            'company' => ['name' => 'Google LLC', 'domain' => 'google.com'],
+        ]);
+
+        expect($out)->toMatchArray([
+            'country_code' => 'US',
+            'country_name' => 'United States',
+            'country_flag' => '🇺🇸',
+            'timezone' => 'America/Los_Angeles',
+            'asn' => 'AS15169',
+            'network' => '8.8.8.0/24',
+            'org' => 'Google LLC',
+        ])->and($out)->not->toHaveKeys(['location', 'company']);
+    });
+
     test('passes an ipapi.co payload through unchanged apart from the added flag', function (): void {
         $payload = ['ip' => '1.1.1.1', 'country' => 'AU', 'country_code' => 'AU', 'city' => 'Sydney'];
 

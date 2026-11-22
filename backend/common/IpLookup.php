@@ -215,6 +215,8 @@ final class IpLookup {
      * @return array<string, mixed>
      */
     private static function normalizeGeo(array $data, array $responseHeaders): array {
+        $data = self::flattenNested($data);
+
         if (!isset($data['country_code'])) {
             foreach (['country', 'countryCode'] as $key) {
                 $candidate = $data[$key] ?? null;
@@ -262,6 +264,46 @@ final class IpLookup {
         if ($status !== null && $status >= 400 && empty($data['error'])) {
             $data['error'] = true;
             $data['reason'] ??= 'IP lookup failed (HTTP ' . $status . ')';
+        }
+
+        return $data;
+    }
+
+    /**
+     * Lift a nested answer onto the flat keys the rest of normalizeGeo() and the modal read.
+     * InternetData returns `location`, `asn` and `company` as objects
+     * (`{"location": {"country": "US", …}, "asn": {"asn": 15169, "prefix": …}}`), which
+     * would otherwise render as JSON and leave the country without a flag.
+     *
+     * @param array<string, mixed> $data
+     *
+     * @return array<string, mixed>
+     */
+    private static function flattenNested(array $data): array {
+        if (isset($data['location']) && \is_array($data['location'])) {
+            $location = $data['location'];
+            unset($data['location']);
+            $keys = [
+                'country' => 'country_code', 'country_name' => 'country_name', 'region' => 'region',
+                'city' => 'city', 'postal_code' => 'postal', 'latitude' => 'latitude',
+                'longitude' => 'longitude', 'timezone' => 'timezone',
+            ];
+            foreach ($keys as $from => $to) {
+                if (isset($location[$from]) && !isset($data[$to])) {
+                    $data[$to] = $location[$from];
+                }
+            }
+        }
+
+        if (isset($data['asn']) && \is_array($data['asn'])) {
+            $asn = $data['asn'];
+            $company = \is_array($data['company'] ?? null) ? $data['company'] : [];
+            unset($data['asn'], $data['company']);
+            if (isset($asn['asn'])) {
+                $data['asn'] = 'AS' . $asn['asn'];
+            }
+            $data['network'] ??= $asn['prefix'] ?? null;
+            $data['org'] ??= $company['name'] ?? $asn['name'] ?? null;
         }
 
         return $data;

@@ -67,6 +67,8 @@ jobs:
         with:
           context: .
           file: deploy/Dockerfile
+          # Always the newest php:8.4-cli, so a rebuild picks up PHP's security releases (#189).
+          pull: true
           push: ${{ github.event_name != 'workflow_dispatch' || format('{0}', inputs.dry_run) == 'false' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -15,7 +15,7 @@ nfsen-ng is an in-place replacement for the ageing [NfSen](http://nfsen.sourcefo
 
 Seven pages. Four analysis pages share one time range: **Overview** (the traffic graph, key figures and the top talkers of the range, precomputed while importing), **Top Talkers** (exact top-N by any nfdump statistic), **Flows** (individual records, raw output and a summary), **Conversations** (who talks to whom as a Sankey, a Matrix or a table). Next to them sit **Alerts**, **Health** and **Settings**. Anything that reads capture files shows its cost first and runs only when you press Run.
 
-> **Requires Linux.** The backend runs on the [OpenSwoole](https://openswoole.com/) PHP extension, which has no maintained FreeBSD/other-BSD port; see [openswoole/ext-openswoole#233](https://github.com/openswoole/ext-openswoole/issues/233). Docker images are Linux-only.
+> **Linux; FreeBSD untested.** The backend runs on the [OpenSwoole](https://openswoole.com/) PHP extension, which builds on FreeBSD from version 26.11 ([openswoole/ext-openswoole#233](https://github.com/openswoole/ext-openswoole/issues/233)). Nobody has reported a FreeBSD install yet ([#143](https://github.com/mbolli/nfsen-ng/issues/143)). Docker images are Linux-only.
 
 ![nfsen-ng Overview page with the traffic graph, key figures and top talkers, light and dark](https://raw.githubusercontent.com/mbolli/nfsen-ng/master/book/src/images/00-page-overview.png)
 

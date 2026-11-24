@@ -6,10 +6,14 @@ and visualises them. It does **not** capture traffic itself: you need a working
 `nfcapd` (or an equivalent NetFlow/sFlow/IPFIX collector) writing files before
 nfsen-ng has anything to show.
 
-> **Linux only.** The backend runs on the [OpenSwoole](https://openswoole.com/)
-> PHP extension, which has no maintained FreeBSD/other-BSD port
-> ([openswoole/ext-openswoole#233](https://github.com/openswoole/ext-openswoole/issues/233)).
-> Docker images are Linux-only.
+> **Linux; FreeBSD untested.** The backend runs on the [OpenSwoole](https://openswoole.com/)
+> PHP extension, which builds on FreeBSD from version 26.11
+> ([openswoole/ext-openswoole#233](https://github.com/openswoole/ext-openswoole/issues/233));
+> the FreeBSD port may lag behind, and `pecl install openswoole` builds the
+> current release. The import daemon also needs the `inotify` extension, which
+> on FreeBSD runs on libinotify. Nobody has reported a FreeBSD install yet
+> ([#143](https://github.com/mbolli/nfsen-ng/issues/143)). Docker images are
+> Linux-only.
 
 Two ways to install: **Docker** (recommended) or **bare-metal**. For a local
 development setup with source-mounted auto-reload, see

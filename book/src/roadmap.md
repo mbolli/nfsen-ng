@@ -5,13 +5,9 @@ Tracked as [GitHub issues](https://github.com/mbolli/nfsen-ng/issues).
 ## Open
 
 - **[#143: v1 broken on FreeBSD](https://github.com/mbolli/nfsen-ng/issues/143).**
-  OpenSwoole's C extension doesn't build on FreeBSD
-  (openswoole/ext-openswoole#233), and php-via is built on OpenSwoole, so a
-  bare-metal FreeBSD install currently can't run this at all. Short-term
-  (documenting the limitation in the README/book) is done. Medium-term: whether
-  php-via can be made runtime-agnostic (OpenSwoole vs. Swoole vs. an alternative
-  server) is an open question that needs a php-via-side answer, not just an
-  nfsen-ng one.
+  OpenSwoole builds on FreeBSD from version 26.11 (November 2026,
+  openswoole/ext-openswoole#233). Waiting for a report from a FreeBSD install
+  before calling it supported.
 
 ## Recently shipped
 

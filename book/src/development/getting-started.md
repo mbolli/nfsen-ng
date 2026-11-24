@@ -1,7 +1,8 @@
 # Getting Started
 
-Requires Linux: OpenSwoole has no maintained FreeBSD/other-BSD port
-([openswoole/ext-openswoole#233](https://github.com/openswoole/ext-openswoole/issues/233)).
+Development happens on Linux. OpenSwoole builds on FreeBSD from version 26.11
+([openswoole/ext-openswoole#233](https://github.com/openswoole/ext-openswoole/issues/233)),
+but nfsen-ng is untested there ([#143](https://github.com/mbolli/nfsen-ng/issues/143)).
 
 ## Quick start (production-ish)
 

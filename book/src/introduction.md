@@ -50,9 +50,10 @@ walks through the interface; the [Architecture](architecture/overview.md) chapte
 covers how the pieces fit together; and
 [Development](development/getting-started.md) covers running it locally.
 
-OpenSwoole's FreeBSD/other-BSD port is unmaintained
+nfsen-ng runs on Linux. OpenSwoole builds on FreeBSD from version 26.11
 ([openswoole/ext-openswoole#233](https://github.com/openswoole/ext-openswoole/issues/233)),
-so nfsen-ng currently requires Linux.
+so a FreeBSD install should work, but nobody has reported one yet
+([#143](https://github.com/mbolli/nfsen-ng/issues/143)).
 
 ## Status
 

@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **Addresses after NAT in the Flows list** ([#186](https://github.com/mbolli/nfsen-ng/issues/186), requested by [@hawk128](https://github.com/hawk128)). Where the exporter sends NAT translations (NSEL), Source IP and Destination IP show the translated address in brackets, *100.79.133.123 (10.7.123.8)*, both opening IP info. The XLATE columns stay for sorting and the raw export, and are empty where nothing was translated. **With NAT addresses** in the aggregation options of Flows and of Top Talkers' Flow Records keeps each aggregated address apart by its address after NAT (nfdump's `xsrcip` and `xdstip`), so the totals say who is behind a translation.
+- **InternetData among the IP info services** ([#188](https://github.com/mbolli/nfsen-ng/pull/188), by [@UmanShahzad](https://github.com/UmanShahzad)). Its nested answer shows as flat rows with the country flag, AS number, network and organisation. For every service, IP info now folds true `is_*` flags into one *Flags* row, shows an abuse email as *Abuse contact*, and skips the repeated hostname and empty values.
 
 ### Security
 

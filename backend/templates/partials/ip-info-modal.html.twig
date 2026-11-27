@@ -3,11 +3,12 @@
 {% set labels = {
     country_name: 'Country', region: 'Region', city: 'City', postal: 'Postal code',
     timezone: 'Time zone', asn: 'AS number', org: 'Organisation', network: 'Network',
+    flags: 'Flags', abuse: 'Abuse contact',
 } %}
 {# Shown elsewhere in the dialog, or provider bookkeeping nobody needs here. #}
 {% set ignored = ['ip', 'source', 'latitude', 'longitude', 'country', 'country_code', 'country_code_iso3',
                   'country_tld', 'country_area', 'country_population', 'continent_code', 'in_eu', 'version',
-                  'error', 'reason', 'readme', 'success', 'status', 'message', 'country_flag', 'region_code'] %}
+                  'error', 'reason', 'readme', 'success', 'status', 'message', 'country_flag', 'region_code', 'hostname'] %}
 <sb-modal id="ip-modal-inner" class="ip-info" heading="IP info: {{ ip }}">
     <div class="ip-info-body stack">
         <dl class="ip-info-fields">
@@ -78,7 +79,7 @@
                             <dt>Coordinates</dt><dd>{{ geoData.latitude }}, {{ geoData.longitude }}</dd>
                         {% endif %}
                         {% for key, value in geoData %}
-                            {% if key not in ignored and labels[key] is not defined and value is not same as('') and value is not null %}
+                            {% if key not in ignored and labels[key] is not defined and value is not empty %}
                                 {# Providers differ: a nested object would fail on string conversion. #}
                                 <dt>{{ key|replace({'_': ' '})|capitalize }}</dt>
                                 <dd>{{ value is iterable ? value|json_encode : value }}</dd>

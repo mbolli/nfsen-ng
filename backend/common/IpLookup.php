@@ -306,6 +306,24 @@ final class IpLookup {
             $data['org'] ??= $company['name'] ?? $asn['name'] ?? null;
         }
 
+        // `is_anycast: true` and friends become one row naming the true ones.
+        $flags = [];
+        foreach ($data as $key => $value) {
+            if (\is_bool($value) && str_starts_with((string) $key, 'is_')) {
+                unset($data[$key]);
+                if ($value) {
+                    $flags[] = str_replace('_', ' ', substr((string) $key, 3));
+                }
+            }
+        }
+        if ($flags !== []) {
+            $data['flags'] ??= implode(', ', $flags);
+        }
+
+        if (\is_array($data['abuse'] ?? null) && \is_string($data['abuse']['email'] ?? null)) {
+            $data['abuse'] = $data['abuse']['email'];
+        }
+
         return $data;
     }
 

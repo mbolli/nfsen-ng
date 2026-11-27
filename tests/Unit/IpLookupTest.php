@@ -197,6 +197,33 @@ describe('IpLookup::countryFlag()', function (): void {
 });
 
 describe('IpLookup geo response normalization', function (): void {
+    it('lifts a nested answer onto flat keys, as InternetData returns it', function (): void {
+        // InternetData's keyless answer for 8.8.8.8, November 2026.
+        $out = normalizeGeo(json_decode(<<<'JSON'
+            {"ip": "8.8.8.8", "is_bogon": false, "is_tor": false, "is_relay": false, "is_anycast": true,
+             "location": {"continent": "NA", "continent_name": "North America", "country": "US",
+               "country_name": "United States", "timezone": "America/Los_Angeles", "currency_code": "USD",
+               "currency_name": "Dollar", "currency_symbol": "$", "flag_emoji": "🇺🇸", "flag_unicode": "U+1F1FA U+1F1F8"},
+             "tor": {}, "relay": {},
+             "asn": {"asn": 15169, "name": "Google LLC", "domain": "google.com", "type": "hosting",
+               "prefix": "8.8.8.0/24", "country": "US", "rpki_status": "valid"},
+             "company": {"name": "Google LLC", "domain": "google.com"},
+             "hostname": "dns.google", "abuse": {"email": "network-abuse@google.com"}}
+            JSON, true));
+
+        expect($out)->toMatchArray([
+            'country_code' => 'US',
+            'country_name' => 'United States',
+            'country_flag' => '🇺🇸',
+            'timezone' => 'America/Los_Angeles',
+            'asn' => 'AS15169',
+            'network' => '8.8.8.0/24',
+            'org' => 'Google LLC',
+            'flags' => 'anycast',
+            'abuse' => 'network-abuse@google.com',
+        ])->and($out)->not->toHaveKeys(['location', 'company', 'is_bogon', 'is_anycast']);
+    });
+
     test('passes an ipapi.co payload through unchanged apart from the added flag', function (): void {
         $payload = ['ip' => '1.1.1.1', 'country' => 'AU', 'country_code' => 'AU', 'city' => 'Sydney'];
 
